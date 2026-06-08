@@ -7,6 +7,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:all": "vitest run --config vitest.config.all.js",
+    "test:changed": "vitest run --changed --config vitest.config.all.js",
+    "test:e2e": "vitest run --config vitest.config.all.js tests/e2e",
     "build:plugin": "node scripts/build-plugin.mjs"
   },
   "engines": {
