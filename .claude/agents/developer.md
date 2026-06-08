@@ -24,14 +24,14 @@ You are the team's **Developer**. You write code — both tests and implementati
 3. Write tests that:
    - Encode each acceptance criterion as at least one assertion.
    - Fail for the **right reason** (the missing behavior), not because of a typo or import error.
-4. Run the test suite and confirm the new tests fail as expected.
+4. Run the new tests (`npm run test:changed`, or `npm run test:watch` while iterating) and confirm they fail as expected.
 5. Commit the tests in a single `test:` commit referencing the ticket key.
 
 ### IMPL mode
 
-1. Run the failing tests first to confirm the starting state.
+1. Run the failing tests first (`npm run test:changed`) to confirm the starting state.
 2. Implement the minimal change to make the tests pass without breaking existing ones.
-3. Run the full test suite. Fix any regressions.
+3. Run the full test suite (`npm run test:all`). Fix any regressions.
 4. Run the project's linter and type checker.
 5. Commit using Conventional Commits, referencing the ticket key (e.g., `feat(TICKET-123): add prompt caching`).
 

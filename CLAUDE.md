@@ -56,9 +56,29 @@ The Orchestrator must follow this loop for every unit of work:
 
 ## Testing
 
-- Tests must be runnable via the standard project test command (see project README).
-- The Developer must run the full test suite locally before handing off to the Reviewer.
-- The Reviewer must re-run the suite from a clean state as part of verification.
+The suite is split into two tiers **by directory** (see `vitest.config.js` for the rationale):
+
+- **Fast tier** — `tests/*.spec.js`: pure logic, no real disk I/O (~2s).
+- **Slow tier** — `tests/e2e/**`: real `mkdtemp` disk I/O and process spawns.
+
+### Which command, when
+
+The Orchestrator and the Developer/Reviewer subagents **must pick the command by situation**, not by habit:
+
+| Situation | Command | What it runs |
+|---|---|---|
+| Writing code, TDD inner loop | `npm run test:watch` | only specs affected by each save (auto, via import graph) |
+| One-shot check of code you just edited | `npm run test:changed` | only specs related to your **uncommitted** changes |
+| Fast confidence / pre-deploy smoke | `npm test` | the whole fast tier (~2s) |
+| Iterating on one slow spec | `vitest run --config vitest.config.all.js tests/e2e/<file>` | that single e2e spec |
+| **Pre-hand-off & review gate** | `npm run test:all` | everything (fast + slow) |
+
+(`test:changed` compares against `HEAD`. To diff against the last commit instead: `npx vitest run --changed HEAD~1 --config vitest.config.all.js`.)
+
+### Rules
+
+- **The gate is always `npm run test:all`.** `test:changed` and `test:watch` are inner-loop accelerators — never a substitute for the gate, because the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs. The Developer runs `npm run test:all` before hand-off; the Reviewer re-runs it from a clean state.
+- New slow specs (anything calling `makeTmpDir` or spawning a process) go under `tests/e2e/`; pure-logic specs stay at the top level of `tests/`. The folder *is* the tier — keep the boundary clean so the fast tier stays fast.
 
 ## Knowledge Sharing
 
