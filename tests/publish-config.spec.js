@@ -38,7 +38,7 @@ const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 const MARKETPLACE_JSON = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-const EXPECTED_VERSION = '0.1.0';
+const EXPECTED_VERSION = '0.1.1';
 const EXPECTED_MARKETPLACE_NAME = 'agentic-framework-marketplace';
 const EXPECTED_PLUGIN_NAME = 'agentic-framework';
 const EXPECTED_SOURCE = './';
@@ -59,7 +59,7 @@ describe('AC3 — plugin.json carries an explicit semver version (Q6 resolved)',
     ).toBe(true);
   });
 
-  it('plugin_json_has_version_exactly_0_1_0', () => {
+  it('plugin_json_has_version_exactly_0_1_1', () => {
     const manifest = readJson(PLUGIN_JSON);
     expect(
       manifest.version,
