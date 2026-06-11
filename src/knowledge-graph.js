@@ -45,6 +45,11 @@
 // SELF-BOOTSTRAP:
 //   On the first write to a repo where knowledge/graph/ does not yet exist,
 //   the directory is created automatically (mkdirSync, recursive).
+//
+// CONCURRENCY:
+//   Single-writer assumption — the orchestrator is the only writer; writes are
+//   read-modify-write without cross-process locking, so concurrent writers
+//   could lose updates (acceptable for this harness, same as task-store).
 
 import { readFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -58,9 +63,12 @@ import { atomicWriteFile } from './atomic-write.js';
 // ---------------------------------------------------------------------------
 // Inline schema — keeps the module self-contained for bundled (dist/*.cjs)
 // deployments where import.meta.url is unavailable. Mirrors knowledge/graph/schema.json
-// exactly; update both in lock-step.
+// (modulo `description` annotations); a drift-guard spec in
+// tests/knowledge-graph-scaffold.spec.js deep-compares the two with
+// description keys stripped, so update both in lock-step.
+// Exported for that drift guard only — not part of the store API surface.
 // ---------------------------------------------------------------------------
-const GRAPH_SCHEMA = {
+export const GRAPH_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://agentic-framework/knowledge/graph/schema.json',
   title: 'Knowledge Graph',
@@ -178,6 +186,10 @@ function validateGraph(graph) {
  * {schema_version: 1, nodes: [], edges: []} without throwing.
  * If the file exists but is corrupt (invalid JSON), throws (loud corruption).
  *
+ * NOTE: read-path validation is parse-only by design — the file is trusted
+ * because every write path schema-validates before mutating it. A full AJV
+ * pass on every read would be redundant cost on the hot query path.
+ *
  * @param {{ repoRoot: string }} opts
  * @returns {Promise<{schema_version: number, nodes: Array, edges: Array}>}
  */
@@ -190,13 +202,20 @@ export async function loadGraph({ repoRoot }) {
 
 /**
  * Add a node to the graph. Validates the resulting document against the schema
- * BEFORE any write. Throws on validation failure (zero disk mutation).
+ * and rejects duplicate node ids BEFORE any write. Throws on validation
+ * failure (zero disk mutation).
  * Creates knowledge/graph/ directory on first write (self-bootstrap).
  *
  * @param {{ repoRoot: string, node: {id, type, ref, label} }} opts
  */
 export async function addNode({ repoRoot, node }) {
   const graph = await loadGraph({ repoRoot });
+
+  // Duplicate-id guard — node ids are the graph's primary key; a silent
+  // duplicate would corrupt referential-integrity checks and neighbor queries.
+  if (node && node.id !== undefined && graph.nodes.some((n) => n.id === node.id)) {
+    throw new Error(`addNode: node id "${node.id}" already exists in the graph`);
+  }
 
   // Build the candidate graph with the new node appended.
   const candidate = {

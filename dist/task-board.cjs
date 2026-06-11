@@ -8429,7 +8429,7 @@ function buildHtml() {
 </body>
 </html>`;
 }
-var GRAPH_DATA_SENTINEL = '"__GRAPH_DATA__"';
+var GRAPH_DATA_SENTINEL = "__GRAPH_DATA__";
 function buildGraphHtml() {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -8650,7 +8650,9 @@ function buildGraphBody(graphObj) {
 var GRAPH_BODY_SENTINEL = "<!--__GRAPH_BODY__-->";
 function injectGraphData(graphObj) {
   const template = buildGraphHtml();
-  return template.replace(GRAPH_DATA_SENTINEL, JSON.stringify(graphObj)).replace(GRAPH_BODY_SENTINEL, buildGraphBody(graphObj));
+  const json = JSON.stringify(graphObj).replace(/</g, "\\u003c");
+  const body = buildGraphBody(graphObj);
+  return template.replace(GRAPH_DATA_SENTINEL, () => json).replace(GRAPH_BODY_SENTINEL, () => body);
 }
 function createBoardServer({ repoRoot }) {
   const html = buildHtml();

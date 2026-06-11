@@ -81,13 +81,14 @@ decisions that shaped the work as typed edges in the knowledge graph
 2. Ensure a node of type `task` exists for the ticket being closed (add with
    `addNode` if absent; id = the task key e.g. `TASK-035`, ref = the task JSON
    path, label = the ticket title).
-3. Call `addEdge` with `{ from: <decision-id>, to: <task-id>, relation: 'produced-by' }`
-   (or `relates-to` if the decision influenced but did not directly produce the
+3. Call `addEdge` with `{ from: <task-id>, to: <decision-id>, relation: 'produced-by' }`
+   — read as "the task's scope was produced by the decision" (use `relates-to`
+   instead if the decision influenced but did not directly produce the
    ticket's scope) to create the decision-to-task edge in the graph.
 
 This gives future sessions a traversable audit trail: given any task node,
-following `produced-by` edges back to `decision` nodes explains *why* the work
-was scoped the way it was.
+following its outgoing `produced-by` edges to `decision` nodes explains *why*
+the work was scoped the way it was.
 
 ## Notes
 

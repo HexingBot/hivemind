@@ -40,6 +40,40 @@ The Researcher subagent, on receiving a research question, runs this procedure d
 
 This is in `.claude/agents/researcher.md` as a mandatory step. The Researcher itself is read-only with respect to `knowledge/`; the Orchestrator writes the `last_seen_at` updates and any new entries via atomic temp+rename writes.
 
+## Knowledge graph (`graph/`)
+
+`knowledge/graph/` holds a typed graph that links the artifacts the framework
+already tracks. It is a **single file**, `graph.json`, validated against
+`graph/schema.json` (JSON Schema draft 2020-12):
+
+```
+{ "schema_version": 1, "nodes": [...], "edges": [...] }
+```
+
+**Node types** (the `type` field): `knowledge_entry` (references
+`knowledge/entries/*.md`), `task` (references `tasks/TASK-NNN.json`),
+`decision` (references a session bundle's decisions), and `skill` (references
+`.claude/skills/<name>/`). Every node carries a stable `id`, a `ref` pointing
+at its source artifact, and a human-readable `label`.
+
+**Edge relations** (the `relation` field): `learned-in`, `blocks`,
+`supersedes`, `uses`, `produced-by`, `relates-to`. Edges must reference
+existing node ids — referential integrity is enforced on every write, and
+removing a node cascades its edges.
+
+**The index-not-copy principle.** The graph is an *index over* existing
+state, never a second copy of it. Nodes reference entries, tasks, decisions,
+and skills by stable pointer (`ref`); they do not duplicate their content.
+If an entry's body changes, the graph does not need to change — only when
+artifacts are created, deleted, or newly related. This keeps the graph cheap
+to maintain and impossible to drift into a competing source of truth.
+
+All reads and writes go through `src/knowledge-graph.js`, which validates
+against the schema, enforces referential integrity before any disk mutation,
+writes atomically, and serializes deterministically (nodes sorted by id,
+edges by from/to/relation) so git diffs stay readable. A grouped visual view
+is served at `/graph` by the task-board server.
+
 ## Portability rule
 
 To stay portable across projects:

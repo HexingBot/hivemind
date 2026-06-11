@@ -299,3 +299,66 @@ describe('M3 — /graph HTML in src/task-board.js pins the textContent/createEle
     ).toBe(true);
   });
 });
+
+// ===========================================================================
+// REVIEW FIX (HIGH-2) — knowledge/README.md documents the graph model and the
+// index-not-copy principle. Authorized by the TASK-035 review verdict.
+// ===========================================================================
+describe('TASK-035 review — knowledge/README.md documents the graph model', () => {
+  const KNOWLEDGE_README = join(REPO_ROOT, 'knowledge', 'README.md');
+
+  it('readme_has_graph_section_with_model', () => {
+    expect(existsSync(KNOWLEDGE_README), 'knowledge/README.md must exist').toBe(true);
+    const text = readFileSync(KNOWLEDGE_README, 'utf8');
+    // A graph section that mentions the four node types within proximity.
+    const modelRe = /graph[\s\S]{0,3000}knowledge_entry[\s\S]{0,500}decision[\s\S]{0,500}skill/i;
+    expect(
+      modelRe.test(text),
+      'README must document the graph model (node types) within a graph section',
+    ).toBe(true);
+  });
+
+  it('readme_states_the_index_not_copy_principle', () => {
+    const text = readFileSync(KNOWLEDGE_README, 'utf8');
+    // The index-not-copy idea must appear in proximity of the graph section:
+    // accept the literal "index-not-copy" name or an "index over ... never/not
+    // ... copy" phrasing.
+    const principleRe = /graph[\s\S]{0,4000}(index[- ]not[- ]copy|index[\s\S]{0,200}(never|not)[\s\S]{0,200}copy)/i;
+    expect(
+      principleRe.test(text),
+      'README must state the index-not-copy principle near the graph section',
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
+// REVIEW FIX (MEDIUM-1) — drift guard: the inline GRAPH_SCHEMA constant in
+// src/knowledge-graph.js must stay structurally identical to
+// knowledge/graph/schema.json (description annotations excluded).
+// Pattern per TASK-033: load both, strip description keys recursively,
+// deep-equal. Authorized by the TASK-035 review verdict.
+// ===========================================================================
+describe('TASK-035 review — inline GRAPH_SCHEMA must not drift from schema.json', () => {
+  function stripDescriptions(value) {
+    if (Array.isArray(value)) return value.map(stripDescriptions);
+    if (value && typeof value === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (k === 'description') continue;
+        out[k] = stripDescriptions(v);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  it('inline_schema_deep_equals_schema_json_modulo_descriptions', async () => {
+    const fileSchema = JSON.parse(readFileSync(GRAPH_SCHEMA_PATH, 'utf8'));
+    const { GRAPH_SCHEMA } = await import('../src/knowledge-graph.js');
+    expect(GRAPH_SCHEMA, 'src/knowledge-graph.js must export GRAPH_SCHEMA').toBeDefined();
+    expect(
+      stripDescriptions(GRAPH_SCHEMA),
+      'inline GRAPH_SCHEMA must deep-equal knowledge/graph/schema.json once description annotations are stripped',
+    ).toEqual(stripDescriptions(fileSchema));
+  });
+});

@@ -517,12 +517,18 @@ function buildHtml() {
 // Internal: the inline graph view HTML page (all CSS and JS embedded).
 // XSS discipline: this is a static template — no ${ interpolation anywhere.
 // The route handler injects graph data by replacing the __GRAPH_DATA__ sentinel
-// with a JSON-serialized graph object, then wraps it in a <script> data island.
+// (bare, exactly as it appears inside the <script> data island in the template)
+// with the JSON-serialized graph object. The JSON is script-context-escaped
+// before injection: every "<" becomes the JSON string escape backslash-u003c,
+// which keeps the JSON valid but makes a "</script>" or "<!--" breakout
+// impossible inside the island.
+// Both sentinel replacements use replacement FUNCTIONS so String.replace's
+// special $-patterns ($&, $`, $') in node labels cannot corrupt the output.
 // The client-side script reads from that island using textContent (safe) and
 // builds the DOM exclusively with document.createElement and .textContent.
 // innerHTML is used only for the empty-string clear (root.innerHTML = '').
 // ---------------------------------------------------------------------------
-const GRAPH_DATA_SENTINEL = '"__GRAPH_DATA__"';
+const GRAPH_DATA_SENTINEL = '__GRAPH_DATA__';
 
 function buildGraphHtml() {
   return `<!DOCTYPE html>
@@ -758,12 +764,24 @@ const GRAPH_BODY_SENTINEL = '<!--__GRAPH_BODY__-->';
 // sentinel placeholder with the serialized graph JSON and pre-rendering the
 // body content server-side so node ids / edge relations appear in the raw HTML
 // (required by AC8 tests which fetch the HTML without executing JS).
+//
+// SCRIPT-CONTEXT ESCAPING: the serialized JSON has every "<" replaced with
+// the JSON string escape backslash-u003c BEFORE injection. The JSON stays
+// byte-for-byte semantically identical after JSON.parse, but the island can
+// never contain a literal "</script>" or "<!--" sequence, so a hostile node
+// label cannot break out of the data island's script element.
+//
+// REPLACEMENT FUNCTIONS: both .replace calls pass a function, not a string.
+// String-form replacements interpret $-patterns ($&, $`, $') in the
+// replacement text, which would corrupt the output for labels containing "$".
 // ---------------------------------------------------------------------------
 function injectGraphData(graphObj) {
   const template = buildGraphHtml();
+  const json = JSON.stringify(graphObj).replace(/</g, '\\u003c');
+  const body = buildGraphBody(graphObj);
   return template
-    .replace(GRAPH_DATA_SENTINEL, JSON.stringify(graphObj))
-    .replace(GRAPH_BODY_SENTINEL, buildGraphBody(graphObj));
+    .replace(GRAPH_DATA_SENTINEL, () => json)
+    .replace(GRAPH_BODY_SENTINEL, () => body);
 }
 
 // ---------------------------------------------------------------------------
