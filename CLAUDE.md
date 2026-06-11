@@ -99,6 +99,16 @@ The Orchestrator and the Developer/Reviewer subagents **must pick the command by
 
 (`test:changed` compares against `HEAD`. To diff against the last commit instead: `npx vitest run --changed HEAD~1 --config vitest.config.all.js`.)
 
+### Use-case suite
+
+`tests/use-cases/USE-CASES.md` is the project's primary-flow manifest. Each entry maps a named use case to the spec file(s) covering it. This suite is part of the release gate and runs automatically within `npm run test:all` (vitest.config.all.js includes `tests/**/*.spec.js`). It can also be run in isolation with `npm run test:use-cases`.
+
+Rules:
+- **Tickets modify `tests/use-cases/` ONLY when a primary use case changes** (new, changed, or removed use case). Per-ticket spec accretion inside `tests/use-cases/` is not permitted — suite size tracks product surface, not ticket count.
+- The manifest is generated once by `generateUseCaseSuite` (wired into `bin/init.js`). Existing files are never overwritten (idempotent). A second `bin/init.js` run on an initialized project skips the generator entirely (`already_initialized` branch).
+- For JS/node projects, `generateUseCaseSuite` also emits skeleton `.spec.js` files with `describe` + `it.todo` stubs under `tests/use-cases/<slug>.spec.js`, one per primary use case. Non-JS projects receive the manifest only.
+- A meta-spec in `tests/use-case-policy.spec.js` validates that every spec path referenced in `USE-CASES.md` exists on disk. This is a permanent sensor that blocks the gate if the manifest rots.
+
 ### Rules
 
 - **The scaled gate applies per ticket:** run `npm run test:changed` plus any affected e2e specs explicitly named at hand-off. The Developer proposes the affected-e2e list; the Reviewer independently assesses its sufficiency and may expand it or escalate to the Orchestrator if under-scoped. This keeps per-ticket verification time roughly constant regardless of project age.

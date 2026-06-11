@@ -36,6 +36,7 @@ import { buildIntakeQuestions } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
 import { generateProjectContext } from '../src/agent-generator.js';
 import { seedBacklog } from '../src/backlog-seeder.js';
+import { generateUseCaseSuite } from '../src/use-case-specs.js';
 import { archiveFrameworkHistory } from '../src/framework-history.js';
 import { resolveRepoRoot } from '../src/repo-root.js';
 import {
@@ -255,6 +256,19 @@ async function runWizardAndWriteProjectMd({
       `backlog seeder failed mid-mint: ${err && err.message ? err.message : err}`,
     );
     throw err;
+  }
+  // TASK-029 — generate the use-case regression suite from primary_use_cases.
+  // Runs after seedBacklog (both always-write artifacts land together).
+  // generateUseCaseSuite is idempotent: a --force re-run never clobbers existing
+  // manifest or spec files. Errors are non-fatal (suite is optional scaffolding),
+  // but we still surface them as warnings so the user knows about partial writes.
+  try {
+    await generateUseCaseSuite({ repoRoot, answers, now });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `use-case suite generator failed: ${err && err.message ? err.message : err}`,
+    );
   }
   return { projectMdPath: join(repoRoot, 'PROJECT.md') };
 }
