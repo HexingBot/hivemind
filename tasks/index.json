@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-11T16:44:39.245Z",
+  "generated_at": "2026-06-11T17:28:52.934Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -184,7 +184,7 @@
     {
       "key": "TASK-033",
       "title": "Test-debt consolidation — apply the new-test budget retroactively to this repo's 358 specs",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -196,6 +196,12 @@
     {
       "key": "TASK-035",
       "title": "Knowledge graph (graphify propio) — typed graph over knowledge entries, tasks, decisions and skills under knowledge/graph/",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-036",
+      "title": "Configurable per-agent models — agent_models map in PROJECT.md + wizard question + frontmatter applier",
       "status": "todo",
       "priority": "medium"
     }

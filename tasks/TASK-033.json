@@ -9,7 +9,7 @@
     "Consolidation commits touch tests/ only — no src/ or bin/ changes",
     "npm run test:all green and deterministic across two runs"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "refinement",
@@ -20,16 +20,30 @@
   "depends_on": [
     "TASK-028"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "e88cccb",
+    "7d91fb0",
+    "8d4cac4"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-11T16:44:19.077Z",
       "body": "SCOPE ADDITIONS from the TASK-028 review (rolled here — this is the consolidation ticket): (1) [L7] tests/e2e/verification-tier.spec.js: collapse the three near-identical schema-accepts-tier specs into one it.each over the enum. (2) [L8] add a one-spec drift guard asserting the three verification-tier enums (tasks/schema.json, src/task-store.js VERIFICATION_TIERS, src/mcp-server.js zod VERIFICATION_TIER) are equal — drift cannot corrupt the store but would cause inconsistent accept/reject between doors. (3) [N9] bogus_tier_flag_throws asserts a bare rejects.toThrow() — it passed pre-impl for an unrelated reason (unknown flag); match /tier/i to make it a real lock. (4) [N10] developer.md IMPL steps 1-2 phrasing is awkward for uat-only tickets where no relevant tests exist — smooth when touched. (5) [NIT from fix verification] orchestrator.md step 5 duplicates step 4's tdd IMPL bullet — fold into step 4 (coordinate with TASK-032, which removes/migrates orchestrator.md; whichever lands first absorbs this)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T16:47:01.219Z",
+      "body": "TIER ASSIGNMENT (first ticket planned under the live TASK-028 policy): verification_tier = tests-after — the deliverable IS test refactoring, so a failing-tests-first phase is meaningless; the consolidation map sidecar is the plan artifact and behavior-coverage preservation is the verification target. GATE: despite the tier, this ticket touches test infrastructure, so by the policy's own rule the FULL npm run test:all gate applies (developer hand-off + reviewer re-run). COMMIT STRUCTURE ruling: AC4 ('consolidation commits touch tests/ only') applies to the consolidation commits specifically; the five rolled-in review items from TASK-028 that touch agent files (N10 developer.md phrasing, orchestrator.md step-5 fold + parity copies) land in a SEPARATE clearly-labeled commit so AC4 stays auditable."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T17:28:40.930Z",
+      "body": "CLOSED — reviewer verdict APPROVE-WITH-FOLLOWUPS (0 HIGH / 2 MEDIUM doc-obligations / 3 LOW / 1 NIT). Commits: e88cccb (consolidation map), 7d91fb0 (apply — tests/ only, AC4 proven by git show --stat), 8d4cac4 (rolled-in TASK-028 items: L8 three-source drift guard verified non-tautological, N9 /tier/i lock, N10 + orchestrator.md step-5 fold with content preserved, parity byte-identical). Gate green and deterministic (362 passed / 4 skipped twice); fast tier 1.50s; dist untouched. THE HEADLINE RESULT: the audit found the suite essentially LEAN — 0 deletable specs, one 3→1 it.each merge — and the reviewer independently spot-checked 12+ specs across the highest-duplication-risk pockets (task-store vs hardening suites, atomic-write, project-md-hardening, round-trip) and AGREED with every KEEP. The over-testing problem the human experienced is therefore a GROWTH-RATE problem, not an accumulated-debt problem — TASK-028's tiered policy is the actual fix, and this audit certifies the baseline. ORCHESTRATOR RULINGS on the two MEDIUMs: (AC3) closed as 'no measurable wall-time reduction — nothing to recover; the ~14.9s claim in the map is measurement noise (reviewer's clean runs: 15.89s / 17.92s vs 16.90s baseline)'; accepted AC deviation, fast-tier half satisfied (1.50s ≤ ~2s). (AC1) file-level mapping ACCEPTED as satisfying the AC's intent — per-spec tables exist precisely for the risk pockets; with 0 deletions the per-spec column would be ceremony. DEFERRED WITHOUT FOLLOW-UP TICKET per the long-tail close pattern: 2 DOC-labeled runtime probes in plugin-deps.spec.js (delete + move rationale to the bundling skill if ever revisited), plugin_version_is_pinned_for_publish merge candidate, map arithmetic inconsistencies (summary counts vs file tables), N9 could match enum-validation wording. True post-state: 364 it() blocks / 366 runtime tests."
     }
   ],
   "created_at": "2026-06-11T15:36:08.504Z",
-  "updated_at": "2026-06-11T16:44:19.077Z",
+  "updated_at": "2026-06-11T17:28:52.934Z",
   "jira_key": null
 }

@@ -1,0 +1,30 @@
+{
+  "key": "TASK-036",
+  "title": "Configurable per-agent models — agent_models map in PROJECT.md + wizard question + frontmatter applier",
+  "description": "Give users a durable, editable place to control which model each agent runs on, instead of hand-editing YAML frontmatter in two parity locations.\\n\\n**Where the knob lives:** PROJECT.md gains an optional `agent_models` mapping (reviewer / developer / researcher → a model alias or full model ID; valid aliases per official docs: sonnet, opus, haiku, fable, inherit, or any full model ID). PROJECT.md is already the project's single config artifact (schema'd, wizard-written, round-trippable via src/project-md.js) — so the model assignment becomes project configuration, not framework internals.\\n\\n**How it applies:** a frontmatter applier (natural home: extend src/agent-generator.js, which already owns generated agent guidance) reads `agent_models` and patches the `model:` line in each agent definition's frontmatter. In the dev repo that means both .claude/agents/ and the plugin-root agents/ parity copies; in user projects, .claude/agents/. Defaults when the map is absent: current shipped values (reviewer=fable, developer=sonnet, researcher=sonnet) — applier is a no-op, nothing breaks.\\n\\n**Two entry points:**\\n1. Init wizard: an optional intake question (with the defaults pre-filled) writes the map into PROJECT.md on fresh init.\\n2. Change later: the user edits the `agent_models` block in PROJECT.md and re-runs the applier via a CLI flag (e.g. `node bin/init.js --apply-models` or a dedicated tiny bin — implementer's choice, but it must NOT re-run the full wizard or touch anything except agent frontmatter).\\n\\n**Safety rails:** validate values against {sonnet, opus, haiku, fable, inherit} OR a full-model-ID pattern; reject unknown agent names; the applier only rewrites the `model:` frontmatter line (or inserts it after description:) — byte-stable everywhere else; parity preserved in the dev repo.\\n\\nverification_tier: tdd (frontmatter rewriting + PROJECT.md round-trip parsing is exactly the mutation/parsing logic the rubric assigns to tdd).",
+  "acceptance_criteria": [
+    "PROJECT.schema.json + src/project-md.js round-trip an optional agent_models map (reviewer/developer/researcher → alias or full model ID); invalid agent names or model values are rejected with a clear error",
+    "The applier patches ONLY the model: frontmatter line of each mapped agent file (inserting after description: when absent), leaving every other byte untouched, and updates both .claude/agents/ and plugin-root agents/ in the dev repo (parity spec stays green)",
+    "Init wizard offers the optional model-assignment question with current defaults (reviewer=fable, developer=sonnet, researcher=sonnet); skipping it writes no map and the applier no-ops",
+    "A CLI entry point re-applies the map from an edited PROJECT.md without re-running the wizard and without touching any non-frontmatter content",
+    "CLAUDE.md's Per-Agent Model Assignment section updated to point at PROJECT.md as the canonical knob; dist rebuilt if bin/ or bundled src/ changed; full suite green (touches schema-adjacent parsing → test:all gate)"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "refinement",
+    "agents",
+    "cost",
+    "config"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-031"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-11T16:47:42.346Z",
+  "updated_at": "2026-06-11T16:47:42.346Z",
+  "jira_key": null
+}
