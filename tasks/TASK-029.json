@@ -9,7 +9,7 @@
     "This repo's own primary flows are designated as its use-case suite (reusing existing e2e specs where they already cover the flow)",
     "Full suite green via npm run test:all"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "refinement",
@@ -20,10 +20,25 @@
   "depends_on": [
     "TASK-028"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "03afa12",
+    "e7dc5c9",
+    "96f7308"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T21:16:49.136Z",
+      "body": "TIER ASSIGNMENT: verification_tier = tdd — the deliverable includes a generator (skeleton specs from primary_use_cases answers = source logic) and touches vitest config (test infrastructure). GATE: full test:all (test-infra clause). LOCKED DESIGN: (1) Designation-by-manifest — tests/use-cases/USE-CASES.md maps each primary use case to the spec file(s) covering it; existing e2e specs are REFERENCED, never duplicated; a meta-spec validates every referenced path exists. (2) npm run test:use-cases runs tests/use-cases/ via the all-config; the directory is included in test:all automatically. (3) Skeleton generation for user projects: src/use-case-specs.js writes tests/use-cases/<slug>.spec.js with describe + it.todo entries ONLY when the project stack is JS/node; the USE-CASES.md manifest is ALWAYS generated (runner-agnostic). Wired into runInit after seedBacklog; already_initialized skips; idempotent (existing files never clobbered). (4) AC4 self-application: this repo's manifest designates its own primary flows — init/intake, ticket mint, workflow drive (task-store), session resume (lifecycle), plugin install — pointing at the existing e2e specs that cover them."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T21:44:02.666Z",
+      "body": "CLOSED — final verdict APPROVE after the session's first REQUEST-CHANGES loop. Commits: 03afa12 (tests-first, 13 red), e7dc5c9 (impl), 96f7308 (review fixes per orchestrator rulings). Suite 383 passed / 4 skipped from clean; dist reproducible; claude plugin validate PASS; npm run test:use-cases non-vacuous (7 sensor tests). THE LOOP WORKED AS DESIGNED: the reviewer caught (1) HIGH — the JS-stack predicate (substring 'node') silently excluded javascript/typescript library projects from skeleton generation AND emitted a factually false manifest line; fixed via /^(node|javascript|typescript)/i + frontend_framework Set {react,vue,svelte,angular} ('other' excluded), cross-checked against every question-library enum value, pinned by it.each; (2) MEDIUM — the developer reintroduced the warn-and-swallow pattern TASK-018 eliminated; ruled option (a): warn-then-rethrow matching seedBacklog, with a forced-ENOTDIR propagation lock; (3) MEDIUM — codegen injection via the unvalidated --answers-file path; fixed with JSON.stringify embedding + hostile-input (apostrophe+newline) regression lock. DELIVERED: tests/use-cases/ convention + USE-CASES.md designation-by-manifest (this repo's five primary flows → 9 existing e2e specs, all verified on disk), src/use-case-specs.js generator (manifest always; it.todo skeletons for JS-ecosystem stacks; idempotent per-file), init wiring (created/forced/resumed; already_initialized skips; failures propagate), npm run test:use-cases incl. the manifest sensor, CLAUDE.md release-gate + modify-only-when-use-case-changes rule. Carried NIT (non-blocking): the 'node'-substring fallback could false-positive on free-text answers via the programmatic path; unreachable through the wizard."
+    }
+  ],
   "created_at": "2026-06-11T15:35:14.689Z",
-  "updated_at": "2026-06-11T15:35:14.689Z",
+  "updated_at": "2026-06-11T21:44:13.613Z",
   "jira_key": null
 }

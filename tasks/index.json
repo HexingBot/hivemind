@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-11T21:15:30.854Z",
+  "generated_at": "2026-06-11T21:44:13.613Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -160,7 +160,7 @@
     {
       "key": "TASK-029",
       "title": "Use-case regression suite — durable E2E spine seeded from PROJECT.md primary use cases",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
