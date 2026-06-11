@@ -99,44 +99,23 @@ function parse(result) {
 // AC1 — tasks/schema.json round-trip via ajv
 // ===========================================================================
 describe('AC1 — schema: verification_tier field', () => {
-  it('schema_accepts_a_task_with_a_valid_tier_tdd', () => {
-    // RED: verification_tier is not in the schema yet; additionalProperties:false
-    // causes ajv to REJECT a task carrying it.
-    const schema = loadSchema();
-    const ajv = makeAjv();
-    const validate = ajv.compile(schema);
+  // Collapse: three near-identical per-enum tests -> one it.each (TASK-033 L7).
+  it.each(['tdd', 'tests-after', 'uat-only'])(
+    'schema_accepts_a_task_with_a_valid_tier_%s',
+    (tier) => {
+      const schema = loadSchema();
+      const ajv = makeAjv();
+      const validate = ajv.compile(schema);
 
-    const task = baseTask({ verification_tier: 'tdd' });
-    const ok = validate(task);
-    expect(
-      ok,
-      'schema must accept verification_tier: "tdd" — errors: ' +
-        JSON.stringify(validate.errors),
-    ).toBe(true);
-  });
-
-  it('schema_accepts_a_task_with_tier_tests_after', () => {
-    const schema = loadSchema();
-    const ajv = makeAjv();
-    const validate = ajv.compile(schema);
-
-    const task = baseTask({ verification_tier: 'tests-after' });
-    const ok = validate(task);
-    expect(
-      ok,
-      'schema must accept verification_tier: "tests-after"',
-    ).toBe(true);
-  });
-
-  it('schema_accepts_a_task_with_tier_uat_only', () => {
-    const schema = loadSchema();
-    const ajv = makeAjv();
-    const validate = ajv.compile(schema);
-
-    const task = baseTask({ verification_tier: 'uat-only' });
-    const ok = validate(task);
-    expect(ok, 'schema must accept verification_tier: "uat-only"').toBe(true);
-  });
+      const task = baseTask({ verification_tier: tier });
+      const ok = validate(task);
+      expect(
+        ok,
+        `schema must accept verification_tier: "${tier}" — errors: ` +
+          JSON.stringify(validate.errors),
+      ).toBe(true);
+    },
+  );
 
   it('schema_still_accepts_a_task_without_verification_tier', () => {
     // Absent field must remain valid (backward-compatible, absent == tdd semantics).
