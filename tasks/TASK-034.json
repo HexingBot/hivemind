@@ -10,7 +10,7 @@
     "esbuild entry produces dist/task-board.cjs, added to shipped-bin.json, rebuild deterministic (empty git diff after fresh build)",
     "E2E spec drives the HTTP surface end-to-end (start server → GET → POST transition → assert task file + index.json changed atomically) without a real browser; claude plugin validate . passes; full suite green"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "refinement",
@@ -20,10 +20,30 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "5f1d7f1",
+    "f2b10b4",
+    "6ffd7ae"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T22:35:19.333Z",
+      "body": "TIER ASSIGNMENT: verification_tier = tdd — HTTP endpoint logic wrapping task-store transitions is source/state-mutation logic per the rubric. The visual drag&drop AC is human-observable and outside vitest's reach: a UAT step runs at the end (orchestrator presents the live board to the human; terse one-line steps per the TASK-030 rule). GATE: scaled — not test-infra (a new bin entry + esbuild entry is build surface; plugin-scaffold/publish-config/shipped-bin pins live in the fast tier). Developer must grep-derive the affected-e2e list. ADDITIONAL LOCKED DESIGN beyond the ticket description: (1) src/task-board.js holds the server factory (createBoardServer({repoRoot}) returning the http.Server pre-listen) so e2e specs drive it on an ephemeral port via InMemory-style direct HTTP without spawning a process; bin/task-board.js is the thin shell (parse argv, pick free port via listen(0), print URL, optionally open browser). Mirrors the createServer/main split TASK-026 used for the MCP server. (2) Endpoints: GET / (HTML, inline assets), GET /api/tasks (full task list from readAllTasks/index), POST /api/tasks/:key/status {status} → task-store transitionStatus (which validates the enum + regenerates index); unknown key → 404, invalid status → 400, no partial writes (task-store guarantees). (3) Server binds 127.0.0.1 ONLY; no CORS headers (same-origin page); Content-Type with charset; no caching headers needed. (4) /task-status command: commands/task-status.md runs node ${CLAUDE_PLUGIN_ROOT}/dist/task-board.cjs (pattern from init-command). (5) Board UI: 5 columns from the schema enum, card = key/title/priority/labels, HTML5 native drag&drop (dragstart/dragover/drop), POST on drop, full re-render from GET after each change; refresh reflects on-disk edits. Zero external requests (inline CSS/JS, no CDN)."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-11T22:55:49.713Z",
+      "body": "UAT RUN — TASK-034 visual drag&drop (the AC outside vitest's reach), live board at http://127.0.0.1:4517 against the real store (34 tasks), 2026-06-11.\n\nSTEP 1 (board renders): expected = 5 columns, cards with key/title/priority/labels. Verdict = PASS (human).\nSTEP 2 (drag persists): expected = drag TASK-003 todo→blocked, survives refresh. Verdict = PASS (human). Orchestrator disk check: TASK-003 carried a fresh board-driven transition (updated_at 22:55:14Z, index regenerated consistently) with final state in_progress — consistent with continued drag experimentation after the verified move, which is the mechanism working as designed. Orchestrator restored the semantically correct state (blocked — TASK-003 awaits Atlassian MCP creds) via the store.\n\nOVERALL: PASS (2/2). The transition path human-drag → POST → transitionStatus → atomic write + index regen is verified end-to-end on real data."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T22:56:03.977Z",
+      "body": "CLOSED — reviewer verdict APPROVE-WITH-FOLLOWUPS (0 HIGH / 2 MEDIUM / 8 LOW / 2 NIT), both MEDIUMs + 6 LOWs fixed in-band (6ffd7ae), visual AC verified by human UAT (2/2 PASS, comment above). Commits: 5f1d7f1 (tests-first, 12 red), f2b10b4 (impl — orchestrator executed the commit for the developer after a sandbox git-permission failure; content is the developer's), 6ffd7ae (hardening). Suite 425+ passed / 4 skipped; dist reproducible (fourth esbuild entry); claude plugin validate PASS. DELIVERED: createBoardServer factory (testable without process spawn, TASK-026 pattern) + thin bin shell with --port/SIGINT; GET /api/tasks live-read; POST /api/tasks/:key/status through transitionStatus exclusively (enum validation + atomic write + index regen free; byte-identical-on-rejection specs); /^TASK-\\d{3,}$/ guard pre-store (traversal-safe, %2e%2e verified live); 127.0.0.1-only + Host-header allowlist (403) + Content-Type enforcement (415) + 64KiB body cap (413); XSS-safe renderer (every site textContent/createElement, priority class-whitelisted) now PINNED by fast-tier specs (no innerHTML beyond empty-clear, zero ${ interpolation in served HTML); dark-theme 5-column UI with native drag&drop; commands/task-status.md. DEFERRED without ticket (long-tail): store error-code property (message-string mapping is sensor-covered by the 400/404 e2e), readAllTasks export dedup, spawn-smoke spec for the bin path, no-external-URL regex widening, corrupt-file-500 pin (documented in module header; loud-corruption per TASK-009/018 precedent)."
+    }
+  ],
   "created_at": "2026-06-11T15:42:29.265Z",
-  "updated_at": "2026-06-11T15:42:29.265Z",
+  "updated_at": "2026-06-11T22:56:16.111Z",
   "jira_key": null
 }

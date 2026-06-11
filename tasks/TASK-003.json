@@ -8,15 +8,21 @@
     "Each migrated task gets `jira_key` populated and `updated_at` refreshed.",
     "A dry-run flag prints the planned migrations without calling Jira."
   ],
-  "status": "todo",
+  "status": "blocked",
   "priority": "medium",
-  "labels": ["bootstrap", "jira", "migration"],
+  "labels": [
+    "bootstrap",
+    "jira",
+    "migration"
+  ],
   "assignee": null,
-  "depends_on": ["TASK-001"],
+  "depends_on": [
+    "TASK-001"
+  ],
   "linked_commits": [],
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-05-23T00:00:00Z",
-  "updated_at": "2026-05-23T00:00:00Z",
+  "updated_at": "2026-06-11T22:55:45.353Z",
   "jira_key": null
 }

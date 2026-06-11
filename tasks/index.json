@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-11T22:34:19.192Z",
+  "generated_at": "2026-06-11T22:56:16.111Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -16,7 +16,7 @@
     {
       "key": "TASK-003",
       "title": "Implement Jira migration command",
-      "status": "todo",
+      "status": "blocked",
       "priority": "medium"
     },
     {
@@ -190,7 +190,7 @@
     {
       "key": "TASK-034",
       "title": "Task board — local kanban HTML served by a zero-dep node server, launched via /task-status",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
