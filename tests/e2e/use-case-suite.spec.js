@@ -334,3 +334,147 @@ describe('AC2 — init wiring: already_initialized branch skips generator', () =
     ).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// REVIEW FIX (HIGH) — JS-stack predicate covers typescript/javascript/react
+// ---------------------------------------------------------------------------
+// Ruling: a stack counts as JS when any of the five stack keys matches
+// /^(node|javascript|typescript)/i OR contains 'node', OR frontend_framework
+// is one of {react, vue, svelte, angular}. These pin the corrected behavior.
+
+describe('REVIEW FIX — JS-stack predicate: TS/JS/react signals produce skeletons', () => {
+  it.each([
+    ['library_language_typescript', { library_language: 'typescript' }],
+    ['library_language_javascript', { library_language: 'javascript' }],
+    ['frontend_framework_react_only', { frontend_framework: 'react' }],
+  ])('%s_yields_skeleton_specs', async (_label, stackAnswers) => {
+    const { generateUseCaseSuite } = await import(
+      new URL('../../src/use-case-specs.js', import.meta.url).href
+    );
+    const repoRoot = makeTmpDir('af-ucs-predicate');
+    makeRepoSkeleton(repoRoot);
+
+    await generateUseCaseSuite({
+      repoRoot,
+      answers: {
+        project_name: 'predicate-probe',
+        project_type: 'library',
+        ...stackAnswers,
+        primary_use_cases: ['automation'],
+      },
+      now: () => FIXED_NOW,
+    });
+
+    const specs = listUseCaseSpecs(repoRoot);
+    expect(
+      specs.length,
+      `stack ${JSON.stringify(stackAnswers)} must be detected as JS and produce skeletons`,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it('pure_python_go_stack_yields_manifest_only', async () => {
+    const { generateUseCaseSuite } = await import(
+      new URL('../../src/use-case-specs.js', import.meta.url).href
+    );
+    const repoRoot = makeTmpDir('af-ucs-predicate-nonjs');
+    makeRepoSkeleton(repoRoot);
+
+    await generateUseCaseSuite({
+      repoRoot,
+      answers: {
+        project_name: 'py-go-service',
+        project_type: 'data-pipeline',
+        cli_language: 'python',
+        library_language: 'go',
+        processing_framework: 'spark',
+        primary_use_cases: ['automation'],
+      },
+      now: () => FIXED_NOW,
+    });
+
+    expect(existsSync(manifestPath(repoRoot))).toBe(true);
+    expect(
+      listUseCaseSpecs(repoRoot).length,
+      'pure python/go stack must produce zero .spec.js skeletons',
+    ).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REVIEW FIX (MEDIUM) — generator failure propagates out of runInit
+// ---------------------------------------------------------------------------
+// Ruling: align with seedBacklog — warn then RETHROW. We force the failure by
+// pre-creating a regular FILE at <repoRoot>/tests so the generator's
+// mkdir('tests/use-cases', {recursive:true}) throws.
+
+describe('REVIEW FIX — init wiring: generator failure propagates', () => {
+  it('generator_failure_rejects_run_init', async () => {
+    const { runInit } = await import(PROD.init);
+    const { writeFileSync } = await import('node:fs');
+
+    const repoRoot = makeTmpDir('af-ucs-init-genfail');
+    // A regular file where the generator needs a directory → mkdir throws.
+    writeFileSync(join(repoRoot, 'tests'), 'not a directory', 'utf8');
+
+    const prompter = makeScriptedPrompter(
+      webSaasAnswers({ primary_use_cases: 'automation' }),
+    );
+
+    await expect(
+      runInit({ argv: [], prompter, repoRoot, now: () => FIXED_NOW }),
+      'a generateUseCaseSuite failure must propagate out of runInit (warn then rethrow)',
+    ).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REVIEW FIX (MEDIUM) — codegen injection: use-case strings are escaped
+// ---------------------------------------------------------------------------
+// Ruling: embed use-case strings via JSON.stringify (covers quotes,
+// backslashes, newlines). The generated skeleton must carry the
+// double-quoted-escaped literal, not the raw string.
+
+describe('REVIEW FIX — codegen escaping: hostile use-case strings', () => {
+  it('use_case_with_apostrophe_and_newline_is_escaped', async () => {
+    const { generateUseCaseSuite } = await import(
+      new URL('../../src/use-case-specs.js', import.meta.url).href
+    );
+    const repoRoot = makeTmpDir('af-ucs-escape');
+    makeRepoSkeleton(repoRoot);
+
+    const hostile = "user's\nworkflow";
+
+    await generateUseCaseSuite({
+      repoRoot,
+      answers: {
+        project_name: 'escape-probe',
+        project_type: 'cli-tool',
+        cli_language: 'node',
+        primary_use_cases: [hostile],
+      },
+      now: () => FIXED_NOW,
+    });
+
+    const specs = listUseCaseSpecs(repoRoot);
+    expect(specs.length, 'hostile use case must still yield one skeleton').toBe(1);
+
+    const src = readFileSync(join(repoRoot, 'tests', 'use-cases', specs[0]), 'utf8');
+
+    // The describe/it.todo literals must be the JSON.stringify round-trip of
+    // the raw string: double-quoted, with \n escaped and the apostrophe safe.
+    expect(
+      src,
+      'skeleton must embed the use case as a JSON.stringify-escaped literal',
+    ).toContain(JSON.stringify(hostile));
+
+    // No raw (unescaped) newline may appear inside any string literal: the
+    // describe( line must be a single source line ending in ', () => {'.
+    const describeLine = src
+      .split('\n')
+      .find((l) => l.trimStart().startsWith('describe('));
+    expect(
+      describeLine,
+      'describe( must open and close its name literal on one source line',
+    ).toMatch(/^describe\(".*", \(\) => \{$/);
+  });
+});

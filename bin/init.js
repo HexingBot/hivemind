@@ -260,8 +260,12 @@ async function runWizardAndWriteProjectMd({
   // TASK-029 — generate the use-case regression suite from primary_use_cases.
   // Runs after seedBacklog (both always-write artifacts land together).
   // generateUseCaseSuite is idempotent: a --force re-run never clobbers existing
-  // manifest or spec files. Errors are non-fatal (suite is optional scaffolding),
-  // but we still surface them as warnings so the user knows about partial writes.
+  // manifest or spec files.
+  //
+  // Review ruling (TASK-029 fix loop) — align with seedBacklog: surface a
+  // user-visible warning BEFORE re-throwing. A partially-written suite must
+  // surface immediately, not after the wizard reports success.
+  // Silent-continue is NOT acceptable.
   try {
     await generateUseCaseSuite({ repoRoot, answers, now });
   } catch (err) {
@@ -269,6 +273,7 @@ async function runWizardAndWriteProjectMd({
     console.warn(
       `use-case suite generator failed: ${err && err.message ? err.message : err}`,
     );
+    throw err;
   }
   return { projectMdPath: join(repoRoot, 'PROJECT.md') };
 }

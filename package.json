@@ -10,7 +10,7 @@
     "test:all": "vitest run --config vitest.config.all.js",
     "test:changed": "vitest run --changed --config vitest.config.all.js",
     "test:e2e": "vitest run --config vitest.config.all.js tests/e2e",
-    "test:use-cases": "vitest run --config vitest.config.all.js tests/use-cases --passWithNoTests",
+    "test:use-cases": "vitest run --config vitest.config.all.js tests/use-cases tests/use-case-policy.spec.js --passWithNoTests",
     "build:plugin": "node scripts/build-plugin.mjs"
   },
   "engines": {

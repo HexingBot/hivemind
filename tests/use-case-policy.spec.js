@@ -165,7 +165,6 @@ describe('AC1 meta-spec — tests/use-cases/USE-CASES.md exists and referenced s
     //   1. init/intake       2. ticket mint   3. workflow drive (task-store)
     //   4. session resume    5. plugin install
     // RED: file absent → test fails at read (thrown by readFileSync).
-    const manifestFile = join(REPO_ROOT, 'tests', 'use-cases', 'USE-CASES.md');
     const text = loadFile('tests/use-cases/USE-CASES.md');
 
     // Each flow must appear by name (case-insensitive substring match).
