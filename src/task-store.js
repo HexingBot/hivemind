@@ -401,6 +401,9 @@ async function deriveNextKey(repoRoot) {
  * AC5 — validates the constructed payload against tasks/schema.json BEFORE
  * the atomic write so a bad timestamp leaves the store untouched.
  */
+// Mirror of tasks/schema.json#/properties/verification_tier/enum.
+const VERIFICATION_TIERS = ['tdd', 'tests-after', 'uat-only'];
+
 export async function createTask({
   repoRoot,
   title,
@@ -409,6 +412,7 @@ export async function createTask({
   priority,
   labels = [],
   depends_on = [],
+  verification_tier,
   now = () => new Date().toISOString(),
 }) {
   // Validate enums + required-array shape before touching disk.
@@ -420,6 +424,11 @@ export async function createTask({
   if (!PRIORITIES.includes(priority)) {
     throw new Error(
       `invalid priority "${priority}" — must be one of ${PRIORITIES.join(', ')}`,
+    );
+  }
+  if (verification_tier !== undefined && !VERIFICATION_TIERS.includes(verification_tier)) {
+    throw new Error(
+      `invalid verification_tier "${verification_tier}" — must be one of ${VERIFICATION_TIERS.join(', ')}`,
     );
   }
 
@@ -442,6 +451,7 @@ export async function createTask({
     created_at: stamp,
     updated_at: stamp,
     jira_key: null,
+    ...(verification_tier !== undefined ? { verification_tier } : {}),
   };
 
   // AC5 — schema validate BEFORE any disk I/O so a bad payload (e.g. a `now`

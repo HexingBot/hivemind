@@ -8834,7 +8834,12 @@ var schema_default = {
       type: "array",
       minItems: 1,
       items: { type: "string" },
-      description: "Falsifiable criteria for 'done'. The Developer must turn each into at least one test."
+      description: "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: tests for tdd, regression locks for tests-after, recorded UAT for uat-only."
+    },
+    verification_tier: {
+      type: "string",
+      enum: ["tdd", "tests-after", "uat-only"],
+      description: "Governs how the ticket is verified. Absent means tdd (backward-compatible default). tdd = tests-first; tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT."
     },
     status: {
       type: "string",
@@ -8996,6 +9001,7 @@ async function deriveNextKey(repoRoot) {
   const width = Math.max(3, String(next).length);
   return `TASK-${String(next).padStart(width, "0")}`;
 }
+var VERIFICATION_TIERS = ["tdd", "tests-after", "uat-only"];
 async function createTask({
   repoRoot,
   title,
@@ -9004,6 +9010,7 @@ async function createTask({
   priority,
   labels = [],
   depends_on = [],
+  verification_tier,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
   if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
@@ -9014,6 +9021,11 @@ async function createTask({
   if (!PRIORITIES.includes(priority)) {
     throw new Error(
       `invalid priority "${priority}" \u2014 must be one of ${PRIORITIES.join(", ")}`
+    );
+  }
+  if (verification_tier !== void 0 && !VERIFICATION_TIERS.includes(verification_tier)) {
+    throw new Error(
+      `invalid verification_tier "${verification_tier}" \u2014 must be one of ${VERIFICATION_TIERS.join(", ")}`
     );
   }
   const key = await deriveNextKey(repoRoot);
@@ -9033,7 +9045,8 @@ async function createTask({
     comments: [],
     created_at: stamp,
     updated_at: stamp,
-    jira_key: null
+    jira_key: null,
+    ...verification_tier !== void 0 ? { verification_tier } : {}
   };
   validateTaskOrThrow(task);
   const existing = await readAllTasks(repoRoot);

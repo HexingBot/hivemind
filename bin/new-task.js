@@ -21,7 +21,7 @@ import { runQuestionnaire } from '../src/question-engine.js';
 import { resolveRepoRoot } from '../src/repo-root.js';
 
 const REPEATABLE = new Set(['--ac', '--label', '--depends']);
-const SINGLE = new Set(['--title', '--description', '--priority']);
+const SINGLE = new Set(['--title', '--description', '--priority', '--tier']);
 
 /**
  * Parse argv into { title, description, ac[], priority, labels[], dependsOn[] }.
@@ -35,6 +35,7 @@ function parseArgs(argv) {
     priority: undefined,
     labels: [],
     dependsOn: [],
+    tier: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -52,6 +53,7 @@ function parseArgs(argv) {
       case '--ac': out.ac.push(value); break;
       case '--label': out.labels.push(value); break;
       case '--depends': out.dependsOn.push(value); break;
+      case '--tier': out.tier = value; break;
     }
   }
   return out;
@@ -172,6 +174,7 @@ export async function runCli({ argv, prompter, repoRoot, now }) {
     priority: parsed.priority ?? tailAnswers.priority,
     labels: parsed.labels,
     depends_on: parsed.dependsOn,
+    ...(parsed.tier !== undefined ? { verification_tier: parsed.tier } : {}),
     now,
   });
 }

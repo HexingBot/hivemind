@@ -45,6 +45,7 @@ import {
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
+const VERIFICATION_TIER = z.enum(['tdd', 'tests-after', 'uat-only']);
 
 // Schema key shape (tasks/schema.json). Used as a path-injection guard on
 // get_task: a crafted key like `../../etc/passwd` must be rejected before any
@@ -129,9 +130,10 @@ export function createServer({ repoRoot }) {
         priority: PRIORITY,
         labels: z.array(z.string()).optional(),
         depends_on: z.array(z.string()).optional(),
+        verification_tier: VERIFICATION_TIER.optional(),
       },
     },
-    async ({ title, description, acceptance_criteria, priority, labels, depends_on }) =>
+    async ({ title, description, acceptance_criteria, priority, labels, depends_on, verification_tier }) =>
       ok(
         await createTask({
           repoRoot,
@@ -141,6 +143,7 @@ export function createServer({ repoRoot }) {
           priority,
           ...(labels !== undefined ? { labels } : {}),
           ...(depends_on !== undefined ? { depends_on } : {}),
+          ...(verification_tier !== undefined ? { verification_tier } : {}),
         }),
       ),
   );

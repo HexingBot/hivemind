@@ -38,11 +38,14 @@ When the Atlassian MCP server is configured, the Orchestrator switches to Jira a
 
 The Orchestrator must follow this loop for every unit of work:
 
-1. **Read the ticket.** Load the next `status: todo` task from `tasks/` (or, once Jira is wired up, from the Atlassian MCP server). Extract acceptance criteria.
+1. **Read the ticket.** Load the next `status: todo` task from `tasks/` (or, once Jira is wired up, from the Atlassian MCP server). Extract acceptance criteria. **Assign the `verification_tier` at this step** if the ticket does not already carry one, using the rubric: `tdd` for source logic, state mutation, parsing, or schema changes; `tests-after` for behavior that is provable by running the code with low edge-risk; `uat-only` for glue, config, docs, or prototypes. Record the chosen tier on the ticket.
 2. **Plan.** Decompose the ticket into research, implementation, and verification tasks. Record the plan as TODOs.
 3. **Research (if needed).** Spawn the `researcher` subagent for any unfamiliar library, API, or pattern. If the researcher discovers a new tech stack, it must produce an Agent Skill under `.claude/skills/<stack-name>/`.
-4. **Tests first.** Spawn the `developer` subagent and instruct it to write failing tests that encode the acceptance criteria **before** writing implementation code. No implementation lands without a preceding test commit.
-5. **Implement.** The same `developer` subagent writes code until the new tests pass and existing tests still pass.
+4. **Verify per tier.**
+   - `tdd` — Spawn the `developer` subagent in TEST mode first: write failing tests that encode each acceptance criterion **before** any implementation code. No implementation lands without a preceding test commit. Then spawn IMPL mode to make the tests pass.
+   - `tests-after` — Spawn the `developer` subagent in a single IMPL phase: implement first, prove the behavior by running the code, then add a **minimal** set of regression locks before hand-off. No TEST-mode phase.
+   - `uat-only` — Spawn the `developer` subagent in IMPL mode only; no new specs are written. The ticket is verified via conversational UAT (recorded-UAT mechanism lands with TASK-030).
+5. **Implement.** The `developer` subagent writes code until the acceptance criteria are satisfied and existing tests still pass.
 6. **Review.** Spawn the `reviewer` subagent in a fresh context. It must use only read-only tools and verification scripts. Block the workflow on any HIGH-severity finding.
 7. **Update the ticket.** On a green review, transition the task's `status` to `done`, append a summary comment, append the commit SHAs to `linked_commits` and PR URL to `linked_prs`, refresh `updated_at`, and regenerate `tasks/index.json`. (After Jira migration, mirror the same updates via the Atlassian MCP server.)
 
@@ -61,6 +64,20 @@ The suite is split into two tiers **by directory** (see `vitest.config.js` for t
 - **Fast tier** — `tests/*.spec.js`: pure logic, no real disk I/O (~2s).
 - **Slow tier** — `tests/e2e/**`: real `mkdtemp` disk I/O and process spawns.
 
+### Verification tier rubric
+
+The `verification_tier` field on a ticket controls how the Developer verifies it:
+
+- `tdd` — source logic, state mutation, parsing, schema changes. Tests-first, unchanged from the original policy.
+- `tests-after` — behavior provable by running the code with low edge-risk. Implement first, then add a minimal set of regression locks.
+- `uat-only` — glue, config, docs, prototypes. No new specs; verified via conversational UAT (recorded-UAT mechanism lands with TASK-030).
+
+Absent `verification_tier` defaults to `tdd` (backward-compatible).
+
+### New-test budget
+
+Every new spec must encode an acceptance criterion or a real regression — nothing else. Redundant or duplicative specs are a LOW finding at review time.
+
 ### Which command, when
 
 The Orchestrator and the Developer/Reviewer subagents **must pick the command by situation**, not by habit:
@@ -71,13 +88,15 @@ The Orchestrator and the Developer/Reviewer subagents **must pick the command by
 | One-shot check of code you just edited | `npm run test:changed` | only specs related to your **uncommitted** changes |
 | Fast confidence / pre-deploy smoke | `npm test` | the whole fast tier (~2s) |
 | Iterating on one slow spec | `vitest run --config vitest.config.all.js tests/e2e/<file>` | that single e2e spec |
-| **Pre-hand-off & review gate** | `npm run test:all` | everything (fast + slow) |
+| **Per-ticket hand-off gate** | `npm run test:changed` + named affected e2e specs | changed + targeted slow specs |
+| **Release / milestone / publish gate** | `npm run test:all` | everything (fast + slow) |
 
 (`test:changed` compares against `HEAD`. To diff against the last commit instead: `npx vitest run --changed HEAD~1 --config vitest.config.all.js`.)
 
 ### Rules
 
-- **The gate is always `npm run test:all`.** `test:changed` and `test:watch` are inner-loop accelerators — never a substitute for the gate, because the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs. The Developer runs `npm run test:all` before hand-off; the Reviewer re-runs it from a clean state.
+- **The scaled gate applies per ticket:** run `npm run test:changed` plus any affected e2e specs explicitly named at hand-off. This keeps per-ticket verification time roughly constant regardless of project age.
+- **`npm run test:all` is reserved for release, milestone, and publish points**, and for any ticket that touches test infrastructure or `tasks/schema.json`. `test:changed` and `test:watch` are inner-loop accelerators — the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs, which is why full `test:all` still runs at those checkpoints.
 - New slow specs (anything calling `makeTmpDir` or spawning a process) go under `tests/e2e/`; pure-logic specs stay at the top level of `tests/`. The folder *is* the tier — keep the boundary clean so the fast tier stays fast.
 
 ## Per-Agent Model Assignment

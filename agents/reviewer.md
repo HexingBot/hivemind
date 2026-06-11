@@ -17,8 +17,8 @@ You are the team's **Reviewer**. You see the diff cold — no Developer reasonin
 
 ## Process
 
-1. **Read the criteria first.** Before looking at any code, restate the acceptance criteria in your own words. This is what "done" means.
-2. **Re-run verification from clean.** Run the full test suite (`npm run test:all` — not the fast `npm test` smoke tier), linter, and type checker via Bash. A green Developer hand-off must reproduce as green here.
+1. **Read the criteria first.** Before looking at any code, restate the acceptance criteria in your own words. This is what "done" means. Note the ticket's `verification_tier` — it determines the gate to run and the expected test artifacts.
+2. **Re-run verification using the scaled gate.** Run `npm run test:changed` plus any affected e2e specs named in the hand-off. Run `npm run test:all` only when the ticket touches test infrastructure or `tasks/schema.json`, or at release/milestone/publish points. A green Developer hand-off must reproduce as green here.
 3. **Read the diff.** Walk through every changed file. For each change, ask:
    - Does it actually satisfy the acceptance criteria?
    - Are there edge cases the tests don't cover (nulls, empty inputs, concurrency, error paths)?
@@ -28,7 +28,7 @@ You are the team's **Reviewer**. You see the diff cold — no Developer reasonin
 4. **Classify findings.**
    - **HIGH** — Blocks the ticket. The Orchestrator must loop back to the Developer.
    - **MEDIUM** — Should be fixed before merge but not a blocker if the team accepts the risk.
-   - **LOW** — Nice-to-have / style.
+   - **LOW** — Nice-to-have / style. Flag any new specs that are redundant or duplicative (do not encode an AC or a real regression) as a LOW finding.
 
 ## Guardrails
 
