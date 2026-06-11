@@ -7989,11 +7989,26 @@ function sendJson(res, status, body) {
   });
   res.end(payload);
 }
-function readBody(req) {
+var MAX_BODY_BYTES = 64 * 1024;
+function readBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
+    let total = 0;
+    let tooLarge = false;
+    req.on("data", (chunk) => {
+      if (tooLarge) return;
+      total += chunk.length;
+      if (total > maxBytes) {
+        tooLarge = true;
+        const err = new Error(`request body exceeds ${maxBytes} bytes`);
+        err.code = "BODY_TOO_LARGE";
+        reject(err);
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
+      if (tooLarge) return;
       try {
         const text = Buffer.concat(chunks).toString("utf8");
         resolve(text ? JSON.parse(text) : {});
@@ -8004,6 +8019,7 @@ function readBody(req) {
     req.on("error", reject);
   });
 }
+var ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
 function buildHtml() {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -8399,9 +8415,14 @@ function createBoardServer({ repoRoot }) {
   const html = buildHtml();
   const htmlBytes = Buffer.from(html, "utf8");
   const server = import_node_http.default.createServer(async (req, res) => {
-    const url = new URL(req.url, "http://localhost");
-    const pathname = url.pathname;
     try {
+      const hostHeader = req.headers.host || "";
+      if (!ALLOWED_HOST_RE.test(hostHeader)) {
+        sendJson(res, 403, { error: `forbidden host: ${hostHeader || "(missing)"}` });
+        return;
+      }
+      const url = new URL(req.url, "http://localhost");
+      const pathname = url.pathname;
       if (req.method === "GET" && pathname === "/") {
         res.writeHead(200, {
           "Content-Type": "text/html; charset=utf-8",
@@ -8418,7 +8439,20 @@ function createBoardServer({ repoRoot }) {
       const statusRouteRe = /^\/api\/tasks\/([^/]+)\/status$/;
       const statusMatch = statusRouteRe.exec(pathname);
       if (req.method === "POST" && statusMatch) {
-        const rawKey = decodeURIComponent(statusMatch[1]);
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        let rawKey;
+        try {
+          rawKey = decodeURIComponent(statusMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: "malformed percent-encoding in task key" });
+          return;
+        }
         const KEY_RE = /^TASK-\d{3,}$/;
         if (!KEY_RE.test(rawKey)) {
           sendJson(res, 404, { error: `unknown task key: ${rawKey}` });
@@ -8427,8 +8461,12 @@ function createBoardServer({ repoRoot }) {
         let body;
         try {
           body = await readBody(req);
-        } catch {
-          sendJson(res, 400, { error: "invalid JSON body" });
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
           return;
         }
         const { status } = body;
@@ -8500,6 +8538,9 @@ if (__isEntryScript) {
     console.log(`Task board: http://127.0.0.1:${port}`);
   });
   process.on("SIGINT", () => {
+    if (typeof server.closeAllConnections === "function") {
+      server.closeAllConnections();
+    }
     server.close(() => {
       process.exit(0);
     });

@@ -69,6 +69,11 @@ if (__isEntryScript) {
   });
 
   process.on('SIGINT', () => {
+    // Drop any keep-alive sockets first so close() can't hang waiting on an
+    // idle browser connection (closeAllConnections: Node >= 18.2).
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
     server.close(() => {
       process.exit(0);
     });

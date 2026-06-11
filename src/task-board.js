@@ -9,8 +9,8 @@
 // ENDPOINTS:
 //   GET /              → 200 HTML (five-column kanban, all assets inline)
 //   GET /api/tasks     → 200 JSON array (all task objects, no-cache, live read)
-//   POST /api/tasks/:key/status { status } → 200 | 400 | 404
-//   *                  → 404 JSON { error: '...' }
+//   POST /api/tasks/:key/status { status } → 200 | 400 | 404 | 413 | 415
+//   *                  → 404 JSON { error: '...' }   (non-local Host → 403)
 //
 // ALL mutations flow through src/task-store.js transitionStatus so the atomic-
 // write + index-regeneration invariant is never bypassed. Error-to-HTTP mapping:
@@ -22,6 +22,17 @@
 //
 // BINDING: the server itself does NOT call listen; the caller decides address +
 // port. bin/task-board.js binds 127.0.0.1 only.
+//
+// REQUEST HARDENING (review follow-ups):
+//   - Host header must be 127.0.0.1[:port] or localhost[:port] → otherwise 403
+//     (DNS-rebinding/CSRF guard; the page is same-origin so no CORS needed).
+//   - POST requires Content-Type: application/json → otherwise 415.
+//   - POST body capped at 64 KiB → otherwise 413.
+//   - Malformed %-encoding in the key segment → 400, never an uncaught throw.
+//
+// CORRUPTION POLICY: a corrupt task file (invalid JSON) makes GET /api/tasks
+// return 500 — loud by design, per the TASK-009/TASK-018 loud-corruption
+// precedent. The board must surface a damaged ticket, never silently skip it.
 
 import http from 'node:http';
 import { readdir, readFile } from 'node:fs/promises';
@@ -64,13 +75,31 @@ function sendJson(res, status, body) {
 
 // ---------------------------------------------------------------------------
 // Internal: parse the request body as JSON, resolve with the object or reject
-// with a syntax error.
+// with a syntax error. Bodies over MAX_BODY_BYTES reject with code
+// BODY_TOO_LARGE (mapped to 413 by the handler) — the remaining stream is
+// ignored, not destroyed, so the 413 response can still be written.
 // ---------------------------------------------------------------------------
-function readBody(req) {
+const MAX_BODY_BYTES = 64 * 1024;
+
+function readBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    let total = 0;
+    let tooLarge = false;
+    req.on('data', (chunk) => {
+      if (tooLarge) return;
+      total += chunk.length;
+      if (total > maxBytes) {
+        tooLarge = true;
+        const err = new Error(`request body exceeds ${maxBytes} bytes`);
+        err.code = 'BODY_TOO_LARGE';
+        reject(err);
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => {
+      if (tooLarge) return;
       try {
         const text = Buffer.concat(chunks).toString('utf8');
         resolve(text ? JSON.parse(text) : {});
@@ -81,6 +110,11 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Internal: Host-header allowlist — local-only names, optional port suffix.
+// ---------------------------------------------------------------------------
+const ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
 
 // ---------------------------------------------------------------------------
 // Internal: the inline kanban HTML page (all CSS and JS embedded).
@@ -485,10 +519,20 @@ export function createBoardServer({ repoRoot }) {
   const htmlBytes = Buffer.from(html, 'utf8');
 
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    const pathname = url.pathname;
-
     try {
+      // HOST GUARD — reject anything not addressed to a local-only hostname
+      // (DNS-rebinding/CSRF hardening). Checked before any routing.
+      const hostHeader = req.headers.host || '';
+      if (!ALLOWED_HOST_RE.test(hostHeader)) {
+        sendJson(res, 403, { error: `forbidden host: ${hostHeader || '(missing)'}` });
+        return;
+      }
+
+      // URL parse inside the try so a malformed request line maps to the
+      // catch-all error response instead of an uncaught throw.
+      const url = new URL(req.url, 'http://localhost');
+      const pathname = url.pathname;
+
       // GET / — serve the kanban HTML.
       if (req.method === 'GET' && pathname === '/') {
         res.writeHead(200, {
@@ -510,7 +554,23 @@ export function createBoardServer({ repoRoot }) {
       const statusRouteRe = /^\/api\/tasks\/([^/]+)\/status$/;
       const statusMatch = statusRouteRe.exec(pathname);
       if (req.method === 'POST' && statusMatch) {
-        const rawKey = decodeURIComponent(statusMatch[1]);
+        // CONTENT-TYPE GUARD — the mutation endpoint only speaks JSON.
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        // Malformed %-encoding in the key segment → 400, never a throw.
+        let rawKey;
+        try {
+          rawKey = decodeURIComponent(statusMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: 'malformed percent-encoding in task key' });
+          return;
+        }
 
         // PATH-TRAVERSAL GUARD: key must match TASK_FILENAME_RE-compatible pattern.
         // TASK_FILENAME_RE is /^TASK-(\d{3,})\.json$/ — we strip the .json suffix
@@ -524,8 +584,12 @@ export function createBoardServer({ repoRoot }) {
         let body;
         try {
           body = await readBody(req);
-        } catch {
-          sendJson(res, 400, { error: 'invalid JSON body' });
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
           return;
         }
 

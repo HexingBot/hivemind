@@ -26,7 +26,7 @@ Capture that line to extract the URL.
 
 Tell the human the board is running and give them the printed URL so they can open it in their browser. Example:
 
-> The task board is running at **http://127.0.0.1:PORT**. Open that URL in your browser to view and update tasks. Press Ctrl+C in the terminal to stop the server.
+> The task board is running at **http://127.0.0.1:PORT**. Open that URL in your browser to view and update tasks. Tell me when you are done and I will stop the server.
 
 ## Notes
 
@@ -34,4 +34,4 @@ Tell the human the board is running and give them the printed URL so they can op
 - All status mutations route through `src/task-store.js` (atomic write + `index.json` regeneration) — the board cannot corrupt a ticket.
 - The page requires no network access; all assets are inline. It works offline.
 - Refreshing the page reflects any on-disk changes made since the last load.
-- To stop the server, send SIGINT (Ctrl+C) to the background process.
+- To stop the server: the process was launched with `run_in_background`, so there is no interactive terminal for Ctrl+C — when the human is done, kill the background shell that launched it (e.g. via the KillShell tool or by terminating the background task).

@@ -103,3 +103,62 @@ describe('AC10 — bin/task-board.js exists and src/task-board.js exports create
     ).toBe('function');
   });
 });
+
+// ===========================================================================
+// M2 (review follow-up) — XSS discipline pin. The board HTML embedded in
+// src/task-board.js must build all card markup via createElement/textContent,
+// never by interpolating task fields into HTML strings. Pinned by regex over
+// the embedded HTML segment (everything between <!DOCTYPE html> and </html>):
+//   1. every .innerHTML assignment is the empty-string clear (`= ''`);
+//   2. the HTML segment contains NO template-literal interpolation at all
+//      (`${` would be evaluated server-side — the page must be a static string);
+//   3. positive pin: the client script demonstrably uses textContent +
+//      document.createElement (so 1–2 can't pass vacuously on a rewrite).
+// ===========================================================================
+describe('M2 — board HTML pins the textContent/createElement XSS discipline', () => {
+  function boardHtmlSegment() {
+    expect(existsSync(TASK_BOARD_SRC), 'src/task-board.js must exist').toBe(true);
+    const src = readFileSync(TASK_BOARD_SRC, 'utf8');
+    const start = src.indexOf('<!DOCTYPE html>');
+    const end = src.indexOf('</html>');
+    expect(start, 'src/task-board.js must embed an HTML document').toBeGreaterThan(-1);
+    expect(end, 'the embedded HTML document must be terminated').toBeGreaterThan(start);
+    return src.slice(start, end);
+  }
+
+  it('innerHTML_is_only_ever_assigned_the_empty_string_clear', () => {
+    const html = boardHtmlSegment();
+    const assignments = html.match(/\.innerHTML\s*=\s*[^;\n]+/g) || [];
+    expect(
+      assignments.length,
+      'the render loop must clear columns via innerHTML = \'\' (sanity: regex not vacuous)',
+    ).toBeGreaterThan(0);
+    for (const a of assignments) {
+      expect(
+        /\.innerHTML\s*=\s*(''|"")\s*$/.test(a),
+        `innerHTML may only be assigned the empty-string clear, found: ${a}`,
+      ).toBe(true);
+    }
+  });
+
+  it('embedded_HTML_contains_no_template_literal_interpolation', () => {
+    const html = boardHtmlSegment();
+    expect(
+      html.includes('${'),
+      'the served HTML must be a static string — no ${...} interpolation of any ' +
+        'value (task fields or otherwise) into the markup/script',
+    ).toBe(false);
+  });
+
+  it('client_script_uses_textContent_and_createElement', () => {
+    const html = boardHtmlSegment();
+    expect(
+      /\.textContent\s*=/.test(html),
+      'card fields must be set via textContent (auto-escaping)',
+    ).toBe(true);
+    expect(
+      /document\.createElement\(/.test(html),
+      'card DOM must be built via document.createElement',
+    ).toBe(true);
+  });
+});

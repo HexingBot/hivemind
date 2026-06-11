@@ -29,6 +29,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import http from 'node:http';
 
 import { createBoardServer } from '../../src/task-board.js';
 import { makeRepoSkeleton } from '../helpers/fixtures.js';
@@ -331,5 +332,62 @@ describe('TASK-034 — createBoardServer HTTP surface', () => {
       t2.status,
       'server must not cache task data — on-disk mutation must be visible on the next request',
     ).toBe('blocked');
+  });
+
+  // =========================================================================
+  // M1a (review follow-up) — a request with a non-local Host header → 403.
+  // fetch forbids overriding Host, so this uses a raw http.request.
+  // =========================================================================
+  it('request_with_non_local_Host_header_returns_403', async () => {
+    const { port } = server.address();
+    const result = await new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          method: 'GET',
+          path: '/api/tasks',
+          headers: { Host: 'evil.example.com' },
+        },
+        (res) => {
+          let data = '';
+          res.on('data', (c) => { data += c; });
+          res.on('end', () => resolve({ status: res.statusCode, body: data }));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    expect(
+      result.status,
+      'a spoofed/non-local Host header must be rejected with 403',
+    ).toBe(403);
+    const body = JSON.parse(result.body);
+    expect(typeof body.error, '403 body must carry a JSON error message').toBe('string');
+  });
+
+  // =========================================================================
+  // M1b (review follow-up) — POST without Content-Type: application/json → 415
+  //                          and the tasks/ directory is byte-unchanged.
+  // =========================================================================
+  it('POST_with_non_json_content_type_returns_415_and_leaves_disk_unchanged', async () => {
+    const beforeSnap = snapshotTasksDir(repoRoot);
+
+    const res = await fetch(`${baseUrl}/api/tasks/TASK-001/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    expect(
+      res.status,
+      'POST without Content-Type: application/json must return 415',
+    ).toBe(415);
+
+    const afterSnap = snapshotTasksDir(repoRoot);
+    expect(
+      afterSnap,
+      'tasks/ directory must be byte-identical after a 415 rejection',
+    ).toEqual(beforeSnap);
   });
 });
