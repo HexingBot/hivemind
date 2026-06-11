@@ -36,6 +36,8 @@ const ENTRYPOINTS = [
   { entry: join(REPO_ROOT, 'bin', 'new-task.js'), outfile: join(OUT_DIR, 'new-task.cjs') },
   // TASK-026 P6 — the MCP task-store server. Same options; the SDK + zod inline.
   { entry: join(REPO_ROOT, 'src', 'mcp-server.js'), outfile: join(OUT_DIR, 'mcp-server.cjs') },
+  // TASK-034 — the kanban task board server. Zero external deps; inlines task-store.
+  { entry: join(REPO_ROOT, 'bin', 'task-board.js'), outfile: join(OUT_DIR, 'task-board.cjs') },
 ];
 
 async function main() {
