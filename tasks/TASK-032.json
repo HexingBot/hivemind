@@ -1,0 +1,33 @@
+{
+  "key": "TASK-032",
+  "title": "Orchestrator demotion — main thread + skills, remove the orchestrator subagent",
+  "description": "The orchestrator role currently exists twice: the main thread acts as Orchestrator (per CLAUDE.md), AND a separate `orchestrator.md` subagent ships in `.claude/agents/` + plugin-root `agents/`. The duplicate is confusing, drifts (it already needed a v1→v2 reconcile in TASK-025), and was never meant to be spawned.\\n\\n**Human-decided shape:** the orchestrator IS the main thread (Fable 5) equipped with skills — not a separate agent.\\n\\nFold the orchestrator agent's operational content (workflow loop, delegation rules, ticket-update protocol, RESUME FIRST contract) into the skill layer: extend the existing `orchestrator-routing` backstop skill or restructure it into a fuller orchestrator skill. Nothing the agent file carried may be lost — diff its content against CLAUDE.md + the skill and migrate anything not already covered.\\n\\nBlast radius: agents-parity.spec.js, orchestrator-agent-v2.spec.js, plugin-scaffold.spec.js inventory assertions, agent-generator's base-agent list (it patches orchestrator.md's Inputs section), and any docs referencing the orchestrator agent. `claude plugin validate` must stay green.",
+  "acceptance_criteria": [
+    "orchestrator.md removed from both .claude/agents/ and plugin-root agents/; no orphaned references remain (grep for orchestrator.md across repo, docs, tests, src/agent-generator.js)",
+    "All operational content unique to the agent file is migrated into the orchestrator skill layer (orchestrator-routing or successor), mirrored byte-identical between .claude/skills/ and plugin-root skills/ per the existing parity pattern",
+    "CLAUDE.md states the orchestrator is the main thread with skills; no instruction anywhere implies spawning an orchestrator subagent",
+    "Affected tests updated to the new surface (agents-parity, orchestrator-agent-v2, plugin-scaffold, agent-generator specs) with coverage preserved, not deleted — the skill content gets the regression locks the agent file had",
+    "claude plugin validate . passes; full suite green via npm run test:all"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "refinement",
+    "agents",
+    "architecture"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T15:59:47.023Z",
+      "body": "SCOPE ADDITION from the TASK-031 review (rolled here as next-natural-home — this ticket already touches both spec files): (1) [was MEDIUM-1] Tighten tests/agent-models.spec.js AC4 doc assertions: scope the regexes to the '## Per-Agent Model Assignment' CLAUDE.md section slice instead of whole-document word-presence (the bare /model/i assertion was already green pre-impl), and add an assertion encoding the per-project override clause (e.g. /override|edit the `model:`/i within that section). (2) [was LOW-2] When orchestrator.md is removed, update tests/agent-models.spec.js (orchestrator_md_has_no_model_key will ENOENT) and tests/agents-parity.spec.js (hardcoded four-file list at ~line 30) — coverage must move to the new surface, not be deleted. (3) [was LOW-1, informational] CLAUDE.md:90's inherit-semantics sentence becomes fully accurate once the agent file is gone; no separate action."
+    }
+  ],
+  "created_at": "2026-06-11T15:35:53.729Z",
+  "updated_at": "2026-06-11T15:59:47.023Z",
+  "jira_key": null
+}

@@ -1,0 +1,28 @@
+{
+  "key": "TASK-028",
+  "title": "Testing policy v2 — tiered verification (tdd / tests-after / uat-only) + scaled per-ticket gate",
+  "description": "Replace the blanket \"tests first, always\" rule with a tiered-by-risk verification policy, and stop the per-ticket verification gate from growing with project age.\\n\\n**Problem (from field use):** every ticket adds specs and the gate (`npm run test:all`) re-runs everything twice per ticket (developer hand-off + reviewer), so verification time grows monotonically — 343 specs / ~26s before the fast/e2e tier split (beebb5b), and still growing. TDD-always also front-loads authoring cost on low-risk glue work.\\n\\n**Policy:**\\n- `tdd` — core logic, state mutation, parsing, anything with tricky edges. Tests-first, unchanged.\\n- `tests-after` — behavior proven by running it; a *minimal* set of regression locks lands after implementation.\\n- `uat-only` — glue, config, docs, prototypes. No new specs; verified via conversational UAT (TASK-030).\\n\\nThe orchestrator assigns the tier when reading the ticket, using a documented risk rubric, and records it on the ticket. Absent field = `tdd` (backward compatible).\\n\\n**Scaled gate (human-decided):** per-ticket gate = `npm run test:changed` + affected e2e specs; `npm run test:all` runs only at release/milestone points and before publishing — NOT per ticket. This keeps per-ticket verification roughly constant forever.\\n\\n**Anti-over-testing:** new specs must encode an acceptance criterion or a real regression — nothing else. The reviewer flags redundant/duplicative specs as a LOW finding instead of implicitly rewarding test count.",
+  "acceptance_criteria": [
+    "tasks/schema.json gains an optional `verification_tier` field, enum [tdd, tests-after, uat-only]; absent means tdd (no migration of existing tickets needed); the acceptance_criteria description no longer mandates 'at least one test per AC'",
+    "CLAUDE.md Workflow step 4 and the Testing section rewritten: tier rubric documented, orchestrator assigns tier at ticket-read time, per-ticket gate is test:changed + affected e2e, test:all reserved for release/milestone/publish points",
+    "developer.md honors the tier: TEST phase skipped for tests-after and uat-only tickets; tests-after writes a minimal regression-lock set after implementation; the new-test budget (every new spec encodes an AC or a real regression) is stated in the prompt",
+    "reviewer.md gate updated to the scaled gate and the reviewer explicitly flags redundant or duplicative new specs as a LOW finding",
+    "Plugin-root agents/ parity copies updated byte-identical (agents-parity.spec.js green) and bin/new-task.js + the MCP create_task tool accept an optional verification tier",
+    "Full suite green via npm run test:all (this ticket itself is a release-point change)"
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "refinement",
+    "workflow",
+    "testing-policy"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-11T15:35:02.132Z",
+  "updated_at": "2026-06-11T15:35:02.132Z",
+  "jira_key": null
+}

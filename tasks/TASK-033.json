@@ -1,0 +1,29 @@
+{
+  "key": "TASK-033",
+  "title": "Test-debt consolidation — apply the new-test budget retroactively to this repo's 358 specs",
+  "description": "Dogfood the TASK-028 anti-over-testing standard on this repo's own suite (358 it() blocks across 50 files as of e89c946).\\n\\nAudit every spec against the budget — *does it encode an acceptance criterion or a real regression?* — and produce a consolidation map: duplicate coverage (e.g., the same atomic-write invariant asserted in multiple hardening suites), superseded regression locks (assertions whose decision was later flipped, like the plugin-scaffold mcpServers flip-flops), and probe-style tests that re-verify library behavior rather than our contracts.\\n\\nThen merge/delete per the map. Coverage of behavior must be preserved — each AC of each closed ticket stays encoded somewhere — but redundancy goes. Target: e2e tier wall time meaningfully down (it dominates the ~26s full-suite cost on this machine via mkdtemp + OneDrive/Defender amplification); fast tier stays ~2s.\\n\\nNo production code changes in the consolidation commits — pure test refactor, so a regression in the suite itself is detectable by diffing coverage, not behavior.",
+  "acceptance_criteria": [
+    "A consolidation map (committed as a ticket sidecar .md) classifies existing specs: keep / merge / delete, with the AC or regression each kept spec encodes",
+    "Redundant and superseded specs merged or deleted per the map; every AC of every closed ticket remains encoded by at least one spec",
+    "Full-suite wall time measurably reduced (before/after numbers recorded in the close comment); fast tier unchanged at ~2s",
+    "Consolidation commits touch tests/ only — no src/ or bin/ changes",
+    "npm run test:all green and deterministic across two runs"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "refinement",
+    "testing-policy",
+    "test-debt"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-028"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-11T15:36:08.504Z",
+  "updated_at": "2026-06-11T15:36:08.504Z",
+  "jira_key": null
+}

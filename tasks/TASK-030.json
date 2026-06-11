@@ -1,0 +1,29 @@
+{
+  "key": "TASK-030",
+  "title": "Conversational UAT step — human-confirmed \"run X, expect Y\" verification recorded on the ticket",
+  "description": "Lightweight human-in-the-loop verification for tickets where authoring specs isn't worth it.\\n\\nFor `uat-only` and `tests-after` tickets (tiers from TASK-028), after implementation the orchestrator derives a short numbered UAT script from the acceptance criteria — \"run X, expect Y\" — presents it to the human, and records the outcome as a ticket comment before the ticket can transition to done.\\n\\nThe comment is the audit trail: author `uat`, body listing each step and its observed result. For `uat-only` tickets the reviewer's job shifts from re-running suites to verifying the diff against ACs and confirming the UAT comment exists and covers every AC.\\n\\nThis is a workflow/prompt change (CLAUDE.md + orchestrator skill + reviewer prompt), not new tooling — the existing append_comment path carries the record.",
+  "acceptance_criteria": [
+    "CLAUDE.md workflow documents the UAT step: applicable tiers, script derived from ACs, human confirmation required before transition to done",
+    "The orchestrator-routing skill (or successor from TASK-032) carries the UAT procedure so it survives in user projects",
+    "UAT outcome recorded as a ticket comment (author uat, body = steps + observed results) via the existing comment mechanism",
+    "reviewer.md updated: for uat-only tickets the reviewer verifies the UAT comment exists and covers every AC instead of requiring new specs",
+    "Parity copies updated; full suite green"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "refinement",
+    "workflow",
+    "uat"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-028"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-11T15:35:27.863Z",
+  "updated_at": "2026-06-11T15:35:27.863Z",
+  "jira_key": null
+}

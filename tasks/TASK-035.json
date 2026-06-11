@@ -1,0 +1,29 @@
+{
+  "key": "TASK-035",
+  "title": "Knowledge graph (graphify propio) — typed graph over knowledge entries, tasks, decisions and skills under knowledge/graph/",
+  "description": "Bring graphify-style knowledge management into the framework's own model — explicitly NOT adopting gsd-graphify/.planning/graphs/, per the standing May 2026 decision that a second state system (.planning/) colliding with tasks/ + state/ is unacceptable.\\n\\n**Model:** a typed graph stored under `knowledge/graph/` with its own JSON schema. Node types: `knowledge_entry` (references knowledge/entries/*.md), `task` (references tasks/TASK-NNN.json), `decision` (references session-bundle decisions), `skill` (references .claude/skills/). Edges are typed with a relation enum (e.g., learned-in, blocks, supersedes, uses, produced-by). Nodes reference their source artifacts by stable id — the graph is an index over existing state, never a second copy of it.\\n\\n**API:** `src/knowledge-graph.js` — add/remove nodes and edges, neighbor and filter queries (by node type / relation), ajv validation against the schema, atomic writes, stable key-sorted serialization so git diffs stay readable.\\n\\n**Workflow integration (where the value is):** the researcher's mandatory pre-web KB pass extends to a graph lookup (find related entries/skills before searching the web); the orchestrator links decision→ticket edges at ticket close so future sessions can traverse why something is the way it is.\\n\\n**Render:** a basic visual view (force layout or simple grouped lists with edges) reachable from the TASK-034 board server (e.g., /graph) or as generated static HTML — inline assets, no CDN.",
+  "acceptance_criteria": [
+    "knowledge/graph/ layout + draft-2020-12 schema committed: node types {knowledge_entry, task, decision, skill} with stable source references, typed edges with a documented relation enum; knowledge/README.md documents the model and the index-not-copy principle",
+    "src/knowledge-graph.js exports node/edge CRUD and queries (neighbors, filter by type and relation), validates against the schema via ajv, writes atomically, and serializes deterministically (key-sorted) for clean diffs",
+    "The existing knowledge/entries/ files get graph nodes, and researcher.md's mandatory pre-web KB pass now includes the graph lookup; the orchestrator skill documents recording decision→task edges at ticket close",
+    "A basic visual render of the graph exists (served at /graph by the task-board server or as a generated static HTML), inline assets only",
+    "Plugin parity copies and skill mirrors updated where touched; full suite green via npm run test:all"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "refinement",
+    "knowledge",
+    "graph"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-034"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-11T15:42:46.119Z",
+  "updated_at": "2026-06-11T15:42:46.119Z",
+  "jira_key": null
+}

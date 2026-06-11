@@ -1,0 +1,29 @@
+{
+  "key": "TASK-029",
+  "title": "Use-case regression suite — durable E2E spine seeded from PROJECT.md primary use cases",
+  "description": "Give the project a verification spine that grows with the **product surface**, not with ticket count.\\n\\nThe primary use cases captured at intake (PROJECT.md `primary_use_cases`) seed a small, named E2E suite: one spec per use case under `tests/use-cases/` (in user projects; the seeding hooks into the init wizard / backlog-seeder layer). Tickets touch this suite only when they *change* a use case — never one-spec-per-ticket accretion.\\n\\nThis is what makes the tiered policy (TASK-028) safe: a `uat-only` ticket that skips unit tests is still covered by the use-case suite at release time.\\n\\nThe suite joins the release gate alongside `test:all`. For this repo itself, the use cases are the framework's own top-level flows (init a project, mint a ticket, drive the workflow loop, resume a session, install the plugin) — several already exist as e2e specs and just need to be designated/organized, not rewritten.",
+  "acceptance_criteria": [
+    "A documented convention exists for tests/use-cases/ (one named spec per primary use case) plus an npm run test:use-cases script wired into vitest config",
+    "Init/seeding layer generates skeleton use-case specs (marked todo/skipped, not failing) from primary_use_cases answers for fresh projects",
+    "CLAUDE.md documents the rule: the suite is part of the release gate and tickets modify it only when a use case changes — suite size tracks product surface, not ticket count",
+    "This repo's own primary flows are designated as its use-case suite (reusing existing e2e specs where they already cover the flow)",
+    "Full suite green via npm run test:all"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "refinement",
+    "testing-policy",
+    "e2e"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-028"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-11T15:35:14.689Z",
+  "updated_at": "2026-06-11T15:35:14.689Z",
+  "jira_key": null
+}

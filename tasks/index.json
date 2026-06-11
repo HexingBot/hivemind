@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-29T07:00:00Z",
+  "generated_at": "2026-06-11T15:59:58.290Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -150,6 +150,54 @@
       "title": "Plugin chain P7: end-to-end install test + non-technical quickstart docs + publish prep",
       "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-028",
+      "title": "Testing policy v2 — tiered verification (tdd / tests-after / uat-only) + scaled per-ticket gate",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-029",
+      "title": "Use-case regression suite — durable E2E spine seeded from PROJECT.md primary use cases",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-030",
+      "title": "Conversational UAT step — human-confirmed \"run X, expect Y\" verification recorded on the ticket",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-031",
+      "title": "Per-agent model assignment — reviewer on Fable 5, developer/researcher on Sonnet",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-032",
+      "title": "Orchestrator demotion — main thread + skills, remove the orchestrator subagent",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-033",
+      "title": "Test-debt consolidation — apply the new-test budget retroactively to this repo's 358 specs",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-034",
+      "title": "Task board — local kanban HTML served by a zero-dep node server, launched via /task-status",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-035",
+      "title": "Knowledge graph (graphify propio) — typed graph over knowledge entries, tasks, decisions and skills under knowledge/graph/",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }

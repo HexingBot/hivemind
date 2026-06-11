@@ -1,0 +1,29 @@
+{
+  "key": "TASK-034",
+  "title": "Task board — local kanban HTML served by a zero-dep node server, launched via /task-status",
+  "description": "Visual task view + basic kanban editing for the local task store, without breaking the Jira-loss-free contract.\\n\\n**Shape (human-decided):** `bin/task-board.js` starts a tiny HTTP server using only Node's `http` module (zero runtime deps, same constraint as the rest of bin/). It serves a single-page kanban — five columns matching the schema status enum (todo, in_progress, in_review, blocked, done) — with all CSS/JS inline (no CDN, works offline). Binds 127.0.0.1 only.\\n\\n**Editing is status-only:** dragging a card between columns POSTs a transition that goes through `src/task-store.js` (atomic writes + index.json regeneration — never raw fs writes), so the board can't corrupt a ticket and every move maps 1:1 to a future Jira workflow transition. All other fields render read-only (key, title, priority, labels, AC count).\\n\\n**Invocation:** a new `commands/task-status.md` plugin command launches the server and prints/opens the URL. Ships like the other entrypoints: esbuild bundle → `dist/task-board.cjs`, registered in shipped-bin.json.\\n\\nNice-to-have within scope: pick a free port automatically; clean shutdown (Ctrl+C / endpoint); board reflects on-disk changes on refresh.",
+  "acceptance_criteria": [
+    "bin/task-board.js runs with zero runtime deps, binds 127.0.0.1 on a free port, serves the kanban HTML with inline assets, and exposes JSON endpoints: GET tasks (from the store) and POST status transition",
+    "POST transition validates the target status against the schema enum and persists exclusively through src/task-store.js (atomic write + index.json regeneration); an invalid transition returns an error and mutates nothing on disk",
+    "The board renders the five status columns with key, title, priority and labels per card; drag&drop between columns persists the new status and survives a page refresh",
+    "commands/task-status.md launches the server and surfaces the URL; plugin inventory tests updated",
+    "esbuild entry produces dist/task-board.cjs, added to shipped-bin.json, rebuild deterministic (empty git diff after fresh build)",
+    "E2E spec drives the HTTP surface end-to-end (start server → GET → POST transition → assert task file + index.json changed atomically) without a real browser; claude plugin validate . passes; full suite green"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "refinement",
+    "ux",
+    "task-store",
+    "kanban"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-11T15:42:29.265Z",
+  "updated_at": "2026-06-11T15:42:29.265Z",
+  "jira_key": null
+}

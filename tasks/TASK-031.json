@@ -1,0 +1,36 @@
+{
+  "key": "TASK-031",
+  "title": "Per-agent model assignment — reviewer on Fable 5, developer/researcher on Sonnet",
+  "description": "Cost/quality tiering for the team via the `model:` frontmatter field on agent definitions.\\n\\n**Human-decided assignment:**\\n- `reviewer` → Fable 5 (the independent quality gate deserves the strongest model)\\n- `developer` → Sonnet\\n- `researcher` → Sonnet\\n- orchestrator → no agent file after TASK-032; it is the main thread and runs whatever the session runs (Fable 5)\\n\\n**Implementation notes:** verify the exact accepted frontmatter value for Fable (`model: fable` per the Agent-tool enum; if agent frontmatter rejects it, fall back to `model: inherit` and document that the session must run Fable). Apply to both `.claude/agents/` and the plugin-root `agents/` parity copies. Document the strategy and how a user project overrides it (edit the frontmatter) in CLAUDE.md or README.\\n\\nIndependent of the testing-policy chain — can land first as a quick cost win.",
+  "acceptance_criteria": [
+    "reviewer.md frontmatter assigns Fable 5 (model: fable, or model: inherit with a documented rationale if fable is not an accepted frontmatter value — the chosen value must be verified against the running CLI, not guessed)",
+    "developer.md and researcher.md frontmatter assign model: sonnet",
+    "Plugin-root agents/ parity copies byte-identical; agents-parity.spec.js green",
+    "A short docs note (CLAUDE.md or README) explains the per-agent model strategy and how to change it per project",
+    "claude plugin validate . passes and the full suite is green"
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "refinement",
+    "agents",
+    "cost"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "e394a53",
+    "f4d6dc5"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T15:59:36.685Z",
+      "body": "CLOSED — reviewer verdict APPROVE-WITH-FOLLOWUPS (0 HIGH / 2 MEDIUM non-blocking / 2 LOW / 2 NIT). Tests-first e394a53 (spec file only, red-state independently verified), impl f4d6dc5. Full suite 344 passed / 4 skipped, deterministic across two clean reviewer runs. Parity byte-compared independently (cmp) for all three changed agents. claude plugin validate PASS (note: validate output scopes to marketplace manifest — weak evidence for frontmatter acceptance, see MEDIUM-2). Frontmatter landed: reviewer.md `model: fable`, developer.md + researcher.md `model: sonnet`, orchestrator.md deliberately untouched (TASK-032 removes it). CLAUDE.md gained '## Per-Agent Model Assignment'. PARTIAL BEHAVIORAL CONFIRMATION of the fable alias (reviewer MEDIUM-2 follow-up): the TASK-031 review itself was executed by the reviewer agent spawned AFTER f4d6dc5, i.e. from the updated definition carrying `model: fable` — the spawn succeeded without error or visible fallback. Not conclusive proof of which model served the tokens; full confirmation accrues with continued use. Follow-ups rolled into TASK-032 (next natural home — it already touches both spec files): MEDIUM-1 (agent-models.spec.js AC4 doc assertions are whole-document word-presence, not section-scoped; the /model/i assertion was green pre-impl and the override-clause of AC4 is unencoded) and LOW-2 (orchestrator.md removal will ENOENT agent-models.spec.js's no-model probe and agents-parity.spec.js's hardcoded four-file list). LOW-1 (inherit-claim divergence window while orchestrator.md exists) resolves itself in TASK-032. Both developer phases ran on Sonnet per this ticket's own policy — dogfooded before it landed."
+    }
+  ],
+  "created_at": "2026-06-11T15:35:39.369Z",
+  "updated_at": "2026-06-11T15:59:58.290Z",
+  "jira_key": null
+}
