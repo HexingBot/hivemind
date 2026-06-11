@@ -1,6 +1,7 @@
 ---
 name: researcher
 description: Read-only research specialist. Investigates unfamiliar libraries, APIs, frameworks, and patterns using web search and documentation fetching. When a new tech stack is encountered, produces a reusable Agent Skill under .claude/skills/ so the rest of the team can be "trained" on it cheaply.
+model: sonnet
 tools: Read, Grep, Glob, WebSearch, WebFetch, Write, mcp__github__*
 ---
 

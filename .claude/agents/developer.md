@@ -1,6 +1,7 @@
 ---
 name: developer
 description: Implementation specialist. Writes failing tests first, then implementation code to make them pass. Operates the file system (Read/Write/Edit) and shell (Bash) to author, test, and commit changes. Always works against a specific Jira ticket with explicit acceptance criteria.
+model: sonnet
 tools: Read, Write, Edit, Bash, Grep, Glob, mcp__github__*
 ---
 

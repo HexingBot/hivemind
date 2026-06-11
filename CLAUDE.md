@@ -80,6 +80,19 @@ The Orchestrator and the Developer/Reviewer subagents **must pick the command by
 - **The gate is always `npm run test:all`.** `test:changed` and `test:watch` are inner-loop accelerators — never a substitute for the gate, because the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs. The Developer runs `npm run test:all` before hand-off; the Reviewer re-runs it from a clean state.
 - New slow specs (anything calling `makeTmpDir` or spawning a process) go under `tests/e2e/`; pure-logic specs stay at the top level of `tests/`. The folder *is* the tier — keep the boundary clean so the fast tier stays fast.
 
+## Per-Agent Model Assignment
+
+Each subagent declares its model in the `model:` frontmatter field of its agent definition file:
+
+- **reviewer** → `fable` — the independent quality gate runs on the strongest model; catching bugs and security issues is worth the extra cost.
+- **developer** → `sonnet` — high-volume role (spawned twice per ticket); Sonnet delivers strong coding capability at a lower cost tier.
+- **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
+- **orchestrator** — no `model:` field; it runs as the main session thread and inherits whatever model the session is started with (Fable 5 in production). TASK-032 will remove the orchestrator agent file entirely.
+
+To override for a specific project, edit the `model:` line in the relevant agent frontmatter file under `.claude/agents/` (and keep the plugin-root `agents/` parity copy in sync — see agents-parity.spec.js).
+
+Valid alias source: Claude Code sub-agents documentation (`model:` frontmatter field; accepted shorthands include `fable` and `sonnet`).
+
 ## Knowledge Sharing
 
 - This file (`CLAUDE.md`) is the canonical source of team-wide guidelines. Update it whenever a workflow decision changes.
