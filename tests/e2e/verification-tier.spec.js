@@ -29,7 +29,7 @@ import {
   describe, it, expect, beforeEach, afterEach, afterAll,
 } from 'vitest';
 import {
-  readFileSync, mkdtempSync, rmSync, existsSync,
+  readFileSync, mkdtempSync, rmSync, existsSync, readdirSync,
 } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -218,10 +218,20 @@ describe('AC1 — createTask: verification_tier field', () => {
 
   it('createTask_rejects_an_invalid_tier', async () => {
     // RED: createTask does not validate the tier at all yet.
+    // STRENGTHENED (authorized TASK-028 review fix M2): after the rejection,
+    // assert the tmp repo's tasks/ gained no new TASK-*.json and that
+    // tasks/index.json is unchanged (snapshot bytes before, compare after —
+    // byte-identity idiom from tests/e2e/task-store-hardening.spec.js).
     const { createTask } = await import(PROD.taskStore);
 
     const repoDir = makeTmpDir('af-vt-create-bad-tier');
     makeRepoSkeleton(repoDir, {});
+
+    // Snapshot tasks/ before the rejected call.
+    const tasksDir = join(repoDir, 'tasks');
+    const beforeFiles = readdirSync(tasksDir).sort();
+    const indexPath = join(tasksDir, 'index.json');
+    const indexBefore = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : null;
 
     await expect(
       createTask({
@@ -234,6 +244,14 @@ describe('AC1 — createTask: verification_tier field', () => {
         now: () => '2026-09-10T12:00:00Z',
       }),
     ).rejects.toThrow(/tier/i);
+
+    // No new TASK-*.json was created.
+    const afterFiles = readdirSync(tasksDir).sort();
+    expect(afterFiles, 'tasks/ must not gain any new files on a rejected tier').toEqual(beforeFiles);
+
+    // index.json is byte-identical (or still absent if it was absent before).
+    const indexAfter = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : null;
+    expect(indexAfter, 'tasks/index.json must not be written on a rejected tier').toBe(indexBefore);
   });
 });
 

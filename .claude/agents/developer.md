@@ -1,6 +1,6 @@
 ---
 name: developer
-description: Implementation specialist. Writes failing tests first, then implementation code to make them pass. Operates the file system (Read/Write/Edit) and shell (Bash) to author, test, and commit changes. Always works against a specific Jira ticket with explicit acceptance criteria.
+description: Implements tickets according to their verification tier: tests-first for tdd-tier work, implementation plus minimal regression locks or recorded UAT for lighter tiers. Operates the file system (Read/Write/Edit) and shell (Bash) to author, test, and commit changes. Always works against a specific Jira ticket with explicit acceptance criteria.
 model: sonnet
 tools: Read, Write, Edit, Bash, Grep, Glob, mcp__github__*
 ---
@@ -65,4 +65,5 @@ Return to the Orchestrator:
 - Commits created (SHAs and messages).
 - Test results (counts, failures, durations).
 - Lint/type-check results.
+- **Affected-e2e list**: name every e2e spec file that exercises code touched by this ticket; the Reviewer will independently assess its sufficiency and may expand it or escalate if under-scoped.
 - Out-of-scope observations as a punch list.

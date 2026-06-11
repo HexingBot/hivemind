@@ -95,7 +95,7 @@ The Orchestrator and the Developer/Reviewer subagents **must pick the command by
 
 ### Rules
 
-- **The scaled gate applies per ticket:** run `npm run test:changed` plus any affected e2e specs explicitly named at hand-off. This keeps per-ticket verification time roughly constant regardless of project age.
+- **The scaled gate applies per ticket:** run `npm run test:changed` plus any affected e2e specs explicitly named at hand-off. The Developer proposes the affected-e2e list; the Reviewer independently assesses its sufficiency and may expand it or escalate to the Orchestrator if under-scoped. This keeps per-ticket verification time roughly constant regardless of project age.
 - **`npm run test:all` is reserved for release, milestone, and publish points**, and for any ticket that touches test infrastructure or `tasks/schema.json`. `test:changed` and `test:watch` are inner-loop accelerators — the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs, which is why full `test:all` still runs at those checkpoints.
 - New slow specs (anything calling `makeTmpDir` or spawning a process) go under `tests/e2e/`; pure-logic specs stay at the top level of `tests/`. The folder *is* the tier — keep the boundary clean so the fast tier stays fast.
 

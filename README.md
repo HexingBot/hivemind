@@ -14,9 +14,10 @@ produces, and what to say to Claude Code for your very first chat.
 ## What this is
 
 Imagine hiring a small, disciplined engineering team that reads the ticket,
-plans, writes failing tests first, implements until they pass, reviews each
-other's work, and only then closes the ticket. This repository is the harness
-that makes Claude Code behave that way.
+plans, writes tests first or validates behavior depending on the work (a tiered
+policy keeps lighter tickets fast), implements until everything is green, reviews
+each other's work, and only then closes the ticket. This repository is the
+harness that makes Claude Code behave that way.
 
 Two ideas drive the whole thing:
 
@@ -82,8 +83,8 @@ message, copy and paste this:
 > opening it.
 
 It proposes a ticket and — once you confirm — runs the full workflow: research,
-failing tests first, implementation, review, then closing the ticket. Every
-later chat works the same way. To update or remove the plugin later, use
+tests or validation per the tiered policy, implementation, review, then closing
+the ticket. Every later chat works the same way. To update or remove the plugin later, use
 `claude plugin update`, `claude plugin uninstall`, or `claude plugin marketplace
 remove agentic-framework-marketplace`.
 

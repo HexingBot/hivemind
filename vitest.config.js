@@ -4,7 +4,8 @@ import { defineConfig } from 'vitest/config';
 //  - Default (this file): FAST unit tier — top-level tests/*.spec.js only (~2s). Pure
 //    logic, no real disk I/O. This is `npm test`: the TDD inner loop and the deploy smoke.
 //  - vitest.config.all.js: FULL suite, adds tests/e2e/** (real mkdtemp disk I/O + process
-//    spawns). This is `npm run test:all`: the pre-handoff / review gate.
+//    spawns). This is `npm run test:all`: the release / milestone / publish gate, and the
+//    gate for any ticket that touches test infrastructure or tasks/schema.json.
 // Rationale: TDD accumulates hundreds of specs. Running the slow disk/spawn tier on every
 // change — and on every deploy — is the bottleneck, not the test count. Splitting the tiers
 // keeps the inner loop and deploy smoke at ~2s while the full gate still runs in CI/review.
