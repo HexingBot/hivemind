@@ -36,9 +36,11 @@
 
 import http from 'node:http';
 import { readdir, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { transitionStatus, TASK_FILENAME_RE } from './task-store.js';
+import { loadGraph } from './knowledge-graph.js';
 
 // ---------------------------------------------------------------------------
 // Internal: read all task files from tasks/ without any caching.
@@ -512,6 +514,259 @@ function buildHtml() {
 }
 
 // ---------------------------------------------------------------------------
+// Internal: the inline graph view HTML page (all CSS and JS embedded).
+// XSS discipline: this is a static template — no ${ interpolation anywhere.
+// The route handler injects graph data by replacing the __GRAPH_DATA__ sentinel
+// with a JSON-serialized graph object, then wraps it in a <script> data island.
+// The client-side script reads from that island using textContent (safe) and
+// builds the DOM exclusively with document.createElement and .textContent.
+// innerHTML is used only for the empty-string clear (root.innerHTML = '').
+// ---------------------------------------------------------------------------
+const GRAPH_DATA_SENTINEL = '"__GRAPH_DATA__"';
+
+function buildGraphHtml() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Graph</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --card-bg: #21262d;
+    --radius: 8px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 16px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+  }
+  header h1 { font-size: 1.25rem; font-weight: 600; }
+  header a { font-size: 0.85rem; color: var(--accent); text-decoration: none; }
+  header a:hover { text-decoration: underline; }
+  .empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    margin-top: 60px;
+    font-size: 0.95rem;
+  }
+  .type-group { margin-bottom: 28px; }
+  .type-heading {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  .node-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .node-id { font-family: var(--mono); font-size: 0.75rem; color: var(--accent); font-weight: 500; }
+  .node-label { font-size: 0.88rem; color: var(--text); margin-top: 2px; }
+  .node-ref { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; font-family: var(--mono); }
+  .edges-heading {
+    font-size: 0.72rem; color: var(--text-muted); margin-top: 8px; margin-bottom: 4px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .edge-item {
+    font-size: 0.78rem; color: var(--text);
+    padding: 2px 0 2px 10px; border-left: 2px solid var(--border); margin-bottom: 2px;
+  }
+  .edge-relation { font-family: var(--mono); color: var(--accent); font-size: 0.72rem; }
+  .edge-peer { color: var(--text-muted); font-family: var(--mono); font-size: 0.72rem; }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Knowledge Graph</h1></div>
+  <a href="/">Task Board</a>
+</header>
+<script id="graph-data" type="application/json">__GRAPH_DATA__</script>
+<div id="graph-root"><!--__GRAPH_BODY__--></div>
+<script>
+  var graph = JSON.parse(document.getElementById('graph-data').textContent);
+  var root = document.getElementById('graph-root');
+
+  function makeEl(tag, cls, text) {
+    var el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text !== undefined) el.textContent = text;
+    return el;
+  }
+
+  function render(g) {
+    root.innerHTML = '';
+    var nodes = g.nodes || [];
+    var edges = g.edges || [];
+
+    if (nodes.length === 0) {
+      root.appendChild(makeEl('div', 'empty-state',
+        'No nodes in graph. Add knowledge entries, tasks, decisions, or skills to get started.'));
+      return;
+    }
+
+    var typeOrder = ['knowledge_entry', 'task', 'decision', 'skill'];
+    var types = [];
+    var seen = {};
+    for (var i = 0; i < typeOrder.length; i++) {
+      var t = typeOrder[i];
+      for (var j = 0; j < nodes.length; j++) {
+        if (nodes[j].type === t && !seen[t]) { types.push(t); seen[t] = true; break; }
+      }
+    }
+    for (var k = 0; k < nodes.length; k++) {
+      if (!seen[nodes[k].type]) { types.push(nodes[k].type); seen[nodes[k].type] = true; }
+    }
+
+    for (var ti = 0; ti < types.length; ti++) {
+      var typeName = types[ti];
+      var group = nodes.filter(function(n) { return n.type === typeName; });
+      if (group.length === 0) continue;
+
+      var section = makeEl('div', 'type-group');
+      section.appendChild(makeEl('div', 'type-heading', typeName));
+
+      for (var ni = 0; ni < group.length; ni++) {
+        var node = group[ni];
+        var card = makeEl('div', 'node-card');
+        card.appendChild(makeEl('div', 'node-id', node.id));
+        if (node.label) card.appendChild(makeEl('div', 'node-label', node.label));
+        if (node.ref) card.appendChild(makeEl('div', 'node-ref', node.ref));
+
+        var nodeEdges = edges.filter(function(e) { return e.from === node.id || e.to === node.id; });
+        if (nodeEdges.length > 0) {
+          card.appendChild(makeEl('div', 'edges-heading', 'Edges'));
+          for (var ei = 0; ei < nodeEdges.length; ei++) {
+            var edge = nodeEdges[ei];
+            var item = makeEl('div', 'edge-item');
+            var isOut = edge.from === node.id;
+            var peer = isOut ? edge.to : edge.from;
+            var arrow = isOut ? 'out: ' : 'in: ';
+            var relSpan = makeEl('span', 'edge-relation', arrow + edge.relation + ' ');
+            var peerSpan = makeEl('span', 'edge-peer', peer);
+            item.appendChild(relSpan);
+            item.appendChild(peerSpan);
+            card.appendChild(item);
+          }
+        }
+        section.appendChild(card);
+      }
+      root.appendChild(section);
+    }
+  }
+
+  render(graph);
+</script>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Internal: build a server-side pre-rendered body for the graph view.
+// This output is safe (no user-controlled HTML injection) because all node
+// ids, labels, refs, and edge relation values are controlled by the store's
+// schema validation. We escape < and & as a belt-and-suspenders measure.
+// ---------------------------------------------------------------------------
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildGraphBody(graphObj) {
+  const nodes = (graphObj && graphObj.nodes) || [];
+  const edges = (graphObj && graphObj.edges) || [];
+
+  if (nodes.length === 0) {
+    return '<div class="empty-state">No nodes in graph. Add knowledge entries, tasks, decisions, or skills to get started.</div>';
+  }
+
+  const typeOrder = ['knowledge_entry', 'task', 'decision', 'skill'];
+  const seen = new Set();
+  const types = [];
+  for (const t of typeOrder) {
+    if (nodes.some((n) => n.type === t)) { types.push(t); seen.add(t); }
+  }
+  for (const n of nodes) {
+    if (!seen.has(n.type)) { types.push(n.type); seen.add(n.type); }
+  }
+
+  let html = '';
+  for (const typeName of types) {
+    const group = nodes.filter((n) => n.type === typeName);
+    if (group.length === 0) continue;
+    html += '<div class="type-group">';
+    html += '<div class="type-heading">' + escHtml(typeName) + '</div>';
+    for (const node of group) {
+      html += '<div class="node-card">';
+      html += '<div class="node-id">' + escHtml(node.id) + '</div>';
+      if (node.label) html += '<div class="node-label">' + escHtml(node.label) + '</div>';
+      if (node.ref) html += '<div class="node-ref">' + escHtml(node.ref) + '</div>';
+      const nodeEdges = edges.filter((e) => e.from === node.id || e.to === node.id);
+      if (nodeEdges.length > 0) {
+        html += '<div class="edges-heading">Edges</div>';
+        for (const edge of nodeEdges) {
+          const isOut = edge.from === node.id;
+          const peer = isOut ? edge.to : edge.from;
+          const arrow = isOut ? 'out: ' : 'in: ';
+          html += '<div class="edge-item">';
+          html += '<span class="edge-relation">' + escHtml(arrow + edge.relation) + ' </span>';
+          html += '<span class="edge-peer">' + escHtml(peer) + '</span>';
+          html += '</div>';
+        }
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+const GRAPH_BODY_SENTINEL = '<!--__GRAPH_BODY__-->';
+
+// ---------------------------------------------------------------------------
+// Internal: inject graph data into the graph HTML template by replacing the
+// sentinel placeholder with the serialized graph JSON and pre-rendering the
+// body content server-side so node ids / edge relations appear in the raw HTML
+// (required by AC8 tests which fetch the HTML without executing JS).
+// ---------------------------------------------------------------------------
+function injectGraphData(graphObj) {
+  const template = buildGraphHtml();
+  return template
+    .replace(GRAPH_DATA_SENTINEL, JSON.stringify(graphObj))
+    .replace(GRAPH_BODY_SENTINEL, buildGraphBody(graphObj));
+}
+
+// ---------------------------------------------------------------------------
 // Public factory — returns an http.Server (pre-listen).
 // ---------------------------------------------------------------------------
 export function createBoardServer({ repoRoot }) {
@@ -615,6 +870,28 @@ export function createBoardServer({ repoRoot }) {
             sendJson(res, 500, { error: msg });
           }
         }
+        return;
+      }
+
+      // GET /graph — serve the knowledge graph HTML page with server-side graph data.
+      // Absent graph.json → empty graph (200, never crash).
+      // Corrupt graph.json → 500 (loud by design, same precedent as /api/tasks).
+      if (req.method === 'GET' && pathname === '/graph') {
+        const graph = await loadGraph({ repoRoot });
+        const page = injectGraphData(graph);
+        const pageBytes = Buffer.from(page, 'utf8');
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Length': pageBytes.length,
+        });
+        res.end(pageBytes);
+        return;
+      }
+
+      // GET /api/graph — return the graph as JSON (absent file → empty graph; corrupt → 500).
+      if (req.method === 'GET' && pathname === '/api/graph') {
+        const graph = await loadGraph({ repoRoot });
+        sendJson(res, 200, graph);
         return;
       }
 

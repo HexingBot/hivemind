@@ -21,15 +21,16 @@ You are the team's **Researcher**. You investigate unknowns and turn them into r
 
 Before invoking `WebSearch` or `WebFetch` for any research question, you MUST consult the local lessons-learned knowledge base under `knowledge/`. The procedure is deterministic so the Reviewer can reproduce it:
 
-1. **Tokenize the question.** Lowercase, split on whitespace and punctuation, drop English stopwords (a fixed short list: `the, a, an, of, to, for, in, on, with, and, or, is, are, be, as, at, by, it, this, that, these, those, do, does, how, what, when, where, why, can, should, would, could, i, you, we, they`), keep tokens of length ≥ 3.
-2. **Three-pass grep over `knowledge/entries/*.md`.** For each entry, count how many of the question tokens appear in:
+1. **Graph lookup first.** Query `knowledge/graph/graph.json` using `neighbors` and `nodesByType` from `src/knowledge-graph.js` (or read the file directly) to find nodes of type `knowledge_entry` or `skill` that are related to the question topic. Any node whose `label` or `ref` matches key terms in the question is a candidate. Read the referenced entries/skills for those candidate nodes before proceeding. This graph-first pass surfaces cross-linked entries that the grep pass below might miss.
+2. **Tokenize the question.** Lowercase, split on whitespace and punctuation, drop English stopwords (a fixed short list: `the, a, an, of, to, for, in, on, with, and, or, is, are, be, as, at, by, it, this, that, these, those, do, does, how, what, when, where, why, can, should, would, could, i, you, we, they`), keep tokens of length ≥ 3.
+3. **Three-pass grep over `knowledge/entries/*.md`.** For each entry, count how many of the question tokens appear in:
    - the frontmatter `tags:` block — weight **3**,
    - the frontmatter `symptoms:` block — weight **2**,
    - the `problem:` field and the body — weight **1**.
-3. **Score and rank.** `score = 3*tagHits + 2*symptomHits + 1*bodyHits`. Break ties by most recent `last_seen_at`.
-4. **Read the top 3 candidates** in full.
-5. **Decide.** If any candidate's `solution` answers the question, return that answer citing the entry id and set `used: true` for that hit in your output. **Do NOT proceed to web research.**
-6. **Otherwise**, proceed to web research per the existing Process step, and at the end of your output, **propose** a new knowledge entry — do NOT write it directly. The Orchestrator creates the file after human approval.
+4. **Score and rank.** `score = 3*tagHits + 2*symptomHits + 1*bodyHits`. Break ties by most recent `last_seen_at`.
+5. **Read the top 3 candidates** in full (merge with any graph-surfaced candidates from step 1).
+6. **Decide.** If any candidate's `solution` answers the question, return that answer citing the entry id and set `used: true` for that hit in your output. **Do NOT proceed to web research.**
+7. **Otherwise**, proceed to web research per the existing Process step, and at the end of your output, **propose** a new knowledge entry — do NOT write it directly. The Orchestrator creates the file after human approval.
 
 The lookup runs **before** any `WebSearch` or `WebFetch` call, with no exceptions. If you find yourself reaching for a web tool first, stop and run the lookup.
 

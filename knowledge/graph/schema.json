@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-framework/knowledge/graph/schema.json",
+  "title": "Knowledge Graph",
+  "description": "Typed graph over knowledge entries, tasks, decisions and skills under knowledge/graph/graph.json.",
+  "type": "object",
+  "required": ["schema_version", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Schema version — always 1 for this draft-2020-12 schema."
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "ref", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable unique identifier for this node."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["knowledge_entry", "task", "decision", "skill"],
+          "description": "Node type — determines what kind of artifact this node indexes."
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable source pointer (e.g. knowledge/entries/<file>.md, tasks/TASK-NNN.json, skills/<name>)."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable label for the node."
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "relation"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source node id."
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target node id."
+        },
+        "relation": {
+          "type": "string",
+          "enum": ["learned-in", "blocks", "supersedes", "uses", "produced-by", "relates-to"],
+          "description": "Typed relation between nodes."
+        }
+      }
+    }
+  }
+}

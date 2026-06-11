@@ -68,6 +68,27 @@ behavior.
    without a `uat` comment that covers every AC with all steps PASS. A failed
    step sends the ticket back to implementation.
 
+## Recording decision→task edges at ticket close (TASK-035)
+
+When a ticket is transitioned to `done`, the orchestrator **must** record the
+decisions that shaped the work as typed edges in the knowledge graph
+(`knowledge/graph/graph.json`) via `src/knowledge-graph.js`:
+
+1. For each significant decision recorded in the session bundle's `decisions`
+   array, ensure a node of type `decision` exists in the graph (add it with
+   `addNode` if absent; id = the decision's ISO timestamp, ref = the session
+   bundle path, label = a short description of the decision).
+2. Ensure a node of type `task` exists for the ticket being closed (add with
+   `addNode` if absent; id = the task key e.g. `TASK-035`, ref = the task JSON
+   path, label = the ticket title).
+3. Call `addEdge` with `{ from: <decision-id>, to: <task-id>, relation: 'produced-by' }`
+   (or `relates-to` if the decision influenced but did not directly produce the
+   ticket's scope) to create the decision-to-task edge in the graph.
+
+This gives future sessions a traversable audit trail: given any task node,
+following `produced-by` edges back to `decision` nodes explains *why* the work
+was scoped the way it was.
+
 ## Notes
 
 - The pointer is intentionally tiny; never store substantive state in it.

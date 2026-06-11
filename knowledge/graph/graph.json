@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "nodes": [
+    {
+      "id": "ke-session-audit-logs-gitignore",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/session-audit-logs-vs-wildcard-gitignore.md",
+      "label": "Session audit logs vs wildcard gitignore"
+    },
+    {
+      "id": "ke-windows-atomic-rename",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/windows-atomic-rename-not-truly-atomic.md",
+      "label": "Windows atomic rename is not truly atomic"
+    }
+  ],
+  "edges": []
+}
