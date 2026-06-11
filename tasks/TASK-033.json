@@ -22,8 +22,14 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T16:44:19.077Z",
+      "body": "SCOPE ADDITIONS from the TASK-028 review (rolled here — this is the consolidation ticket): (1) [L7] tests/e2e/verification-tier.spec.js: collapse the three near-identical schema-accepts-tier specs into one it.each over the enum. (2) [L8] add a one-spec drift guard asserting the three verification-tier enums (tasks/schema.json, src/task-store.js VERIFICATION_TIERS, src/mcp-server.js zod VERIFICATION_TIER) are equal — drift cannot corrupt the store but would cause inconsistent accept/reject between doors. (3) [N9] bogus_tier_flag_throws asserts a bare rejects.toThrow() — it passed pre-impl for an unrelated reason (unknown flag); match /tier/i to make it a real lock. (4) [N10] developer.md IMPL steps 1-2 phrasing is awkward for uat-only tickets where no relevant tests exist — smooth when touched. (5) [NIT from fix verification] orchestrator.md step 5 duplicates step 4's tdd IMPL bullet — fold into step 4 (coordinate with TASK-032, which removes/migrates orchestrator.md; whichever lands first absorbs this)."
+    }
+  ],
   "created_at": "2026-06-11T15:36:08.504Z",
-  "updated_at": "2026-06-11T15:36:08.504Z",
+  "updated_at": "2026-06-11T16:44:19.077Z",
   "jira_key": null
 }

@@ -10,7 +10,7 @@
     "Plugin-root agents/ parity copies updated byte-identical (agents-parity.spec.js green) and bin/new-task.js + the MCP create_task tool accept an optional verification tier",
     "Full suite green via npm run test:all (this ticket itself is a release-point change)"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "refinement",
@@ -19,10 +19,20 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "c40d1ba",
+    "90c6bf2",
+    "f856706"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T16:43:30.231Z",
+      "body": "CLOSED — final reviewer verdict APPROVE (upgraded from APPROVE-WITH-FOLLOWUPS after the authorized in-band fix pass). Three commits: c40d1ba (tests-first, 13 red for the right reasons, zero pinned-prose collisions), 90c6bf2 (impl: schema verification_tier enum + ajv-enforced createTask pre-write validation + bin/new-task --tier + MCP create_task zod enum + CLAUDE.md tier rubric & scaled gate + developer/reviewer prompts + dist rebuild), f856706 (review fixes: M1 orchestrator.md tier alignment, M2 authorized no-write regression-lock strengthening, M3 affected-e2e list ownership — developer proposes, reviewer may expand/escalate, L4-L6 stale prose). Suite 361 passed / 4 skipped deterministic across multiple clean runs; dist reproducible; parity byte-verified; all 33 existing task files validate against the new schema (backward compat proven); the three validation layers (schema/task-store/MCP zod) carry the identical enum. THE TIERED POLICY IS NOW LIVE: per-ticket gate = test:changed + developer-proposed affected-e2e (reviewer veto), test:all reserved for release/milestone/publish + test-infra/schema tickets. Deferred to TASK-033 per close pattern: L7 (it.each consolidation of the three schema-accepts specs), L8 (enum triplication drift guard), N9 (bogus-tier flag spec lacks /tier/i match), N10 (developer.md IMPL step phrasing awkward for uat-only), + new NIT from fix verification (orchestrator.md step 5 duplicates step 4's tdd bullet — fold when next touched)."
+    }
+  ],
   "created_at": "2026-06-11T15:35:02.132Z",
-  "updated_at": "2026-06-11T15:35:02.132Z",
+  "updated_at": "2026-06-11T16:44:39.245Z",
   "jira_key": null
 }
