@@ -52,9 +52,14 @@ behavior.
 
 1. **Derive the script.** After implementation, read the ticket's acceptance
    criteria and produce a numbered list of "run/do X, expect Y" steps — at
-   least one step per AC so every AC is covered.
+   least one step per AC so every AC is covered. Keep it terse: one line per
+   step, no walls of evidence — show supporting evidence only when the human
+   asks.
 2. **Present to the human.** Show the numbered script and ask the human to work
-   through each step, reporting PASS or FAIL (plus optional notes).
+   through each step, reporting PASS or FAIL (plus optional notes). The human
+   may delegate any step's verification back to the Orchestrator; record such
+   steps as PASS with a "verified by Orchestrator at the human's request" note
+   instead of a bare PASS.
 3. **Record the outcome.** Append a comment to the ticket via the existing
    comment mechanism (author `uat`). The body must list each step with its
    expected result, observed result, and per-step verdict, then state the

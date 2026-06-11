@@ -48,8 +48,8 @@ The Orchestrator must follow this loop for every unit of work:
    - `tests-after` — When ACs describe human-observable behavior, also run the UAT step after the regression locks land.
 
    **UAT step** (mandatory for `uat-only`; mandatory for `tests-after` when ACs are human-observable):
-   - Derive a short numbered script from the acceptance criteria — one or more "run/do X, expect Y" steps per AC so every AC is covered.
-   - Present the script to the human. Collect a PASS or FAIL verdict per step, plus optional notes.
+   - Derive a short numbered script from the acceptance criteria — one or more "run/do X, expect Y" steps per AC so every AC is covered. Keep it terse: one line per step, no walls of evidence — show supporting evidence only when the human asks.
+   - Present the script to the human. Collect a PASS or FAIL verdict per step, plus optional notes. The human may delegate any step's verification back to the Orchestrator; record such steps as PASS with a "verified by Orchestrator at the human's request" note instead of a bare PASS.
    - Record the outcome as a ticket comment: author `uat`, body listing each step with its expected result, observed result, and per-step verdict, plus an overall result.
    - A `uat-only` ticket **cannot** transition to `done` without a `uat` comment whose steps cover every AC. A failed step sends the ticket back to the Developer.
 5. **Implement.** The `developer` subagent writes code until the acceptance criteria are satisfied and existing tests still pass.
