@@ -43,6 +43,26 @@ initialized for this project — direct the human to run the `/init-project`
 command (the project intake wizard) before any other workflow step. If
 `PROJECT.md` already exists, proceed straight to the RESUME-FIRST sequence above.
 
+## UAT procedure (uat-only and tests-after tickets)
+
+For `uat-only` tickets the Orchestrator performs human-confirmed verification
+instead of requiring new specs. For `tests-after` tickets, run this step in
+addition to the regression locks whenever the ACs describe human-observable
+behavior.
+
+1. **Derive the script.** After implementation, read the ticket's acceptance
+   criteria and produce a numbered list of "run/do X, expect Y" steps — at
+   least one step per AC so every AC is covered.
+2. **Present to the human.** Show the numbered script and ask the human to work
+   through each step, reporting PASS or FAIL (plus optional notes).
+3. **Record the outcome.** Append a comment to the ticket via the existing
+   comment mechanism (author `uat`). The body must list each step with its
+   expected result, observed result, and per-step verdict, then state the
+   overall result (PASS or FAIL).
+4. **Gate the done-transition.** A `uat-only` ticket cannot move to `done`
+   without a `uat` comment that covers every AC with all steps PASS. A failed
+   step sends the ticket back to implementation.
+
 ## Notes
 
 - The pointer is intentionally tiny; never store substantive state in it.

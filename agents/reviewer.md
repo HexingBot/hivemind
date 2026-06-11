@@ -19,6 +19,8 @@ You are the team's **Reviewer**. You see the diff cold — no Developer reasonin
 
 1. **Read the criteria first.** Before looking at any code, restate the acceptance criteria in your own words. This is what "done" means. Note the ticket's `verification_tier` — it determines the gate to run and the expected test artifacts.
 2. **Re-run verification using the scaled gate.** Run `npm run test:changed` plus any affected e2e specs named in the Developer's hand-off. The Developer proposes that list; independently assess its sufficiency — expand it or escalate to the Orchestrator if it appears under-scoped. Run `npm run test:all` only when the ticket touches test infrastructure or `tasks/schema.json`, or at release/milestone/publish points. A green Developer hand-off must reproduce as green here.
+   - **`uat-only` tickets:** instead of requiring new specs, verify that (a) a `uat` comment exists on the ticket, (b) its steps cover **every** acceptance criterion, and (c) all steps are marked PASS. A missing `uat` comment, incomplete AC coverage, or any FAIL step is a HIGH finding — it means the done-gate was bypassed.
+   - **`tests-after` tickets with a `uat` comment:** apply the same check (complete AC coverage, all PASS) in addition to verifying the regression locks.
 3. **Read the diff.** Walk through every changed file. For each change, ask:
    - Does it actually satisfy the acceptance criteria?
    - Are there edge cases the tests don't cover (nulls, empty inputs, concurrency, error paths)?
