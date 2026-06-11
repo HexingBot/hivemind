@@ -39,8 +39,8 @@ The TEST phase is skipped for `tests-after` and `uat-only` tiers. If you are spa
 
 **uat-only tier:** implement only. No new specs are written. The ticket is verified by conversational UAT with the Orchestrator.
 
-1. Run the failing tests first (`npm run test:changed`) to confirm the starting state (tdd) or to verify no regressions exist (tests-after / uat-only).
-2. Implement the minimal change to make the tests pass without breaking existing ones.
+1. Run `npm run test:changed` to confirm the starting state. For `tdd` tickets this verifies the failing tests exist; for `tests-after` tickets it verifies no regressions exist; for `uat-only` tickets with no relevant tests, skip this step if the suite reports nothing related.
+2. Implement the minimal change to make the tests pass (or the behavior correct for `uat-only`) without breaking existing tests.
 3. For `tests-after` tickets, add minimal regression locks after implementation.
 4. Run the per-ticket gate: `npm run test:changed` plus any affected e2e specs named at hand-off. Run `npm run test:all` only when the ticket touches test infrastructure or `tasks/schema.json`, or at release/milestone/publish points.
 5. Run the project's linter and type checker.

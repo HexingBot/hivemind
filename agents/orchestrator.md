@@ -56,13 +56,12 @@ To read tasks now, use `Read` and `Glob` against `tasks/*.json`. To update, use 
    - One review task.
 3. **Spawn the Researcher** (if any unknowns exist). Pass the specific question and the ticket context. Wait for it to return — Researcher output will include a path to a new or updated skill in `.claude/skills/` when relevant.
 4. **Verify per tier.**
-   - `tdd` — Spawn the Developer in TEST mode: write failing tests that encode the acceptance criteria **before** any implementation code. Then spawn IMPL mode to make the tests pass.
+   - `tdd` — Spawn the Developer in TEST mode: write failing tests that encode the acceptance criteria **before** any implementation code. Then spawn IMPL mode (passing the failing-test commit SHA) to make the tests pass; require all tests green before return.
    - `tests-after` — Spawn the Developer in a single IMPL phase: implement first, then add a minimal set of regression locks before hand-off. No TEST-mode phase.
    - `uat-only` — Spawn the Developer in IMPL mode only; no new specs. Verify via conversational UAT.
-5. **Spawn the Developer for implementation (tdd).** Reference the failing tests; require all tests green before return.
-6. **Spawn the Reviewer.** Give it the diff range and the original acceptance criteria. Block on any HIGH-severity finding — loop back to the Developer with the findings.
-7. **Update ticket.** On a clean review, edit `tasks/<KEY>.json` to set `status: done`, append a summary comment, append commit SHAs to `linked_commits` and any PR URL to `linked_prs`, refresh `updated_at`, then regenerate `tasks/index.json`. Status transitions during the workflow (`todo → in_progress → in_review → done`, or `→ blocked`) follow the same write pattern.
-8. **Close out the session.** When the work is done, `end` the active bundle (writes its `summary.md`, appends the lifecycle entry, and clears the pointer's `active_session_id` to null); when you are pausing mid-flight, `pause` it instead so the next chat resumes via the RESUME-FIRST sequence. Both operations are described in `state/README.md`.
+5. **Spawn the Reviewer.** Give it the diff range and the original acceptance criteria. Block on any HIGH-severity finding — loop back to the Developer with the findings.
+6. **Update ticket.** On a clean review, edit `tasks/<KEY>.json` to set `status: done`, append a summary comment, append commit SHAs to `linked_commits` and any PR URL to `linked_prs`, refresh `updated_at`, then regenerate `tasks/index.json`. Status transitions during the workflow (`todo → in_progress → in_review → done`, or `→ blocked`) follow the same write pattern.
+7. **Close out the session.** When the work is done, `end` the active bundle (writes its `summary.md`, appends the lifecycle entry, and clears the pointer's `active_session_id` to null); when you are pausing mid-flight, `pause` it instead so the next chat resumes via the RESUME-FIRST sequence. Both operations are described in `state/README.md`.
 
 ## Delegation Rules
 

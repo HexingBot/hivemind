@@ -195,6 +195,70 @@ describe('AC4 — reviewer.md: redundant spec flagging', () => {
 });
 
 // ===========================================================================
+// L8 (TASK-033) — drift guard: the three VERIFICATION_TIER enum sources agree
+// ===========================================================================
+// Three places independently declare the tier enum:
+//   1. tasks/schema.json  — the on-disk schema (ajv validates task files)
+//   2. src/task-store.js  — VERIFICATION_TIERS constant (runtime guard in createTask)
+//   3. src/mcp-server.js  — zod VERIFICATION_TIER enum (MCP tool input schema)
+//
+// If any one of the three drifts (e.g. someone adds "fast-follow" only to zod)
+// the accept/reject behavior diverges across doors while the suite stays green.
+// This fast-tier spec reads the committed source files and compares the sets.
+// ===========================================================================
+describe('L8 — TASK-033 drift guard: VERIFICATION_TIER enum is identical across all three sources', () => {
+  it('schema_json_task_store_and_mcp_server_declare_identical_tier_enums', () => {
+    // 1. tasks/schema.json enum
+    const schema = JSON.parse(loadFile('tasks/schema.json'));
+    const schemaEnum = schema.properties?.verification_tier?.enum;
+    expect(
+      Array.isArray(schemaEnum),
+      'tasks/schema.json must declare a verification_tier enum array',
+    ).toBe(true);
+
+    // 2. src/task-store.js VERIFICATION_TIERS constant
+    const taskStoreSrc = loadFile('src/task-store.js');
+    const tsMatch = taskStoreSrc.match(/const VERIFICATION_TIERS\s*=\s*\[([^\]]+)\]/);
+    expect(
+      tsMatch,
+      'src/task-store.js must declare `const VERIFICATION_TIERS = [...]`',
+    ).toBeTruthy();
+    const taskStoreTiers = tsMatch[1]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean)
+      .sort();
+
+    // 3. src/mcp-server.js zod VERIFICATION_TIER enum
+    const mcpSrc = loadFile('src/mcp-server.js');
+    const mcpMatch = mcpSrc.match(/const VERIFICATION_TIER\s*=\s*z\.enum\(\[([^\]]+)\]\)/);
+    expect(
+      mcpMatch,
+      'src/mcp-server.js must declare `const VERIFICATION_TIER = z.enum([...])`',
+    ).toBeTruthy();
+    const mcpTiers = mcpMatch[1]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean)
+      .sort();
+
+    const schemaSorted = [...schemaEnum].sort();
+
+    expect(
+      taskStoreTiers,
+      `src/task-store.js VERIFICATION_TIERS must equal tasks/schema.json enum.\n` +
+        `schema: ${JSON.stringify(schemaSorted)}\ntask-store: ${JSON.stringify(taskStoreTiers)}`,
+    ).toEqual(schemaSorted);
+
+    expect(
+      mcpTiers,
+      `src/mcp-server.js VERIFICATION_TIER must equal tasks/schema.json enum.\n` +
+        `schema: ${JSON.stringify(schemaSorted)}\nmcp-server: ${JSON.stringify(mcpTiers)}`,
+    ).toEqual(schemaSorted);
+  });
+});
+
+// ===========================================================================
 // Pinned-assertion collision report (for Orchestrator)
 // ===========================================================================
 // Pre-flight check results — existing specs that read CLAUDE.md:

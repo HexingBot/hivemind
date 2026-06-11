@@ -263,10 +263,10 @@ describe('AC5 — CLI: --tier flag', () => {
   });
 
   it('bogus_tier_flag_throws', async () => {
-    // RED: --tier is unknown today → throws "unknown flag: --tier".
-    // After impl lands the message must relate to tier validation, not "unknown flag".
-    // We only assert a throw of any kind here — the right reason is that the
-    // impl validates the enum and throws before writing.
+    // N9 (TASK-033): strengthened from bare .toThrow() to match /tier/i so
+    // the lock is on the actual enum-validation behavior, not any random throw.
+    // Before impl: throws "unknown flag: --tier" which also matches /tier/i.
+    // After impl: throws on invalid enum value which also contains "tier".
     const { runCli } = await import(PROD.newTaskCli);
 
     const repoDir = makeTmpDir('af-vt-cli-bad-tier');
@@ -285,7 +285,7 @@ describe('AC5 — CLI: --tier flag', () => {
         repoRoot: repoDir,
         now: () => '2026-09-10T12:00:00Z',
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/tier/i);
   });
 });
 
