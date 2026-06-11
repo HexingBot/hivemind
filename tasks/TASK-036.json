@@ -9,7 +9,7 @@
     "A CLI entry point re-applies the map from an edited PROJECT.md without re-running the wizard and without touching any non-frontmatter content",
     "CLAUDE.md's Per-Agent Model Assignment section updated to point at PROJECT.md as the canonical knob; dist rebuilt if bin/ or bundled src/ changed; full suite green (touches schema-adjacent parsing → test:all gate)"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "refinement",
@@ -21,10 +21,25 @@
   "depends_on": [
     "TASK-031"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "7de42c3",
+    "b1fb7c9",
+    "facda6c"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T21:45:32.130Z",
+      "body": "TIER ASSIGNMENT: verification_tier = tdd — PROJECT.md schema/round-trip parsing + surgical frontmatter rewriting are state-mutation/parsing logic per the rubric. GATE: scaled — NOT a test-infra ticket; developer must grep-derive the affected-e2e list (expect at minimum: project-md, project-schema, round-trip, init, intake-e2e, agent-models fast-tier, agents-parity) and run fast tier + that list; reviewer may veto. LOCKED DESIGN beyond the ticket description: (1) PROJECT.md frontmatter key `agent_models` as an inline-map-per-agent encoding consistent with existing frontmatter conventions (writer/reader live in src/project-md.js; schema in state/PROJECT.schema.json with additionalProperties:false on the map: only reviewer/developer/researcher keys). (2) Valid values: {sonnet, opus, haiku, fable, inherit} or full model ID matching /^claude-[a-z0-9-]+$/; reject unknown agents/values BEFORE any write. (3) The applier is a pure function in src/agent-generator.js (e.g. applyAgentModels({repoRoot, agentModels})) returning which files changed; bin entry = a flag on bin/init.js (--apply-models: reads PROJECT.md, applies, exits — no wizard); wizard question OPTIONAL with defaults prefilled (skipping writes no map). (4) Surgical edit guarantee: only the model: line inside the YAML frontmatter block may change (insert after description: when absent); every other byte preserved — encode as a byte-comparison test. (5) Dev-repo dual-write: when agents/ parity dir exists, applier updates both copies; user projects (no parity dir) update .claude/agents/ only."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T22:34:08.886Z",
+      "body": "CLOSED — final verdict APPROVE-WITH-FOLLOWUPS after one REQUEST-CHANGES loop. Commits: 7de42c3 (tests-first, 17 red), b1fb7c9 (impl), facda6c (review fixes). Suite 413 passed / 4 skipped; dist reproducible; claude plugin validate PASS. DELIVERED — the user-requested model-configuration knob: PROJECT.md `agent_models: {reviewer: ..., developer: ..., researcher: ...}` frontmatter map (schema-validated: aliases sonnet/opus/haiku/fable/inherit or ^claude-[a-z0-9-]+$ IDs; write-time + read-time + apply-time validation); optional wizard question accepting `agent=model` pairs with a validate hook naming every offender; `node bin/init.js --apply-models` re-applies after hand-editing PROJECT.md (no wizard, prompter provably never called, strict argv); applyAgentModels patches ONLY the frontmatter model: line via substring splice (mixed-EOL byte-preservation locked), dual-writes the parity dir when present, validates before any write, idempotent no-op on already-correct files. THE REVIEW LOOP EARNED ITS KEEP AGAIN: the reviewer found the wizard question was HOLLOW (answers discarded as Stack prose that then shadowed hand-added frontmatter maps forever) — a defect invisible to 405 green tests because only the skip path was specced; plus a test-helper weakening whose justification was factually wrong (while(true) re-prompt = hang, not guard) and a tautological byte-stability assertion. All fixed per orchestrator rulings, re-verified cold including live exercise of all four validation rejection categories. DEFERRED without follow-up ticket (long-tail pattern): direct fast-tier specs pinning the two new validation seams' messages (covered indirectly today); trailing-whitespace fence behavior delta; KNOWN_OPTIONAL_IDS manual sync (fails safe via throw)."
+    }
+  ],
   "created_at": "2026-06-11T16:47:42.346Z",
-  "updated_at": "2026-06-11T16:47:42.346Z",
+  "updated_at": "2026-06-11T22:34:19.192Z",
   "jira_key": null
 }
