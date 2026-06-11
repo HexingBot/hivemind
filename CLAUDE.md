@@ -43,15 +43,14 @@ The Orchestrator must follow this loop for every unit of work:
 3. **Research (if needed).** Spawn the `researcher` subagent for any unfamiliar library, API, or pattern. If the researcher discovers a new tech stack, it must produce an Agent Skill under `.claude/skills/<stack-name>/`.
 4. **Verify per tier.**
    - `tdd` — Spawn the `developer` subagent in TEST mode first: write failing tests that encode each acceptance criterion **before** any implementation code. No implementation lands without a preceding test commit. Then spawn IMPL mode to make the tests pass.
-   - `tests-after` — Spawn the `developer` subagent in a single IMPL phase: implement first, prove the behavior by running the code, then add a **minimal** set of regression locks before hand-off. No TEST-mode phase.
+   - `tests-after` — Spawn the `developer` subagent in a single IMPL phase: implement first, prove the behavior by running the code, then add a **minimal** set of regression locks before hand-off. No TEST-mode phase. When ACs describe human-observable behavior, also run the UAT step below after the regression locks land.
    - `uat-only` — Spawn the `developer` subagent in IMPL mode only; no new specs are written. After implementation, run the UAT step below.
-   - `tests-after` — When ACs describe human-observable behavior, also run the UAT step after the regression locks land.
 
    **UAT step** (mandatory for `uat-only`; mandatory for `tests-after` when ACs are human-observable):
    - Derive a short numbered script from the acceptance criteria — one or more "run/do X, expect Y" steps per AC so every AC is covered. Keep it terse: one line per step, no walls of evidence — show supporting evidence only when the human asks.
    - Present the script to the human. Collect a PASS or FAIL verdict per step, plus optional notes. The human may delegate any step's verification back to the Orchestrator; record such steps as PASS with a "verified by Orchestrator at the human's request" note instead of a bare PASS.
    - Record the outcome as a ticket comment: author `uat`, body listing each step with its expected result, observed result, and per-step verdict, plus an overall result.
-   - A `uat-only` ticket **cannot** transition to `done` without a `uat` comment whose steps cover every AC. A failed step sends the ticket back to the Developer.
+   - A `uat-only` ticket **cannot** transition to `done` without a `uat` comment whose steps cover every AC with all steps PASS. A failed step sends the ticket back to the Developer.
 5. **Implement.** The `developer` subagent writes code until the acceptance criteria are satisfied and existing tests still pass.
 6. **Review.** Spawn the `reviewer` subagent in a fresh context. It must use only read-only tools and verification scripts. Block the workflow on any HIGH-severity finding.
 7. **Update the ticket.** On a green review, transition the task's `status` to `done`, append a summary comment, append the commit SHAs to `linked_commits` and PR URL to `linked_prs`, refresh `updated_at`, and regenerate `tasks/index.json`. (After Jira migration, mirror the same updates via the Atlassian MCP server.)
@@ -77,7 +76,7 @@ The `verification_tier` field on a ticket controls how the Developer verifies it
 
 - `tdd` — source logic, state mutation, parsing, schema changes. Tests-first, unchanged from the original policy.
 - `tests-after` — behavior provable by running the code with low edge-risk. Implement first, then add a minimal set of regression locks.
-- `uat-only` — glue, config, docs, prototypes. No new specs; verified via conversational UAT (recorded-UAT mechanism lands with TASK-030).
+- `uat-only` — glue, config, docs, prototypes. No new specs; verified via conversational UAT (see the UAT step in Workflow step 4).
 
 Absent `verification_tier` defaults to `tdd` (backward-compatible).
 

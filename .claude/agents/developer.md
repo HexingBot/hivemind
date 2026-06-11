@@ -65,5 +65,5 @@ Return to the Orchestrator:
 - Commits created (SHAs and messages).
 - Test results (counts, failures, durations).
 - Lint/type-check results.
-- **Affected-e2e list**: name every e2e spec file that exercises code touched by this ticket; the Reviewer will independently assess its sufficiency and may expand it or escalate if under-scoped.
+- **Affected-e2e list**: name every e2e spec file that exercises code touched by this ticket; the Reviewer will independently assess its sufficiency and may expand it or escalate if under-scoped. Derive the list by grepping `tests/` and `tests/e2e/` for references to every touched file path — never from recollection; specs read doc and prompt files by path, so the import graph and your memory will both miss them.
 - Out-of-scope observations as a punch list.
