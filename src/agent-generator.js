@@ -269,24 +269,35 @@ export async function applyAgentModels({ repoRoot, agentModels }) {
   const changedFiles = [];
 
   for (const [agentName, modelValue] of Object.entries(agentModels)) {
-    const primaryPath = join(claudeAgentsDir, `${agentName}.md`);
-
-    if (!existsSync(primaryPath)) {
-      // Agent file not present — skip silently (user project may not have all agents).
-      continue;
+    const targets = [join(claudeAgentsDir, `${agentName}.md`)];
+    if (hasParityDir) {
+      targets.push(join(parityAgentsDir, `${agentName}.md`));
     }
 
-    const patched = patchAgentModelLine(primaryPath, modelValue);
-    await atomicWriteFile(primaryPath, patched);
-    changedFiles.push(primaryPath);
-
-    if (hasParityDir) {
-      const parityPath = join(parityAgentsDir, `${agentName}.md`);
-      if (existsSync(parityPath)) {
-        const patchedParity = patchAgentModelLine(parityPath, modelValue);
-        await atomicWriteFile(parityPath, patchedParity);
-        changedFiles.push(parityPath);
+    for (const targetPath of targets) {
+      if (!existsSync(targetPath)) {
+        // Agent file not present — skip silently (user project may not have
+        // all agents; the parity copy may not exist for every agent).
+        continue;
       }
+      const raw = readFileSync(targetPath, 'utf8');
+      const patched = patchAgentModelContent(raw, modelValue);
+      if (patched === null) {
+        // Missing or unterminated YAML frontmatter — skip with a warning, do
+        // NOT rewrite, do NOT report as changed (TASK-036 review ruling 3iii/4:
+        // never prepend frontmatter onto a file that has none).
+        // eslint-disable-next-line no-console
+        console.warn(
+          `applyAgentModels: skipping ${targetPath} — missing or unterminated YAML frontmatter`,
+        );
+        continue;
+      }
+      if (patched === raw) {
+        // model: already at the target value — nothing changed, nothing to report.
+        continue;
+      }
+      await atomicWriteFile(targetPath, patched);
+      changedFiles.push(targetPath);
     }
   }
 
@@ -294,52 +305,54 @@ export async function applyAgentModels({ repoRoot, agentModels }) {
 }
 
 /**
- * Read an agent .md file and return its content with the `model:` line updated
- * (or inserted after `description:` when absent). Every other byte is
- * preserved identically.
+ * Return `text` with ONLY the `model:` line inside the YAML frontmatter block
+ * updated (or inserted immediately after the `description:` line when absent;
+ * appended as the last frontmatter line when there is no description line).
+ * Every byte outside that single line — including mixed line endings anywhere
+ * in the file — is preserved verbatim: the patch is a targeted string splice
+ * on the frontmatter substring, never a split/rejoin of the whole file
+ * (TASK-036 review ruling 3i).
  *
- * @param {string} filePath - absolute path to the agent .md file
+ * Returns null when the file has no leading `---` fence or no closing fence
+ * (malformed frontmatter) — callers must skip such files without rewriting.
+ *
+ * @param {string} text - the raw file content
  * @param {string} modelValue - the model alias or full ID to write
- * @returns {string} the patched file content
+ * @returns {string|null} the patched content, or null to signal "skip"
  */
-function patchAgentModelLine(filePath, modelValue) {
-  const text = readFileSync(filePath, 'utf8');
-  const lines = text.split(/\r?\n/);
+function patchAgentModelContent(text, modelValue) {
+  // Opening fence must be the very first line.
+  const open = text.match(/^---(\r?\n)/);
+  if (!open) return null;
+  const fmStart = open[0].length;
 
-  // Locate the frontmatter block (must start on line 0).
-  if (lines[0].trim() !== '---') {
-    // No frontmatter — prepend a minimal one with just model:.
-    return `---\nmodel: ${modelValue}\n---\n${text}`;
-  }
+  // Closing fence: the first subsequent line that is exactly `---`.
+  const rest = text.slice(fmStart);
+  const close = rest.match(/(^|\r?\n)---(\r?\n|$)/);
+  if (!close) return null;
 
-  const closeFenceIdx = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
-  if (closeFenceIdx === -1) {
-    // Malformed frontmatter — append model: before any guessed close.
-    return text;
-  }
+  // inner = the frontmatter lines, each carrying its own original EOL bytes.
+  const innerEnd = fmStart + close.index + close[1].length;
+  const inner = text.slice(fmStart, innerEnd);
 
-  // Determine the line separator used in this file (preserve \r\n if present).
-  const lineSep = text.includes('\r\n') ? '\r\n' : '\n';
-
-  // Check if a model: line already exists inside the frontmatter.
-  const modelLineIdx = lines.findIndex(
-    (l, i) => i > 0 && i < closeFenceIdx && /^model:\s*/.test(l),
-  );
-
-  const newModelLine = `model: ${modelValue}`;
-
-  if (modelLineIdx !== -1) {
-    // Replace the existing model: line.
-    lines[modelLineIdx] = newModelLine;
+  let newInner;
+  const modelRe = /^model:[^\r\n]*/m;
+  if (modelRe.test(inner)) {
+    // Replace just the line's content; its EOL bytes are untouched.
+    newInner = inner.replace(modelRe, `model: ${modelValue}`);
   } else {
-    // Insert after the description: line (if present), otherwise after the
-    // last frontmatter line before the closing fence.
-    const descIdx = lines.findIndex(
-      (l, i) => i > 0 && i < closeFenceIdx && /^description:\s*/.test(l),
-    );
-    const insertAfter = descIdx !== -1 ? descIdx : closeFenceIdx - 1;
-    lines.splice(insertAfter + 1, 0, newModelLine);
+    const descMatch = inner.match(/^description:[^\r\n]*(\r?\n)/m);
+    if (descMatch) {
+      // Insert immediately after the description: line, reusing ITS EOL style.
+      const insertAt = descMatch.index + descMatch[0].length;
+      const eol = descMatch[1];
+      newInner = inner.slice(0, insertAt) + `model: ${modelValue}${eol}` + inner.slice(insertAt);
+    } else {
+      // No description line — append as the last frontmatter line, using the
+      // opening fence's EOL style.
+      newInner = inner + `model: ${modelValue}${open[1]}`;
+    }
   }
 
-  return lines.join(lineSep);
+  return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
 }

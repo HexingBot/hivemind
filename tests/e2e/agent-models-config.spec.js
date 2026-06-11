@@ -69,25 +69,36 @@ function readAgentFrontmatter(filePath) {
   return lines.slice(1, closeIdx).join('\n');
 }
 
-/** Return every byte of an agent .md except the YAML frontmatter block, so
- *  the surgical-edit test can diff only the non-frontmatter content. */
+/** Return every RAW byte of an agent .md after the YAML frontmatter block
+ *  (no split/rejoin, no EOL normalization) so the surgical-edit tests can
+ *  byte-diff the non-frontmatter content. */
 function readAgentBody(filePath) {
   const text = readFileSync(filePath, 'utf8');
-  const lines = text.split(/\r?\n/);
-  if (lines[0].trim() !== '---') return text;
-  const closeIdx = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
-  if (closeIdx === -1) return text;
-  return lines.slice(closeIdx + 1).join('\n');
+  const open = text.match(/^---\r?\n/);
+  if (!open) return text;
+  const rest = text.slice(open[0].length);
+  const close = rest.match(/(^|\r?\n)---(\r?\n|$)/);
+  if (!close) return text;
+  return rest.slice(close.index + close[0].length);
 }
 
-/** Snapshot every byte except the `model:` frontmatter line. Used to assert
- *  the surgical edit only changed that one line. */
+/** Snapshot every RAW byte except the `model:` line INSIDE the frontmatter
+ *  block. Anchored to the frontmatter only — a body line starting with
+ *  `model:` is ordinary content and is kept; no EOL normalization — the
+ *  removed line takes its own EOL bytes with it, everything else is returned
+ *  verbatim (TASK-036 review fix 3ii). */
 function bytesExceptModelLine(filePath) {
   const text = readFileSync(filePath, 'utf8');
-  return text
-    .split(/\r?\n/)
-    .filter((l) => !/^model:\s*/.test(l))
-    .join('\n');
+  const open = text.match(/^---\r?\n/);
+  if (!open) return text;
+  const fmStart = open[0].length;
+  const rest = text.slice(fmStart);
+  const close = rest.match(/(^|\r?\n)---(\r?\n|$)/);
+  if (!close) return text;
+  const innerEnd = fmStart + close.index + close[1].length;
+  const inner = text.slice(fmStart, innerEnd);
+  const newInner = inner.replace(/^model:[^\r\n]*\r?\n/m, '');
+  return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
 }
 
 /** A prompter that throws if invoked — proves the path never calls the wizard. */
@@ -353,6 +364,10 @@ describe('AC2 — applyAgentModels patches only the model: line', () => {
     const original = makeAgentMdNoModel('researcher', 'Body here.');
     writeFileSync(agentPath, original, 'utf8');
 
+    // Snapshot the body BEFORE the apply so the after-comparison is real
+    // (TASK-036 review fix 3ii — the old before/after was tautological).
+    const bodyBefore = readAgentBody(agentPath);
+
     await applyAgentModels({ repoRoot: repoDir, agentModels: { researcher: 'opus' } });
 
     const after = readFileSync(agentPath, 'utf8');
@@ -360,8 +375,13 @@ describe('AC2 — applyAgentModels patches only the model: line', () => {
     // model: line must appear now.
     expect(/^model:\s*opus\s*$/m.test(after)).toBe(true);
 
-    // Body must be preserved intact.
-    expect(readAgentBody(agentPath)).toBe(readAgentBody(agentPath));
+    // Insert position: the model: line must appear IMMEDIATELY after the
+    // description: line inside the frontmatter.
+    const fm = readAgentFrontmatter(agentPath);
+    expect(fm).toMatch(/^description: researcher agent for testing\.\nmodel: opus$/m);
+
+    // Body must be byte-identical to the pre-apply snapshot.
+    expect(readAgentBody(agentPath)).toBe(bodyBefore);
     expect(after).toContain('Body here.');
   });
 
@@ -429,9 +449,12 @@ describe('AC2 — applyAgentModels patches only the model: line', () => {
       agentModels: { developer: 'haiku', reviewer: 'opus' },
     });
 
-    // Must be an array of absolute paths (or at least relative paths) to the changed files.
+    // Must be an array containing the ACTUAL paths of the two patched files
+    // (TASK-036 review fix 4 — assert paths, not just a count).
     expect(Array.isArray(result), 'applyAgentModels must return an array').toBe(true);
-    expect(result.length).toBeGreaterThanOrEqual(2);
+    expect(result).toContain(join(agentsDir, 'developer.md'));
+    expect(result).toContain(join(agentsDir, 'reviewer.md'));
+    expect(result).toHaveLength(2);
   });
 
   it('apply_rejects_invalid_model_value_before_any_write', async () => {
@@ -640,5 +663,227 @@ describe('AC4 — wizard model-assignment question is optional with defaults', (
       out.answers.agent_models,
       'skipping the agent_models question must NOT write an agent_models key',
     ).toBeUndefined();
+  });
+});
+
+// ===========================================================================
+// TASK-036 review fixes — authorized additions.
+// ===========================================================================
+
+// AC4/AC1/AC3 end-to-end (review ruling 1c): an ANSWERED wizard question must
+// produce a real frontmatter map that --apply-models can consume.
+describe('review 1c — answered wizard path flows to frontmatter and applier', () => {
+  it('wizard_answer_becomes_frontmatter_map_and_applies', async () => {
+    const { runInit } = await import(PROD.init);
+    const { readProjectMd } = await import(PROD.projectMd);
+
+    const repoDir = makeTmpDir('af-am-answered');
+    const agentsDir = join(repoDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, 'developer.md'), makeAgentMd('developer', 'sonnet'), 'utf8');
+    writeFileSync(join(agentsDir, 'reviewer.md'), makeAgentMd('reviewer', 'fable'), 'utf8');
+
+    // Wizard run with a pair-syntax ANSWER for agent_models.
+    const prompter = makeScriptedPrompter(webSaasAnswers({
+      project_name: 'answered-path',
+      agent_models: 'reviewer=opus, developer=haiku',
+    }));
+    const r1 = await runInit({
+      argv: [],
+      prompter,
+      repoRoot: repoDir,
+      now: () => FIXED_NOW,
+    });
+    expect(r1.state).toBe('created');
+
+    // The answer was parsed into an OBJECT and written as a frontmatter map.
+    const out = await readProjectMd({ repoRoot: repoDir });
+    expect(out.answers.agent_models).toEqual({ reviewer: 'opus', developer: 'haiku' });
+
+    const projectMdText = readFileSync(join(repoDir, 'PROJECT.md'), 'utf8');
+    expect(projectMdText).toMatch(/^agent_models: \{.+\}$/m);
+    // Never emitted as a Stack bullet (review ruling 1b).
+    expect(projectMdText).not.toMatch(/^- agent_models:/m);
+
+    // --apply-models consumes the map end-to-end (no wizard).
+    const r2 = await runInit({
+      argv: ['--apply-models'],
+      prompter: throwIfCalled(),
+      repoRoot: repoDir,
+      now: () => FIXED_NOW,
+    });
+    expect(r2.state).toBe('applied_models');
+
+    expect(/^model:\s*haiku\s*$/m.test(
+      readAgentFrontmatter(join(agentsDir, 'developer.md')),
+    )).toBe(true);
+    expect(/^model:\s*opus\s*$/m.test(
+      readAgentFrontmatter(join(agentsDir, 'reviewer.md')),
+    )).toBe(true);
+  });
+});
+
+// Review ruling 1b: a stale `- agent_models: ...` Stack bullet (leftover from
+// a pre-fix write) must NEVER clobber the frontmatter map on read.
+describe('review 1b — frontmatter map wins over a stale Stack line', () => {
+  it('frontmatter_agent_models_survives_stale_stack_bullet', async () => {
+    const { readProjectMd } = await import(PROD.projectMd);
+
+    const repoDir = makeTmpDir('af-am-precedence');
+    const text = [
+      '---',
+      'name: precedence-demo',
+      'type: other',
+      `created_at: ${FIXED_NOW}`,
+      'schema_version: 1',
+      'agent_models: {reviewer: opus}',
+      '---',
+      '',
+      '# precedence-demo',
+      '',
+      '## Stack',
+      '- agent_models: value-for-agent_models',
+      '- database: postgres',
+      '',
+    ].join('\n');
+    writeFileSync(join(repoDir, 'PROJECT.md'), text, 'utf8');
+
+    const out = await readProjectMd({ repoRoot: repoDir });
+    // The frontmatter map is authoritative; the stale Stack prose is ignored.
+    expect(out.answers.agent_models).toEqual({ reviewer: 'opus' });
+    // Other Stack keys still parse normally.
+    expect(out.answers.database).toBe('postgres');
+  });
+
+  it('inline_map_pair_without_colon_throws_on_read', async () => {
+    // Review ruling 4 — a no-colon pair must throw loudly (parseFrontmatter
+    // strictness), never drop silently.
+    const { readProjectMd } = await import(PROD.projectMd);
+
+    const repoDir = makeTmpDir('af-am-nocolon');
+    const text = [
+      '---',
+      'name: nocolon-demo',
+      'type: other',
+      `created_at: ${FIXED_NOW}`,
+      'schema_version: 1',
+      'agent_models: {reviewer fable}',
+      '---',
+      '',
+      '# nocolon-demo',
+      '',
+    ].join('\n');
+    writeFileSync(join(repoDir, 'PROJECT.md'), text, 'utf8');
+
+    await expect(readProjectMd({ repoRoot: repoDir })).rejects.toThrow(/agent_models.*colon/i);
+  });
+});
+
+// Review rulings 3iii + 4: malformed / missing frontmatter → skip with a
+// warning, never rewrite, never report as changed.
+describe('review 3iii — applier skips malformed agent files untouched', () => {
+  it('apply_skips_file_with_unterminated_frontmatter', async () => {
+    const { applyAgentModels } = await import(PROD.agentGenerator);
+
+    const repoDir = makeTmpDir('af-am-nofence');
+    const agentsDir = join(repoDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+
+    // Opening fence but NO closing fence.
+    const content = '---\nname: developer\ndescription: developer agent for testing.\nmodel: sonnet\n';
+    const agentPath = join(agentsDir, 'developer.md');
+    writeFileSync(agentPath, content, 'utf8');
+
+    const result = await applyAgentModels({
+      repoRoot: repoDir,
+      agentModels: { developer: 'haiku' },
+    });
+
+    // Not rewritten, not reported as changed.
+    expect(result).toEqual([]);
+    expect(readFileSync(agentPath, 'utf8')).toBe(content);
+  });
+
+  it('apply_skips_file_without_frontmatter', async () => {
+    const { applyAgentModels } = await import(PROD.agentGenerator);
+
+    const repoDir = makeTmpDir('af-am-nofm');
+    const agentsDir = join(repoDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+
+    // No frontmatter at all — must NOT have one prepended.
+    const content = '# developer\n\nNo frontmatter here.\n';
+    const agentPath = join(agentsDir, 'developer.md');
+    writeFileSync(agentPath, content, 'utf8');
+
+    const result = await applyAgentModels({
+      repoRoot: repoDir,
+      agentModels: { developer: 'haiku' },
+    });
+
+    expect(result).toEqual([]);
+    expect(readFileSync(agentPath, 'utf8')).toBe(content);
+  });
+});
+
+// Review ruling 3i: the patch is a targeted splice — mixed line endings
+// anywhere in the file must survive byte-for-byte.
+describe('review 3i — applier preserves mixed line endings', () => {
+  it('apply_preserves_mixed_crlf_frontmatter_and_lf_body', async () => {
+    const { applyAgentModels } = await import(PROD.agentGenerator);
+
+    const repoDir = makeTmpDir('af-am-mixedeol');
+    const agentsDir = join(repoDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+
+    // CRLF frontmatter, LF body — a whole-file split/rejoin would normalize one
+    // of the two; the targeted splice must keep both.
+    const content =
+      '---\r\nname: developer\r\ndescription: developer agent for testing.\r\nmodel: sonnet\r\n---\n' +
+      '\n# developer\nBody line one.\nBody line two.\n';
+    const agentPath = join(agentsDir, 'developer.md');
+    writeFileSync(agentPath, content, 'utf8');
+
+    const beforeExceptModel = bytesExceptModelLine(agentPath);
+
+    await applyAgentModels({ repoRoot: repoDir, agentModels: { developer: 'haiku' } });
+
+    const after = readFileSync(agentPath, 'utf8');
+    // The model line was updated and kept ITS original CRLF ending.
+    expect(after).toContain('model: haiku\r\n');
+    // Every other byte — CRLF frontmatter AND LF body — is identical.
+    expect(bytesExceptModelLine(agentPath)).toBe(beforeExceptModel);
+  });
+});
+
+// Review ruling 4: --apply-models is a standalone mode; combining it with the
+// wizard mutators must throw (strict argv discipline).
+describe('review 4 — --apply-models flag combinations throw', () => {
+  it('apply_models_with_force_throws', async () => {
+    const { runInit } = await import(PROD.init);
+    const repoDir = makeTmpDir('af-am-comboforce');
+
+    await expect(
+      runInit({
+        argv: ['--apply-models', '--force'],
+        prompter: throwIfCalled(),
+        repoRoot: repoDir,
+        now: () => FIXED_NOW,
+      }),
+    ).rejects.toThrow(/--apply-models/);
+  });
+
+  it('apply_models_with_answers_file_throws', async () => {
+    const { runInit } = await import(PROD.init);
+    const repoDir = makeTmpDir('af-am-comboanswers');
+
+    await expect(
+      runInit({
+        argv: ['--apply-models', '--answers-file', 'answers.json'],
+        prompter: throwIfCalled(),
+        repoRoot: repoDir,
+        now: () => FIXED_NOW,
+      }),
+    ).rejects.toThrow(/--apply-models/);
   });
 });

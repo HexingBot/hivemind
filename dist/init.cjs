@@ -8220,13 +8220,61 @@ var COMMON_QUESTIONS = Object.freeze([
   // TASK-036 — optional per-agent model overrides. `required: false` allows
   // the user to skip by pressing Enter; skipping writes NO agent_models key to
   // PROJECT.md. Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.
+  // A non-empty answer must be comma/space-separated agent=model pairs; the
+  // validate hook rejects malformed pairs, unknown agents, and invalid model
+  // values with an error naming the offender (the engine re-prompts).
   {
     id: "agent_models",
     type: "string",
     required: false,
-    prompt: "Per-agent model overrides (optional, e.g. reviewer=opus developer=haiku).\nDefaults: reviewer=fable, developer=sonnet, researcher=sonnet.\nPress Enter to keep defaults (writes no agent_models key)"
+    prompt: "Per-agent model overrides (optional, e.g. reviewer=opus developer=haiku).\nDefaults: reviewer=fable, developer=sonnet, researcher=sonnet.\nPress Enter to keep defaults (writes no agent_models key)",
+    validate(value) {
+      if (typeof value !== "string" || value.trim().length === 0) return null;
+      try {
+        parseAgentModelsAnswer(value);
+        return null;
+      } catch (err) {
+        return err.message;
+      }
+    }
   }
 ]);
+var AGENT_MODEL_ALIASES = /* @__PURE__ */ new Set(["sonnet", "opus", "haiku", "fable", "inherit"]);
+var AGENT_MODEL_FULL_ID_RE = /^claude-[a-z0-9-]+$/;
+var AGENT_MODEL_AGENTS = /* @__PURE__ */ new Set(["reviewer", "developer", "researcher"]);
+function parseAgentModelsAnswer(raw) {
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  if (trimmed.length === 0) {
+    throw new Error("agent_models answer is empty \u2014 nothing to parse");
+  }
+  const out = {};
+  const tokens = trimmed.split(/[\s,]+/).filter((t) => t.length > 0);
+  for (const token of tokens) {
+    const eq = token.indexOf("=");
+    if (eq === -1) {
+      throw new Error(
+        `malformed agent=model pair "${token}" \u2014 expected e.g. reviewer=opus`
+      );
+    }
+    const agent = token.slice(0, eq).trim();
+    const model = token.slice(eq + 1).trim();
+    if (!AGENT_MODEL_AGENTS.has(agent)) {
+      throw new Error(
+        `unknown agent name "${agent}" \u2014 valid agents: ${[...AGENT_MODEL_AGENTS].join(", ")}`
+      );
+    }
+    if (!AGENT_MODEL_ALIASES.has(model) && !AGENT_MODEL_FULL_ID_RE.test(model)) {
+      throw new Error(
+        `invalid model value "${model}" for agent "${agent}" \u2014 must be one of ${[...AGENT_MODEL_ALIASES].join(", ")} or a full model ID matching /^claude-[a-z0-9-]+$/`
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(out, agent)) {
+      throw new Error(`duplicate agent "${agent}" in agent_models answer`);
+    }
+    out[agent] = model;
+  }
+  return out;
+}
 function whenType(type) {
   return (a) => a.project_type === type;
 }
@@ -8449,12 +8497,35 @@ var BODY_SECTIONS = [
 ];
 var FRONTMATTER_IDS = /* @__PURE__ */ new Set(["project_name", "project_type"]);
 var SPECIAL_FRONTMATTER_IDS = /* @__PURE__ */ new Set(["agent_models"]);
+var MODEL_ALIASES = /* @__PURE__ */ new Set(["sonnet", "opus", "haiku", "fable", "inherit"]);
+var FULL_MODEL_ID_RE = /^claude-[a-z0-9-]+$/;
+var VALID_AGENT_NAMES = /* @__PURE__ */ new Set(["reviewer", "developer", "researcher"]);
 async function writeProjectMd({ repoRoot, answers, now = () => (/* @__PURE__ */ new Date()).toISOString() }) {
   const requiredFrontmatterAnswers = ["project_name", "project_type"];
   for (const id of requiredFrontmatterAnswers) {
     const v = answers ? answers[id] : void 0;
     if (v === void 0 || v === null || v === "") {
       throw new Error(`writeProjectMd: missing required answer: ${id}`);
+    }
+  }
+  const am = answers ? answers.agent_models : void 0;
+  if (am !== void 0 && am !== null) {
+    if (typeof am !== "object" || Array.isArray(am)) {
+      throw new Error(
+        `writeProjectMd: agent_models must be an object map of agent \u2192 model (got ${typeof am})`
+      );
+    }
+    for (const [agent, model] of Object.entries(am)) {
+      if (!VALID_AGENT_NAMES.has(agent)) {
+        throw new Error(
+          `writeProjectMd: invalid agent_models key "${agent}" \u2014 valid agents: ${[...VALID_AGENT_NAMES].join(", ")}`
+        );
+      }
+      if (typeof model !== "string" || !MODEL_ALIASES.has(model) && !FULL_MODEL_ID_RE.test(model)) {
+        throw new Error(
+          `writeProjectMd: invalid agent_models value "${model}" for agent "${agent}" \u2014 must be one of ${[...MODEL_ALIASES].join(", ")} or match /^claude-[a-z0-9-]+$/`
+        );
+      }
     }
   }
   const target = (0, import_node_path5.join)(repoRoot, PROJECT_MD);
@@ -8501,10 +8572,9 @@ function renderProjectMd(answers, createdAt) {
     }
     out.push("");
   }
-  const agentModelsInFrontmatter = answers.agent_models !== null && answers.agent_models !== void 0 && typeof answers.agent_models === "object" && Object.keys(answers.agent_models).length > 0;
   const consumed = /* @__PURE__ */ new Set([
     ...FRONTMATTER_IDS,
-    ...agentModelsInFrontmatter ? SPECIAL_FRONTMATTER_IDS : [],
+    ...SPECIAL_FRONTMATTER_IDS,
     ...BODY_SECTIONS.map((s) => s.id)
   ]);
   const stackKeys = Object.keys(answers).filter(
@@ -8619,6 +8689,7 @@ function parseProjectMd(text) {
       const m = line.match(/^-\s+([^:]+):\s*(.*)$/);
       if (!m) continue;
       const key = m[1].trim();
+      if (SPECIAL_FRONTMATTER_IDS.has(key)) continue;
       const rawValue = m[2].trim();
       answers[key] = parseStackValue(rawValue);
     }
@@ -8664,7 +8735,11 @@ function coerceFrontmatterScalar(raw, fieldName) {
     const result = {};
     for (const pair of inner.split(",")) {
       const colonIdx = pair.indexOf(":");
-      if (colonIdx === -1) continue;
+      if (colonIdx === -1) {
+        throw new Error(
+          `PROJECT.md frontmatter agent_models entry ${JSON.stringify(pair.trim())} is missing a colon \u2014 expected the form {agent: model, ...}`
+        );
+      }
       const k = pair.slice(0, colonIdx).trim();
       const v = pair.slice(colonIdx + 1).trim();
       if (k.length > 0 && v.length > 0) result[k] = v;
@@ -8873,52 +8948,55 @@ async function applyAgentModels({ repoRoot, agentModels }) {
   const hasParityDir = (0, import_node_fs8.existsSync)(parityAgentsDir);
   const changedFiles = [];
   for (const [agentName, modelValue] of Object.entries(agentModels)) {
-    const primaryPath = (0, import_node_path6.join)(claudeAgentsDir, `${agentName}.md`);
-    if (!(0, import_node_fs8.existsSync)(primaryPath)) {
-      continue;
-    }
-    const patched = patchAgentModelLine(primaryPath, modelValue);
-    await atomicWriteFile(primaryPath, patched);
-    changedFiles.push(primaryPath);
+    const targets = [(0, import_node_path6.join)(claudeAgentsDir, `${agentName}.md`)];
     if (hasParityDir) {
-      const parityPath = (0, import_node_path6.join)(parityAgentsDir, `${agentName}.md`);
-      if ((0, import_node_fs8.existsSync)(parityPath)) {
-        const patchedParity = patchAgentModelLine(parityPath, modelValue);
-        await atomicWriteFile(parityPath, patchedParity);
-        changedFiles.push(parityPath);
+      targets.push((0, import_node_path6.join)(parityAgentsDir, `${agentName}.md`));
+    }
+    for (const targetPath of targets) {
+      if (!(0, import_node_fs8.existsSync)(targetPath)) {
+        continue;
       }
+      const raw = (0, import_node_fs8.readFileSync)(targetPath, "utf8");
+      const patched = patchAgentModelContent(raw, modelValue);
+      if (patched === null) {
+        console.warn(
+          `applyAgentModels: skipping ${targetPath} \u2014 missing or unterminated YAML frontmatter`
+        );
+        continue;
+      }
+      if (patched === raw) {
+        continue;
+      }
+      await atomicWriteFile(targetPath, patched);
+      changedFiles.push(targetPath);
     }
   }
   return changedFiles;
 }
-function patchAgentModelLine(filePath, modelValue) {
-  const text = (0, import_node_fs8.readFileSync)(filePath, "utf8");
-  const lines = text.split(/\r?\n/);
-  if (lines[0].trim() !== "---") {
-    return `---
-model: ${modelValue}
----
-${text}`;
-  }
-  const closeFenceIdx = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
-  if (closeFenceIdx === -1) {
-    return text;
-  }
-  const lineSep = text.includes("\r\n") ? "\r\n" : "\n";
-  const modelLineIdx = lines.findIndex(
-    (l, i) => i > 0 && i < closeFenceIdx && /^model:\s*/.test(l)
-  );
-  const newModelLine = `model: ${modelValue}`;
-  if (modelLineIdx !== -1) {
-    lines[modelLineIdx] = newModelLine;
+function patchAgentModelContent(text, modelValue) {
+  const open = text.match(/^---(\r?\n)/);
+  if (!open) return null;
+  const fmStart = open[0].length;
+  const rest = text.slice(fmStart);
+  const close = rest.match(/(^|\r?\n)---(\r?\n|$)/);
+  if (!close) return null;
+  const innerEnd = fmStart + close.index + close[1].length;
+  const inner = text.slice(fmStart, innerEnd);
+  let newInner;
+  const modelRe = /^model:[^\r\n]*/m;
+  if (modelRe.test(inner)) {
+    newInner = inner.replace(modelRe, `model: ${modelValue}`);
   } else {
-    const descIdx = lines.findIndex(
-      (l, i) => i > 0 && i < closeFenceIdx && /^description:\s*/.test(l)
-    );
-    const insertAfter = descIdx !== -1 ? descIdx : closeFenceIdx - 1;
-    lines.splice(insertAfter + 1, 0, newModelLine);
+    const descMatch = inner.match(/^description:[^\r\n]*(\r?\n)/m);
+    if (descMatch) {
+      const insertAt = descMatch.index + descMatch[0].length;
+      const eol = descMatch[1];
+      newInner = inner.slice(0, insertAt) + `model: ${modelValue}${eol}` + inner.slice(insertAt);
+    } else {
+      newInner = inner + `model: ${modelValue}${open[1]}`;
+    }
   }
-  return lines.join(lineSep);
+  return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
 }
 
 // src/backlog-seeder.js
@@ -9744,6 +9822,9 @@ function parseArgs(argv) {
       i += 1;
     }
   }
+  if (out.applyModels && (out.force || out.answersFile !== null)) {
+    throw new Error("--apply-models cannot be combined with --force or --answers-file");
+  }
   return out;
 }
 function countFrameworkHistory(repoRoot) {
@@ -9809,6 +9890,21 @@ function validateSuppliedAnswers(answers) {
     );
   }
 }
+function normalizeAgentModelsAnswer(answers) {
+  if (!answers || !Object.prototype.hasOwnProperty.call(answers, "agent_models")) {
+    return answers;
+  }
+  const v = answers.agent_models;
+  if (v === null || v === void 0 || typeof v === "string" && v.trim().length === 0) {
+    const out = { ...answers };
+    delete out.agent_models;
+    return out;
+  }
+  if (typeof v === "string") {
+    return { ...answers, agent_models: parseAgentModelsAnswer(v) };
+  }
+  return answers;
+}
 async function runWizardAndWriteProjectMd({
   repoRoot,
   sessionId,
@@ -9828,6 +9924,7 @@ async function runWizardAndWriteProjectMd({
       now
     }));
   }
+  answers = normalizeAgentModelsAnswer(answers);
   await writeProjectMd({ repoRoot, answers, now });
   await generateProjectContext({ repoRoot, answers, now });
   try {

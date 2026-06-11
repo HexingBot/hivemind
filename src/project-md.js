@@ -79,11 +79,9 @@ const FRONTMATTER_IDS = new Set(['project_name', 'project_type']);
 
 // Keys that receive dedicated lossless encoding in the frontmatter rather than
 // being written into the Stack body section. They are excluded from the Stack
-// key loop AND handled specially in both renderProjectMd and parseProjectMd.
-// Note: agent_models is only excluded from Stack when it is an object; when it
-// is a string (wizard free-form answer) it falls through to the Stack section
-// so the round-trip is lossless. The exclusion is therefore conditional — see
-// the consumed-key logic in renderProjectMd below.
+// key loop UNCONDITIONALLY (TASK-036 review ruling 1b: agent_models is NEVER
+// emitted to or parsed from the Stack section — frontmatter is its only home,
+// so a stale Stack line can never shadow a frontmatter map).
 const SPECIAL_FRONTMATTER_IDS = new Set(['agent_models']);
 
 // Valid model aliases and pattern for full model IDs (mirrors PROJECT.schema.json).
@@ -113,6 +111,37 @@ export async function writeProjectMd({ repoRoot, answers, now = () => new Date()
     const v = answers ? answers[id] : undefined;
     if (v === undefined || v === null || v === '') {
       throw new Error(`writeProjectMd: missing required answer: ${id}`);
+    }
+  }
+
+  // TASK-036 — write-time validation of the agent_models map (AC1): reject an
+  // invalid shape, unknown agent names, or invalid model values BEFORE any
+  // disk write, naming the offender. null means "wizard question skipped" and
+  // is tolerated (no key is written); a string is rejected — callers
+  // (bin/init.js) must parse the wizard pair-syntax into an object first.
+  const am = answers ? answers.agent_models : undefined;
+  if (am !== undefined && am !== null) {
+    if (typeof am !== 'object' || Array.isArray(am)) {
+      throw new Error(
+        `writeProjectMd: agent_models must be an object map of agent → model (got ${typeof am})`,
+      );
+    }
+    for (const [agent, model] of Object.entries(am)) {
+      if (!VALID_AGENT_NAMES.has(agent)) {
+        throw new Error(
+          `writeProjectMd: invalid agent_models key "${agent}" — ` +
+          `valid agents: ${[...VALID_AGENT_NAMES].join(', ')}`,
+        );
+      }
+      if (
+        typeof model !== 'string' ||
+        (!MODEL_ALIASES.has(model) && !FULL_MODEL_ID_RE.test(model))
+      ) {
+        throw new Error(
+          `writeProjectMd: invalid agent_models value "${model}" for agent "${agent}" — ` +
+          `must be one of ${[...MODEL_ALIASES].join(', ')} or match /^claude-[a-z0-9-]+$/`,
+        );
+      }
     }
   }
 
@@ -191,21 +220,12 @@ function renderProjectMd(answers, createdAt) {
     out.push('');
   }
 
-  // Stack: every answer key not consumed above.
-  // agent_models is excluded from Stack only when it was written to the
-  // frontmatter as an inline-object map. When it is a string (wizard
-  // free-form answer), it falls through to Stack so the round-trip is
-  // lossless for that form (TASK-036). Null (skipped question) is also
-  // excluded (null values must not produce a stack entry at all — see the
-  // null-guard in the stack-emit loop below).
-  const agentModelsInFrontmatter =
-    answers.agent_models !== null &&
-    answers.agent_models !== undefined &&
-    typeof answers.agent_models === 'object' &&
-    Object.keys(answers.agent_models).length > 0;
+  // Stack: every answer key not consumed above. agent_models is consumed
+  // UNCONDITIONALLY (TASK-036 review ruling 1b) — frontmatter is its only
+  // home; it must never appear as a Stack bullet in any form.
   const consumed = new Set([
     ...FRONTMATTER_IDS,
-    ...(agentModelsInFrontmatter ? SPECIAL_FRONTMATTER_IDS : []),
+    ...SPECIAL_FRONTMATTER_IDS,
     ...BODY_SECTIONS.map((s) => s.id),
   ]);
   // Also exclude keys with null/undefined values from the Stack section —
@@ -369,6 +389,10 @@ function parseProjectMd(text) {
       const m = line.match(/^-\s+([^:]+):\s*(.*)$/);
       if (!m) continue;
       const key = m[1].trim();
+      // TASK-036 review ruling 1b — agent_models is NEVER parsed from Stack:
+      // frontmatter is its only home. A stale Stack bullet (e.g. leftover
+      // prose from a pre-fix write) must not clobber the frontmatter map.
+      if (SPECIAL_FRONTMATTER_IDS.has(key)) continue;
       const rawValue = m[2].trim();
       answers[key] = parseStackValue(rawValue);
     }
@@ -435,13 +459,20 @@ function coerceFrontmatterScalar(raw, fieldName) {
   // TASK-036 — Inline object map: {key: value, key: value} used exclusively
   // for the agent_models frontmatter key. Parsing is simple (values are
   // identifiers/model-IDs with no commas or braces), so a naive split is safe.
+  // A pair without a colon throws loudly (matching parseFrontmatter's
+  // strictness) rather than dropping silently.
   if (fieldName === 'agent_models' && raw.startsWith('{') && raw.endsWith('}')) {
     const inner = raw.slice(1, -1).trim();
     if (inner.length === 0) return {};
     const result = {};
     for (const pair of inner.split(',')) {
       const colonIdx = pair.indexOf(':');
-      if (colonIdx === -1) continue;
+      if (colonIdx === -1) {
+        throw new Error(
+          `PROJECT.md frontmatter agent_models entry ${JSON.stringify(pair.trim())} ` +
+          'is missing a colon — expected the form {agent: model, ...}',
+        );
+      }
       const k = pair.slice(0, colonIdx).trim();
       const v = pair.slice(colonIdx + 1).trim();
       if (k.length > 0 && v.length > 0) result[k] = v;

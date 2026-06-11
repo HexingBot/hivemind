@@ -73,6 +73,9 @@ export const COMMON_QUESTIONS = Object.freeze([
   // TASK-036 — optional per-agent model overrides. `required: false` allows
   // the user to skip by pressing Enter; skipping writes NO agent_models key to
   // PROJECT.md. Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.
+  // A non-empty answer must be comma/space-separated agent=model pairs; the
+  // validate hook rejects malformed pairs, unknown agents, and invalid model
+  // values with an error naming the offender (the engine re-prompts).
   {
     id: 'agent_models',
     type: 'string',
@@ -81,8 +84,73 @@ export const COMMON_QUESTIONS = Object.freeze([
       'Per-agent model overrides (optional, e.g. reviewer=opus developer=haiku).\n' +
       'Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.\n' +
       'Press Enter to keep defaults (writes no agent_models key)',
+    validate(value) {
+      // The engine only calls this for non-empty input (required:false empty
+      // short-circuits to a skip before the hook). Defensive empty check anyway.
+      if (typeof value !== 'string' || value.trim().length === 0) return null;
+      try {
+        parseAgentModelsAnswer(value);
+        return null; // valid
+      } catch (err) {
+        return err.message;
+      }
+    },
   },
 ]);
+
+// ---------------------------------------------------------------------------
+// TASK-036 — agent_models pair-syntax parsing + validation. Shared between the
+// wizard question's validate hook above and bin/init.js's answer
+// normalization (string answer → object map before writeProjectMd).
+// ---------------------------------------------------------------------------
+
+const AGENT_MODEL_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'fable', 'inherit']);
+const AGENT_MODEL_FULL_ID_RE = /^claude-[a-z0-9-]+$/;
+const AGENT_MODEL_AGENTS = new Set(['reviewer', 'developer', 'researcher']);
+
+/**
+ * Parse a comma/space-separated list of agent=model pairs (the wizard answer
+ * format, e.g. "reviewer=opus, developer=haiku") into an object map.
+ * Throws with an error naming the offender on: a token without '=', an
+ * unknown agent name, an invalid model value, or a duplicate agent.
+ *
+ * @param {string} raw - the wizard answer string (non-empty after trim)
+ * @returns {Record<string, string>} agent → model map
+ */
+export function parseAgentModelsAnswer(raw) {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (trimmed.length === 0) {
+    throw new Error('agent_models answer is empty — nothing to parse');
+  }
+  const out = {};
+  const tokens = trimmed.split(/[\s,]+/).filter((t) => t.length > 0);
+  for (const token of tokens) {
+    const eq = token.indexOf('=');
+    if (eq === -1) {
+      throw new Error(
+        `malformed agent=model pair "${token}" — expected e.g. reviewer=opus`,
+      );
+    }
+    const agent = token.slice(0, eq).trim();
+    const model = token.slice(eq + 1).trim();
+    if (!AGENT_MODEL_AGENTS.has(agent)) {
+      throw new Error(
+        `unknown agent name "${agent}" — valid agents: ${[...AGENT_MODEL_AGENTS].join(', ')}`,
+      );
+    }
+    if (!AGENT_MODEL_ALIASES.has(model) && !AGENT_MODEL_FULL_ID_RE.test(model)) {
+      throw new Error(
+        `invalid model value "${model}" for agent "${agent}" — must be one of ` +
+        `${[...AGENT_MODEL_ALIASES].join(', ')} or a full model ID matching /^claude-[a-z0-9-]+$/`,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(out, agent)) {
+      throw new Error(`duplicate agent "${agent}" in agent_models answer`);
+    }
+    out[agent] = model;
+  }
+  return out;
+}
 
 // Helper that builds a `when` predicate matching exactly one project_type.
 // Each predicate is a fresh function instance — required by tests asserting

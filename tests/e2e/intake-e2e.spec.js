@@ -63,6 +63,12 @@ describe('intake — end-to-end for web-saas', () => {
         scriptedAnswers.push(choices[0]);
       } else if (q.type === 'number') {
         scriptedAnswers.push('1');
+      } else if (q.id === 'agent_models') {
+        // TASK-036 — optional pair-syntax question whose validate hook rejects
+        // free-form sentinels; empty input skips it so the round-trip
+        // comparison covers exactly the answered intake set. (The answered
+        // path is covered end-to-end in tests/e2e/agent-models-config.spec.js.)
+        scriptedAnswers.push('');
       } else {
         // string — answer with a sentinel so we can also round-trip-assert.
         scriptedAnswers.push(`value-for-${q.id}`);
@@ -78,6 +84,11 @@ describe('intake — end-to-end for web-saas', () => {
     });
 
     expect(answers.project_type).toBe('web-saas');
+
+    // TASK-036 — the engine stores a skipped optional question as null;
+    // writeProjectMd writes no key for it and readProjectMd restores nothing,
+    // so drop it from the round-trip expectation (absent stays absent).
+    if (answers.agent_models === null) delete answers.agent_models;
 
     // Persist → re-read.
     const repoDir = makeTmpDir('af-intake-e2e');

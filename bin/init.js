@@ -32,7 +32,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { startSession } from '../src/lifecycle.js';
 import { readPointer } from '../src/pointer.js';
 import { runQuestionnaire } from '../src/question-engine.js';
-import { buildIntakeQuestions } from '../src/question-library.js';
+import { buildIntakeQuestions, parseAgentModelsAnswer } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
 import { generateProjectContext, applyAgentModels } from '../src/agent-generator.js';
 import { seedBacklog } from '../src/backlog-seeder.js';
@@ -94,6 +94,12 @@ function parseArgs(argv) {
       out.answersFile = value;
       i += 1; // consume the path token
     }
+  }
+  // TASK-036 — strict argv discipline: --apply-models is a standalone mode
+  // (read PROJECT.md, patch frontmatter, exit); combining it with the wizard
+  // mutators is a contradiction and must fail loudly rather than guess.
+  if (out.applyModels && (out.force || out.answersFile !== null)) {
+    throw new Error('--apply-models cannot be combined with --force or --answers-file');
   }
   return out;
 }
@@ -207,6 +213,34 @@ function validateSuppliedAnswers(answers) {
 }
 
 /**
+ * TASK-036 — normalize the agent_models intake answer to the shape
+ * writeProjectMd expects:
+ *   - null / undefined / empty string (question skipped) → key removed
+ *     entirely, so no agent_models frontmatter line is ever written.
+ *   - pair-syntax string ("reviewer=opus, developer=haiku") → parsed into an
+ *     object map (parseAgentModelsAnswer throws on malformed input, which the
+ *     wizard's validate hook has already screened on the interactive path;
+ *     the --answers-file path surfaces the same loud error here).
+ *   - object → passed through untouched (writeProjectMd validates it).
+ * Never mutates the caller's object.
+ */
+function normalizeAgentModelsAnswer(answers) {
+  if (!answers || !Object.prototype.hasOwnProperty.call(answers, 'agent_models')) {
+    return answers;
+  }
+  const v = answers.agent_models;
+  if (v === null || v === undefined || (typeof v === 'string' && v.trim().length === 0)) {
+    const out = { ...answers };
+    delete out.agent_models;
+    return out;
+  }
+  if (typeof v === 'string') {
+    return { ...answers, agent_models: parseAgentModelsAnswer(v) };
+  }
+  return answers;
+}
+
+/**
  * Materialize PROJECT.md (+ project-context + seeded backlog) from a set of
  * intake answers. Answers come from one of two sources:
  *   - interactive: runQuestionnaire drives `prompter`, persisting into the
@@ -236,6 +270,11 @@ async function runWizardAndWriteProjectMd({
       now,
     }));
   }
+  // TASK-036 — the wizard's agent_models answer arrives as a pair-syntax
+  // string ("reviewer=opus, developer=haiku") or null (skipped). Normalize to
+  // the object map writeProjectMd expects BEFORE any artifact is written, so
+  // the frontmatter carries a real map and --apply-models can consume it.
+  answers = normalizeAgentModelsAnswer(answers);
   await writeProjectMd({ repoRoot, answers, now });
   // TASK-013 — emit the per-project agent briefing alongside PROJECT.md.
   // The in-memory `answers` are passed through so the generator doesn't have

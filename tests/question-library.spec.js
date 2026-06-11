@@ -190,6 +190,10 @@ describe('question-library — engine compatibility', () => {
         answers.push(choices[0]);
       } else if (q.type === 'number') {
         answers.push('1');
+      } else if (q.id === 'agent_models') {
+        // TASK-036 — optional pair-syntax question whose validate hook rejects
+        // free-form strings; empty input skips it (required: false).
+        answers.push('');
       } else {
         // Free-form string. Use the question id so we can assert presence
         // later if needed.

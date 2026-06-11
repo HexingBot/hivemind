@@ -32,6 +32,16 @@ const PROMPT_SIGNATURES = {
   agent_models: 'Per-agent model overrides',
 };
 
+// Question ids declared `required: false` in src/question-library.js. For
+// these (and ONLY these), a missing scripted answer falls back to '' — the
+// engine treats empty input to an optional question as a skip, so
+// subset-answer tests keep passing when an optional question is added to the
+// catalog. Every other id keeps the loud throw: the engine's required-field
+// loop is while(true), so silently returning '' for a forgotten REQUIRED
+// answer would re-prompt forever (vitest timeout) instead of surfacing a
+// named error — the header promise ("surface loudly rather than hang") holds.
+const KNOWN_OPTIONAL_IDS = new Set(['agent_models']);
+
 /**
  * Build a scripted prompter from a {questionId: answerString} map.
  *
@@ -54,12 +64,13 @@ export function makeScriptedPrompter(answers) {
       );
     }
     if (!Object.prototype.hasOwnProperty.call(answers, id)) {
-      // TASK-036 — for known-signature questions not in the answers map, return
-      // empty string so optional (required:false) questions are silently skipped
-      // rather than causing test failures in tests that only provide a subset of
-      // answers. Required questions with empty answers will re-prompt or fail
-      // validation — that is the intended guard for required fields.
-      return '';
+      if (KNOWN_OPTIONAL_IDS.has(id)) {
+        // Optional question with no scripted answer → empty input = skip.
+        return '';
+      }
+      throw new Error(
+        `scripted-prompter: no scripted answer for question id "${id}" (prompt: ${JSON.stringify(ctx.prompt)})`,
+      );
     }
     return answers[id];
   };
