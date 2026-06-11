@@ -118,3 +118,44 @@ describe('TASK-031 — AC4: CLAUDE.md documents the per-agent model strategy', (
     ).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-036 AC5 — section-scoped: "## Per-Agent Model Assignment" must point at
+// PROJECT.md as the canonical knob for overriding per-agent models.
+//
+// Parsing strategy: slice between the `## Per-Agent Model Assignment` heading
+// and the NEXT `## ` heading to isolate that section body, then assert that
+// the word `PROJECT.md` appears within it. This prevents a false-positive from
+// a match elsewhere in CLAUDE.md (e.g. the First-chat routing section).
+//
+// FAILS NOW: the current section body says to edit the `model:` frontmatter
+// file directly — it does not yet mention PROJECT.md as the canonical knob.
+// ---------------------------------------------------------------------------
+describe('TASK-036 — AC5: CLAUDE.md Per-Agent Model Assignment section mentions PROJECT.md', () => {
+  it('per_agent_model_section_points_at_project_md_as_canonical_knob', () => {
+    const text = readFileSync(join(REPO_ROOT, 'CLAUDE.md'), 'utf8');
+
+    // Find the section heading.
+    const headingRegex = /^## Per-Agent Model Assignment\s*$/m;
+    const headingMatch = text.match(headingRegex);
+    expect(
+      headingMatch,
+      'CLAUDE.md must contain a "## Per-Agent Model Assignment" heading',
+    ).not.toBeNull();
+
+    const sectionStart = headingMatch.index + headingMatch[0].length;
+    const afterSection = text.slice(sectionStart);
+
+    // Find the next ## heading to bound the section.
+    const nextHeadingMatch = afterSection.match(/\n## /);
+    const sectionBody = nextHeadingMatch
+      ? afterSection.slice(0, nextHeadingMatch.index)
+      : afterSection;
+
+    // The section body must name PROJECT.md as the place to set per-agent models.
+    expect(
+      sectionBody,
+      '"## Per-Agent Model Assignment" section must mention PROJECT.md as the canonical knob for model overrides',
+    ).toMatch(/PROJECT\.md/);
+  });
+});
