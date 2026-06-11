@@ -9,7 +9,7 @@
     "reviewer.md updated: for uat-only tickets the reviewer verifies the UAT comment exists and covers every AC instead of requiring new specs",
     "Parity copies updated; full suite green"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "refinement",
@@ -20,10 +20,30 @@
   "depends_on": [
     "TASK-028"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "28ee407",
+    "0ced17b",
+    "875a048"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T20:58:05.841Z",
+      "body": "TIER ASSIGNMENT: verification_tier = uat-only — the deliverable is docs/prompt/skill prose only (CLAUDE.md workflow step, orchestrator-routing skill, reviewer.md); the comment mechanism it relies on (append_comment, author field) already exists and is fully tested. Rubric match: docs/glue. GATE: scaled (first ticket to exercise it) — fast tier `npm test` covers every doc-pinning spec (docs.spec.js, verification-policy-docs.spec.js, orchestrator-routing-skill.spec.js, agents-parity.spec.js, agent-models.spec.js, readme.spec.js); developer must confirm no e2e spec exercises the touched files, and the reviewer may veto that list per the TASK-028 ownership rule. VERIFICATION PLAN (dogfood): after impl, the orchestrator derives this ticket's own UAT script from its 5 ACs, presents it to the human, records the outcome as a comment with author 'uat', and the reviewer then verifies that comment exists and covers every AC — i.e., TASK-030 is verified by the exact mechanism it introduces."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-11T21:05:06.239Z",
+      "body": "UAT RUN — TASK-030 (the framework's first conversational UAT, executed on the ticket that introduces the mechanism). Script derived from the 5 ACs; presented to the human 2026-06-11.\n\nSTEP 1 (AC1 — CLAUDE.md documents the UAT step): expected = Workflow step 4 carries applicable tiers, AC-derived script, per-step PASS/FAIL, author-uat comment, done-gate. Observed = all five elements present at CLAUDE.md Workflow step 4 (UAT step block, lines ~47-55). Verdict = PASS — verified by the Orchestrator at the human's request (human delegated: \"verifícalo tú por favor, es mucho texto para un humano\").\n\nSTEP 2 (AC2 — orchestrator-routing skill carries the procedure): expected = '## UAT procedure' section with derive→present→record→gate flow. Observed = section present with 4 numbered steps + per-AC coverage rule, both skill copies. Verdict = PASS (human).\n\nSTEP 3 (AC4 — reviewer verifies the uat comment for uat-only tickets): expected = reviewer protocol requires uat comment existence + full AC coverage + all-PASS, violations HIGH. Observed = two sub-bullets under protocol step 2, including the tests-after variant. Verdict = PASS (human).\n\nSTEP 4 (AC3 + AC5 — outcome recorded via existing comment mechanism; parity + green gate): expected = this very comment demonstrates AC3; fast tier + named e2e green, parity byte-identical. Observed = comment recorded via append_comment with author 'uat'; fast tier 100 passed / 2 skipped (1.5s); tests/e2e/claude-md-init.spec.js + tests/e2e/init.spec.js green; 6 mirrored files byte-identical. Verdict = PASS (human).\n\nOVERALL: PASS (4/4). USABILITY FINDING from the run: the presented script was too verbose for a human — amendment authorized and dispatched (terse one-line steps; delegated-verification recording rule). The finding does not fail any AC; it improves the mechanism under test."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T21:15:18.590Z",
+      "body": "CLOSED — reviewer verdict APPROVE-WITH-FOLLOWUPS (0 HIGH / 2 MEDIUM / 3 LOW / 2 NIT), all 5 actionable findings fixed in-band (875a048), NITs deferred. Commits: 28ee407 (impl), 0ced17b (terseness amendment from live UAT feedback), 875a048 (review fixes). FIRST uat-only TICKET UNDER THE TIERED POLICY, and the dogfood worked end-to-end: (1) the ticket was verified by the mechanism it introduces — the author-uat comment above is the done-gate artifact, 4/4 PASS with step 1 recorded as PASS-verified-by-Orchestrator-at-human's-request per the amended rule; (2) the live UAT run produced a real usability finding (script too verbose for a human) that was folded back into the mechanism same-session; (3) the reviewer exercised its TASK-028 veto power for the first time — caught the developer's under-scoped affected-e2e list (claimed no e2e reads agent files; agent-generator.spec.js:292-307 does) and expanded it, which then became the M2 process fix: developer.md now mandates grep-derived e2e lists, never recollection. Scaled gate exercised throughout: fast tier (~1.4s) + 3 grep-derived e2e specs (~5.6s) instead of test:all per ticket — the verification story TASK-028 promised. All four documentation surfaces (CLAUDE.md, orchestrator-routing skill, reviewer.md, orchestrator.md) now tell one consistent story; parity byte-identical; dist untouched. Deferred NITs: one-AC-per-step UAT script granularity; uat-comment-before-amendment timing note (audit trail coherent)."
+    }
+  ],
   "created_at": "2026-06-11T15:35:27.863Z",
-  "updated_at": "2026-06-11T15:35:27.863Z",
+  "updated_at": "2026-06-11T21:15:30.854Z",
   "jira_key": null
 }

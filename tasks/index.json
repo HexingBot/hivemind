@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-11T17:28:52.934Z",
+  "generated_at": "2026-06-11T21:15:30.854Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -166,7 +166,7 @@
     {
       "key": "TASK-030",
       "title": "Conversational UAT step — human-confirmed \"run X, expect Y\" verification recorded on the ticket",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
