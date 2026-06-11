@@ -34,7 +34,7 @@ import { readPointer } from '../src/pointer.js';
 import { runQuestionnaire } from '../src/question-engine.js';
 import { buildIntakeQuestions } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
-import { generateProjectContext } from '../src/agent-generator.js';
+import { generateProjectContext, applyAgentModels } from '../src/agent-generator.js';
 import { seedBacklog } from '../src/backlog-seeder.js';
 import { generateUseCaseSuite } from '../src/use-case-specs.js';
 import { archiveFrameworkHistory } from '../src/framework-history.js';
@@ -51,6 +51,7 @@ const KNOWN_FLAGS = new Set([
   '--no-archive',
   '--answers-file',
   '--claude-md-consent',
+  '--apply-models',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
 // token is not treated as an unknown positional by the strict parser).
@@ -73,6 +74,7 @@ function parseArgs(argv) {
     noArchive: false,
     answersFile: null,
     claudeMdConsent: false,
+    applyModels: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
@@ -83,6 +85,7 @@ function parseArgs(argv) {
     if (tok === '--help') out.help = true;
     if (tok === '--no-archive') out.noArchive = true;
     if (tok === '--claude-md-consent') out.claudeMdConsent = true;
+    if (tok === '--apply-models') out.applyModels = true;
     if (tok === '--answers-file') {
       const value = argv[i + 1];
       if (value === undefined || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -373,6 +376,34 @@ export async function runInit({
 
   const projectMdPath = join(repoRoot, 'PROJECT.md');
   const projectMdExists = existsSync(projectMdPath);
+
+  // ---- Branch 0: --apply-models (short-circuits before all wizard logic) ----
+  // Reads agent_models from PROJECT.md and applies to agent frontmatter files.
+  // Never calls the prompter. Exits with state 'applied_models' (map present)
+  // or 'no_op' (map absent). Unknown extra flags have already been rejected by
+  // parseArgs above, so by the time we get here all tokens are valid.
+  if (parsed.applyModels) {
+    if (!projectMdExists) {
+      // eslint-disable-next-line no-console
+      console.log('--apply-models: PROJECT.md not found; nothing to apply.');
+      return { state: 'no_op', projectMdPath, sessionId: null };
+    }
+    const { answers: projectAnswers } = await readProjectMd({ repoRoot });
+    if (!projectAnswers.agent_models ||
+        typeof projectAnswers.agent_models !== 'object' ||
+        Object.keys(projectAnswers.agent_models).length === 0) {
+      // eslint-disable-next-line no-console
+      console.log('--apply-models: no agent_models map in PROJECT.md; nothing to apply.');
+      return { state: 'no_op', projectMdPath, sessionId: null };
+    }
+    const changed = await applyAgentModels({
+      repoRoot,
+      agentModels: projectAnswers.agent_models,
+    });
+    // eslint-disable-next-line no-console
+    console.log(`--apply-models: updated ${changed.length} file(s): ${changed.join(', ')}`);
+    return { state: 'applied_models', projectMdPath, sessionId: null };
+  }
 
   // The CLAUDE.md routing consent is a SEPARATE channel from the intake answers:
   // an explicit signal is either the --claude-md-consent flag or a truthy

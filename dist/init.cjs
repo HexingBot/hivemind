@@ -8216,6 +8216,15 @@ var COMMON_QUESTIONS = Object.freeze([
     id: "success_criteria",
     type: "string",
     prompt: "How will you know this project succeeded? (one sentence)"
+  },
+  // TASK-036 — optional per-agent model overrides. `required: false` allows
+  // the user to skip by pressing Enter; skipping writes NO agent_models key to
+  // PROJECT.md. Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.
+  {
+    id: "agent_models",
+    type: "string",
+    required: false,
+    prompt: "Per-agent model overrides (optional, e.g. reviewer=opus developer=haiku).\nDefaults: reviewer=fable, developer=sonnet, researcher=sonnet.\nPress Enter to keep defaults (writes no agent_models key)"
   }
 ]);
 function whenType(type) {
@@ -8400,6 +8409,30 @@ var PROJECT_schema_default = {
     schema_version: {
       type: "integer",
       const: 1
+    },
+    agent_models: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        reviewer: {
+          anyOf: [
+            { type: "string", enum: ["sonnet", "opus", "haiku", "fable", "inherit"] },
+            { type: "string", pattern: "^claude-[a-z0-9-]+$" }
+          ]
+        },
+        developer: {
+          anyOf: [
+            { type: "string", enum: ["sonnet", "opus", "haiku", "fable", "inherit"] },
+            { type: "string", pattern: "^claude-[a-z0-9-]+$" }
+          ]
+        },
+        researcher: {
+          anyOf: [
+            { type: "string", enum: ["sonnet", "opus", "haiku", "fable", "inherit"] },
+            { type: "string", pattern: "^claude-[a-z0-9-]+$" }
+          ]
+        }
+      }
     }
   }
 };
@@ -8415,6 +8448,7 @@ var BODY_SECTIONS = [
   { id: "success_criteria", heading: "Success criteria", bullets: false }
 ];
 var FRONTMATTER_IDS = /* @__PURE__ */ new Set(["project_name", "project_type"]);
+var SPECIAL_FRONTMATTER_IDS = /* @__PURE__ */ new Set(["agent_models"]);
 async function writeProjectMd({ repoRoot, answers, now = () => (/* @__PURE__ */ new Date()).toISOString() }) {
   const requiredFrontmatterAnswers = ["project_name", "project_type"];
   for (const id of requiredFrontmatterAnswers) {
@@ -8445,10 +8479,13 @@ function renderProjectMd(answers, createdAt) {
     `name: ${name}`,
     `type: ${type}`,
     `created_at: ${createdAt}`,
-    `schema_version: ${SCHEMA_VERSION}`,
-    "---",
-    ""
+    `schema_version: ${SCHEMA_VERSION}`
   ];
+  if (answers.agent_models && typeof answers.agent_models === "object" && Object.keys(answers.agent_models).length > 0) {
+    const mapStr = Object.entries(answers.agent_models).map(([k, v]) => `${k}: ${v}`).join(", ");
+    fmLines.push(`agent_models: {${mapStr}}`);
+  }
+  fmLines.push("---", "");
   const out = [...fmLines, `# ${name}`, ""];
   for (const sec of BODY_SECTIONS) {
     if (!Object.prototype.hasOwnProperty.call(answers, sec.id)) continue;
@@ -8464,11 +8501,15 @@ function renderProjectMd(answers, createdAt) {
     }
     out.push("");
   }
+  const agentModelsInFrontmatter = answers.agent_models !== null && answers.agent_models !== void 0 && typeof answers.agent_models === "object" && Object.keys(answers.agent_models).length > 0;
   const consumed = /* @__PURE__ */ new Set([
     ...FRONTMATTER_IDS,
+    ...agentModelsInFrontmatter ? SPECIAL_FRONTMATTER_IDS : [],
     ...BODY_SECTIONS.map((s) => s.id)
   ]);
-  const stackKeys = Object.keys(answers).filter((k) => !consumed.has(k));
+  const stackKeys = Object.keys(answers).filter(
+    (k) => !consumed.has(k) && answers[k] !== null && answers[k] !== void 0
+  );
   if (stackKeys.length > 0) {
     out.push("## Stack");
     for (const key of stackKeys) {
@@ -8557,6 +8598,9 @@ function parseProjectMd(text) {
   if (frontmatter.type !== void 0) answers.project_type = frontmatter.type;
   if (frontmatter.created_at !== void 0) answers.created_at = frontmatter.created_at;
   if (frontmatter.schema_version !== void 0) answers.schema_version = frontmatter.schema_version;
+  if (frontmatter.agent_models !== void 0 && frontmatter.agent_models !== null && typeof frontmatter.agent_models === "object" && Object.keys(frontmatter.agent_models).length > 0) {
+    answers.agent_models = frontmatter.agent_models;
+  }
   for (const sec of BODY_SECTIONS) {
     const block = sections.get(sec.heading);
     if (block === void 0) continue;
@@ -8614,6 +8658,19 @@ function parseFrontmatter(fmLines) {
   return out;
 }
 function coerceFrontmatterScalar(raw, fieldName) {
+  if (fieldName === "agent_models" && raw.startsWith("{") && raw.endsWith("}")) {
+    const inner = raw.slice(1, -1).trim();
+    if (inner.length === 0) return {};
+    const result = {};
+    for (const pair of inner.split(",")) {
+      const colonIdx = pair.indexOf(":");
+      if (colonIdx === -1) continue;
+      const k = pair.slice(0, colonIdx).trim();
+      const v = pair.slice(colonIdx + 1).trim();
+      if (k.length > 0 && v.length > 0) result[k] = v;
+    }
+    return result;
+  }
   if (raw.startsWith("[") && raw.endsWith("]")) {
     const inner = raw.slice(1, -1).trim();
     if (inner.length === 0) return [];
@@ -8680,7 +8737,9 @@ var ROUNDTRIP_NOISE_IDS = /* @__PURE__ */ new Set([
   "primary_use_cases",
   "success_criteria",
   "created_at",
-  "schema_version"
+  "schema_version",
+  // TASK-036 — agent_models is project config, not a stack entry.
+  "agent_models"
 ]);
 var TYPE_SPECIFIC_GUIDANCE = Object.freeze({
   "web-saas": [
@@ -8792,6 +8851,74 @@ function formatStackValue2(value) {
     return value.map((v) => String(v)).join(", ");
   }
   return String(value);
+}
+var VALID_MODEL_ALIASES = /* @__PURE__ */ new Set(["sonnet", "opus", "haiku", "fable", "inherit"]);
+var VALID_FULL_MODEL_ID_RE = /^claude-[a-z0-9-]+$/;
+var VALID_AGENT_NAMES_FOR_APPLY = /* @__PURE__ */ new Set(["reviewer", "developer", "researcher"]);
+async function applyAgentModels({ repoRoot, agentModels }) {
+  for (const [agentName, modelValue] of Object.entries(agentModels)) {
+    if (!VALID_AGENT_NAMES_FOR_APPLY.has(agentName)) {
+      throw new Error(
+        `applyAgentModels: invalid/unknown agent name "${agentName}". Valid agent names are: ${[...VALID_AGENT_NAMES_FOR_APPLY].join(", ")}`
+      );
+    }
+    if (!VALID_MODEL_ALIASES.has(modelValue) && !VALID_FULL_MODEL_ID_RE.test(modelValue)) {
+      throw new Error(
+        `applyAgentModels: invalid model value "${modelValue}" for agent "${agentName}". Must be one of ${[...VALID_MODEL_ALIASES].join(", ")} or match /^claude-[a-z0-9-]+$/`
+      );
+    }
+  }
+  const claudeAgentsDir = (0, import_node_path6.join)(repoRoot, ".claude", "agents");
+  const parityAgentsDir = (0, import_node_path6.join)(repoRoot, "agents");
+  const hasParityDir = (0, import_node_fs8.existsSync)(parityAgentsDir);
+  const changedFiles = [];
+  for (const [agentName, modelValue] of Object.entries(agentModels)) {
+    const primaryPath = (0, import_node_path6.join)(claudeAgentsDir, `${agentName}.md`);
+    if (!(0, import_node_fs8.existsSync)(primaryPath)) {
+      continue;
+    }
+    const patched = patchAgentModelLine(primaryPath, modelValue);
+    await atomicWriteFile(primaryPath, patched);
+    changedFiles.push(primaryPath);
+    if (hasParityDir) {
+      const parityPath = (0, import_node_path6.join)(parityAgentsDir, `${agentName}.md`);
+      if ((0, import_node_fs8.existsSync)(parityPath)) {
+        const patchedParity = patchAgentModelLine(parityPath, modelValue);
+        await atomicWriteFile(parityPath, patchedParity);
+        changedFiles.push(parityPath);
+      }
+    }
+  }
+  return changedFiles;
+}
+function patchAgentModelLine(filePath, modelValue) {
+  const text = (0, import_node_fs8.readFileSync)(filePath, "utf8");
+  const lines = text.split(/\r?\n/);
+  if (lines[0].trim() !== "---") {
+    return `---
+model: ${modelValue}
+---
+${text}`;
+  }
+  const closeFenceIdx = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+  if (closeFenceIdx === -1) {
+    return text;
+  }
+  const lineSep = text.includes("\r\n") ? "\r\n" : "\n";
+  const modelLineIdx = lines.findIndex(
+    (l, i) => i > 0 && i < closeFenceIdx && /^model:\s*/.test(l)
+  );
+  const newModelLine = `model: ${modelValue}`;
+  if (modelLineIdx !== -1) {
+    lines[modelLineIdx] = newModelLine;
+  } else {
+    const descIdx = lines.findIndex(
+      (l, i) => i > 0 && i < closeFenceIdx && /^description:\s*/.test(l)
+    );
+    const insertAfter = descIdx !== -1 ? descIdx : closeFenceIdx - 1;
+    lines.splice(insertAfter + 1, 0, newModelLine);
+  }
+  return lines.join(lineSep);
 }
 
 // src/backlog-seeder.js
@@ -9584,7 +9711,8 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--help",
   "--no-archive",
   "--answers-file",
-  "--claude-md-consent"
+  "--claude-md-consent",
+  "--apply-models"
 ]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file"]);
 var TASK_FILE_RE2 = /^TASK-\d{3,}\.json$/;
@@ -9594,7 +9722,8 @@ function parseArgs(argv) {
     help: false,
     noArchive: false,
     answersFile: null,
-    claudeMdConsent: false
+    claudeMdConsent: false,
+    applyModels: false
   };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
@@ -9605,6 +9734,7 @@ function parseArgs(argv) {
     if (tok === "--help") out.help = true;
     if (tok === "--no-archive") out.noArchive = true;
     if (tok === "--claude-md-consent") out.claudeMdConsent = true;
+    if (tok === "--apply-models") out.applyModels = true;
     if (tok === "--answers-file") {
       const value = argv[i + 1];
       if (value === void 0 || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -9756,6 +9886,23 @@ async function runInit({
   }
   const projectMdPath = (0, import_node_path12.join)(repoRoot, "PROJECT.md");
   const projectMdExists = (0, import_node_fs14.existsSync)(projectMdPath);
+  if (parsed.applyModels) {
+    if (!projectMdExists) {
+      console.log("--apply-models: PROJECT.md not found; nothing to apply.");
+      return { state: "no_op", projectMdPath, sessionId: null };
+    }
+    const { answers: projectAnswers } = await readProjectMd({ repoRoot });
+    if (!projectAnswers.agent_models || typeof projectAnswers.agent_models !== "object" || Object.keys(projectAnswers.agent_models).length === 0) {
+      console.log("--apply-models: no agent_models map in PROJECT.md; nothing to apply.");
+      return { state: "no_op", projectMdPath, sessionId: null };
+    }
+    const changed = await applyAgentModels({
+      repoRoot,
+      agentModels: projectAnswers.agent_models
+    });
+    console.log(`--apply-models: updated ${changed.length} file(s): ${changed.join(", ")}`);
+    return { state: "applied_models", projectMdPath, sessionId: null };
+  }
   const explicitConsent = parsed.claudeMdConsent || Boolean(answers && answers.claude_md_consent === true);
   if (parsed.force) {
     const { sessionId: sessionId2 } = await startSession({ repoRoot });

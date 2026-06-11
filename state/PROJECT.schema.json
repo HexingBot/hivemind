@@ -22,6 +22,30 @@
     "schema_version": {
       "type": "integer",
       "const": 1
+    },
+    "agent_models": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewer": {
+          "anyOf": [
+            { "type": "string", "enum": ["sonnet", "opus", "haiku", "fable", "inherit"] },
+            { "type": "string", "pattern": "^claude-[a-z0-9-]+$" }
+          ]
+        },
+        "developer": {
+          "anyOf": [
+            { "type": "string", "enum": ["sonnet", "opus", "haiku", "fable", "inherit"] },
+            { "type": "string", "pattern": "^claude-[a-z0-9-]+$" }
+          ]
+        },
+        "researcher": {
+          "anyOf": [
+            { "type": "string", "enum": ["sonnet", "opus", "haiku", "fable", "inherit"] },
+            { "type": "string", "pattern": "^claude-[a-z0-9-]+$" }
+          ]
+        }
+      }
     }
   }
 }

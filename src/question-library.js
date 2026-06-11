@@ -70,6 +70,18 @@ export const COMMON_QUESTIONS = Object.freeze([
     type: 'string',
     prompt: 'How will you know this project succeeded? (one sentence)',
   },
+  // TASK-036 — optional per-agent model overrides. `required: false` allows
+  // the user to skip by pressing Enter; skipping writes NO agent_models key to
+  // PROJECT.md. Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.
+  {
+    id: 'agent_models',
+    type: 'string',
+    required: false,
+    prompt:
+      'Per-agent model overrides (optional, e.g. reviewer=opus developer=haiku).\n' +
+      'Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.\n' +
+      'Press Enter to keep defaults (writes no agent_models key)',
+  },
 ]);
 
 // Helper that builds a `when` predicate matching exactly one project_type.

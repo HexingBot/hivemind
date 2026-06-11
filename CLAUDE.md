@@ -124,7 +124,9 @@ Each subagent declares its model in the `model:` frontmatter field of its agent 
 - **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
 - **orchestrator** — no `model:` field; it runs as the main session thread and inherits whatever model the session is started with (Fable 5 in production). TASK-032 will remove the orchestrator agent file entirely.
 
-To override for a specific project, edit the `model:` line in the relevant agent frontmatter file under `.claude/agents/` (and keep the plugin-root `agents/` parity copy in sync — see agents-parity.spec.js).
+**Canonical knob: `PROJECT.md`.**  The `agent_models` map in `PROJECT.md` frontmatter is the single source of truth for per-agent model overrides in a given project. To change the model for reviewer, developer, or researcher, edit the `agent_models` block in `PROJECT.md` and re-apply with `node bin/init.js --apply-models`. The `--apply-models` flag reads `PROJECT.md` and surgically patches only the `model:` frontmatter line of each mapped agent file (both `.claude/agents/` and the plugin-root `agents/` parity copies in the dev repo) without re-running the wizard or touching any other content.
+
+Valid model aliases: `sonnet`, `opus`, `haiku`, `fable`, `inherit`. Full model IDs matching `/^claude-[a-z0-9-]+$/` (e.g. `claude-opus-4-5`) are also accepted. Invalid aliases or unknown agent names are rejected before any file is written.
 
 Valid alias source: Claude Code sub-agents documentation (`model:` frontmatter field; accepted shorthands include `fable` and `sonnet`).
 

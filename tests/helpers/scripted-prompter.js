@@ -28,6 +28,8 @@ const PROMPT_SIGNATURES = {
   library_language: 'Which language for the library',
   audience: 'Who consumes the library',
   package_manager: 'Which package registry',
+  // TASK-036 — optional per-agent model overrides
+  agent_models: 'Per-agent model overrides',
 };
 
 /**
@@ -52,9 +54,12 @@ export function makeScriptedPrompter(answers) {
       );
     }
     if (!Object.prototype.hasOwnProperty.call(answers, id)) {
-      throw new Error(
-        `scripted-prompter: no scripted answer for question id "${id}" (prompt: ${JSON.stringify(ctx.prompt)})`,
-      );
+      // TASK-036 — for known-signature questions not in the answers map, return
+      // empty string so optional (required:false) questions are silently skipped
+      // rather than causing test failures in tests that only provide a subset of
+      // answers. Required questions with empty answers will re-prompt or fail
+      // validation — that is the intended guard for required fields.
+      return '';
     }
     return answers[id];
   };
@@ -86,6 +91,8 @@ export function webSaasAnswers(overrides = {}) {
     backend_framework: 'node-express',
     database: 'postgres',
     web_deployment_target: 'fly-io',
+    // TASK-036 — agent_models is optional; empty string → skipped (required:false).
+    agent_models: '',
     ...overrides,
   };
 }

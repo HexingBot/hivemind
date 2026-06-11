@@ -32,7 +32,7 @@
 //   - <bullet>
 //   - ...
 
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { atomicWriteFile } from './atomic-write.js';
@@ -56,6 +56,8 @@ const ROUNDTRIP_NOISE_IDS = new Set([
   'success_criteria',
   'created_at',
   'schema_version',
+  // TASK-036 — agent_models is project config, not a stack entry.
+  'agent_models',
 ]);
 
 // Per-project_type guidance bullets. Adding a new project_type means appending
@@ -216,4 +218,128 @@ function formatStackValue(value) {
     return value.map((v) => String(v)).join(', ');
   }
   return String(value);
+}
+
+// ---------------------------------------------------------------------------
+// TASK-036 — applyAgentModels: surgical frontmatter model-line patcher
+// ---------------------------------------------------------------------------
+
+// Valid model aliases (must stay in sync with state/PROJECT.schema.json).
+const VALID_MODEL_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'fable', 'inherit']);
+const VALID_FULL_MODEL_ID_RE = /^claude-[a-z0-9-]+$/;
+// Recognized agent names in the map (no orchestrator — it is the main thread).
+const VALID_AGENT_NAMES_FOR_APPLY = new Set(['reviewer', 'developer', 'researcher']);
+
+/**
+ * Apply an agent_models map by patching the `model:` line in each agent's
+ * YAML frontmatter (or inserting it after `description:` when absent).
+ *
+ * Validation happens BEFORE any file is written — an invalid agent name or
+ * model value throws without touching disk.
+ *
+ * Parity: when `<repoRoot>/agents/` exists (the dev-repo parity dir) the
+ * patch is applied to both `.claude/agents/` and `agents/`.
+ *
+ * @param {object} opts
+ * @param {string} opts.repoRoot - absolute path to the repository root
+ * @param {object} opts.agentModels - map of agent name → model alias/ID
+ * @returns {Promise<string[]>} absolute paths of changed files
+ */
+export async function applyAgentModels({ repoRoot, agentModels }) {
+  // ---- Pre-write validation ----
+  for (const [agentName, modelValue] of Object.entries(agentModels)) {
+    if (!VALID_AGENT_NAMES_FOR_APPLY.has(agentName)) {
+      throw new Error(
+        `applyAgentModels: invalid/unknown agent name "${agentName}". ` +
+        `Valid agent names are: ${[...VALID_AGENT_NAMES_FOR_APPLY].join(', ')}`,
+      );
+    }
+    if (!VALID_MODEL_ALIASES.has(modelValue) && !VALID_FULL_MODEL_ID_RE.test(modelValue)) {
+      throw new Error(
+        `applyAgentModels: invalid model value "${modelValue}" for agent "${agentName}". ` +
+        `Must be one of ${[...VALID_MODEL_ALIASES].join(', ')} or match /^claude-[a-z0-9-]+$/`,
+      );
+    }
+  }
+
+  const claudeAgentsDir = join(repoRoot, '.claude', 'agents');
+  const parityAgentsDir = join(repoRoot, 'agents');
+  const hasParityDir = existsSync(parityAgentsDir);
+
+  const changedFiles = [];
+
+  for (const [agentName, modelValue] of Object.entries(agentModels)) {
+    const primaryPath = join(claudeAgentsDir, `${agentName}.md`);
+
+    if (!existsSync(primaryPath)) {
+      // Agent file not present — skip silently (user project may not have all agents).
+      continue;
+    }
+
+    const patched = patchAgentModelLine(primaryPath, modelValue);
+    await atomicWriteFile(primaryPath, patched);
+    changedFiles.push(primaryPath);
+
+    if (hasParityDir) {
+      const parityPath = join(parityAgentsDir, `${agentName}.md`);
+      if (existsSync(parityPath)) {
+        const patchedParity = patchAgentModelLine(parityPath, modelValue);
+        await atomicWriteFile(parityPath, patchedParity);
+        changedFiles.push(parityPath);
+      }
+    }
+  }
+
+  return changedFiles;
+}
+
+/**
+ * Read an agent .md file and return its content with the `model:` line updated
+ * (or inserted after `description:` when absent). Every other byte is
+ * preserved identically.
+ *
+ * @param {string} filePath - absolute path to the agent .md file
+ * @param {string} modelValue - the model alias or full ID to write
+ * @returns {string} the patched file content
+ */
+function patchAgentModelLine(filePath, modelValue) {
+  const text = readFileSync(filePath, 'utf8');
+  const lines = text.split(/\r?\n/);
+
+  // Locate the frontmatter block (must start on line 0).
+  if (lines[0].trim() !== '---') {
+    // No frontmatter — prepend a minimal one with just model:.
+    return `---\nmodel: ${modelValue}\n---\n${text}`;
+  }
+
+  const closeFenceIdx = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  if (closeFenceIdx === -1) {
+    // Malformed frontmatter — append model: before any guessed close.
+    return text;
+  }
+
+  // Determine the line separator used in this file (preserve \r\n if present).
+  const lineSep = text.includes('\r\n') ? '\r\n' : '\n';
+
+  // Check if a model: line already exists inside the frontmatter.
+  const modelLineIdx = lines.findIndex(
+    (l, i) => i > 0 && i < closeFenceIdx && /^model:\s*/.test(l),
+  );
+
+  const newModelLine = `model: ${modelValue}`;
+
+  if (modelLineIdx !== -1) {
+    // Replace the existing model: line.
+    lines[modelLineIdx] = newModelLine;
+  } else {
+    // Insert after the description: line (if present), otherwise after the
+    // last frontmatter line before the closing fence.
+    const descIdx = lines.findIndex(
+      (l, i) => i > 0 && i < closeFenceIdx && /^description:\s*/.test(l),
+    );
+    const insertAfter = descIdx !== -1 ? descIdx : closeFenceIdx - 1;
+    lines.splice(insertAfter + 1, 0, newModelLine);
+  }
+
+  return lines.join(lineSep);
 }

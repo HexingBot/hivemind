@@ -77,6 +77,21 @@ const BODY_SECTIONS = [
 // not in BODY_SECTIONS and not in this set lands in the `## Stack` section.
 const FRONTMATTER_IDS = new Set(['project_name', 'project_type']);
 
+// Keys that receive dedicated lossless encoding in the frontmatter rather than
+// being written into the Stack body section. They are excluded from the Stack
+// key loop AND handled specially in both renderProjectMd and parseProjectMd.
+// Note: agent_models is only excluded from Stack when it is an object; when it
+// is a string (wizard free-form answer) it falls through to the Stack section
+// so the round-trip is lossless. The exclusion is therefore conditional — see
+// the consumed-key logic in renderProjectMd below.
+const SPECIAL_FRONTMATTER_IDS = new Set(['agent_models']);
+
+// Valid model aliases and pattern for full model IDs (mirrors PROJECT.schema.json).
+const MODEL_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'fable', 'inherit']);
+const FULL_MODEL_ID_RE = /^claude-[a-z0-9-]+$/;
+// Recognized spawned-agent names for the agent_models map.
+const VALID_AGENT_NAMES = new Set(['reviewer', 'developer', 'researcher']);
+
 /**
  * Write PROJECT.md at <repoRoot>/PROJECT.md via atomicWriteFile.
  *
@@ -141,9 +156,21 @@ function renderProjectMd(answers, createdAt) {
     `type: ${type}`,
     `created_at: ${createdAt}`,
     `schema_version: ${SCHEMA_VERSION}`,
-    '---',
-    '',
   ];
+
+  // TASK-036 — agent_models: write as an inline object map on a single line
+  // so the in-house YAML subset parser (which only handles scalars/arrays at
+  // the top level) can restore it losslessly. Format: `{key: value, ...}`.
+  // Only write when the map is present and non-null with at least one key.
+  if (answers.agent_models && typeof answers.agent_models === 'object' &&
+      Object.keys(answers.agent_models).length > 0) {
+    const mapStr = Object.entries(answers.agent_models)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ');
+    fmLines.push(`agent_models: {${mapStr}}`);
+  }
+
+  fmLines.push('---', '');
 
   // Body — title + the four well-known sections in BODY_SECTIONS order, then
   // a Stack section listing everything else.
@@ -165,11 +192,29 @@ function renderProjectMd(answers, createdAt) {
   }
 
   // Stack: every answer key not consumed above.
+  // agent_models is excluded from Stack only when it was written to the
+  // frontmatter as an inline-object map. When it is a string (wizard
+  // free-form answer), it falls through to Stack so the round-trip is
+  // lossless for that form (TASK-036). Null (skipped question) is also
+  // excluded (null values must not produce a stack entry at all — see the
+  // null-guard in the stack-emit loop below).
+  const agentModelsInFrontmatter =
+    answers.agent_models !== null &&
+    answers.agent_models !== undefined &&
+    typeof answers.agent_models === 'object' &&
+    Object.keys(answers.agent_models).length > 0;
   const consumed = new Set([
     ...FRONTMATTER_IDS,
+    ...(agentModelsInFrontmatter ? SPECIAL_FRONTMATTER_IDS : []),
     ...BODY_SECTIONS.map((s) => s.id),
   ]);
-  const stackKeys = Object.keys(answers).filter((k) => !consumed.has(k));
+  // Also exclude keys with null/undefined values from the Stack section —
+  // null signals "question was skipped" (required:false in the engine) and
+  // must not produce a stack entry (TASK-036: skipped agent_models must be
+  // absent after round-trip, not present as the string "null").
+  const stackKeys = Object.keys(answers).filter(
+    (k) => !consumed.has(k) && answers[k] !== null && answers[k] !== undefined,
+  );
   if (stackKeys.length > 0) {
     out.push('## Stack');
     for (const key of stackKeys) {
@@ -292,6 +337,15 @@ function parseProjectMd(text) {
   if (frontmatter.type !== undefined) answers.project_type = frontmatter.type;
   if (frontmatter.created_at !== undefined) answers.created_at = frontmatter.created_at;
   if (frontmatter.schema_version !== undefined) answers.schema_version = frontmatter.schema_version;
+  // TASK-036 — restore agent_models from frontmatter when present.
+  // Only set when the map is a non-null object with at least one key so that
+  // an absent map stays absent (undefined) in answers.
+  if (frontmatter.agent_models !== undefined &&
+      frontmatter.agent_models !== null &&
+      typeof frontmatter.agent_models === 'object' &&
+      Object.keys(frontmatter.agent_models).length > 0) {
+    answers.agent_models = frontmatter.agent_models;
+  }
 
   for (const sec of BODY_SECTIONS) {
     const block = sections.get(sec.heading);
@@ -378,6 +432,22 @@ function parseFrontmatter(fmLines) {
 }
 
 function coerceFrontmatterScalar(raw, fieldName) {
+  // TASK-036 — Inline object map: {key: value, key: value} used exclusively
+  // for the agent_models frontmatter key. Parsing is simple (values are
+  // identifiers/model-IDs with no commas or braces), so a naive split is safe.
+  if (fieldName === 'agent_models' && raw.startsWith('{') && raw.endsWith('}')) {
+    const inner = raw.slice(1, -1).trim();
+    if (inner.length === 0) return {};
+    const result = {};
+    for (const pair of inner.split(',')) {
+      const colonIdx = pair.indexOf(':');
+      if (colonIdx === -1) continue;
+      const k = pair.slice(0, colonIdx).trim();
+      const v = pair.slice(colonIdx + 1).trim();
+      if (k.length > 0 && v.length > 0) result[k] = v;
+    }
+    return result;
+  }
   // Inline array: [a, b, c] — items may contain escaped commas / backslashes
   // (see encodeArrayItem in the writer). Use the shared splitInlineArray
   // helper so all three call sites (writer, this reader, parseStackValue)
