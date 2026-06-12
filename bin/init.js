@@ -90,10 +90,13 @@ function materializeWorkflows(repoRoot) {
   const destDir = join(repoRoot, '.claude', 'workflows');
   mkdirSync(destDir, { recursive: true });
 
-  const files = readdirSync(srcDir);
-  for (const file of files) {
-    const srcPath = join(srcDir, file);
-    const destPath = join(destDir, file);
+  // L1: use withFileTypes so we skip subdirectories (a future subdir would
+  // crash copyFileSync with EISDIR; flat-only is the documented contract here).
+  const entries = readdirSync(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) continue; // skip dirs, symlinks, etc.
+    const srcPath = join(srcDir, entry.name);
+    const destPath = join(destDir, entry.name);
     if (!existsSync(destPath)) {
       copyFileSync(srcPath, destPath);
     }
@@ -378,7 +381,20 @@ async function runWizardAndWriteProjectMd({
   // branches (wherever runWizardAndWriteProjectMd runs). Idempotent: existing
   // destination files are never overwritten; already_initialized is never reached
   // here because that branch short-circuits before calling this function.
-  materializeWorkflows(repoRoot);
+  //
+  // L2 (TASK-039) — wrap in warn-before-rethrow contract (TASK-017 AC5 pattern).
+  // PROJECT.md, project-context, backlog, and use-case suite are already on disk
+  // by this point; the user must learn about a failed workflow materialization
+  // immediately so they can inspect/recover. Silent-continue is NOT acceptable.
+  try {
+    materializeWorkflows(repoRoot);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `workflow materializer failed: ${err && err.message ? err.message : err}`,
+    );
+    throw err;
+  }
 
   return { projectMdPath: join(repoRoot, 'PROJECT.md') };
 }

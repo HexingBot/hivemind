@@ -9791,10 +9791,11 @@ function materializeWorkflows(repoRoot) {
   if (!(0, import_node_fs14.existsSync)(srcDir)) return;
   const destDir = (0, import_node_path12.join)(repoRoot, ".claude", "workflows");
   (0, import_node_fs14.mkdirSync)(destDir, { recursive: true });
-  const files = (0, import_node_fs14.readdirSync)(srcDir);
-  for (const file of files) {
-    const srcPath = (0, import_node_path12.join)(srcDir, file);
-    const destPath = (0, import_node_path12.join)(destDir, file);
+  const entries = (0, import_node_fs14.readdirSync)(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const srcPath = (0, import_node_path12.join)(srcDir, entry.name);
+    const destPath = (0, import_node_path12.join)(destDir, entry.name);
     if (!(0, import_node_fs14.existsSync)(destPath)) {
       (0, import_node_fs14.copyFileSync)(srcPath, destPath);
     }
@@ -9959,7 +9960,14 @@ async function runWizardAndWriteProjectMd({
     );
     throw err;
   }
-  materializeWorkflows(repoRoot);
+  try {
+    materializeWorkflows(repoRoot);
+  } catch (err) {
+    console.warn(
+      `workflow materializer failed: ${err && err.message ? err.message : err}`
+    );
+    throw err;
+  }
   return { projectMdPath: (0, import_node_path12.join)(repoRoot, "PROJECT.md") };
 }
 async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent }) {
