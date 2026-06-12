@@ -10,7 +10,7 @@
     "A wrap-and-parse static lock syntax-checks the ENTIRE workflow script body (new Function constructed, never invoked); the parity lock is directory-wide file-set parity over workflows/ vs .claude/workflows/.",
     "bin/init.js: materializeWorkflows skips non-file entries and is wrapped in the warn-before-rethrow contract; dist/ rebuilt and committed in the same change."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "workflow",
@@ -20,17 +20,25 @@
   "depends_on": [
     "TASK-037"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "c51b4a2",
+    "726e332"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-12T22:46:36.281Z",
       "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = tests-after. The deliverable is mostly test hardening plus small guards; the workflow-script changes (M1/M2) cannot execute under vitest so tests-first is meaningless there, and the new locks (M3/M4/M5) ARE the specs. Implement, prove by running (incl. the new dist/init.cjs e2e sensor), minimal locks per ACs. Scaled gate: test:changed + workflows-materializer, init, init-command, plugin-deps e2e specs. Source: first live /deep-review run (wf_a47d7c8a-5d0) — 5 MEDIUM + 2 LOW rolled forward per the next-natural-home pattern."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T23:17:41.108Z",
+      "body": "CLOSE: APPROVE after one REQUEST-CHANGES loop. Commits c51b4a2 (impl) + 726e332 (fix). The RC HIGH was the sharpest of the workflow epic-let: the M5 whole-body parse lock was DOUBLY vacuous (.not.toThrow(string) message-contains semantics + new Function rejecting top-level await on the healthy file) - green while inert, caught only by the reviewer planting a syntax error. Fixed with the AsyncFunction constructor + bare .not.toThrow(), red-green verified independently by BOTH developer and reviewer. Also landed: args allowlist guards (M1, now accepting HEAD~1/HEAD^ per in-band LOW ruling), data-fence delimiting + evidence cap in verifyPrompt (M2), non-vacuous sentinel idempotency spec (M3), dist/init.cjs child-process sensor (M4), directory-wide parity (M5b), withFileTypes filter + warn-before-rethrow in bin/init.js (L1/L2). No UAT step: ACs are sensor-level, not human-observable; the injection guards get exercised naturally on every future /deep-review run. Deferred LOWs (recorded, no ticket): delimiter-spoof hardening of DATA fences; skip-vs-respected ambiguity in idempotency spec. Named e2e gate 57/1-skip deterministic."
     }
   ],
   "created_at": "2026-06-12T22:46:15.535Z",
-  "updated_at": "2026-06-12T22:46:36.281Z",
+  "updated_at": "2026-06-12T23:17:41.148Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

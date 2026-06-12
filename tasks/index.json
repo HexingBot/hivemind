@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-12T22:54:02.561Z",
+  "generated_at": "2026-06-12T23:17:41.148Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -220,7 +220,7 @@
     {
       "key": "TASK-039",
       "title": "deep-review hardening: prompt-injection guards + materializer test gaps",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {

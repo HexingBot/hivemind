@@ -54,6 +54,12 @@
       "type": "task",
       "ref": "tasks/TASK-037.json",
       "label": "Deep-review workflow + workflow materializer infra"
+    },
+    {
+      "id": "task-039",
+      "type": "task",
+      "ref": "tasks/TASK-039.json",
+      "label": "deep-review hardening: prompt-injection guards + materializer test gaps"
     }
   ],
   "edges": [
@@ -74,6 +80,11 @@
     },
     {
       "from": "task-037",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-039",
       "to": "decision-20260612-deep-workflows",
       "relation": "produced-by"
     }
