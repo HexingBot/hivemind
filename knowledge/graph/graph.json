@@ -2,6 +2,12 @@
   "schema_version": 1,
   "nodes": [
     {
+      "id": "decision-20260612-graphify-inhouse",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T02:30:00Z",
+      "label": "Graphify built in-house under knowledge/ (index-not-copy); data-island injection bug caught and fixed in review"
+    },
+    {
       "id": "ke-session-audit-logs-gitignore",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/session-audit-logs-vs-wildcard-gitignore.md",
@@ -12,7 +18,19 @@
       "type": "knowledge_entry",
       "ref": "knowledge/entries/windows-atomic-rename-not-truly-atomic.md",
       "label": "Windows atomic rename is not truly atomic"
+    },
+    {
+      "id": "task-035",
+      "type": "task",
+      "ref": "tasks/TASK-035.json",
+      "label": "Knowledge graph (graphify propio)"
     }
   ],
-  "edges": []
+  "edges": [
+    {
+      "from": "task-035",
+      "to": "decision-20260612-graphify-inhouse",
+      "relation": "produced-by"
+    }
+  ]
 }

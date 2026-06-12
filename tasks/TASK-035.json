@@ -9,7 +9,7 @@
     "A basic visual render of the graph exists (served at /graph by the task-board server or as a generated static HTML), inline assets only",
     "Plugin parity copies and skill mirrors updated where touched; full suite green via npm run test:all"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "refinement",
@@ -20,10 +20,25 @@
   "depends_on": [
     "TASK-034"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "f66e41f",
+    "f2de829",
+    "fff0237"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-11T23:14:32.706Z",
+      "body": "TIER ASSIGNMENT: verification_tier = tdd — graph store CRUD, schema validation, and deterministic serialization are core state-mutation logic. GATE: scaled (not test-infra); grep-derived affected-e2e list required. The 034 soft-dependency is satisfied (board server live). LOCKED DESIGN: (1) Storage = SINGLE file knowledge/graph/graph.json: {schema_version: 1, nodes: [], edges: []} — nodes sorted by id, edges by (from,to,relation), keys emitted in fixed order; schema at knowledge/graph/schema.json (draft-2020-12, additionalProperties:false). (2) Node: {id, type: knowledge_entry|task|decision|skill, ref (source pointer: e.g. knowledge/entries/<file>.md, TASK-NNN, decision timestamp, skills/<name>), label}. Edge: {from, to, relation: learned-in|blocks|supersedes|uses|produced-by|relates-to}; edges must reference existing node ids (referential integrity enforced on write). (3) src/knowledge-graph.js API: loadGraph({repoRoot}) (absent file → empty graph), addNode/removeNode/addEdge/removeEdge (validate vs schema + referential integrity BEFORE any write; removeNode cascades its edges), neighbors({id, relation?, direction?}), nodesByType(type), all writes via atomicWriteFile with the deterministic serialization. (4) Render: GET /graph route ADDED to createBoardServer in src/task-board.js — grouped-by-type list view with edges shown per node (no force layout — keep it dependency-free and legible), same inline-asset + textContent discipline (the new XSS pins must extend to this page). (5) Workflow integration is PROSE (researcher.md pre-web KB pass + orchestrator skill decision→task edges at close) — both parity pairs. (6) Seed: the two existing knowledge/entries/*.md get nodes in the committed graph.json (AC self-application)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T02:01:36.624Z",
+      "body": "CLOSED — final verdict APPROVE after a REQUEST-CHANGES loop (2 HIGH / 3 MEDIUM). Commits: f66e41f (tests-first, 38 specs), f2de829 (impl), fff0237 (review fixes). Suite 475 passed / 4 skipped reproduced twice from clean; dist reproducible; claude plugin validate PASS. DELIVERED — graphify propio: knowledge/graph/graph.json single-file typed graph (nodes {id,type∈[knowledge_entry,task,decision,skill],ref,label}, edges {from,to,relation∈[learned-in,blocks,supersedes,uses,produced-by,relates-to]}), schema file + inlined constant with a description-stripped deep-equal drift guard; src/knowledge-graph.js (referential integrity + duplicate-id rejection before any write, removeNode cascades in one atomic write, deterministic byte-stable serialization, bidirectional/in/out neighbors, nodesByType); GET /graph + /api/graph on the board server (SSR escHtml + client data-island, behind the Host guard); seed nodes for both existing KB entries; researcher pre-web graph lookup + orchestrator decision→task edge recording prose (parity mirrored). THE REVIEW LOOP'S BEST CATCH YET: the data island was NEVER INJECTED (sentinel had literal quotes the template lacked) — client render was dead code throwing on every load, invisible to all 38 tests because SSR masked it — plus the latent </script> JSON-in-HTML breakout a naive fix would have opened. Fixed: bare sentinel, < escaping (which structurally also prevents body-sentinel collisions), replacement functions, and a hostile-label e2e that pins island round-trip + SSR escaping + $-semantics in one spec. Session-limit interruption mid-re-review was recovered by resuming the same reviewer agent after reset; work was push-backed-up first. Accepted standing NITs: proximity-regex looseness; escHtml over-escaping quotes in content context."
+    }
+  ],
   "created_at": "2026-06-11T15:42:46.119Z",
-  "updated_at": "2026-06-11T15:42:46.119Z",
+  "updated_at": "2026-06-12T02:01:48.405Z",
   "jira_key": null
 }
