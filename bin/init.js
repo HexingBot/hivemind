@@ -23,9 +23,9 @@
 //     forwarded directly (no adaptation) — runInit's contract IS the engine
 //     contract, unlike bin/new-task.js which wraps a legacy (text)=>string.
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { existsSync, readFileSync, readdirSync, copyFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
@@ -44,6 +44,62 @@ import {
   hasRoutingBlock,
   readProjectClaudeMd,
 } from '../src/claude-md.js';
+
+// ---------------------------------------------------------------------------
+// Workflow materializer
+// ---------------------------------------------------------------------------
+//
+// Source-dir resolution strategy (dual execution path):
+//
+//   Dev repo path:   `node bin/init.js`
+//     import.meta.url is set to the ESM file:// URL of bin/init.js.
+//     Source workflows are at <repoRoot>/workflows/ i.e. one level UP from bin/.
+//
+//   Bundled path:    `node dist/init.cjs`
+//     esbuild emits a CJS bundle; import.meta.url is empty string in CJS.
+//     __filename (the CJS global) resolves to dist/init.cjs.
+//     Source workflows are at <pluginRoot>/workflows/ i.e. one level UP from dist/.
+//
+// In both cases the workflows/ dir sits one directory above the entrypoint file.
+// We derive the entrypoint's directory first:
+//   - ESM (import.meta.url truthy): use fileURLToPath(import.meta.url).
+//   - CJS bundle (import.meta.url falsy): use __dirname (available in esbuild CJS).
+// Then join '../workflows' relative to that dir.
+//
+// This is intentionally NOT relative to process.cwd() or repoRoot — the source
+// lives inside the plugin/framework installation, not inside the target project.
+const __initDir = import.meta.url
+  ? dirname(fileURLToPath(import.meta.url))
+  : (typeof __dirname !== 'undefined' ? __dirname : process.cwd());
+
+const PLUGIN_WORKFLOWS_SRC = join(__initDir, '..', 'workflows');
+
+/**
+ * Copy every file from plugin-root workflows/ into the project's .claude/workflows/.
+ * Contract (mirrors AC2):
+ *   - Creates the destination directory if it doesn't exist.
+ *   - NEVER overwrites an existing destination file (idempotent re-run is a no-op).
+ *   - If the source directory does not exist (e.g. a stripped install), silently no-ops.
+ *
+ * @param {string} repoRoot - absolute path to the target project root
+ */
+function materializeWorkflows(repoRoot) {
+  const srcDir = PLUGIN_WORKFLOWS_SRC;
+  if (!existsSync(srcDir)) return; // source absent — no-op (stripped install)
+
+  const destDir = join(repoRoot, '.claude', 'workflows');
+  mkdirSync(destDir, { recursive: true });
+
+  const files = readdirSync(srcDir);
+  for (const file of files) {
+    const srcPath = join(srcDir, file);
+    const destPath = join(destDir, file);
+    if (!existsSync(destPath)) {
+      copyFileSync(srcPath, destPath);
+    }
+    // If dest already exists: skip silently (idempotent, never-overwrite contract).
+  }
+}
 
 const KNOWN_FLAGS = new Set([
   '--force',
@@ -317,6 +373,13 @@ async function runWizardAndWriteProjectMd({
     );
     throw err;
   }
+  // TASK-037 — materialize workflow scripts from plugin-root workflows/ into
+  // the target project's .claude/workflows/. Called on created/forced/resumed
+  // branches (wherever runWizardAndWriteProjectMd runs). Idempotent: existing
+  // destination files are never overwritten; already_initialized is never reached
+  // here because that branch short-circuits before calling this function.
+  materializeWorkflows(repoRoot);
+
   return { projectMdPath: join(repoRoot, 'PROJECT.md') };
 }
 

@@ -238,6 +238,47 @@ This gives future sessions a traversable audit trail: given any task node,
 following its outgoing `produced-by` edges to `decision` nodes explains *why*
 the work was scoped the way it was.
 
+## Deep workflows
+
+The framework ships a `/deep-review` workflow script (materialized into `.claude/workflows/`
+by `bin/init.js`). **Claude Code >= 2.1.154 is required**; on Pro plans the Workflows
+feature is toggled in `/config`.
+
+### When to offer deep-review
+
+**OFFER** (do not auto-run) deep-review in these situations:
+- Release or milestone gates (any ticket that transitions the project to a versioned release).
+- Unusually large diffs (more than ~5 files changed, or any change touching security-sensitive
+  or auth code regardless of size).
+- Explicit human request ("run the deep review", "do a full review", etc.).
+
+**Do NOT offer** for routine per-ticket work — the per-ticket fresh-context `reviewer`
+subagent is the load-bearing sensor there. Deep-review COMPLEMENTS it; it never replaces it.
+
+### Human approval
+
+Each Workflow run requires **explicit human approval** — present the intent ("I'd like to run
+`/deep-review` with `base=<ref>` and `ticket=<key>`"), and only proceed once the human confirms.
+This is Operating Principle #4 applied to Workflows.
+
+### Acting on results
+
+Confirmed **HIGH-severity** findings block the workflow exactly like a HIGH finding from the
+`reviewer` subagent: loop back to the Developer with the findings before transitioning any
+ticket to `done` or publishing a release.
+
+MEDIUM/LOW findings are surfaced to the human for a disposition decision (fix-now vs. track as
+a follow-up ticket).
+
+### Invocation
+
+```
+/deep-review base=<git-ref> ticket=<TASK-key>
+```
+
+`base` defaults to `origin/main`. `ticket` is optional — omit it for a diff-only review with no
+AC-compliance dimension anchored to a ticket.
+
 ## Notes
 
 - The pointer is intentionally tiny; never store substantive state in it.

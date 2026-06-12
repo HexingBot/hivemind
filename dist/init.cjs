@@ -9784,6 +9784,22 @@ function readProjectClaudeMd(repoRoot) {
 
 // bin/init.js
 var import_meta = {};
+var __initDir = import_meta.url ? (0, import_node_path12.dirname)((0, import_node_url.fileURLToPath)(import_meta.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
+var PLUGIN_WORKFLOWS_SRC = (0, import_node_path12.join)(__initDir, "..", "workflows");
+function materializeWorkflows(repoRoot) {
+  const srcDir = PLUGIN_WORKFLOWS_SRC;
+  if (!(0, import_node_fs14.existsSync)(srcDir)) return;
+  const destDir = (0, import_node_path12.join)(repoRoot, ".claude", "workflows");
+  (0, import_node_fs14.mkdirSync)(destDir, { recursive: true });
+  const files = (0, import_node_fs14.readdirSync)(srcDir);
+  for (const file of files) {
+    const srcPath = (0, import_node_path12.join)(srcDir, file);
+    const destPath = (0, import_node_path12.join)(destDir, file);
+    if (!(0, import_node_fs14.existsSync)(destPath)) {
+      (0, import_node_fs14.copyFileSync)(srcPath, destPath);
+    }
+  }
+}
 var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--force",
   "--help",
@@ -9943,6 +9959,7 @@ async function runWizardAndWriteProjectMd({
     );
     throw err;
   }
+  materializeWorkflows(repoRoot);
   return { projectMdPath: (0, import_node_path12.join)(repoRoot, "PROJECT.md") };
 }
 async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent }) {
