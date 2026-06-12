@@ -1,6 +1,6 @@
 # Agentic Software Development Framework
 
-This repository is operated by a multi-agent team built on the Claude Agent SDK. The main thread acts as the **Orchestrator** and delegates all substantive work to specialized subagents defined in `.claude/agents/`.
+This repository is operated by a multi-agent team built on the Claude Agent SDK. The main thread **is** the Orchestrator — equipped with the orchestrator-routing skill — and delegates substantive work to specialist subagents (`developer`, `reviewer`, `researcher`) defined in `.claude/agents/`.
 
 ## First-chat routing
 
@@ -122,7 +122,7 @@ Each subagent declares its model in the `model:` frontmatter field of its agent 
 - **reviewer** → `fable` — the independent quality gate runs on the strongest model; catching bugs and security issues is worth the extra cost.
 - **developer** → `sonnet` — high-volume role (spawned twice per ticket); Sonnet delivers strong coding capability at a lower cost tier.
 - **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
-- **orchestrator** — no `model:` field; it runs as the main session thread and inherits whatever model the session is started with (Fable 5 in production). TASK-032 will remove the orchestrator agent file entirely.
+- **orchestrator** — no agent file; it runs as the main session thread and inherits whatever model the session is started with (Fable 5 in production). TASK-032 removed the orchestrator agent file — the role is the session itself, equipped with the orchestrator-routing skill.
 
 **Canonical knob: `PROJECT.md`.**  The `agent_models` map in `PROJECT.md` frontmatter is the single source of truth for per-agent model overrides in a given project. To change the model for reviewer, developer, or researcher, edit the `agent_models` block in `PROJECT.md` and re-apply with `node bin/init.js --apply-models`. The `--apply-models` flag reads `PROJECT.md` and surgically patches only the `model:` frontmatter line of each mapped agent file (both `.claude/agents/` and the plugin-root `agents/` parity copies in the dev repo) without re-running the wizard or touching any other content.
 

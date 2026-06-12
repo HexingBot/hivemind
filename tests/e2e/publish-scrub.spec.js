@@ -119,10 +119,11 @@ function makeDevRepoForPublish(label) {
   seedActiveBundle(join(repoDir, 'state', 'sessions', '20260521T101010Z-abcd1234'));
 
   // A base agent that MUST survive (asset, not residue).
+  // TASK-032: orchestrator.md removed; developer.md is a canonical base agent.
   mkdirSync(join(repoDir, '.claude', 'agents'), { recursive: true });
   writeFileSync(
-    join(repoDir, '.claude', 'agents', 'orchestrator.md'),
-    '# orchestrator (base asset — must survive publish scrub)\n',
+    join(repoDir, '.claude', 'agents', 'developer.md'),
+    '# developer (base asset — must survive publish scrub)\n',
     'utf8',
   );
 
@@ -187,8 +188,11 @@ describe('AC4 — make-template --yes scrubs all dev tickets for publish', () =>
 
     expect(existsSync(join(repoDir, 'tasks', 'schema.json'))).toBe(true);
     expect(existsSync(join(repoDir, 'tasks', 'README.md'))).toBe(true);
+    // TASK-032: orchestrator.md removed; use developer.md as the representative
+    // base agent survival check. The intent is unchanged: base agents must not
+    // be scrubbed along with dev-residue task files.
     expect(
-      existsSync(join(repoDir, '.claude', 'agents', 'orchestrator.md')),
+      existsSync(join(repoDir, '.claude', 'agents', 'developer.md')),
       'base agents must survive into the shipped plugin',
     ).toBe(true);
   });

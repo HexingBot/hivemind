@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-12T02:01:48.405Z",
+  "generated_at": "2026-06-12T03:03:14.253Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -178,7 +178,7 @@
     {
       "key": "TASK-032",
       "title": "Orchestrator demotion — main thread + skills, remove the orchestrator subagent",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {

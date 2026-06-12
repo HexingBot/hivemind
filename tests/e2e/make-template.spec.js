@@ -78,7 +78,8 @@ function syntheticTicket(key, overrides = {}) {
  *
  * Residue: TASK-NNN.json tickets, TASK-NNN.* sidecars, a dev session bundle,
  * a stale pointer, PROJECT.md, .claude/agents/project-context.md.
- * Assets: tasks/schema.json + README.md, the four base agents, knowledge/.
+ * Assets: tasks/schema.json + README.md, the three specialist agents
+ * (TASK-032: orchestrator.md removed), knowledge/.
  */
 function makeDevRepo(label) {
   const repoDir = makeTmpDir(label);
@@ -135,7 +136,8 @@ function makeDevRepo(label) {
   );
 
   // Base agent files that MUST survive untouched.
-  for (const a of ['developer', 'reviewer', 'researcher', 'orchestrator']) {
+  // TASK-032: orchestrator.md removed; only three specialist subagents remain.
+  for (const a of ['developer', 'reviewer', 'researcher']) {
     writeFileSync(
       join(repoDir, '.claude', 'agents', `${a}.md`),
       `# ${a} agent (base — must survive)\n`,
@@ -413,8 +415,9 @@ describe('AC5 — removes per-project files, preserves base agents + knowledge',
     const repoDir = makeDevRepo('af-mt-assets-survive');
 
     // Snapshot the assets before.
+    // TASK-032: orchestrator.md removed; three specialist subagents remain.
     const agentsBefore = {};
-    for (const a of ['developer', 'reviewer', 'researcher', 'orchestrator']) {
+    for (const a of ['developer', 'reviewer', 'researcher']) {
       agentsBefore[a] = readFileSync(join(repoDir, '.claude', 'agents', `${a}.md`), 'utf8');
     }
     const knowledgeBefore = snapshotTree(join(repoDir, 'knowledge'));
@@ -422,7 +425,7 @@ describe('AC5 — removes per-project files, preserves base agents + knowledge',
     await makeTemplate({ repoRoot: repoDir, now: () => FIXED_NOW, apply: true });
 
     // Base agents survive byte-for-byte.
-    for (const a of ['developer', 'reviewer', 'researcher', 'orchestrator']) {
+    for (const a of ['developer', 'reviewer', 'researcher']) {
       const p = join(repoDir, '.claude', 'agents', `${a}.md`);
       expect(existsSync(p), `${a}.md must survive`).toBe(true);
       expect(readFileSync(p, 'utf8')).toBe(agentsBefore[a]);

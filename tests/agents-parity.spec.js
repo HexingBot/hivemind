@@ -8,11 +8,11 @@
 // This spec FAILS whenever the two directories diverge — either the *set* of
 // agent files differs, or any pair of same-named files is not byte-identical.
 //
-// Tests-first phase: plugin-root `agents/` does not exist yet, so the parity
-// assertions FAIL for the RIGHT reason (the copy hasn't been created). The
-// safety assertion that `.claude/agents/` still holds the four agents PASSES
-// today and must keep passing (it guards against an over-eager impl that
-// deletes the dev source).
+// TASK-032 — orchestrator.md removed: the Orchestrator is the main session
+// thread, not a spawnable subagent. The agent-file set is now three files:
+// developer, researcher, reviewer. Coverage preserved — the parity guard still
+// enforces byte-identical copies between .claude/agents/ and plugin-root agents/
+// for all three remaining specialist subagents.
 //
 // AC map (TASK-021):
 //   AC5 — keep-both + drift-guard: `.claude/agents/` stays; plugin-root
@@ -25,9 +25,11 @@ import { join } from 'node:path';
 
 import { REPO_ROOT } from './helpers/repoRoot.js';
 
-// The four repo-local agents. The global gsd-*/vue/etc. skills/agents are NOT
-// repo-local and are intentionally out of scope here.
-const AGENT_FILES = ['developer.md', 'orchestrator.md', 'researcher.md', 'reviewer.md'];
+// The three repo-local specialist subagents. The Orchestrator is the main
+// session thread (TASK-032) and no longer ships as an agent file. The global
+// gsd-*/vue/etc. skills/agents are NOT repo-local and are intentionally out of
+// scope here.
+const AGENT_FILES = ['developer.md', 'researcher.md', 'reviewer.md'];
 
 const DEV_AGENTS_DIR = join(REPO_ROOT, '.claude', 'agents');
 const PLUGIN_AGENTS_DIR = join(REPO_ROOT, 'agents');
@@ -41,9 +43,10 @@ function listAgentMd(dir) {
 }
 
 describe('AC5 — .claude/agents stays as the live dev source of truth', () => {
-  it('dev_agents_dir_still_holds_exactly_the_four_agents', () => {
+  it('dev_agents_dir_still_holds_exactly_the_three_specialist_agents', () => {
     // Safety guard: the relocation must NOT delete the dev source. This passes
-    // today and must keep passing after the impl lands.
+    // today and must keep passing after the impl lands. The Orchestrator is the
+    // main thread (TASK-032) so only three specialist agents remain.
     const entries = listAgentMd(DEV_AGENTS_DIR);
     expect(entries, '.claude/agents/ must still exist').not.toBeNull();
     expect(entries).toEqual([...AGENT_FILES].sort());

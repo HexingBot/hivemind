@@ -3,12 +3,14 @@
 // an injected `answers` map) so every subagent reads the same stack-aware
 // briefing before starting work.
 //
-// The single-file design is locked by the ticket: four base agents
-// (developer/reviewer/researcher/orchestrator) capture role, and this one
-// generated file captures stack + project type. A future contributor adds a
-// new project_type by appending one entry to `TYPE_SPECIFIC_GUIDANCE` below —
-// the per-type body lives in this module rather than fanning out across N
-// templated files so the surface stays one literal long.
+// The single-file design is locked by the ticket: three base agents
+// (developer/reviewer/researcher) capture specialist roles, and this one
+// generated file captures stack + project type. (TASK-032: the orchestrator
+// agent file was removed; the Orchestrator is the main session thread.) A
+// future contributor adds a new project_type by appending one entry to
+// `TYPE_SPECIFIC_GUIDANCE` below — the per-type body lives in this module
+// rather than fanning out across N templated files so the surface stays one
+// literal long.
 //
 // File layout (mirrors what tests/agent-generator.spec.js asserts):
 //   ---

@@ -9,7 +9,7 @@
     "Affected tests updated to the new surface (agents-parity, orchestrator-agent-v2, plugin-scaffold, agent-generator specs) with coverage preserved, not deleted — the skill content gets the regression locks the agent file had",
     "claude plugin validate . passes; full suite green via npm run test:all"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "refinement",
@@ -18,16 +18,21 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": ["(see refactor(TASK-032) commit)"],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-11T15:59:47.023Z",
       "body": "SCOPE ADDITION from the TASK-031 review (rolled here as next-natural-home — this ticket already touches both spec files): (1) [was MEDIUM-1] Tighten tests/agent-models.spec.js AC4 doc assertions: scope the regexes to the '## Per-Agent Model Assignment' CLAUDE.md section slice instead of whole-document word-presence (the bare /model/i assertion was already green pre-impl), and add an assertion encoding the per-project override clause (e.g. /override|edit the `model:`/i within that section). (2) [was LOW-2] When orchestrator.md is removed, update tests/agent-models.spec.js (orchestrator_md_has_no_model_key will ENOENT) and tests/agents-parity.spec.js (hardcoded four-file list at ~line 30) — coverage must move to the new surface, not be deleted. (3) [was LOW-1, informational] CLAUDE.md:90's inherit-semantics sentence becomes fully accurate once the agent file is gone; no separate action."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T03:03:14.253Z",
+      "body": "TIER ASSIGNMENT: verification_tier = tests-after — the work is content migration + deletion where the verification artifacts are SUPERSEDED existing specs (coverage moves, not new behavior); failing-tests-first would assert only absences. GATE: full npm run test:all — closing this ticket completes the refinement epic, a milestone point under the scaled-gate policy. SCOPE CONSOLIDATION (this ticket carries rolled-in items from two reviews): from TASK-031 — (a) agent-models.spec.js orchestrator_md_has_no_model_key will ENOENT on removal (replace with an assertion that the FILE is absent, preserving the no-dangling-assignment intent), (b) agents-parity.spec.js hardcoded four-file list → three, (c) tighten agent-models.spec.js AC4 doc assertions: section-scope the regexes to '## Per-Agent Model Assignment' and encode the per-project override clause. From TASK-028-via-033: the orchestrator.md step-5/step-4 duplication NIT dies with the file. ADDITIONAL BLAST RADIUS map: orchestrator-agent-v2.spec.js (pins orchestrator.md v2 session-model content — its coverage must MOVE to the skill file), plugin-scaffold.spec.js agents inventory, src/agent-generator.js base-agent list (drops orchestrator.md from the project-context patching set — SRC change), agent-models-config.spec.js/applyAgentModels (already excludes orchestrator — verify no reference), CLAUDE.md line 3 ('subagents defined in .claude/agents/' — orchestrator is the main thread), docs.spec.js, README. MIGRATION RULE (AC2): diff orchestrator.md against CLAUDE.md + orchestrator-routing SKILL.md first; anything unique (delegation protocol details, two-phase developer spawn mechanics, reviewer-isolation rule, ticket-update steps, UAT wiring, tier rubric operationalization) moves into the skill, byte-identical in both skill copies, BEFORE the file is deleted. Nothing the agent file carried may be lost."
     }
   ],
   "created_at": "2026-06-11T15:35:53.729Z",
-  "updated_at": "2026-06-11T15:59:47.023Z",
+  "updated_at": "2026-06-12T03:20:00.000Z",
   "jira_key": null
 }

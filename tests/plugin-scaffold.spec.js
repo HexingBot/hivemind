@@ -39,7 +39,9 @@ const PLUGIN_AGENTS_DIR = join(REPO_ROOT, 'agents');
 const PLUGIN_SKILLS_DIR = join(REPO_ROOT, 'skills');
 const BIN_DIR = join(REPO_ROOT, 'bin');
 
-const AGENT_FILES = ['developer.md', 'orchestrator.md', 'researcher.md', 'reviewer.md'];
+// TASK-032 — orchestrator.md removed: the Orchestrator is the main session
+// thread, not a spawnable subagent. The plugin now ships three specialist agents.
+const AGENT_FILES = ['developer.md', 'researcher.md', 'reviewer.md'];
 const REPO_LOCAL_SKILL = 'tech-training-template';
 // TASK-025 — the always-on orchestrator-routing backstop skill is a SECOND
 // legitimately shipped repo-local skill. The plugin's skill inventory genuinely
@@ -132,7 +134,7 @@ describe('AC2 — .claude-plugin/marketplace.json catalogs the plugin', () => {
 // AC3 — components relocated to the plugin root.
 // ===========================================================================
 describe('AC3 — agents/ and skills/ live at the plugin root', () => {
-  it('plugin_agents_dir_contains_exactly_the_four_agents', () => {
+  it('plugin_agents_dir_contains_exactly_the_three_specialist_agents', () => {
     expect(existsSync(PLUGIN_AGENTS_DIR), 'plugin-root agents/ must exist').toBe(true);
     const entries = readdirSync(PLUGIN_AGENTS_DIR)
       .filter((n) => n.endsWith('.md'))
@@ -238,11 +240,11 @@ describe('AC4 — shipped-bin allowlist points at the committed dist bundles', (
 //   claude plugin marketplace add C:\Users\srpar\OneDrive\Documents\agentic-framework
 //   claude plugin install agentic-framework@agentic-framework-marketplace
 //   claude plugin details agentic-framework
-//     # EXPECT (per §D.5 inventory buckets): Agents (4) =
-//     #   developer / orchestrator / researcher / reviewer, and the
-//     #   tech-training-template skill. NOTE §D.5: commands/ files may surface
-//     #   under the "Skills" bucket in this Claude Code version — count agents
-//     #   (must be 4) and confirm the skill appears; zero manifest errors.
+//     # EXPECT (per §D.5 inventory buckets): Agents (3) =
+//     #   developer / researcher / reviewer (orchestrator removed in TASK-032),
+//     #   and the tech-training-template skill. NOTE §D.5: commands/ files may
+//     #   surface under the "Skills" bucket in this Claude Code version — count
+//     #   agents (must be 3) and confirm the skill appears; zero manifest errors.
 //
 //   # AC6 — leave NO residue in the user's plugin config:
 //   claude plugin uninstall agentic-framework

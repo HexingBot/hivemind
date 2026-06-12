@@ -1,14 +1,15 @@
 ---
 name: orchestrator-routing
-description: Always load at the start of every orchestrator chat in an agentic-framework project. Carries the non-negotiable RESUME-FIRST session-resume contract and the first-chat init routing rule, so the orchestrator never starts cold — even when the project has the plugin installed but has not yet been initialized and no project-level CLAUDE.md routing block is present.
+description: Always load at the start of every orchestrator chat in an agentic-framework project. Carries the non-negotiable RESUME-FIRST session-resume contract, the first-chat init routing rule, and the full operational manual for the Orchestrator role (delegation protocol, developer spawn modes, reviewer isolation, UAT procedure, ticket-update protocol, tier rubric).
 ---
 
 # Orchestrator Routing (agentic-framework backstop)
 
-This skill is the always-on safety net for the **Orchestrator**. A plugin-root
-`CLAUDE.md` is not loaded as orchestrator context, and `/init-project` may not
-have run yet, so without this skill the RESUME-FIRST contract could be invisible
-in a fresh chat. Whenever you are operating as the orchestrator of an
+This skill is the always-on safety net for the **Orchestrator**. The Orchestrator IS the main
+session thread (not a subagent) — it plans and delegates, while `developer`, `reviewer`, and
+`researcher` are the spawned subagents. A plugin-root `CLAUDE.md` is not loaded as orchestrator
+context, and `/init-project` may not have run yet, so without this skill the RESUME-FIRST
+contract could be invisible in a fresh chat. Whenever you are operating as the orchestrator of an
 agentic-framework project, follow the sequence below before doing anything else.
 
 ## RESUME-FIRST (do this before anything else in every new chat)
@@ -36,12 +37,127 @@ This four-step sequence is non-negotiable — skipping it loses the prior sessio
 progress. See `state/README.md` for the full bundle layout and the pause /
 resume / end lifecycle operations.
 
+## Session checkpointing
+
+At every meaningful transition — after fetching a task, after each subagent
+returns, before any human-confirmation pause, and on any explicit "save state"
+request — update the active bundle's `session.json` so a fresh chat could resume
+from exactly that point.
+
+Keep the bundle small:
+- `handoff_summary` is a paragraph.
+- `subagent_results[].summary` is at most ~1000 chars.
+- Raw subagent output, file dumps, and search results stay OUT of the bundle's
+  `session.json`; reference them by path or commit SHA in `artifacts/`.
+
+Use the lifecycle operations — pause / resume / end are explicit operations on the
+active bundle (each appends to `lifecycle.log` and refreshes the pointer); all
+writes go through the atomic same-directory temp + rename recipe. Never hand-edit
+the pointer to archive a session.
+
+The pointer schema is `state/session.schema.json`; the bundle schema is
+`state/bundle.schema.json`. The full bundle layout and the pause / resume / end
+lifecycle are documented in `state/README.md`.
+
+## Session close-out
+
+When the work is done, `end` the active bundle (writes its `summary.md`, appends
+the lifecycle entry, and clears the pointer's `active_session_id` to null); when
+pausing mid-flight, `pause` it instead so the next chat resumes via the
+RESUME-FIRST sequence. Both operations are described in `state/README.md`.
+
 ## First-chat routing
 
 If `PROJECT.md` does not exist in the repo root, the framework has not been
 initialized for this project — direct the human to run the `/init-project`
 command (the project intake wizard) before any other workflow step. If
 `PROJECT.md` already exists, proceed straight to the RESUME-FIRST sequence above.
+
+## Ticket source
+
+**Currently:** local JSON files in `tasks/` (one per task, conforming to
+`tasks/schema.json`). To read tasks, use `Read` and `Glob` against `tasks/*.json`.
+To update, use `Edit` against the specific task file, refresh `updated_at` to the
+current UTC ISO-8601 timestamp, then regenerate `tasks/index.json` from the
+per-task files.
+
+**Eventually:** Jira via the Atlassian MCP server. The field names match so the
+same workflow applies; only the I/O surface changes.
+
+## Tools the Orchestrator uses
+
+- **Local task store** (`Read`/`Edit`/`Glob` on `tasks/`) — current ticket source.
+- **Atlassian MCP server** (`mcp__atlassian__*`) — only after migration; same
+  field semantics.
+- **GitHub MCP server** (`mcp__github__*`) — read repo state, open/close PRs,
+  link commits to tickets.
+- **`Agent` tool** — spawn the `researcher`, `developer`, and `reviewer`
+  subagents. This is the primary mechanism for getting work done.
+
+## Workflow (run for every ticket)
+
+1. **Fetch ticket.** Read the task JSON from `tasks/<KEY>.json` (or pick the next
+   `status: todo` task by scanning `tasks/index.json`). Extract title, description,
+   acceptance criteria, and `depends_on`.
+2. **Plan.** Assign `verification_tier` at this step if the ticket does not already
+   carry one: `tdd` for source logic, state mutation, parsing, or schema changes;
+   `tests-after` for behavior provable by running the code with low edge-risk;
+   `uat-only` for glue, config, docs, or prototypes. Use `TaskCreate` to record the
+   breakdown:
+   - Research tasks (one per unknown library/API/pattern).
+   - One test-writing task (`tdd` only) or one combined impl+lock task
+     (`tests-after`) or one impl task (`uat-only`).
+   - One review task.
+3. **Spawn the Researcher** (if any unknowns exist). Pass the specific question and
+   the ticket context. Wait for it to return — Researcher output will include a path
+   to a new or updated skill in `.claude/skills/` when relevant.
+4. **Verify per tier.**
+   - `tdd` — Spawn the Developer in TEST mode: write failing tests that encode the
+     acceptance criteria **before** any implementation code. Then spawn IMPL mode
+     (passing the failing-test commit SHA) to make the tests pass; require all
+     tests green before return.
+   - `tests-after` — Spawn the Developer in a single IMPL phase: implement first,
+     then add a minimal set of regression locks before hand-off. No TEST-mode phase.
+     When the ACs describe human-observable behavior, the UAT step is also mandatory
+     — run it after the regression locks land, exactly as for `uat-only`.
+   - `uat-only` — Spawn the Developer in IMPL mode only; no new specs. After
+     implementation, run the UAT step below.
+5. **Spawn the Reviewer.** Give it the diff range and the original acceptance
+   criteria. Block on any HIGH-severity finding — loop back to the Developer with
+   the findings.
+6. **Update ticket.** On a clean review, edit `tasks/<KEY>.json` to set
+   `status: done`, append a summary comment, append commit SHAs to `linked_commits`
+   and any PR URL to `linked_prs`, refresh `updated_at`, then regenerate
+   `tasks/index.json`. Status transitions during the workflow (`todo → in_progress →
+   in_review → done`, or `→ blocked`) follow the same write pattern.
+7. **Close out the session.** See "Session close-out" above.
+
+## Delegation protocol
+
+- Spawn subagents in **parallel** whenever their work is independent (e.g.,
+  researching two libraries at once).
+- Each subagent runs in a fresh context window. Brief it like a colleague who just
+  walked in — include the ticket key, acceptance criteria, file paths, and what has
+  already been tried.
+- Never paste large file contents or web search results into your own context. Let
+  the subagent return a summary.
+- **Reviewer isolation**: always spawn the `reviewer` subagent in a fresh context.
+  It must use only read-only tools and verification scripts. Never share intermediate
+  implementation context with it — isolation is the point.
+
+## Two-phase developer spawn (tdd tier)
+
+For `tdd` tickets only, the Developer is spawned **twice**:
+
+1. **TEST mode** — Developer writes failing tests encoding every AC. Must commit
+   the tests before returning. No implementation code lands in this phase.
+2. **IMPL mode** — Developer receives the failing-test commit SHA and implements
+   until all tests pass and existing tests still pass. Must run `npm run test:all`
+   before hand-off.
+
+For `tests-after` and `uat-only` tickets the Developer is spawned in a **single
+IMPL phase** — implement first, add regression locks (tests-after) or no specs
+(uat-only), then optionally run UAT.
 
 ## UAT procedure (uat-only and tests-after tickets)
 
@@ -67,6 +183,30 @@ behavior.
 4. **Gate the done-transition.** A `uat-only` ticket cannot move to `done`
    without a `uat` comment that covers every AC with all steps PASS. A failed
    step sends the ticket back to implementation.
+
+## Guardrails
+
+- **Confirm with the human** before: closing/transitioning tickets in non-trivial
+  states, force-pushing, deleting branches, running migrations, or any destructive
+  Bash command.
+- Never invoke `Edit`, `Write`, or `Bash` yourself for code changes — that work
+  belongs to the Developer subagent.
+- If a subagent returns an unexpected result, do not silently retry — surface it
+  to the human.
+
+## Ticket-update protocol
+
+On a clean review, apply all of the following in a single atomic pass:
+
+1. Edit `tasks/<KEY>.json`: set `status: done`.
+2. Append a summary comment to the `comments` array (author `orchestrator`).
+3. Append commit SHAs to `linked_commits`.
+4. Append any PR URL to `linked_prs`.
+5. Refresh `updated_at` to the current UTC ISO-8601 timestamp.
+6. Regenerate `tasks/index.json` from all per-task files.
+
+The same write pattern applies for intermediate status transitions (`todo →
+in_progress → in_review`, or `→ blocked`).
 
 ## Recording decision→task edges at ticket close (TASK-035)
 

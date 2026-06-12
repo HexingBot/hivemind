@@ -288,9 +288,15 @@ describe('AC4 — bin/init.js generates project-context.md', () => {
 
 // ===========================================================================
 // AC5 — base agent files mention .claude/agents/project-context.md.
+//
+// TASK-032 — orchestrator.md removed: the Orchestrator is the main session
+// thread, not a spawnable subagent. The three specialist subagents (developer,
+// reviewer, researcher) must still reference project-context.md in their
+// Inputs section. The project-context.md sentence in src/agent-generator.js
+// now patches only these three files.
 // ===========================================================================
 describe('AC5 — base agent files reference project-context.md', () => {
-  const AGENT_FILES = ['developer.md', 'reviewer.md', 'researcher.md', 'orchestrator.md'];
+  const AGENT_FILES = ['developer.md', 'reviewer.md', 'researcher.md'];
 
   it.each(AGENT_FILES)('agent_file_%s_references_project_context', (filename) => {
     const path = join(REPO_ROOT, '.claude', 'agents', filename);
