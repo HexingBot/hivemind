@@ -1,0 +1,35 @@
+{
+  "key": "TASK-038",
+  "title": "Deep-research workflow (multi-angle sweep)",
+  "description": "Second shipped Workflow script: a deep-research fan-out the orchestrator can OFFER before heavy/unfamiliar research, complementing (not replacing) the researcher subagent.\n\nRides entirely on TASK-037's infrastructure: the generic workflows/ materializer picks the new file up with ZERO code changes — this ticket adds one workflow source file, its dogfood parity copy, and skill prose.\n\nDESIGN (locked by orchestrator):\n(a) workflows/deep-research.js — args is the research question (string). Body: parallel multi-angle sweep with >=4 distinct lenses (official docs, real-world code examples, community issues/pitfalls, alternatives & comparisons), each agent returning schema-validated {claims, sources}; a synthesis stage merging into a structured result; a completeness-critic stage that names what is missing (unread sources, unverified claims, angles not covered). Returns {summary, key_facts: [{fact, source, confidence}], gaps, sources}. No model overrides; no Date.now()/Math.random() (harness restriction).\n(b) Knowledge-flow rule (prose, orchestrator-routing skill): the KB-first contract is unchanged — knowledge/ graph + KB lookup BEFORE any web research (TASK-035 protocol); deep-research is offered only when the KB misses and the question is broad enough to need multiple angles; the workflow's result feeds the researcher's normal outputs (skill authoring / KB entry), it does not bypass them.\n(c) Naming note: 'deep-research' may collide with a same-named user-level skill on some machines (it does on the dev machine); project-level .claude/workflows/ scoping makes this acceptable — do not rename.\n(d) Like deep-review, the script cannot run under vitest; static-shape lock only, live run proven via UAT.",
+  "acceptance_criteria": [
+    "Plugin-root workflows/deep-research.js exists and is a valid Workflow script: export const meta pure literal (name 'deep-research', description, phases), body runs >=4 distinct research lenses in parallel with schema-validated {claims, sources} outputs, a synthesis stage, and a completeness-critic stage; accepts the research question via args; returns {summary, key_facts, gaps, sources}.",
+    ".claude/workflows/deep-research.js is a byte-identical dogfood parity copy, covered by the TASK-037 parity spec (extend it if it enumerates files explicitly).",
+    "The existing materializer distributes the new file with zero materializer code changes (a spec proves deep-research.js lands in a fresh project's .claude/workflows/).",
+    "The orchestrator-routing skill (both parity copies) 'Deep workflows' section gains the deep-research offer rule: KB/graph lookup first (TASK-035 contract unchanged), offer only for broad unfamiliar-territory questions, human approves each run, results flow into the researcher's normal skill/KB outputs.",
+    "Static-shape regression lock for the new file (exists in both locations, meta parses with name 'deep-research'); no other new specs."
+  ],
+  "status": "todo",
+  "verification_tier": "uat-only",
+  "priority": "medium",
+  "labels": [
+    "workflow",
+    "plugin"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-037"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T17:11:42.871Z",
+      "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = uat-only. Rationale per rubric: this ticket is glue + prose riding TASK-037's infrastructure - one workflow source file (not executable under vitest), a parity copy, and skill prose. The only spec work is extending existing locks (parity + static shape + materializer pickup), all encoded in the ACs. Verified via conversational UAT: live-run /deep-research on a real question; done-gate requires the uat comment covering every AC with all steps PASS."
+    }
+  ],
+  "created_at": "2026-06-12T16:57:09.640Z",
+  "updated_at": "2026-06-12T17:11:42.871Z",
+  "jira_key": null
+}

@@ -1,0 +1,33 @@
+{
+  "key": "TASK-037",
+  "title": "Deep-review workflow + workflow materializer infra",
+  "description": "Ship the framework's first multi-agent Workflow script — a deep-review fan-out for release gates and large diffs — plus the generic infrastructure that distributes workflow scripts to user projects.\n\nCONTEXT (research, 2026-06-12, sources: code.claude.com/docs/en/workflows.md + plugins.md): saved workflows live in the project's .claude/workflows/ directory and are invocable as /<name> or via Workflow({name}). Plugins CANNOT ship workflows as a first-class component (plugins.md enumerates skills/commands/agents/hooks/mcp/lsp/monitors/bin only), so distribution must follow our established init-materialization pattern. Workflows need Claude Code >=2.1.154 and require explicit human approval per run — which aligns with Operating Principle #4: the orchestrator OFFERS a deep workflow, the human approves the run.\n\nDESIGN DECISIONS (locked by orchestrator):\n(a) Workflow sources live at plugin-root workflows/ (deliberately named so that if Claude Code later adds native plugin workflow support, the directory is already in the right place). bin/init.js copies every file from there into the target project's .claude/workflows/, never overwriting existing files, skipped on already_initialized — same contract as the other materializers.\n(b) Dev-repo dogfood: .claude/workflows/ holds byte-identical parity copies, locked by a parity spec (same pattern as tests/agents-parity.spec.js).\n(c) The deep-review script: fan-out review dimensions (AC-compliance, correctness/bugs, security, test-adequacy) each producing schema-validated findings, then adversarial verification per finding via pipeline (no barrier between dimensions), returning confirmed findings with severity. Accepts args {base, ticket} (git base ref + optional ticket key whose ACs anchor the AC-compliance dimension). Omit model overrides (agents inherit the session model). Script constraint: Date.now()/Math.random()/new Date() are unavailable in workflow scripts.\n(d) This workflow COMPLEMENTS the per-ticket reviewer subagent (deep single-context tracing remains the load-bearing sensor); deep-review is for release/milestone gates, very large diffs, or on human request.\n(e) The script itself cannot execute under vitest (it runs in the Claude Code harness) — its regression locks are static: file exists, parses, meta block carries required fields. The materializer IS testable and gets the real regression locks. Live execution is proven via the UAT step.\n\nCONSTRAINT for the materializer: must work both when run from the dev repo (node bin/init.js) and from the bundled plugin (dist/init.cjs executing inside the installed plugin root) — resolve the workflows/ source dir relative to the entrypoint location, or inline the file contents at build time; developer's choice, document it. Remember to rebuild dist/ (npm run build:plugin) if bin/ or bundled src/ changes.",
+  "acceptance_criteria": [
+    "Plugin-root workflows/deep-review.js exists and is a valid Workflow script: export const meta pure literal (name 'deep-review', description, phases), body fans out >=4 review dimensions (AC-compliance, correctness/bugs, security, test-adequacy) with schema-validated findings, adversarially verifies each finding (pipeline, no inter-dimension barrier), and returns confirmed findings each carrying {severity, file, title, verdict rationale}; accepts args {base, ticket}.",
+    "bin/init.js materializes every file under plugin-root workflows/ into the project's .claude/workflows/ on created/forced/resumed branches; existing destination files are NEVER overwritten (idempotent re-run is a no-op); already_initialized branch skips entirely; works from both dev-repo and bundled dist/init.cjs execution paths.",
+    ".claude/workflows/deep-review.js is a byte-identical dogfood parity copy of the plugin-root file, locked by a parity spec following the agents-parity pattern.",
+    "The orchestrator-routing skill (.claude/skills/ AND plugin-root skills/ parity copies) gains a 'Deep workflows' section: the orchestrator OFFERS deep-review at release/milestone gates, for unusually large diffs, or on human request; the human must approve each run (Claude Code >=2.1.154); confirmed HIGH findings block exactly like reviewer HIGH findings.",
+    "Minimal regression locks per tests-after tier: materializer copy/no-overwrite/idempotency/skip-on-initialized specs, plus a static-shape spec for workflows/deep-review.js (file exists in both locations, meta block parses with required name/description fields). No new specs beyond these ACs."
+  ],
+  "status": "todo",
+  "verification_tier": "tests-after",
+  "priority": "medium",
+  "labels": [
+    "workflow",
+    "plugin"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T17:11:42.808Z",
+      "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = tests-after. Rationale per rubric: the materializer is file-copy glue provable by running the code with low edge-risk (no parsing, no state-machine logic - the established init-materialization pattern); the workflow script itself CANNOT execute under vitest (harness-only), so tdd is meaningless for it. Tests-after = implement, prove by running, then minimal regression locks (AC5). ACs are human-observable (a workflow the human can invoke), so the UAT step applies after the locks land: live-run /deep-review against a real diff with the human's approval. SCALED GATE: test:changed + affected e2e specs proposed by the developer (init-flow e2e specs are the obvious candidates since bin/init.js changes). NOTE: tier set directly in the task JSON by the orchestrator because this session's MCP server predates the tier field (0.1.1 bundle loaded at session start)."
+    }
+  ],
+  "created_at": "2026-06-12T16:55:52.338Z",
+  "updated_at": "2026-06-12T17:11:42.808Z",
+  "jira_key": null
+}

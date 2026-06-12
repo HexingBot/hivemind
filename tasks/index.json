@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-12T03:30:39.540Z",
+  "generated_at": "2026-06-12T17:11:42.871Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -203,6 +203,18 @@
       "key": "TASK-036",
       "title": "Configurable per-agent models — agent_models map in PROJECT.md + wizard question + frontmatter applier",
       "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-037",
+      "title": "Deep-review workflow + workflow materializer infra",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-038",
+      "title": "Deep-research workflow (multi-angle sweep)",
+      "status": "todo",
       "priority": "medium"
     }
   ]
