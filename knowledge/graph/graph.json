@@ -2,6 +2,12 @@
   "schema_version": 1,
   "nodes": [
     {
+      "id": "decision-20260612-deep-workflows",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T17:15:00Z",
+      "label": "Deep-workflows pair: Workflow-tool scripts distributed via init materialization; opt-in amplifiers, never replacing the per-ticket loop"
+    },
+    {
       "id": "decision-20260612-graphify-inhouse",
       "type": "decision",
       "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T02:30:00Z",
@@ -42,6 +48,12 @@
       "type": "task",
       "ref": "tasks/TASK-035.json",
       "label": "Knowledge graph (graphify propio)"
+    },
+    {
+      "id": "task-037",
+      "type": "task",
+      "ref": "tasks/TASK-037.json",
+      "label": "Deep-review workflow + workflow materializer infra"
     }
   ],
   "edges": [
@@ -58,6 +70,11 @@
     {
       "from": "task-035",
       "to": "decision-20260612-graphify-inhouse",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-037",
+      "to": "decision-20260612-deep-workflows",
       "relation": "produced-by"
     }
   ]

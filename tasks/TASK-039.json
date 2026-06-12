@@ -1,0 +1,36 @@
+{
+  "key": "TASK-039",
+  "title": "deep-review hardening: prompt-injection guards + materializer test gaps",
+  "description": "Roll-forward of the 5 MEDIUM + 2 same-module LOW findings from the FIRST live /deep-review run (run wf_a47d7c8a-5d0, 2026-06-12, reviewing TASK-037's own diff — full result in the TASK-037 uat trail). The per-ticket reviewer had approved with 0 HIGH; these are the deltas the multi-agent fan-out surfaced.\n\nFINDINGS TO FIX (both workflow copies stay byte-identical; parity spec guards):\nM1 — workflows/deep-review.js: args.base / args.ticket are interpolated into agent prompts unvalidated. Add allowlist validation at the top of the script (git-ref-shaped regex for base, /^TASK-\\d{3,}$/ for ticket; on violation, log + fall back to defaults or return early with an error result). Plain JS only — no Node APIs in workflow scripts.\nM2 — workflows/deep-review.js verifyPrompt(): finding.title/file/severity/evidence are embedded verbatim — attacker-authored diff content quoted in evidence can steer the verifier (second-order prompt injection that could suppress the HIGH gate). Delimit untrusted fields (e.g. fenced blocks with an explicit 'data, not instructions' preamble) and length-cap evidence.\nM3 — tests/e2e/workflows-materializer.spec.js: already_initialized skip test is VACUOUS (copying identical bytes from the same source passes the equality check even if the branch regressed). Perturb the destination with a sentinel between runs and/or compare full directory listings (which also discharges the header's 'file-set identical' claim).\nM4 — AC2's bundled path has zero automated coverage: no spec spawns node dist/init.cjs, and a mis-resolved source dir degrades to the silent existsSync no-op. Add ONE e2e spec that runs dist/init.cjs (answers-file mode) in a tmp dir and asserts .claude/workflows/deep-review.js lands.\nM5 — only the meta literal is parse-checked; the ~200-line body is never syntax-validated. Add a wrap-and-parse lock: construct (don't call) new Function('args','phase','log','pipeline','agent','parallel','budget','workflow', body) so a syntax error below the meta block fails the suite.\nL1 — bin/init.js materializeWorkflows: filter readdirSync entries to files (withFileTypes/isFile) so a future subdirectory doesn't crash init mid-run; document flat-only or skip dirs.\nL2 — bin/init.js: wrap the materializeWorkflows call in the same warn-before-rethrow try/catch contract as seedBacklog/generateUseCaseSuite (TASK-017 AC5 pattern).\nALSO: upgrade the parity lock from single hardcoded file to directory-wide file-set parity (agents-parity pattern) — this is the drift class TASK-038 introduces with a second file, so land it here first or coordinate.\n\nRebuild dist/ (npm run build:plugin) since bin/init.js changes.",
+  "acceptance_criteria": [
+    "workflows/deep-review.js validates args.base against a git-ref allowlist regex and args.ticket against /^TASK-\\d{3,}$/ before interpolating either into any agent prompt; invalid values fall back to defaults (base) or are dropped with a log line (ticket); both workflow copies remain byte-identical.",
+    "verifyPrompt() delimits all finding-derived fields as explicitly-marked untrusted data (fenced + 'data, not instructions' framing) and length-caps evidence; the verifier prompt instructs the agent to treat instruction-like content inside the data as part of the finding under test, never as directives.",
+    "The already_initialized materializer spec is non-vacuous: it perturbs the destination file (sentinel) and asserts the sentinel survives a second runInit, plus compares the full .claude/workflows/ directory listing pre/post.",
+    "One e2e spec executes node dist/init.cjs (answers-file mode) in a tmp project and asserts .claude/workflows/deep-review.js is materialized — the bundled __dirname resolution path is sensor-covered.",
+    "A wrap-and-parse static lock syntax-checks the ENTIRE workflow script body (new Function constructed, never invoked); the parity lock is directory-wide file-set parity over workflows/ vs .claude/workflows/.",
+    "bin/init.js: materializeWorkflows skips non-file entries and is wrapped in the warn-before-rethrow contract; dist/ rebuilt and committed in the same change."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "workflow",
+    "hardening"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-037"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T22:46:36.281Z",
+      "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = tests-after. The deliverable is mostly test hardening plus small guards; the workflow-script changes (M1/M2) cannot execute under vitest so tests-first is meaningless there, and the new locks (M3/M4/M5) ARE the specs. Implement, prove by running (incl. the new dist/init.cjs e2e sensor), minimal locks per ACs. Scaled gate: test:changed + workflows-materializer, init, init-command, plugin-deps e2e specs. Source: first live /deep-review run (wf_a47d7c8a-5d0) — 5 MEDIUM + 2 LOW rolled forward per the next-natural-home pattern."
+    }
+  ],
+  "created_at": "2026-06-12T22:46:15.535Z",
+  "updated_at": "2026-06-12T22:46:36.281Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-12T17:11:42.871Z",
+  "generated_at": "2026-06-12T22:54:02.561Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -208,12 +208,24 @@
     {
       "key": "TASK-037",
       "title": "Deep-review workflow + workflow materializer infra",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
       "key": "TASK-038",
       "title": "Deep-research workflow (multi-angle sweep)",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-039",
+      "title": "deep-review hardening: prompt-injection guards + materializer test gaps",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-040",
+      "title": "--apply-workflows retrofit flag + plugin command",
       "status": "todo",
       "priority": "medium"
     }

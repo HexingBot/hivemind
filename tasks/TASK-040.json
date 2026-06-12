@@ -1,0 +1,36 @@
+{
+  "key": "TASK-040",
+  "title": "--apply-workflows retrofit flag + plugin command",
+  "description": "Human-requested (2026-06-12): already-initialized projects NEVER receive newly-shipped workflows — the already_initialized branch of bin/init.js skips materializeWorkflows by design, so every project initialized with plugin <= 0.2.0 will miss deep-review/deep-research after a plugin update. Close the gap with a surgical re-apply path, following the TASK-036 --apply-models precedent exactly.\n\nSHAPE (locked with the human):\n(a) bin/init.js gains an --apply-workflows flag: reads NOTHING from the wizard, runs ONLY materializeWorkflows against the target project (created/forced/resumed/already_initialized state is irrelevant — the flag bypasses the state machine the way --apply-models does). Preserves the materializer's never-overwrite contract: existing files in .claude/workflows/ are left untouched; only missing files are added. Prints a one-line summary of files added / skipped.\n(b) New plugin command commands/apply-workflows.md (namespaced /agentic-framework:apply-workflows): runs node \\${CLAUDE_PLUGIN_ROOT}/dist/init.cjs --apply-workflows and reports the result. Follow the structure of commands/task-status.md (thin, bash-driven, no TTY assumptions).\n(c) Rebuild dist/ (npm run build:plugin) in the same change; reviewer checks byte-fresh.\n(d) Coordinate with TASK-039: if 039's subdirectory-filter and warn-wrapper land first, this flag inherits them for free. Sequencing preference: 039 -> 038 -> 040, but the flag must work regardless of order.\n\nNOTE: /agentic-framework:init-project remains the fresh-project bootstrap; this command is the upgrade/retrofit path. Document the distinction in one sentence inside the command body.",
+  "acceptance_criteria": [
+    "node bin/init.js --apply-workflows on an ALREADY-INITIALIZED project adds any missing workflow files to .claude/workflows/ without touching PROJECT.md, tasks/, agents, skills, or any existing workflow file (never-overwrite preserved); exits non-zero with a clear message only on real I/O failure.",
+    "The flag works on a NOT-yet-initialized project too (no crash: it simply materializes workflows; it does NOT run the wizard), and is mutually understood with the state machine: no PROJECT.md is created, no session bundle is minted.",
+    "commands/apply-workflows.md exists at plugin root, runs the dist bundle with the flag via \\${CLAUDE_PLUGIN_ROOT}, and states in one sentence that init-project is for fresh projects while apply-workflows retrofits workflow files after plugin updates.",
+    "Regression locks: one e2e spec proving the retrofit on an initialized tmp project (missing file added, existing file untouched, PROJECT.md byte-identical pre/post) and one proving the not-initialized no-wizard path; dist/ rebuilt and committed byte-fresh.",
+    "CLI parse errors for conflicting flags (--apply-workflows combined with --force or --answers-file) reject with a clear message before any filesystem write."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "workflow",
+    "plugin",
+    "cli"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-037"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T22:54:02.561Z",
+      "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = tests-after. CLI flag + file-copy glue provable by running (the --apply-models precedent ran the same way); regression locks named in AC4. ACs human-observable (run the command on a real initialized project) so the UAT step applies: live /agentic-framework:apply-workflows on an existing project after the command ships. Scaled gate: test:changed + init/init-command/workflows-materializer/plugin-deps e2e."
+    }
+  ],
+  "created_at": "2026-06-12T22:53:34.275Z",
+  "updated_at": "2026-06-12T22:54:02.561Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

@@ -9,7 +9,7 @@
     "The orchestrator-routing skill (.claude/skills/ AND plugin-root skills/ parity copies) gains a 'Deep workflows' section: the orchestrator OFFERS deep-review at release/milestone gates, for unusually large diffs, or on human request; the human must approve each run (Claude Code >=2.1.154); confirmed HIGH findings block exactly like reviewer HIGH findings.",
     "Minimal regression locks per tests-after tier: materializer copy/no-overwrite/idempotency/skip-on-initialized specs, plus a static-shape spec for workflows/deep-review.js (file exists in both locations, meta block parses with required name/description fields). No new specs beyond these ACs."
   ],
-  "status": "todo",
+  "status": "done",
   "verification_tier": "tests-after",
   "priority": "medium",
   "labels": [
@@ -18,16 +18,29 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "be45b44",
+    "46745d9"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-12T17:11:42.808Z",
       "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = tests-after. Rationale per rubric: the materializer is file-copy glue provable by running the code with low edge-risk (no parsing, no state-machine logic - the established init-materialization pattern); the workflow script itself CANNOT execute under vitest (harness-only), so tdd is meaningless for it. Tests-after = implement, prove by running, then minimal regression locks (AC5). ACs are human-observable (a workflow the human can invoke), so the UAT step applies after the locks land: live-run /deep-review against a real diff with the human's approval. SCALED GATE: test:changed + affected e2e specs proposed by the developer (init-flow e2e specs are the obvious candidates since bin/init.js changes). NOTE: tier set directly in the task JSON by the orchestrator because this session's MCP server predates the tier field (0.1.1 bundle loaded at session start)."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-12T22:52:48.689Z",
+      "body": "UAT 2026-06-12 (tier tests-after, human-observable ACs). Step 1: run /deep-review with {base: origin/main, ticket: TASK-037} - expected: workflow launches under the runtime and returns confirmed findings with severity; observed: run wf_a47d7c8a-5d0 completed (24 agents, 2 phases), 16 confirmed findings (0 HIGH / 5 MEDIUM / 11 LOW), blocked=false - PASS (live, witnessed by human; resolves the reviewer MEDIUM on runtime acceptance). Step 2: init on a fresh project materializes .claude/workflows/deep-review.js, re-run does not overwrite - expected per AC2; observed: workflows-materializer e2e suite 7/7 green on live re-run - PASS, verified by Orchestrator at the human request. Step 3: Deep workflows section present in skill, purely additive, parity intact - observed: cmp byte-identical both SKILL.md copies and both workflow copies, section present - PASS, verified by Orchestrator at the human request. OVERALL: PASS (3/3). Findings from the live run rolled forward to TASK-039 (5 MEDIUM + 2 LOW, next-natural-home pattern)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T22:52:48.737Z",
+      "body": "CLOSE: APPROVE-WITH-FOLLOWUPS (reviewer: 0 HIGH / 1 MEDIUM / 4 LOW) + UAT 3/3 PASS. The reviewer MEDIUM (runtime acceptance unverifiable statically) was resolved by the live UAT run exactly as the ticket designed. Deliverables: workflows/deep-review.js (first shipped Workflow script), generic workflows/ materializer in bin/init.js (dual-path __dirname resolution), dogfood parity copies, Deep workflows skill section, 7 regression locks. Commits: be45b44 (impl+locks), 46745d9 (mint+state). Reviewer LOWs: subdirectory crash + warn-wrapper rolled into TASK-039; e2e-vs-fast placement of static specs deferred (cosmetic); bundle-shape mis-scope noted as process learning (the import-graph cannot see import(PROD.init) coupling - named lists stay load-bearing). Scaled gate: fast 153 green, expanded e2e 78 green, dist byte-fresh."
     }
   ],
   "created_at": "2026-06-12T16:55:52.338Z",
-  "updated_at": "2026-06-12T17:11:42.808Z",
+  "updated_at": "2026-06-12T22:53:12.735Z",
   "jira_key": null
 }
