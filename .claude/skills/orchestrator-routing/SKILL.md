@@ -279,6 +279,42 @@ a follow-up ticket).
 `base` defaults to `origin/main`. `ticket` is optional — omit it for a diff-only review with no
 AC-compliance dimension anchored to a ticket.
 
+### When to offer deep-research
+
+The framework also ships a `/deep-research` workflow script for broad research questions that
+benefit from multiple angles simultaneously.
+
+**KB-first contract is UNCHANGED (TASK-035):** always check the `knowledge/` graph and run a KB
+lookup BEFORE considering deep-research. If the KB answers the question, use that — do not reach
+for the workflow.
+
+**OFFER** (do not auto-run) deep-research when ALL of the following hold:
+- The KB lookup misses (no sufficiently relevant existing knowledge entry).
+- The question is broad or touches unfamiliar territory where multiple independent angles are
+  warranted (official docs, real-world usage, community pitfalls, and alternatives).
+- The question is not answerable by a single targeted search (for narrow targeted questions,
+  spawn the `researcher` subagent directly).
+
+**Do NOT offer** for narrow or well-scoped questions, for questions already answered in the KB,
+or for routine per-ticket research the `researcher` subagent handles well on its own.
+
+**Human approval:** each Workflow run requires explicit human approval — present the intent
+("I'd like to run `/deep-research` with question: `<the question>`") and only proceed once the
+human confirms. This is Operating Principle #4 applied to Workflows.
+
+**Results flow into normal researcher outputs:** the deep-research result is not a terminal
+output — it feeds the researcher's standard deliverables (skill authoring under `.claude/skills/`
+and/or a KB entry under `knowledge/`). The workflow does not bypass the knowledge-management
+layer; it accelerates the data-gathering stage.
+
+### deep-research invocation
+
+```
+/deep-research <research question as a plain string>
+```
+
+Returns `{ summary, key_facts: [{ fact, source, confidence }], gaps, sources }`.
+
 ## Notes
 
 - The pointer is intentionally tiny; never store substantive state in it.

@@ -3,17 +3,19 @@
 // the deep-review.js static shape.
 // TASK-039 (tests-after) — hardening: non-vacuous already_initialized spec (M3),
 // whole-body parse lock + directory-wide parity (M5).
+// TASK-038 (uat-only, AC3/AC5) — generalize static-shape + materializer specs
+// to iterate over all workflow files so deep-research.js (and any future files)
+// are automatically covered without duplicating tests.
 //
 // AC5 scope (no extras — every spec here encodes an AC or a real regression):
-//   - Static shape: deep-review.js exists in both locations, meta block parses
-//     with required name/description fields.
-//   - Whole-body parse lock: full script body syntax-checks via new Function
-//     (constructed, never invoked) — catches syntax errors below the meta block.
+//   - Static shape (all files): every workflow file in workflows/ exists in both
+//     locations, meta block parses with required name/description fields, and the
+//     full body syntax-checks via AsyncFunction construction.
+//   - Whole-body parse lock: as above, now applied to every file in the directory.
 //   - Parity (directory-wide): workflows/ and .claude/workflows/ have identical
-//     file sets and every file is byte-identical (guards TASK-038 adding a
-//     second workflow file).
-//   - Materializer copy: created/forced/resumed branches write .claude/workflows/
-//     into the target project.
+//     file sets and every file is byte-identical.
+//   - Materializer copy: created/forced/resumed branches write ALL workflow files
+//     from workflows/ into the target project's .claude/workflows/.
 //   - Materializer no-overwrite: an existing destination file is never clobbered.
 //   - Materializer idempotency: a second init run with already_initialized is a
 //     no-op; spec is non-vacuous — destination is perturbed with a sentinel AFTER
@@ -33,107 +35,108 @@ afterAll(cleanupAll);
 
 const FIXED_NOW = '2026-06-12T12:00:00Z';
 
-// Locations of the canonical workflow script.
-const PLUGIN_ROOT_WORKFLOW = join(REPO_ROOT, 'workflows', 'deep-review.js');
-const DEV_WORKFLOW         = join(REPO_ROOT, '.claude', 'workflows', 'deep-review.js');
 // Directories (for directory-wide parity check — M5).
 const PLUGIN_WORKFLOWS_DIR = join(REPO_ROOT, 'workflows');
 const DEV_WORKFLOWS_DIR    = join(REPO_ROOT, '.claude', 'workflows');
 
+// Enumerate all workflow files at spec-load time.
+// The static-shape specs iterate over this list so any future workflow file
+// (e.g., deep-research.js added by TASK-038) is automatically covered.
+const ALL_WORKFLOW_FILES = readdirSync(PLUGIN_WORKFLOWS_DIR)
+  .filter((n) => !n.startsWith('.') && n.endsWith('.js'))
+  .sort();
+
 // ---------------------------------------------------------------------------
-// Static shape — file existence and meta block validity
+// Static shape — file existence, meta block validity, and whole-body parse lock
+// applied to EVERY workflow file in workflows/.
 // ---------------------------------------------------------------------------
 
-describe('AC1/AC3 — deep-review.js static shape', () => {
-  it('plugin_root_workflows_deep_review_exists', () => {
+describe('AC1/AC3/AC5 — all workflow scripts static shape', () => {
+  it('plugin_workflows_dir_contains_at_least_two_workflow_files', () => {
+    // Sanity guard: ensures the directory enumeration is non-trivially small.
+    // deep-review.js (TASK-037) and deep-research.js (TASK-038) must both be present.
     expect(
-      existsSync(PLUGIN_ROOT_WORKFLOW),
-      'workflows/deep-review.js must exist at the plugin root',
-    ).toBe(true);
+      ALL_WORKFLOW_FILES.length,
+      `workflows/ must contain at least 2 .js files; found: ${ALL_WORKFLOW_FILES.join(', ')}`,
+    ).toBeGreaterThanOrEqual(2);
   });
 
-  it('dotclause_workflows_deep_review_exists', () => {
-    expect(
-      existsSync(DEV_WORKFLOW),
-      '.claude/workflows/deep-review.js must exist as the dogfood parity copy',
-    ).toBe(true);
-  });
+  for (const fileName of ALL_WORKFLOW_FILES) {
+    const pluginPath = join(PLUGIN_WORKFLOWS_DIR, fileName);
+    const devPath    = join(DEV_WORKFLOWS_DIR, fileName);
+    const slug       = fileName.replace(/\.js$/, '').replace(/[^a-z0-9]/g, '_');
 
-  it('meta_block_parses_with_required_name_and_description', () => {
-    const src = readFileSync(PLUGIN_ROOT_WORKFLOW, 'utf8');
+    it(`${slug}__plugin_root_file_exists`, () => {
+      expect(
+        existsSync(pluginPath),
+        `workflows/${fileName} must exist at the plugin root`,
+      ).toBe(true);
+    });
 
-    // Extract the export const meta = { ... }; literal block.
-    // The spec requires meta to be a pure literal (no variables/calls/spreads).
-    // We slice the object literal and evaluate it via new Function to parse it.
-    const metaMatch = src.match(/export\s+const\s+meta\s*=\s*(\{[\s\S]*?\n\});/);
-    expect(
-      metaMatch,
-      'workflow script must contain export const meta = { ... }; as a top-level pure literal',
-    ).not.toBeNull();
+    it(`${slug}__dotclause_parity_copy_exists`, () => {
+      expect(
+        existsSync(devPath),
+        `.claude/workflows/${fileName} must exist as the dogfood parity copy`,
+      ).toBe(true);
+    });
 
-    // Evaluate the literal in isolation — safe because it is a pure object literal.
-    // eslint-disable-next-line no-new-func
-    const meta = new Function(`return ${metaMatch[1]}`)();
+    it(`${slug}__meta_block_parses_with_required_name_and_description`, () => {
+      const src = readFileSync(pluginPath, 'utf8');
 
-    expect(typeof meta.name, 'meta.name must be a string').toBe('string');
-    expect(meta.name.length, 'meta.name must be non-empty').toBeGreaterThan(0);
+      // Extract the export const meta = { ... }; literal block.
+      // The spec requires meta to be a pure literal (no variables/calls/spreads).
+      const metaMatch = src.match(/export\s+const\s+meta\s*=\s*(\{[\s\S]*?\n\});/);
+      expect(
+        metaMatch,
+        `${fileName}: must contain export const meta = { ... }; as a top-level pure literal`,
+      ).not.toBeNull();
 
-    expect(typeof meta.description, 'meta.description must be a string').toBe('string');
-    expect(meta.description.length, 'meta.description must be non-empty').toBeGreaterThan(0);
+      // Evaluate the literal in isolation — safe because it is a pure object literal.
+      // eslint-disable-next-line no-new-func
+      const meta = new Function(`return ${metaMatch[1]}`)();
 
-    expect(meta.name).toBe('deep-review');
-  });
+      expect(typeof meta.name, `${fileName}: meta.name must be a string`).toBe('string');
+      expect(meta.name.length, `${fileName}: meta.name must be non-empty`).toBeGreaterThan(0);
 
-  // M5 (TASK-039) — whole-body parse lock. Construct (never invoke) an async
-  // Function over the entire script body so any syntax error below the meta
-  // block fails the suite. The body is extracted by stripping the export const
-  // meta block (which is not valid inside a function body due to `export`).
-  //
-  // AsyncFunction is required (not plain Function) because the workflow body
-  // contains top-level `await pipeline(...)`. Plain `new Function` produces a
-  // sync function where `await` is a SyntaxError; AsyncFunction produces an
-  // async function where `await` is valid — matching the Claude Code harness.
-  //
-  // Top-level `return` in the workflow body is also legal inside any function
-  // body (sync or async), so AsyncFunction handles both constructs correctly.
-  //
-  // AsyncFunction constructor is obtained via:
-  //   Object.getPrototypeOf(async function(){}).constructor
-  // This is the standard way to access AsyncFunction without a bare reference.
-  it('whole_body_syntax_check_via_AsyncFunction_construction', () => {
-    const src = readFileSync(PLUGIN_ROOT_WORKFLOW, 'utf8');
+      expect(typeof meta.description, `${fileName}: meta.description must be a string`).toBe('string');
+      expect(meta.description.length, `${fileName}: meta.description must be non-empty`).toBeGreaterThan(0);
 
-    // Strip the export const meta = { ... }; block so only the executable body
-    // remains. The meta block is bounded by 'export const meta = {' and the
-    // closing '\n};' line. We slice: find the meta declaration, then the first
-    // '\n};' that terminates it, then take everything after that.
-    const metaStart = src.indexOf('export const meta =');
-    expect(metaStart, 'export const meta = must exist in the source').toBeGreaterThanOrEqual(0);
+      // The file name must match the meta.name (e.g., deep-review.js → 'deep-review').
+      const expectedName = fileName.replace(/\.js$/, '');
+      expect(
+        meta.name,
+        `${fileName}: meta.name must equal '${expectedName}'`,
+      ).toBe(expectedName);
+    });
 
-    const metaEndToken = '\n};';
-    const metaEndIdx = src.indexOf(metaEndToken, metaStart);
-    expect(metaEndIdx, 'meta block closing }; must be findable').toBeGreaterThanOrEqual(0);
+    // M5 (TASK-039) — whole-body parse lock, now generalized to all workflow files.
+    // Construct (never invoke) an AsyncFunction over the entire script body so any
+    // syntax error below the meta block fails the suite.
+    it(`${slug}__whole_body_syntax_check_via_AsyncFunction_construction`, () => {
+      const src = readFileSync(pluginPath, 'utf8');
 
-    // Body = everything after the '\n};' terminator of the meta block.
-    const body = src.slice(metaEndIdx + metaEndToken.length);
-    expect(body.length, 'body after meta block must be non-empty').toBeGreaterThan(0);
+      const metaStart = src.indexOf('export const meta =');
+      expect(metaStart, `${fileName}: export const meta = must exist`).toBeGreaterThanOrEqual(0);
 
-    // Obtain the AsyncFunction constructor (standard, no non-standard globals).
-    // eslint-disable-next-line no-new-func
-    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+      const metaEndToken = '\n};';
+      const metaEndIdx = src.indexOf(metaEndToken, metaStart);
+      expect(metaEndIdx, `${fileName}: meta block closing }; must be findable`).toBeGreaterThanOrEqual(0);
 
-    // Construct (NEVER invoke) AsyncFunction to parse-check the full body.
-    // Parameters mirror the workflow runtime's injected globals.
-    // The second argument to expect() is the failure message; toThrow() takes
-    // NO argument so any thrown error (including SyntaxError) causes failure.
-    expect(
-      () => new AsyncFunction(
-        'args', 'phase', 'log', 'pipeline', 'agent', 'parallel', 'budget', 'workflow',
-        body,
-      ),
-      'whole-body AsyncFunction construction must not throw — any throw indicates a syntax error in the workflow body',
-    ).not.toThrow();
-  });
+      const body = src.slice(metaEndIdx + metaEndToken.length);
+      expect(body.length, `${fileName}: body after meta block must be non-empty`).toBeGreaterThan(0);
+
+      // eslint-disable-next-line no-new-func
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
+      expect(
+        () => new AsyncFunction(
+          'args', 'phase', 'log', 'pipeline', 'agent', 'parallel', 'budget', 'workflow',
+          body,
+        ),
+        `${fileName}: whole-body AsyncFunction construction must not throw`,
+      ).not.toThrow();
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -183,11 +186,14 @@ describe('AC1/AC3 — directory-wide parity: workflows/ vs .claude/workflows/', 
 });
 
 // ---------------------------------------------------------------------------
-// Materializer — created branch copies workflows/ into the target project
+// Materializer — created branch copies ALL workflows/ files into the target
+// project. The test iterates over ALL_WORKFLOW_FILES so TASK-038's
+// deep-research.js (and any future file) is automatically covered with zero
+// materializer code changes (proving AC3 of TASK-038).
 // ---------------------------------------------------------------------------
 
-describe('AC2 — materializer: created branch copies workflow scripts', () => {
-  it('created_branch_writes_workflows_to_target_project', async () => {
+describe('AC2/AC3 — materializer: created branch copies all workflow scripts', () => {
+  it('created_branch_writes_all_workflows_to_target_project', async () => {
     const { runInit } = await import(PROD.init);
     const repoDir = makeTmpDir('af-wf-mat-created');
 
@@ -201,19 +207,24 @@ describe('AC2 — materializer: created branch copies workflow scripts', () => {
 
     expect(['created', 'forced']).toContain(result.state);
 
-    const destWorkflow = join(repoDir, '.claude', 'workflows', 'deep-review.js');
-    expect(
-      existsSync(destWorkflow),
-      '.claude/workflows/deep-review.js must be materialized in the target project',
-    ).toBe(true);
+    // Assert every file in the plugin-root workflows/ directory lands in the
+    // target project's .claude/workflows/ with byte-identical content.
+    for (const fileName of ALL_WORKFLOW_FILES) {
+      const destWorkflow   = join(repoDir, '.claude', 'workflows', fileName);
+      const sourceWorkflow = join(PLUGIN_WORKFLOWS_DIR, fileName);
 
-    // Content should match the plugin-root source.
-    const destBytes   = readFileSync(destWorkflow);
-    const sourceBytes = readFileSync(PLUGIN_ROOT_WORKFLOW);
-    expect(
-      destBytes.equals(sourceBytes),
-      'materialized file must match the plugin-root source',
-    ).toBe(true);
+      expect(
+        existsSync(destWorkflow),
+        `.claude/workflows/${fileName} must be materialized in the target project`,
+      ).toBe(true);
+
+      const destBytes   = readFileSync(destWorkflow);
+      const sourceBytes = readFileSync(sourceWorkflow);
+      expect(
+        destBytes.equals(sourceBytes),
+        `materialized ${fileName} must match the plugin-root source`,
+      ).toBe(true);
+    }
   });
 });
 
@@ -300,8 +311,8 @@ describe('AC2 — materializer: idempotency — already_initialized branch is no
     writeFileSync(destWorkflow, sentinel, 'utf8');
 
     // Verify the sentinel is actually different from the source so the test
-    // is not trivially vacuous.
-    const sourceContent = readFileSync(PLUGIN_ROOT_WORKFLOW, 'utf8');
+    // is not trivially vacuous. Use deep-review.js as the reference source.
+    const sourceContent = readFileSync(join(PLUGIN_WORKFLOWS_DIR, 'deep-review.js'), 'utf8');
     expect(
       sentinel,
       'sentinel must differ from the plugin-root source (otherwise the test is still vacuous)',

@@ -1,8 +1,10 @@
 // tests/e2e/dist-init-workflows.spec.js
 // TASK-039 M4 — bundled __dirname resolution path is sensor-covered.
+// TASK-038 AC3 — extended to assert deep-research.js also lands via dist/init.cjs.
 //
 // AC4: one e2e spec executes `node dist/init.cjs` (answers-file mode) in a tmp
-// project dir and asserts `.claude/workflows/deep-review.js` is materialized.
+// project dir and asserts ALL workflow files (deep-review.js, deep-research.js,
+// and any future files) are materialized.
 //
 // This tests the CJS bundle's __dirname fallback:
 //   dist/init.cjs resolves workflows/ relative to __dirname (the dist/ directory),
@@ -14,12 +16,18 @@
 // /init-project slash command) so the process exits without prompting.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 import { REPO_ROOT } from '../helpers/repoRoot.js';
+
+// Enumerate the canonical set of workflow files from the plugin root.
+const PLUGIN_WORKFLOWS_DIR = join(REPO_ROOT, 'workflows');
+const EXPECTED_WORKFLOW_FILES = readdirSync(PLUGIN_WORKFLOWS_DIR)
+  .filter((n) => !n.startsWith('.') && n.endsWith('.js'))
+  .sort();
 
 // The committed bundle under test.
 const DIST_INIT_CJS = join(REPO_ROOT, 'dist', 'init.cjs');
@@ -96,14 +104,18 @@ describe('AC4 (TASK-039 M4) — dist/init.cjs materializes workflow scripts', ()
       `dist/init.cjs must exit 0 in answers-file mode. ${diagnostics}`,
     ).toBe(0);
 
-    // The key assertion: .claude/workflows/deep-review.js must exist in the
-    // tmp project dir. This proves the bundled __dirname resolution worked —
-    // the CJS bundle found the plugin-root workflows/ dir relative to dist/
-    // and copied it into the target project.
-    const destWorkflow = join(projectDir, '.claude', 'workflows', 'deep-review.js');
-    expect(
-      existsSync(destWorkflow),
-      `.claude/workflows/deep-review.js must be materialized by dist/init.cjs in ${projectDir}. ${diagnostics}`,
-    ).toBe(true);
+    // The key assertion: every workflow file must exist in the tmp project dir.
+    // This proves the bundled __dirname resolution worked — the CJS bundle found
+    // the plugin-root workflows/ dir relative to dist/ and copied all files into
+    // the target project. Iterating over EXPECTED_WORKFLOW_FILES covers
+    // deep-review.js (TASK-037/039) and deep-research.js (TASK-038 AC3) without
+    // hardcoding file names.
+    for (const fileName of EXPECTED_WORKFLOW_FILES) {
+      const destWorkflow = join(projectDir, '.claude', 'workflows', fileName);
+      expect(
+        existsSync(destWorkflow),
+        `.claude/workflows/${fileName} must be materialized by dist/init.cjs in ${projectDir}. ${diagnostics}`,
+      ).toBe(true);
+    }
   });
 });
