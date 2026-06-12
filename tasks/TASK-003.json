@@ -21,8 +21,14 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "researcher",
+      "at": "2026-06-12T23:40:01.679Z",
+      "body": "DEEP-RESEARCH RESULT (run wf_395849ee-f0a, 2026-06-12, /deep-research workflow — first live research run, doubling as TASK-038 UAT). KEY FACTS (all high-confidence, sourced): (1) Official path = Atlassian Rovo MCP Server, GA 2026-02-04, hosted gateway for Jira+Confluence under existing user permissions. (2) ENDPOINT: https://mcp.atlassian.com/v1/mcp (OAuth variant /v1/mcp/authv2); legacy /v1/sse UNSUPPORTED after 2026-06-30 — configure the /mcp endpoint, the old SSE one dies in ~2 weeks. (3) Auth: browser OAuth 2.1 w/ dynamic client registration, OR org-admin-enabled API tokens (Basic base64(email:token) or service-account Bearer in mcp.json headers). (4) Auth choice constrains tool surface: JSM/Bitbucket tools = API-token-only; Compass = OAuth-only. (5) Jira tools in admin-granted permission groups: read_jira (getJiraIssue, getTransitionsForJiraIssue, getVisibleJiraProjects, lookupJiraAccountId), write_jira (createJiraIssue, editJiraIssue, addCommentToJiraIssue, transitionJiraIssue, addWorklogToJiraIssue), search_jira (searchJiraIssuesUsingJql) — full issue CRUD + comments + transitions, mapping ~1:1 onto our task-store/MCP surface. (6) Three gating layers must all pass: admin domain allowlist, org IP allowlist, app permissions. GAPS the run flagged for the researcher to close before implementation: alternatives comparison (open-source mcp-atlassian, thin REST v3 wrapper) lost to result truncation; transition IDs vs status names unconfirmed (load-bearing for our transitionStatus mapping); ADF vs markdown for comment bodies; whether subagents inherit MCP tool access in Claude Code; OAuth-in-headless behavior; single-source dates need cross-checking. Full result: session transcript wf_395849ee-f0a."
+    }
+  ],
   "created_at": "2026-05-23T00:00:00Z",
-  "updated_at": "2026-06-11T22:55:45.353Z",
+  "updated_at": "2026-06-12T23:40:01.679Z",
   "jira_key": null
 }

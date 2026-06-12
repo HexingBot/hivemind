@@ -56,6 +56,12 @@
       "label": "Deep-review workflow + workflow materializer infra"
     },
     {
+      "id": "task-038",
+      "type": "task",
+      "ref": "tasks/TASK-038.json",
+      "label": "Deep-research workflow (multi-angle sweep)"
+    },
+    {
       "id": "task-039",
       "type": "task",
       "ref": "tasks/TASK-039.json",
@@ -80,6 +86,11 @@
     },
     {
       "from": "task-037",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-038",
       "to": "decision-20260612-deep-workflows",
       "relation": "produced-by"
     },

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-12T23:17:41.148Z",
+  "generated_at": "2026-06-12T23:42:08.799Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -214,7 +214,7 @@
     {
       "key": "TASK-038",
       "title": "Deep-research workflow (multi-angle sweep)",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -226,6 +226,12 @@
     {
       "key": "TASK-040",
       "title": "--apply-workflows retrofit flag + plugin command",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-041",
+      "title": "deep-research fence-cap fix: claims truncate mid-stream",
       "status": "todo",
       "priority": "medium"
     }

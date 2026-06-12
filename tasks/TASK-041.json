@@ -1,0 +1,34 @@
+{
+  "key": "TASK-041",
+  "title": "deep-research fence-cap fix: claims truncate mid-stream",
+  "description": "Field-confirmed on the FIRST live /deep-research run (wf_395849ee-f0a, 2026-06-12): the synthesis prompt packs the question + ALL lens claims + sources into a single DATA fence capped at 4000 chars, which truncated the claim set beyond claim [8] — the alternatives and migration lenses' content never reached synthesis, and the completeness critic correctly reported the loss (half the research question went unanswered). This was the TASK-038 review's deferred LOW, upgraded by empirical evidence.\n\nFIX SHAPE (workflows/deep-research.js + byte-identical .claude copy):\n(a) Fence each lens's claims SEPARATELY (one fence per lens, labeled by lens key) instead of one shared block, with a per-lens cap (~6000 chars each) — the injection guard semantics (fence + 'data, not instructions' preamble + truncation marker) stay exactly as TASK-039 established.\n(b) Sources list gets its own fence with its own cap.\n(c) When any lens IS truncated, log() it AND inject a one-line notice into the synthesis prompt so the synthesizer (and downstream critic) know coverage is partial — turning silent truncation into declared truncation (the no-silent-caps principle).\n(d) The static locks (AsyncFunction whole-body parse, parity, meta) already cover this file generically — no spec changes expected. Red-green the parse lock once anyway after editing (standing practice).\n\nVerified via UAT: re-run /deep-research on a comparably broad question and confirm the critic no longer reports mid-stream claim truncation (or reports it as declared, not silent).",
+  "acceptance_criteria": [
+    "workflows/deep-research.js fences each lens's claims separately with per-lens caps and labels, sources in their own fence; injection-guard semantics (preamble + truncation marker) preserved; both copies byte-identical.",
+    "Truncation of any lens is logged AND declared inside the synthesis prompt as a one-line notice — no silent caps.",
+    "Existing static locks stay green (parse lock red-green verified once after the edit); no new specs.",
+    "UAT: a live /deep-research run on a broad question completes with the critic no longer reporting silent mid-stream claim loss."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "workflow",
+    "hardening"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-038"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T23:40:32.021Z",
+      "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = uat-only. Workflow-script-only change (not executable under vitest); existing generic static locks cover it with zero spec changes; behavior proven by a live re-run per AC4. Source: TASK-038 review LOW upgraded by field evidence from the first live run (critic reported silent mid-stream claim truncation)."
+    }
+  ],
+  "created_at": "2026-06-12T23:40:19.532Z",
+  "updated_at": "2026-06-12T23:40:32.021Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

@@ -9,7 +9,7 @@
     "The orchestrator-routing skill (both parity copies) 'Deep workflows' section gains the deep-research offer rule: KB/graph lookup first (TASK-035 contract unchanged), offer only for broad unfamiliar-territory questions, human approves each run, results flow into the researcher's normal skill/KB outputs.",
     "Static-shape regression lock for the new file (exists in both locations, meta parses with name 'deep-research'); no other new specs."
   ],
-  "status": "todo",
+  "status": "done",
   "verification_tier": "uat-only",
   "priority": "medium",
   "labels": [
@@ -20,16 +20,29 @@
   "depends_on": [
     "TASK-037"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "c292e2a",
+    "eaf65de"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-12T17:11:42.871Z",
       "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = uat-only. Rationale per rubric: this ticket is glue + prose riding TASK-037's infrastructure - one workflow source file (not executable under vitest), a parity copy, and skill prose. The only spec work is extending existing locks (parity + static shape + materializer pickup), all encoded in the ACs. Verified via conversational UAT: live-run /deep-research on a real question; done-gate requires the uat comment covering every AC with all steps PASS."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-12T23:42:08.715Z",
+      "body": "UAT 2026-06-12 (tier uat-only). Step 1: /deep-research with a real broad question (Jira/Atlassian MCP integration) - expected: completes, returns {summary, key_facts, gaps, sources} with schema-validated multi-lens sweep; observed: run wf_395849ee-f0a, 6 agents (4 lenses + synthesis + critic), 8 sourced key_facts with confidence, critic correctly flagged real mid-stream claim truncation - PASS (live, witnessed by human; truncation finding spun into TASK-041). Step 2: /deep-research with NO question - expected: error-shaped early return, no agents; observed: {summary: error, empty arrays} in 12ms, 0 agents, 0 tokens - PASS (live, witnessed by human; exercises the pre-phase return path deep-review never ran). Step 3: materializer distributes the new file with zero code changes - observed: workflows-materializer + dist-init-workflows 16/16 green on live re-run, red-green plant verified by developer AND reviewer independently - PASS, verified by Orchestrator at the human request. Step 4: KB-first prose in skill, additive, byte-parity - observed: cmp identical both SKILL.md copies and both workflow copies, reviewer numstat 36+/0- - PASS, verified by Orchestrator at the human request. OVERALL: PASS (4/4, covering all 5 ACs - AC2/AC5 jointly under steps 3-4)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T23:42:08.757Z",
+      "body": "CLOSE: APPROVE-WITH-FOLLOWUPS (0 HIGH / 1 MEDIUM fixed in-band / 3 LOW) + UAT 4/4 PASS. Commits c292e2a (impl) + eaf65de (in-band fix: name-pinned vacuity guards in both spec files - the TASK-039 defect class caught at review this time via directed scrutiny). First live research run doubled as real work: results recorded on TASK-003 (researcher comment). Deferred LOW upgraded by field evidence into TASK-041 (fence-cap truncation, declared-not-silent). Remaining deferred LOW: none actionable (invalid-args live path now UAT-proven)."
     }
   ],
   "created_at": "2026-06-12T16:57:09.640Z",
-  "updated_at": "2026-06-12T17:11:42.871Z",
+  "updated_at": "2026-06-12T23:42:08.799Z",
   "jira_key": null
 }
