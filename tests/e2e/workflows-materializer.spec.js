@@ -84,42 +84,55 @@ describe('AC1/AC3 — deep-review.js static shape', () => {
     expect(meta.name).toBe('deep-review');
   });
 
-  // M5 (TASK-039) — whole-body parse lock. Construct (never invoke) a Function
-  // over the entire script body so any syntax error below the meta block fails
-  // the suite. The body is extracted by stripping the export const meta block
-  // (which is not valid inside a function body due to `export`).
+  // M5 (TASK-039) — whole-body parse lock. Construct (never invoke) an async
+  // Function over the entire script body so any syntax error below the meta
+  // block fails the suite. The body is extracted by stripping the export const
+  // meta block (which is not valid inside a function body due to `export`).
   //
-  // Top-level `return` in the workflow body: this is valid inside new Function —
-  // new Function always treats its last argument as a function body, and a
-  // top-level return inside a function body is legal JS.
-  it('whole_body_syntax_check_via_new_Function_construction', () => {
+  // AsyncFunction is required (not plain Function) because the workflow body
+  // contains top-level `await pipeline(...)`. Plain `new Function` produces a
+  // sync function where `await` is a SyntaxError; AsyncFunction produces an
+  // async function where `await` is valid — matching the Claude Code harness.
+  //
+  // Top-level `return` in the workflow body is also legal inside any function
+  // body (sync or async), so AsyncFunction handles both constructs correctly.
+  //
+  // AsyncFunction constructor is obtained via:
+  //   Object.getPrototypeOf(async function(){}).constructor
+  // This is the standard way to access AsyncFunction without a bare reference.
+  it('whole_body_syntax_check_via_AsyncFunction_construction', () => {
     const src = readFileSync(PLUGIN_ROOT_WORKFLOW, 'utf8');
 
     // Strip the export const meta = { ... }; block so only the executable body
     // remains. The meta block is bounded by 'export const meta = {' and the
-    // closing '^};' at the start of a line. We use a greedy slice: find the
-    // index of the meta declaration, then the first '\n};' that terminates it,
-    // then take everything after that.
+    // closing '\n};' line. We slice: find the meta declaration, then the first
+    // '\n};' that terminates it, then take everything after that.
     const metaStart = src.indexOf('export const meta =');
     expect(metaStart, 'export const meta = must exist in the source').toBeGreaterThanOrEqual(0);
 
-    // The meta block ends with a line that is just '};' (the closing of the
-    // object literal). Find the '};\n' or '};' at end-of-string after metaStart.
     const metaEndToken = '\n};';
     const metaEndIdx = src.indexOf(metaEndToken, metaStart);
-    expect(metaEndIdx, 'meta block closing };  must be findable').toBeGreaterThanOrEqual(0);
+    expect(metaEndIdx, 'meta block closing }; must be findable').toBeGreaterThanOrEqual(0);
 
-    // Body = everything after the '};\n' terminator of the meta block.
+    // Body = everything after the '\n};' terminator of the meta block.
     const body = src.slice(metaEndIdx + metaEndToken.length);
     expect(body.length, 'body after meta block must be non-empty').toBeGreaterThan(0);
 
-    // Construct (NEVER invoke) new Function to parse-check the body.
-    // Parameters mirror the workflow runtime's injected globals.
+    // Obtain the AsyncFunction constructor (standard, no non-standard globals).
     // eslint-disable-next-line no-new-func
-    expect(() => new Function(
-      'args', 'phase', 'log', 'pipeline', 'agent', 'parallel', 'budget', 'workflow',
-      body,
-    )).not.toThrow('new Function construction must not throw a SyntaxError');
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
+    // Construct (NEVER invoke) AsyncFunction to parse-check the full body.
+    // Parameters mirror the workflow runtime's injected globals.
+    // The second argument to expect() is the failure message; toThrow() takes
+    // NO argument so any thrown error (including SyntaxError) causes failure.
+    expect(
+      () => new AsyncFunction(
+        'args', 'phase', 'log', 'pipeline', 'agent', 'parallel', 'budget', 'workflow',
+        body,
+      ),
+      'whole-body AsyncFunction construction must not throw — any throw indicates a syntax error in the workflow body',
+    ).not.toThrow();
   });
 });
 

@@ -64,10 +64,12 @@ const VERDICT_SCHEMA = {
 // Args validation (M1 — allowlist guard before any interpolation)
 // ---------------------------------------------------------------------------
 //
-// git-ref allowlist: alphanumeric, dots, underscores, hyphens, forward slashes.
+// git-ref allowlist: alphanumeric, dots, underscores, hyphens, forward slashes,
+// tildes (~), and carets (^). Tilde and caret are required for common relative
+// refs such as HEAD~1 and HEAD^ and are not prompt/option-injection vectors.
 // No leading dash (would be mistaken for a flag by git), no shell metacharacters.
 // Length cap: 200 chars is far more than any real git ref needs.
-const GIT_REF_RE = /^[A-Za-z0-9._\/-]{1,200}$/;
+const GIT_REF_RE = /^[A-Za-z0-9._\/~^-]{1,200}$/;
 const TICKET_KEY_RE = /^TASK-\d{3,}$/;
 
 // ---------------------------------------------------------------------------
