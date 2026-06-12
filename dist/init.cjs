@@ -9788,9 +9788,11 @@ var __initDir = import_meta.url ? (0, import_node_path12.dirname)((0, import_nod
 var PLUGIN_WORKFLOWS_SRC = (0, import_node_path12.join)(__initDir, "..", "workflows");
 function materializeWorkflows(repoRoot) {
   const srcDir = PLUGIN_WORKFLOWS_SRC;
-  if (!(0, import_node_fs14.existsSync)(srcDir)) return;
+  if (!(0, import_node_fs14.existsSync)(srcDir)) return { added: [], skipped: [] };
   const destDir = (0, import_node_path12.join)(repoRoot, ".claude", "workflows");
   (0, import_node_fs14.mkdirSync)(destDir, { recursive: true });
+  const added = [];
+  const skipped = [];
   const entries = (0, import_node_fs14.readdirSync)(srcDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isFile()) continue;
@@ -9798,8 +9800,12 @@ function materializeWorkflows(repoRoot) {
     const destPath = (0, import_node_path12.join)(destDir, entry.name);
     if (!(0, import_node_fs14.existsSync)(destPath)) {
       (0, import_node_fs14.copyFileSync)(srcPath, destPath);
+      added.push(entry.name);
+    } else {
+      skipped.push(entry.name);
     }
   }
+  return { added, skipped };
 }
 var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--force",
@@ -9807,7 +9813,8 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--no-archive",
   "--answers-file",
   "--claude-md-consent",
-  "--apply-models"
+  "--apply-models",
+  "--apply-workflows"
 ]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file"]);
 var TASK_FILE_RE2 = /^TASK-\d{3,}\.json$/;
@@ -9818,7 +9825,8 @@ function parseArgs(argv) {
     noArchive: false,
     answersFile: null,
     claudeMdConsent: false,
-    applyModels: false
+    applyModels: false,
+    applyWorkflows: false
   };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
@@ -9830,6 +9838,7 @@ function parseArgs(argv) {
     if (tok === "--no-archive") out.noArchive = true;
     if (tok === "--claude-md-consent") out.claudeMdConsent = true;
     if (tok === "--apply-models") out.applyModels = true;
+    if (tok === "--apply-workflows") out.applyWorkflows = true;
     if (tok === "--answers-file") {
       const value = argv[i + 1];
       if (value === void 0 || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -9841,6 +9850,9 @@ function parseArgs(argv) {
   }
   if (out.applyModels && (out.force || out.answersFile !== null)) {
     throw new Error("--apply-models cannot be combined with --force or --answers-file");
+  }
+  if (out.applyWorkflows && (out.force || out.answersFile !== null)) {
+    throw new Error("--apply-workflows cannot be combined with --force or --answers-file");
   }
   return out;
 }
@@ -10024,6 +10036,13 @@ async function runInit({
     });
     console.log(`--apply-models: updated ${changed.length} file(s): ${changed.join(", ")}`);
     return { state: "applied_models", projectMdPath, sessionId: null };
+  }
+  if (parsed.applyWorkflows) {
+    const { added, skipped } = materializeWorkflows(repoRoot);
+    console.log(
+      `--apply-workflows: ${added.length} file(s) added` + (added.length > 0 ? ` (${added.join(", ")})` : "") + `; ${skipped.length} file(s) already present and skipped` + (skipped.length > 0 ? ` (${skipped.join(", ")})` : "") + "."
+    );
+    return { state: "applied_workflows", projectMdPath, sessionId: null };
   }
   const explicitConsent = parsed.claudeMdConsent || Boolean(answers && answers.claude_md_consent === true);
   if (parsed.force) {

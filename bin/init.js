@@ -82,13 +82,17 @@ const PLUGIN_WORKFLOWS_SRC = join(__initDir, '..', 'workflows');
  *   - If the source directory does not exist (e.g. a stripped install), silently no-ops.
  *
  * @param {string} repoRoot - absolute path to the target project root
+ * @returns {{ added: string[], skipped: string[] }} lists of file names added and skipped
  */
 function materializeWorkflows(repoRoot) {
   const srcDir = PLUGIN_WORKFLOWS_SRC;
-  if (!existsSync(srcDir)) return; // source absent — no-op (stripped install)
+  if (!existsSync(srcDir)) return { added: [], skipped: [] }; // source absent — no-op (stripped install)
 
   const destDir = join(repoRoot, '.claude', 'workflows');
   mkdirSync(destDir, { recursive: true });
+
+  const added = [];
+  const skipped = [];
 
   // L1: use withFileTypes so we skip subdirectories (a future subdir would
   // crash copyFileSync with EISDIR; flat-only is the documented contract here).
@@ -99,9 +103,13 @@ function materializeWorkflows(repoRoot) {
     const destPath = join(destDir, entry.name);
     if (!existsSync(destPath)) {
       copyFileSync(srcPath, destPath);
+      added.push(entry.name);
+    } else {
+      // If dest already exists: skip silently (idempotent, never-overwrite contract).
+      skipped.push(entry.name);
     }
-    // If dest already exists: skip silently (idempotent, never-overwrite contract).
   }
+  return { added, skipped };
 }
 
 const KNOWN_FLAGS = new Set([
@@ -111,6 +119,7 @@ const KNOWN_FLAGS = new Set([
   '--answers-file',
   '--claude-md-consent',
   '--apply-models',
+  '--apply-workflows',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
 // token is not treated as an unknown positional by the strict parser).
@@ -134,6 +143,7 @@ function parseArgs(argv) {
     answersFile: null,
     claudeMdConsent: false,
     applyModels: false,
+    applyWorkflows: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
@@ -145,6 +155,7 @@ function parseArgs(argv) {
     if (tok === '--no-archive') out.noArchive = true;
     if (tok === '--claude-md-consent') out.claudeMdConsent = true;
     if (tok === '--apply-models') out.applyModels = true;
+    if (tok === '--apply-workflows') out.applyWorkflows = true;
     if (tok === '--answers-file') {
       const value = argv[i + 1];
       if (value === undefined || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -159,6 +170,12 @@ function parseArgs(argv) {
   // mutators is a contradiction and must fail loudly rather than guess.
   if (out.applyModels && (out.force || out.answersFile !== null)) {
     throw new Error('--apply-models cannot be combined with --force or --answers-file');
+  }
+  // TASK-040 — strict argv discipline: --apply-workflows is a standalone mode
+  // (run materializeWorkflows, exit); combining it with the wizard mutators is a
+  // contradiction and must fail loudly before any filesystem write.
+  if (out.applyWorkflows && (out.force || out.answersFile !== null)) {
+    throw new Error('--apply-workflows cannot be combined with --force or --answers-file');
   }
   return out;
 }
@@ -521,6 +538,25 @@ export async function runInit({
     // eslint-disable-next-line no-console
     console.log(`--apply-models: updated ${changed.length} file(s): ${changed.join(', ')}`);
     return { state: 'applied_models', projectMdPath, sessionId: null };
+  }
+
+  // ---- Branch 0b: --apply-workflows (short-circuits before all wizard logic) ----
+  // Runs ONLY materializeWorkflows against the target project — no wizard, no
+  // PROJECT.md read/write, no session bundle, regardless of init state.
+  // Preserves the materializer's never-overwrite contract: existing files in
+  // .claude/workflows/ are left untouched; only missing files are added.
+  // Works on both already-initialized and not-yet-initialized projects (AC1+AC2).
+  if (parsed.applyWorkflows) {
+    const { added, skipped } = materializeWorkflows(repoRoot);
+    // eslint-disable-next-line no-console
+    console.log(
+      `--apply-workflows: ${added.length} file(s) added` +
+      (added.length > 0 ? ` (${added.join(', ')})` : '') +
+      `; ${skipped.length} file(s) already present and skipped` +
+      (skipped.length > 0 ? ` (${skipped.join(', ')})` : '') +
+      '.',
+    );
+    return { state: 'applied_workflows', projectMdPath, sessionId: null };
   }
 
   // The CLAUDE.md routing consent is a SEPARATE channel from the intake answers:
