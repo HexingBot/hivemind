@@ -104,12 +104,20 @@ describe('AC4 (TASK-039 M4) — dist/init.cjs materializes workflow scripts', ()
       `dist/init.cjs must exit 0 in answers-file mode. ${diagnostics}`,
     ).toBe(0);
 
+    // Non-vacuity guard: if the readdirSync filter silently yielded zero entries,
+    // the for-loop below would run zero iterations and the test would pass on
+    // exit-0 alone — missing the materialization entirely. Pin both known files
+    // by name so an empty or mis-filtered enumeration fails here rather than
+    // producing a green-but-inert loop.
+    expect(
+      EXPECTED_WORKFLOW_FILES,
+      'EXPECTED_WORKFLOW_FILES must include both deep-review.js and deep-research.js',
+    ).toEqual(expect.arrayContaining(['deep-review.js', 'deep-research.js']));
+
     // The key assertion: every workflow file must exist in the tmp project dir.
     // This proves the bundled __dirname resolution worked — the CJS bundle found
     // the plugin-root workflows/ dir relative to dist/ and copied all files into
-    // the target project. Iterating over EXPECTED_WORKFLOW_FILES covers
-    // deep-review.js (TASK-037/039) and deep-research.js (TASK-038 AC3) without
-    // hardcoding file names.
+    // the target project.
     for (const fileName of EXPECTED_WORKFLOW_FILES) {
       const destWorkflow = join(projectDir, '.claude', 'workflows', fileName);
       expect(

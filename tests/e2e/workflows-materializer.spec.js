@@ -52,13 +52,15 @@ const ALL_WORKFLOW_FILES = readdirSync(PLUGIN_WORKFLOWS_DIR)
 // ---------------------------------------------------------------------------
 
 describe('AC1/AC3/AC5 — all workflow scripts static shape', () => {
-  it('plugin_workflows_dir_contains_at_least_two_workflow_files', () => {
-    // Sanity guard: ensures the directory enumeration is non-trivially small.
-    // deep-review.js (TASK-037) and deep-research.js (TASK-038) must both be present.
+  it('plugin_workflows_dir_contains_required_workflow_files', () => {
+    // Non-vacuity guard: pin both known file names so a silent rename or
+    // mis-filtered enumeration fails here rather than producing a green-but-inert
+    // loop. Names are the load-bearing assertion; a count-only guard would pass
+    // even if both files were renamed to something else.
     expect(
-      ALL_WORKFLOW_FILES.length,
-      `workflows/ must contain at least 2 .js files; found: ${ALL_WORKFLOW_FILES.join(', ')}`,
-    ).toBeGreaterThanOrEqual(2);
+      ALL_WORKFLOW_FILES,
+      `workflows/ must contain deep-review.js and deep-research.js; found: ${ALL_WORKFLOW_FILES.join(', ')}`,
+    ).toEqual(expect.arrayContaining(['deep-review.js', 'deep-research.js']));
   });
 
   for (const fileName of ALL_WORKFLOW_FILES) {
