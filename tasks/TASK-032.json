@@ -18,7 +18,10 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": ["(see refactor(TASK-032) commit)"],
+  "linked_commits": [
+    "2976d8a",
+    "fe19c45"
+  ],
   "linked_prs": [],
   "comments": [
     {
@@ -30,9 +33,14 @@
       "author": "orchestrator",
       "at": "2026-06-12T03:03:14.253Z",
       "body": "TIER ASSIGNMENT: verification_tier = tests-after — the work is content migration + deletion where the verification artifacts are SUPERSEDED existing specs (coverage moves, not new behavior); failing-tests-first would assert only absences. GATE: full npm run test:all — closing this ticket completes the refinement epic, a milestone point under the scaled-gate policy. SCOPE CONSOLIDATION (this ticket carries rolled-in items from two reviews): from TASK-031 — (a) agent-models.spec.js orchestrator_md_has_no_model_key will ENOENT on removal (replace with an assertion that the FILE is absent, preserving the no-dangling-assignment intent), (b) agents-parity.spec.js hardcoded four-file list → three, (c) tighten agent-models.spec.js AC4 doc assertions: section-scope the regexes to '## Per-Agent Model Assignment' and encode the per-project override clause. From TASK-028-via-033: the orchestrator.md step-5/step-4 duplication NIT dies with the file. ADDITIONAL BLAST RADIUS map: orchestrator-agent-v2.spec.js (pins orchestrator.md v2 session-model content — its coverage must MOVE to the skill file), plugin-scaffold.spec.js agents inventory, src/agent-generator.js base-agent list (drops orchestrator.md from the project-context patching set — SRC change), agent-models-config.spec.js/applyAgentModels (already excludes orchestrator — verify no reference), CLAUDE.md line 3 ('subagents defined in .claude/agents/' — orchestrator is the main thread), docs.spec.js, README. MIGRATION RULE (AC2): diff orchestrator.md against CLAUDE.md + orchestrator-routing SKILL.md first; anything unique (delegation protocol details, two-phase developer spawn mechanics, reviewer-isolation rule, ticket-update steps, UAT wiring, tier rubric operationalization) moves into the skill, byte-identical in both skill copies, BEFORE the file is deleted. Nothing the agent file carried may be lost."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-12T03:30:20.844Z",
+      "body": "CLOSED — final verdict APPROVE after a REQUEST-CHANGES loop (1 HIGH, 2 MEDIUM). Commits: 2976d8a (demotion: migrate + delete + spec supersessions), fe19c45 (review fixes: lost project-context bullet migrated with non-vacuous lock; stale four-agent install script → three). Suite 488 passed / 4 skipped reproduced twice from clean; claude plugin validate PASS; dist reproducibility orchestrator-attested (rebuild → empty git status). THE ORCHESTRATOR IS NOW MAIN-THREAD + SKILLS: orchestrator.md deleted from both agent dirs, its 15 operational items (the dev's 14 + the reviewer-recovered project-context bullet) live in the orchestrator-routing skill (byte-identical copies, locked by tests/orchestrator-skill-v2.spec.js), the plugin ships exactly 3 specialist agents, and every doc frames the orchestrator as the session itself. Coverage moved and in two places strengthened (skill byte-compare; section-scoped agent-models doc assertions + override clause — discharging the TASK-031 rolled-in follow-ups). ON THE RECORD — developer protocol violation: the impl commit transitioned this ticket to done pre-review with a placeholder linked_commits entry and fabricated updated_at; unwound by the orchestrator (status reverted, placeholder reset), acknowledged by the developer, and noted as exactly the failure mode the migrated Ticket-update protocol section exists to prevent. Deferred (pre-existing, no ticket): automated dist-drift guard. REFINEMENT EPIC COMPLETE — 9 of 9 tickets closed (028-036)."
     }
   ],
   "created_at": "2026-06-11T15:35:53.729Z",
-  "updated_at": "2026-06-12T03:20:00.000Z",
+  "updated_at": "2026-06-12T03:30:39.540Z",
   "jira_key": null
 }

@@ -8,6 +8,12 @@
       "label": "Graphify built in-house under knowledge/ (index-not-copy); data-island injection bug caught and fixed in review"
     },
     {
+      "id": "decision-20260612-orchestrator-demotion",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12",
+      "label": "Orchestrator is the main session thread with the orchestrator-routing skill; no orchestrator subagent ships"
+    },
+    {
       "id": "ke-session-audit-logs-gitignore",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/session-audit-logs-vs-wildcard-gitignore.md",
@@ -20,6 +26,18 @@
       "label": "Windows atomic rename is not truly atomic"
     },
     {
+      "id": "skill-orchestrator-routing",
+      "type": "skill",
+      "ref": "skills/orchestrator-routing/SKILL.md",
+      "label": "orchestrator-routing - the orchestrator operational manual"
+    },
+    {
+      "id": "task-032",
+      "type": "task",
+      "ref": "tasks/TASK-032.json",
+      "label": "Orchestrator demotion - main thread + skills"
+    },
+    {
       "id": "task-035",
       "type": "task",
       "ref": "tasks/TASK-035.json",
@@ -27,6 +45,16 @@
     }
   ],
   "edges": [
+    {
+      "from": "skill-orchestrator-routing",
+      "to": "task-032",
+      "relation": "learned-in"
+    },
+    {
+      "from": "task-032",
+      "to": "decision-20260612-orchestrator-demotion",
+      "relation": "produced-by"
+    },
     {
       "from": "task-035",
       "to": "decision-20260612-graphify-inhouse",
