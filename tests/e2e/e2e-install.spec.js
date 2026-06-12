@@ -35,8 +35,9 @@
 //        "Skills" bucket rather than a separate "Commands" bucket — that is the
 //        documented cosmetic nuance; what matters is it REGISTERS).
 //      • the orchestrator-routing backstop skill.
-//      • the four agents (orchestrator / developer / reviewer / researcher)
-//        under the `agentic-framework` namespace.
+//      • the three agents (developer / reviewer / researcher) under the
+//        `agentic-framework` namespace (TASK-032 removed the orchestrator
+//        agent — the Orchestrator is the main session thread).
 //      • version 0.1.0 (the explicit semver pinned in plugin.json — AC3).
 //
 // 4. BOOTSTRAP A FRESH PROJECT. In a brand-new EMPTY temp dir (the user's

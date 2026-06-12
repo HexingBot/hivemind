@@ -189,6 +189,21 @@ describe('TASK-032 — orchestrator-routing skill carries the full operational m
     expect(/checkpoint|meaningful transition/i.test(text)).toBe(true);
   });
 
+  it('documents_project_context_read_before_starting_work', () => {
+    const text = readSkill();
+    // Migrated from orchestrator.md's Inputs section (TASK-032 review HIGH-1):
+    // read project-context.md before starting work; may not exist on fresh
+    // clones — proceed with sensible defaults.
+    expect(
+      /\.claude\/agents\/project-context\.md/.test(text),
+      'skill must instruct reading .claude/agents/project-context.md before starting work',
+    ).toBe(true);
+    expect(
+      /sensible defaults/i.test(text),
+      'skill must carry the fresh-clone fallback (proceed with sensible defaults)',
+    ).toBe(true);
+  });
+
   it('documents_session_close_out', () => {
     const text = readSkill();
     // The session end/pause lifecycle.
