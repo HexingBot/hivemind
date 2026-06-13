@@ -119,10 +119,10 @@ Rules:
 
 Each subagent declares its model in the `model:` frontmatter field of its agent definition file:
 
-- **reviewer** → `fable` — the independent quality gate runs on the strongest model; catching bugs and security issues is worth the extra cost.
+- **reviewer** → `inherit` — the independent quality gate runs on the session's main model (currently Opus 4.8); `inherit` tracks whatever model the session runs on so the gate stays on the strongest available model without re-pinning every time the default moves. (TASK-042: retired the `fable` pin — Fable 5 is no longer available to this account.)
 - **developer** → `sonnet` — high-volume role (spawned twice per ticket); Sonnet delivers strong coding capability at a lower cost tier.
 - **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
-- **orchestrator** — no agent file; it runs as the main session thread and inherits whatever model the session is started with (Fable 5 in production). TASK-032 removed the orchestrator agent file — the role is the session itself, equipped with the orchestrator-routing skill.
+- **orchestrator** — no agent file; it runs as the main session thread and inherits whatever model the session is started with (Opus 4.8 in production). TASK-032 removed the orchestrator agent file — the role is the session itself, equipped with the orchestrator-routing skill.
 
 **Canonical knob: `PROJECT.md`.**  The `agent_models` map in `PROJECT.md` frontmatter is the single source of truth for per-agent model overrides in a given project. To change the model for reviewer, developer, or researcher, edit the `agent_models` block in `PROJECT.md` and re-apply with `node bin/init.js --apply-models`. The `--apply-models` flag reads `PROJECT.md` and surgically patches only the `model:` frontmatter line of each mapped agent file (both `.claude/agents/` and the plugin-root `agents/` parity copies in the dev repo) without re-running the wizard or touching any other content.
 
