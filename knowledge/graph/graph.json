@@ -8,6 +8,12 @@
       "label": "Deep-workflows pair: Workflow-tool scripts distributed via init materialization; opt-in amplifiers, never replacing the per-ticket loop"
     },
     {
+      "id": "decision-20260612-fable-retired",
+      "type": "decision",
+      "ref": "tasks/TASK-042.json",
+      "label": "Fable 5 unavailable: reviewer model fable→inherit (tracks session default, now Opus 4.8); orchestrator already inherits; dev/researcher stay sonnet; fable stays a valid alias"
+    },
+    {
       "id": "decision-20260612-graphify-inhouse",
       "type": "decision",
       "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T02:30:00Z",
@@ -66,6 +72,12 @@
       "type": "task",
       "ref": "tasks/TASK-039.json",
       "label": "deep-review hardening: prompt-injection guards + materializer test gaps"
+    },
+    {
+      "id": "task-042",
+      "type": "task",
+      "ref": "tasks/TASK-042.json",
+      "label": "Retire reviewer fable pin → inherit (default main model)"
     }
   ],
   "edges": [
@@ -97,6 +109,11 @@
     {
       "from": "task-039",
       "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-042",
+      "to": "decision-20260612-fable-retired",
       "relation": "produced-by"
     }
   ]

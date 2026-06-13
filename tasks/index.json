@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-12T23:42:08.799Z",
+  "generated_at": "2026-06-13T03:55:40.551Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -234,6 +234,18 @@
       "title": "deep-research fence-cap fix: claims truncate mid-stream",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-042",
+      "title": "Retire reviewer's fable pin → inherit (default main model)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-043",
+      "title": "Doc-drift cleanup: wizard help text reviewer=fable → inherit",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }

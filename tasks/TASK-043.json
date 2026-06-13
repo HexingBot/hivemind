@@ -1,0 +1,28 @@
+{
+  "key": "TASK-043",
+  "title": "Doc-drift cleanup: wizard help text reviewer=fable → inherit",
+  "description": "Two non-blocking doc-drift LOWs surfaced by the TASK-042 review (the fable→inherit reviewer model change). Neither affects behavior; both would mislead a future reader/operator.\n\n(1) src/question-library.js lines ~75 and ~85: the agent-models wizard prompt help text still reads 'Defaults: reviewer=fable, developer=sonnet, researcher=sonnet'. This is DISPLAY help text (not an applied default — the applied default lives in the applier/schema, unchanged), but a fresh `node bin/init.js` intake would now suggest fable for the reviewer, contradicting the TASK-042 policy. Update the reviewer default in the help text to inherit. Check whether any spec asserts this exact wording and update it in lockstep if so.\n\n(2) tests/verification-policy-docs.spec.js line 274: a stale COMMENT in the 'Pinned-assertion collision report' still describes /reviewer/i && /fable/i as what agent-models.spec.js asserts. It is a comment only (no executable assertion), but it now describes a retired contract. Update the comment to reflect reviewer+inherit.\n\nPure text/doc change — no applier mechanism, no valid-alias list (fable STAYS a valid alias), no logic.",
+  "acceptance_criteria": [
+    "src/question-library.js agent-models wizard help text shows the reviewer default as inherit (not fable); developer/researcher still sonnet; any spec pinning the help-text wording updated in lockstep and green.",
+    "tests/verification-policy-docs.spec.js line ~274 comment updated to describe the current reviewer+inherit contract; no executable assertion changed.",
+    "fable remains a valid alias everywhere (VALID_MODEL_ALIASES / MODEL_ALIASES / AGENT_MODEL_ALIASES untouched); npm run test:changed plus affected specs green."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "config",
+    "models",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-042"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-13T03:55:24.189Z",
+  "updated_at": "2026-06-13T03:55:24.189Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

@@ -1,0 +1,41 @@
+{
+  "key": "TASK-042",
+  "title": "Retire reviewer's fable pin → inherit (default main model)",
+  "description": "Fable 5 is no longer available to this account (session-limit lockout, 2026-06-12). The reviewer agent's frontmatter pins model: fable, which now FAILS to spawn. Human directive: the reviewer (and the orchestrator, which already inherits as the main thread) must run on the default main model going forward.\n\nDECISION (locked): reviewer model fable → `inherit`, NOT a hard `opus` pin. Rationale: 'default main model' = the session model; inherit tracks whatever the session runs on (currently Opus 4.8, the new account default), so the independent quality gate keeps running on the strongest model available without re-pinning every time the default moves. developer + researcher STAY on sonnet (unaffected — they never used fable; the 'can't use fable' reason doesn't touch them).\n\nSCOPE (grep to find every coupling — these are the known sites):\n(a) .claude/agents/reviewer.md AND agents/reviewer.md (parity copy): model: fable → model: inherit, byte-identical (agents-parity spec locks this).\n(b) CLAUDE.md '## Per-Agent Model Assignment': the reviewer bullet (fable → inherit/default-main-model + updated rationale: gate runs on the session's main model, currently Opus 4.8); the orchestrator bullet ('Fable 5 in production' → 'Opus 4.8 in production'); keep developer/researcher = sonnet.\n(c) tests/agent-models.spec.js: the assertion pinning /^model:\\s*fable\\s*$/m on reviewer.md → inherit; the doc-section test that requires reviewer+fable co-occurrence → reviewer+inherit (or default-main-model wording). Rename describe/it labels off 'fable' where they hardcode it.\n(d) verification-policy-docs.spec.js (~line 274) and tests/e2e/agent-models-config.spec.js: update any assertion that the model section mentions reviewer+fable. The e2e applier spec uses tmp fixtures — confirm it does NOT pin the real reviewer.md to fable; if it does, fix.\n(e) Do NOT change the --apply-models applier logic, the valid-alias list (fable stays a VALID alias — it's just not what we assign now), or the agent_models PROJECT.md knob. This is a value change, not a mechanism change.\n\nNo PROJECT.md exists in the dev repo, so --apply-models is not the mechanism here — edit the frontmatter directly (both parity copies).",
+  "acceptance_criteria": [
+    "Both reviewer.md copies (.claude/agents/ and plugin-root agents/) carry model: inherit, byte-identical; developer.md and researcher.md remain model: sonnet in both copies.",
+    "CLAUDE.md '## Per-Agent Model Assignment' documents reviewer → inherit (default main model) with updated rationale, and the orchestrator bullet reflects Opus 4.8 as the production session model; no other agent's assignment changed.",
+    "All model-policy specs (tests/agent-models.spec.js, verification-policy-docs.spec.js, tests/e2e/agent-models-config.spec.js) updated to the new expected values and GREEN; no spec still asserts reviewer == fable.",
+    "fable remains a valid alias in the --apply-models validation list and the applier logic is untouched (value change only, not mechanism).",
+    "Full release gate green (npm run test:all) since model-policy + test-infra files change; agents-parity spec passes."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "config",
+    "models"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "e7fc0bf",
+    "67b29e4"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-13T03:44:06.393Z",
+      "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = tdd. It is a contract change pinned by model-policy specs: update the assertions to the new expected value (inherit) FIRST (red against current fable config), then flip the frontmatter + docs to green. Touches test infrastructure (model-policy specs) so the FULL release gate applies (npm run test:all), per the scaled-gate test-infra clause. This unblocks reviewer spawns for the rest of the session (the fable frontmatter is currently unspawnable). NOTE: during the transition, the orchestrator spawns ALL reviewers this session with an explicit model:opus override so the stale fable pin cannot block review; after this ticket lands, inherit resolves to the session default automatically."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-13T03:55:40.493Z",
+      "body": "CLOSE: APPROVE-WITH-FOLLOWUPS (0 HIGH / 0 MEDIUM / 2 LOW doc-drift). Commits e7fc0bf (test/RED) + 67b29e4 (impl/GREEN). reviewer.md both copies → model: inherit (default main model = the session model, now Opus 4.8); developer/researcher stay sonnet; fable remains a valid alias (value change, not mechanism). The fresh-context review for THIS ticket ran on Opus and passed — the model transition is proven end-to-end. tdd discipline verified genuine (RED for the right reason at e7fc0bf, GREEN at 67b29e4). test:all 508 passed / 4 skipped. The 2 LOWs (wizard help text src/question-library.js still says reviewer=fable; stale comment in verification-policy-docs.spec.js:274) rolled into TASK-043. No UAT step: ACs are suite-verified config/doc, not human-observable."
+    }
+  ],
+  "created_at": "2026-06-13T03:43:55.403Z",
+  "updated_at": "2026-06-13T03:55:40.551Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
