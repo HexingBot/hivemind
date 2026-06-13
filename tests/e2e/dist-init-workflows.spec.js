@@ -16,7 +16,7 @@
 // /init-project slash command) so the process exits without prompting.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { existsSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -125,5 +125,96 @@ describe('AC4 (TASK-039 M4) — dist/init.cjs materializes workflow scripts', ()
         `.claude/workflows/${fileName} must be materialized by dist/init.cjs in ${projectDir}. ${diagnostics}`,
       ).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-040 stdout regression lock — --apply-workflows must NOT print the
+// normal-init epilogue (false PROJECT.md-written + literal null session path).
+// ---------------------------------------------------------------------------
+//
+// This spec is the regression lock for the UAT-FAIL found in TASK-040:
+//   printFriendlyOutcome had no case for 'applied_workflows' state and fell
+//   through to the normal-init epilogue, printing three false lines after the
+//   correct summary.
+//
+// VACUITY CONFIRMATION (red-green):
+//   RED:   ran this spec against a build from bin/init.js WITHOUT the fix
+//          (state === 'already_initialized' only guard) — spec failed with
+//          "stdout must not contain 'PROJECT.md written'" because the false line
+//          was present.
+//   GREEN: ran again after adding `|| state === 'applied_workflows'` to the
+//          guard in printFriendlyOutcome + rebuilding dist/ — spec passes.
+
+describe('TASK-040 stdout lock — --apply-workflows suppresses normal-init epilogue', () => {
+  it('apply_workflows_stdout_has_summary_line_but_no_false_epilogue', () => {
+    expect(existsSync(DIST_INIT_CJS), 'dist/init.cjs must exist').toBe(true);
+
+    // Create a tmp project that already has .claude/workflows/ with at least
+    // one workflow file present — this is the retrofit scenario (initialized
+    // project, missing one workflow file).
+    const projectDir = makeTmp('af-aw-stdout');
+    const workflowsDir = join(projectDir, '.claude', 'workflows');
+
+    // Pre-populate the workflows dir with the first known workflow file so the
+    // materializer has at least one file to skip and (if a second exists) one to add.
+    // This avoids a zero-added / zero-skipped edge case in the summary line regex.
+    // mkdirSync and writeFileSync are imported at the top of this module.
+    mkdirSync(workflowsDir, { recursive: true });
+    // Write a sentinel for the first workflow file.
+    const [firstFile] = EXPECTED_WORKFLOW_FILES;
+    writeFileSync(join(workflowsDir, firstFile), '// sentinel\n', 'utf8');
+
+    const result = spawnSync(
+      process.execPath,
+      [DIST_INIT_CJS, '--apply-workflows'],
+      {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          CLAUDE_PROJECT_DIR: projectDir,
+        },
+        encoding: 'utf8',
+        timeout: 60000,
+      },
+    );
+
+    const diagnostics = `exit=${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`;
+
+    // Must exit cleanly.
+    expect(
+      result.status,
+      `dist/init.cjs --apply-workflows must exit 0. ${diagnostics}`,
+    ).toBe(0);
+
+    // MUST contain the --apply-workflows summary line.
+    expect(
+      result.stdout,
+      `stdout must contain the --apply-workflows summary line. ${diagnostics}`,
+    ).toMatch(/--apply-workflows: \d+ file\(s\) added/);
+
+    // Must NOT contain false "PROJECT.md written" line.
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'PROJECT.md written' (no PROJECT.md was written). ${diagnostics}`,
+    ).not.toContain('PROJECT.md written');
+
+    // Must NOT contain the literal "state/sessions/null" path (null sessionId).
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'state/sessions/null' (no session was minted). ${diagnostics}`,
+    ).not.toContain('state/sessions/null');
+
+    // Must NOT contain the "Session bundle:" line at all.
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'Session bundle:' line. ${diagnostics}`,
+    ).not.toContain('Session bundle:');
+
+    // Must NOT contain the "Next step:" line.
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'Next step:' line. ${diagnostics}`,
+    ).not.toContain('Next step:');
   });
 });

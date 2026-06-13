@@ -662,7 +662,7 @@ function realReadlinePrompter() {
 }
 
 function printFriendlyOutcome({ state, projectMdPath, sessionId }) {
-  if (state === 'already_initialized') {
+  if (state === 'already_initialized' || state === 'applied_workflows') {
     // Summary already printed inside runInit's detection branch.
     return;
   }

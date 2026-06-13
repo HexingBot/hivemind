@@ -27,10 +27,15 @@
       "author": "orchestrator",
       "at": "2026-06-12T22:54:02.561Z",
       "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = tests-after. CLI flag + file-copy glue provable by running (the --apply-models precedent ran the same way); regression locks named in AC4. ACs human-observable (run the command on a real initialized project) so the UAT step applies: live /agentic-framework:apply-workflows on an existing project after the command ships. Scaled gate: test:changed + init/init-command/workflows-materializer/plugin-deps e2e."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-13T04:09:51.653Z",
+      "body": "UAT 2026-06-12 (tier tests-after, human-observable). Step 1 (initialized retrofit) — FAIL on user-facing output. Ran the REAL bundle binary: CLAUDE_PROJECT_DIR=<tmp> node dist/init.cjs --apply-workflows against an initialized project missing deep-research.js with a user-edited deep-review.js. FILESYSTEM correct: deep-research.js added, deep-review.js byte-identical (user edit preserved), no PROJECT.md created, no state/ bundle minted. BUT stdout printed, after the correct summary line, THREE FALSE lines: \"* PROJECT.md written to <tmp>/PROJECT.md\", \"* Session bundle: state/sessions/null/\", \"Next step: start a chat...\". Root cause: printFriendlyOutcome (bin/init.js:664) early-returns for already_initialized but has NO case for the applied_workflows state, so it falls through to the normal-init epilogue — printing a PROJECT.md-written claim and a literal state/sessions/null/ bundle path that never happened. Invisible to the e2e specs because they assert on runInit return value + filesystem, never stdout. Steps 2 (uninitialized no-wizard) + 5 (exclusivity) remain PASS (spec-proven + reviewer plant-test). VERDICT: back to developer for the printFriendlyOutcome fix + a stdout regression lock. Re-UAT after."
     }
   ],
   "created_at": "2026-06-12T22:53:34.275Z",
-  "updated_at": "2026-06-12T22:54:02.561Z",
+  "updated_at": "2026-06-13T04:09:51.653Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
