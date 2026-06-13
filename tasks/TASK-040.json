@@ -9,7 +9,7 @@
     "Regression locks: one e2e spec proving the retrofit on an initialized tmp project (missing file added, existing file untouched, PROJECT.md byte-identical pre/post) and one proving the not-initialized no-wizard path; dist/ rebuilt and committed byte-fresh.",
     "CLI parse errors for conflicting flags (--apply-workflows combined with --force or --answers-file) reject with a clear message before any filesystem write."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "workflow",
@@ -20,7 +20,10 @@
   "depends_on": [
     "TASK-037"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "4304f35",
+    "038c83e"
+  ],
   "linked_prs": [],
   "comments": [
     {
@@ -32,10 +35,20 @@
       "author": "uat",
       "at": "2026-06-13T04:09:51.653Z",
       "body": "UAT 2026-06-12 (tier tests-after, human-observable). Step 1 (initialized retrofit) — FAIL on user-facing output. Ran the REAL bundle binary: CLAUDE_PROJECT_DIR=<tmp> node dist/init.cjs --apply-workflows against an initialized project missing deep-research.js with a user-edited deep-review.js. FILESYSTEM correct: deep-research.js added, deep-review.js byte-identical (user edit preserved), no PROJECT.md created, no state/ bundle minted. BUT stdout printed, after the correct summary line, THREE FALSE lines: \"* PROJECT.md written to <tmp>/PROJECT.md\", \"* Session bundle: state/sessions/null/\", \"Next step: start a chat...\". Root cause: printFriendlyOutcome (bin/init.js:664) early-returns for already_initialized but has NO case for the applied_workflows state, so it falls through to the normal-init epilogue — printing a PROJECT.md-written claim and a literal state/sessions/null/ bundle path that never happened. Invisible to the e2e specs because they assert on runInit return value + filesystem, never stdout. Steps 2 (uninitialized no-wizard) + 5 (exclusivity) remain PASS (spec-proven + reviewer plant-test). VERDICT: back to developer for the printFriendlyOutcome fix + a stdout regression lock. Re-UAT after."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-13T04:16:13.269Z",
+      "body": "RE-UAT 2026-06-12 after fix 038c83e. Step 1 (initialized retrofit) — PASS: ran the real bundle binary again; stdout now shows ONLY \"--apply-workflows: 1 file(s) added (deep-research.js); 1 file(s) already present and skipped (deep-review.js).\" — no false \"PROJECT.md written\", no \"state/sessions/null\", no \"Next step:\". Filesystem still correct (file added, existing preserved, no PROJECT.md, no bundle). Step 2 (uninitialized no-wizard) PASS (spec + reviewer plant-test). Step 3 (command file) PASS verified by Orchestrator (commands/apply-workflows.md invokes node ${CLAUDE_PLUGIN_ROOT}/dist/init.cjs --apply-workflows, task-status.md structure, init-project distinction sentence present). Step 5 (exclusivity) PASS. OVERALL: PASS (all ACs). The first UAT FAIL (false stdout epilogue) is fixed + locked by a stdout sensor; the twin in --apply-models rolled to TASK-044."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-13T04:16:13.311Z",
+      "body": "CLOSE: APPROVE (fresh-context review, 0 HIGH / 0 MEDIUM / 2 LOW) + UAT (1 FAIL caught live → fixed → RE-UAT PASS). Commits 4304f35 (impl) + 038c83e (UAT-fix: printFriendlyOutcome false-epilogue suppression + stdout regression lock). The live UAT earned its keep: it caught a false-stdout defect (printFriendlyOutcome had no applied_workflows case → printed PROJECT.md-written + state/sessions/null) that the fresh-context review AND the full e2e suite both missed because no spec asserted CLI stdout. Fix red-green proven by the developer (new stdout lock fails against pre-fix bundle) and re-verified live by the orchestrator; dist byte-fresh. Twin defect in --apply-models (TASK-036) → TASK-044. The --apply-workflows retrofit is now live: existing projects get newly-shipped workflows via /agentic-framework:apply-workflows after a plugin update."
     }
   ],
   "created_at": "2026-06-12T22:53:34.275Z",
-  "updated_at": "2026-06-13T04:09:51.653Z",
+  "updated_at": "2026-06-13T04:16:13.342Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

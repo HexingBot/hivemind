@@ -8,7 +8,7 @@
     "Existing static locks stay green (parse lock red-green verified once after the edit); no new specs.",
     "UAT: a live /deep-research run on a broad question completes with the critic no longer reporting silent mid-stream claim loss."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "workflow",
@@ -18,17 +18,30 @@
   "depends_on": [
     "TASK-038"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "482a439",
+    "cfd6f4e"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-12T23:40:32.021Z",
       "body": "PLAN-TIME TIER ASSIGNMENT: verification_tier = uat-only. Workflow-script-only change (not executable under vitest); existing generic static locks cover it with zero spec changes; behavior proven by a live re-run per AC4. Source: TASK-038 review LOW upgraded by field evidence from the first live run (critic reported silent mid-stream claim truncation)."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-13T04:16:13.503Z",
+      "body": "UAT 2026-06-12 (tier uat-only). AC4 (live re-run shows critic no longer reports SILENT mid-stream truncation): PASS. Ran /deep-research (run wf_ca199125-3c0) on a broad multi-agent-orchestration question. On this very broad question the per-lens content still exceeded the 6000-char caps, BUT the truncation is now DECLARED, not silent: the synthesis summary states \"NOTE: all four lens claim sets and the sources list were truncated at their caps... coverage is partial\", and the completeness critic gaps lead with \"The synthesis explicitly flags self-truncation\". This is exactly AC4 (declared, not silent) and validates both the per-lens fences + notices AND the in-band critic-injection fix (cfd6f4e) — the critic now names the truncation deterministically. OVERALL: PASS. Note: raising caps further is a possible future tweak but out of scope — the contract is declared-not-silent, now met."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-13T04:16:13.569Z",
+      "body": "CLOSE: APPROVE-WITH-FOLLOWUPS (fresh-context review 0 HIGH / 1 MEDIUM) + UAT PASS. Commits 482a439 (impl, completed by orchestrator after the dev session-limit interruption) + cfd6f4e (in-band fix of the review MEDIUM: inject truncationBlock directly into the critic prompt so critic awareness is deterministic, not dependent on the synthesizer mentioning it in prose). The in-band fix was the reviewer verbatim suggestion (no re-review bounce needed). Live re-run confirmed declared-not-silent truncation end to end. Per-lens fences (6000) + sources fence (3000) + declared notices to BOTH synthesis and critic. fable->inherit unrelated. Deferred: raising per-lens caps (gold-plating; declared-not-silent contract met)."
     }
   ],
   "created_at": "2026-06-12T23:40:19.532Z",
-  "updated_at": "2026-06-12T23:40:32.021Z",
+  "updated_at": "2026-06-13T04:16:13.647Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }

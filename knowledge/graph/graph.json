@@ -74,6 +74,18 @@
       "label": "deep-review hardening: prompt-injection guards + materializer test gaps"
     },
     {
+      "id": "task-040",
+      "type": "task",
+      "ref": "tasks/TASK-040.json",
+      "label": "--apply-workflows retrofit flag + apply-workflows plugin command"
+    },
+    {
+      "id": "task-041",
+      "type": "task",
+      "ref": "tasks/TASK-041.json",
+      "label": "deep-research fence-cap fix: declared-not-silent truncation"
+    },
+    {
       "id": "task-042",
       "type": "task",
       "ref": "tasks/TASK-042.json",
@@ -108,6 +120,16 @@
     },
     {
       "from": "task-039",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-040",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-041",
       "to": "decision-20260612-deep-workflows",
       "relation": "produced-by"
     },

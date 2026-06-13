@@ -1,0 +1,28 @@
+{
+  "key": "TASK-044",
+  "title": "Twin of TASK-040: --apply-models prints false init epilogue",
+  "description": "Surfaced by the TASK-040 live UAT + the developer's out-of-scope flag. printFriendlyOutcome (bin/init.js) early-returns ONLY for state 'already_initialized' and (after TASK-040 fix) 'applied_workflows'. But runInit also returns 'applied_models' (line 540) and 'no_op' (line 532) for the --apply-models flag — both print their own summary line inside runInit, then fall through printFriendlyOutcome to the normal-init epilogue: '* PROJECT.md written to <path>', '* Session bundle: state/sessions/null/', 'Next step: ...'. All three lines are FALSE for an --apply-models run (no PROJECT.md written, no bundle minted, literal 'null'). Same class of false-stdout defect TASK-040 just fixed for --apply-workflows; same reason it was invisible (specs assert return value + filesystem, not stdout).\n\nFIX: add 'applied_models' and 'no_op' to the printFriendlyOutcome early-return (their summaries are already printed inside runInit). Consider refactoring to a small set of self-summarizing states so a future apply-* flag can't reintroduce this. Rebuild dist.\n\nREGRESSION LOCK: stdout sensor mirroring TASK-040's — spawn node dist/init.cjs --apply-models against a tmp project WITH a PROJECT.md carrying an agent_models map, assert stdout has the --apply-models summary and NOT 'PROJECT.md written' / 'state/sessions/null' / 'Next step:'. (Needs a PROJECT.md fixture since --apply-models reads it.)",
+  "acceptance_criteria": [
+    "printFriendlyOutcome early-returns (prints nothing further) for states applied_models and no_op as well as already_initialized and applied_workflows; their in-runInit summary lines are the only stdout.",
+    "A stdout regression lock spawns the real dist/init.cjs --apply-models against a tmp project with a PROJECT.md agent_models map and asserts: summary line present; no 'PROJECT.md written'; no 'state/sessions/null'; no 'Next step:'. Red-green verified against the pre-fix bundle.",
+    "dist/ rebuilt byte-fresh; npm run test:changed + named init e2e specs green.",
+    "No behavioral change to the actual model application or filesystem — output-only fix."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "cli",
+    "bug"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-040"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-13T04:15:33.913Z",
+  "updated_at": "2026-06-13T04:15:33.913Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
