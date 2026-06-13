@@ -38,7 +38,7 @@ const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 const MARKETPLACE_JSON = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-const EXPECTED_VERSION = '0.2.0';
+const EXPECTED_VERSION = '0.3.0';
 const EXPECTED_MARKETPLACE_NAME = 'agentic-framework-marketplace';
 const EXPECTED_PLUGIN_NAME = 'agentic-framework';
 const EXPECTED_SOURCE = './';
