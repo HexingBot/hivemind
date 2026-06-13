@@ -1,16 +1,17 @@
 // tests/agent-models.spec.js
-// TASK-031 — Per-agent model assignment: reviewer on Fable 5, developer/researcher on Sonnet.
+// TASK-031 — Per-agent model assignment: reviewer on inherit (default main model), developer/researcher on Sonnet.
+// TASK-042 — Retired reviewer's fable pin → inherit (Fable 5 no longer available).
 //
 // AC map:
-//   AC1 — reviewer.md frontmatter assigns model: fable
-//          (alias verified against code.claude.com sub-agents docs — `fable` is
-//          an accepted shorthand in the `model:` frontmatter field)
+//   AC1 — reviewer.md frontmatter assigns model: inherit
+//          (alias verified against code.claude.com sub-agents docs — `inherit`
+//          tracks the session's main model, currently Opus 4.8)
 //   AC2 — developer.md and researcher.md frontmatter assign model: sonnet
 //   AC3 — orchestrator.md must be ABSENT (TASK-032 removed the orchestrator agent
 //          file entirely; the Orchestrator is the main session thread, not a
 //          subagent; asserting absence prevents a dangling assignment from landing)
 //   AC4 — CLAUDE.md documents the per-agent model strategy, mentioning
-//          reviewer + fable and developer/researcher + sonnet, with the
+//          reviewer + inherit and developer/researcher + sonnet, with the
 //          assertions scoped to the '## Per-Agent Model Assignment' section and
 //          including the per-project override clause (PROJECT.md / --apply-models)
 //
@@ -50,13 +51,14 @@ function readFrontmatter(agentName) {
   return lines.slice(1, closeIdx).join('\n');
 }
 
-describe('TASK-031 — AC1: reviewer.md frontmatter assigns model: fable', () => {
-  it('reviewer_md_has_model_fable', () => {
+describe('TASK-031/TASK-042 — AC1: reviewer.md frontmatter assigns model: inherit', () => {
+  it('reviewer_md_has_model_inherit', () => {
     const fm = readFrontmatter('reviewer');
-    // model: fable — the alias verified against the Claude Code sub-agents docs.
+    // model: inherit — tracks the session's main model (currently Opus 4.8).
+    // TASK-042: retired fable pin; fable is no longer available to this account.
     expect(
-      /^model:\s*fable\s*$/m.test(fm),
-      `reviewer.md frontmatter must contain "model: fable" — got:\n${fm}`,
+      /^model:\s*inherit\s*$/m.test(fm),
+      `reviewer.md frontmatter must contain "model: inherit" — got:\n${fm}`,
     ).toBe(true);
   });
 });
@@ -84,8 +86,8 @@ describe('TASK-031 — AC2: researcher.md frontmatter assigns model: sonnet', ()
 describe('TASK-031/TASK-032 — AC3: orchestrator agent file is absent', () => {
   it('orchestrator_agent_file_is_absent', () => {
     // TASK-032 removed orchestrator.md entirely. The Orchestrator is the main
-    // session thread and inherits whatever model the session runs with (Fable 5
-    // in production). Asserting file absence preserves the intent of the
+    // session thread and inherits whatever model the session runs with (Opus 4.8
+    // in production as of TASK-042). Asserting file absence preserves the intent of the
     // original no-model-key test: there can be no dangling model assignment
     // when the file does not exist at all.
     expect(
@@ -96,7 +98,7 @@ describe('TASK-031/TASK-032 — AC3: orchestrator agent file is absent', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TASK-031 AC4 / TASK-032 / TASK-036 AC5 — section-scoped doc assertions.
+// TASK-031 AC4 / TASK-032 / TASK-036 AC5 / TASK-042 — section-scoped doc assertions.
 //
 // Parsing strategy: slice between the `## Per-Agent Model Assignment` heading
 // and the NEXT `## ` heading to isolate that section body, then assert within
@@ -104,7 +106,7 @@ describe('TASK-031/TASK-032 — AC3: orchestrator agent file is absent', () => {
 // CLAUDE.md (e.g. the First-chat routing section mentions "developer").
 //
 // Assertions:
-//   (a) reviewer + fable appear together in the section.
+//   (a) reviewer + inherit appear together in the section (TASK-042: was fable).
 //   (b) developer + researcher + sonnet appear together in the section.
 //   (c) PROJECT.md is named as the canonical knob (TASK-036 AC5).
 //   (d) The per-project override clause mentions --apply-models (TASK-032).
@@ -133,13 +135,14 @@ describe('TASK-031 — AC4: CLAUDE.md Per-Agent Model Assignment section documen
     ).toMatch(/^## Per-Agent Model Assignment\s*$/m);
   });
 
-  it('section_documents_reviewer_on_fable', () => {
+  it('section_documents_reviewer_on_inherit', () => {
     const section = readPerAgentModelSection();
     expect(section, 'Per-Agent Model Assignment section must be present').not.toBeNull();
-    // reviewer → fable: both words must appear within the section body.
+    // reviewer → inherit: both words must appear within the section body.
+    // TASK-042: retired fable pin; reviewer now inherits the session's main model.
     expect(
-      /reviewer/i.test(section) && /fable/i.test(section),
-      '"## Per-Agent Model Assignment" section must mention both "reviewer" and "fable"',
+      /reviewer/i.test(section) && /inherit/i.test(section),
+      '"## Per-Agent Model Assignment" section must mention both "reviewer" and "inherit"',
     ).toBe(true);
   });
 
