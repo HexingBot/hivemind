@@ -443,6 +443,30 @@ describe('createSessionManager', () => {
     expect(received[0]).toEqual({ type: 'session', sessionId: 'sid-42' });
   });
 
+  // --- unsubscribe — regression lock for SSE subscriber leak fix ---
+  it('unsubscribed callback is not called on subsequent events', () => {
+    let fakeChild;
+    const mgr = createSessionManager({
+      repoRoot: '/fake/repo',
+      spawnFn() {
+        fakeChild = makeFakeChild();
+        return fakeChild;
+      },
+    });
+
+    const session = mgr.create('unsub-session');
+    let callCount = 0;
+    const cb = () => { callCount += 1; };
+
+    session.subscribe(cb);
+    session.unsubscribe(cb);
+
+    const line = JSON.stringify({ type: 'system', subtype: 'init', session_id: 'x' }) + '\n';
+    fakeChild.stdout.emit('data', line);
+
+    expect(callCount, 'unsubscribed callback must not be called').toBe(0);
+  });
+
   // --- child death → error event + stopped flag ---
   it('child exit emits a single error event to subscribers', () => {
     let fakeChild;

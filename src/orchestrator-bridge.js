@@ -224,6 +224,10 @@ export function createSessionManager({ repoRoot, spawnFn } = {}) {
       subscribe(cb) {
         subscribers.add(cb);
       },
+
+      unsubscribe(cb) {
+        subscribers.delete(cb);
+      },
     };
 
     // Child exit → error event + stopped flag + remove from registry

@@ -983,10 +983,12 @@ export function createBoardServer({ repoRoot, bridge } = {}) {
         }
         session.subscribe(onEvent);
 
-        // Clean up when the client disconnects.
+        // Clean up when the client disconnects — remove the subscriber so the
+        // closed connection does not accumulate in the broadcast set.
         req.socket.on('close', () => {
-          // Nothing to unsubscribe — broadcast loop simply ignores dead sockets.
+          if (typeof session.unsubscribe === 'function') session.unsubscribe(onEvent);
         });
+
         return;
       }
 
@@ -1035,7 +1037,8 @@ export function createBoardServer({ repoRoot, bridge } = {}) {
           return;
         }
 
-        // Ensure the session exists (create if absent).
+        // Ensure the session exists (create if absent). Auto-creation on send is
+        // intentional — resurrection-on-send lets a POST arrive before /stream opens.
         if (!sessionManager.has(rawId)) {
           sessionManager.create(rawId);
         }

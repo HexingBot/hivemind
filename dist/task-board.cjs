@@ -8112,6 +8112,9 @@ function createSessionManager({ repoRoot, spawnFn } = {}) {
       },
       subscribe(cb) {
         subscribers.add(cb);
+      },
+      unsubscribe(cb) {
+        subscribers.delete(cb);
       }
     };
     child.on("exit", (code) => {
@@ -8969,6 +8972,7 @@ function createBoardServer({ repoRoot, bridge } = {}) {
         res.flushHeaders();
         session.subscribe(onEvent);
         req.socket.on("close", () => {
+          if (typeof session.unsubscribe === "function") session.unsubscribe(onEvent);
         });
         return;
       }
