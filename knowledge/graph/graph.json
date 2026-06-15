@@ -114,6 +114,12 @@
       "type": "task",
       "ref": "tasks/TASK-051.json",
       "label": "Web console P1: orchestrator-session bridge + chat routes"
+    },
+    {
+      "id": "task-052",
+      "type": "task",
+      "ref": "tasks/TASK-052.json",
+      "label": "Web console P2: chat panel UI (streaming render + activity chips)"
     }
   ],
   "edges": [
@@ -169,6 +175,11 @@
     },
     {
       "from": "task-051",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-052",
       "to": "decision-20260615-web-console",
       "relation": "produced-by"
     },

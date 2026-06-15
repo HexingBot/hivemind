@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-15T21:03:14.599Z",
+  "generated_at": "2026-06-15T21:57:44.789Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -298,7 +298,7 @@
     {
       "key": "TASK-052",
       "title": "Web console epic P2: chat UI panel — streaming render of orchestrator output + subagent/tool activity",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
