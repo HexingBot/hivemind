@@ -7,7 +7,7 @@
     "tests/verification-policy-docs.spec.js line ~274 comment updated to describe the current reviewer+inherit contract; no executable assertion changed.",
     "fable remains a valid alias everywhere (VALID_MODEL_ALIASES / MODEL_ALIASES / AGENT_MODEL_ALIASES untouched); npm run test:changed plus affected specs green."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "low",
   "labels": [
     "config",
@@ -22,7 +22,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-06-13T03:55:24.189Z",
-  "updated_at": "2026-06-13T03:55:24.189Z",
+  "updated_at": "2026-06-15T15:28:37.508Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }

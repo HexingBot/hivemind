@@ -1,0 +1,49 @@
+{
+  "key": "TASK-047",
+  "title": "Conversational /init-project: adaptive discovery + confirmation before materializing",
+  "description": "Rewrite commands/init-project.md so the conversational bootstrap LEADS with a proper definition of what the user wants to build, instead of jumping from a one-line description to seeding a backlog.\n\nToday Step 1 just lists fields to collect in one batch. The new flow:\n- Step 1 becomes adaptive DISCOVERY: Claude asks about the problem being solved, goals, and scope (in/out), asking focused follow-ups until the project is genuinely well-defined — not a single batch. Keep it terse (respect the user's terseness preference: short questions, no walls of text).\n- A CONFIRMATION step: Claude plays back the understood definition (problem / goals / scope-in / scope-out + identity/stack) and gets an explicit OK before writing anything.\n- Map the confirmed discovery into the answers JSON using the TASK-045 field names (problem_statement, goals, scope_in, scope_out) alongside the existing intake keys, then run the bundled init in answers-mode (which skips the CLI confirmation per TASK-046).\n\nThis is a prompt/markdown change only (no source logic), so it is verified via conversational UAT, not new specs. The existing doc tests (if any reference init-project.md headings) must stay green.\n\nDepends on TASK-045 (field names) and aligns with TASK-046 (answers-mode skips the CLI confirm gate).",
+  "acceptance_criteria": [
+    "commands/init-project.md Step 1 instructs Claude to run an ADAPTIVE discovery dialogue (problem, goals, scope in/out) with focused follow-ups until the definition is solid — explicitly not a single batch — and to keep prompts terse.",
+    "A CONFIRMATION step is documented: Claude plays back the understood definition + identity and requires explicit user approval BEFORE writing the answers file or running init.",
+    "The documented answers-JSON shape includes the TASK-045 field names (problem_statement, goals, scope_in, scope_out) with an example, alongside the existing required/type-specific keys.",
+    "The doc still routes through the bundled dist/init.cjs in answers-mode and notes that answers-mode skips the interactive CLI confirmation gate (TASK-046), so there is no double-confirm.",
+    "UAT: run the conversational flow end-to-end against a scratch directory — discovery asks adaptive follow-ups, the playback/confirm step appears before any write, and the resulting PROJECT.md contains the problem/goals/scope sections; recorded as a uat comment with all steps PASS."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "init",
+    "command",
+    "discovery"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-045"
+  ],
+  "linked_commits": [
+    "8517f94",
+    "6d41a1a"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T16:49:05.568Z",
+      "body": "Plan + tier (at plan time): verification_tier=uat-only. commands/init-project.md is a prompt/markdown file (no source logic), so no new specs; verified via conversational UAT against a scratch dir. Developer spawned in IMPL mode only (per the uat-only tier). Depends on TASK-045 (field names problem_statement/goals/scope_in/scope_out — DONE) and aligns with TASK-046 (answers-mode skips the CLI confirm gate, so the conversational path confirms ONCE in chat, no double-confirm; goals/scope passed as arrays — normalizeDefinitionAnswers passes arrays through). After IMPL, run UAT end-to-end and record a uat comment covering every AC before close."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-15T16:55:00.899Z",
+      "body": "UAT — conversational /init-project rewrite. Steps 1–2 verified by Orchestrator at the human's request (human delegated: \"verifícalo tú\"); steps 3–5 verified live by executing the shipped bundle.\n\n1. AC1 adaptive discovery: EXPECT Step 1 instructs one-question-at-a-time, terse, problem-first with follow-ups (not a batch). OBSERVED commands/init-project.md §\"Step 1 — Adaptive discovery dialogue\": \"Do not dump all questions at once. One question at a time. Keep each prompt to one line.\" → PASS (verified by Orchestrator at the human's request).\n2. AC2 confirmation playback: EXPECT a documented play-back-and-approve step before any write. OBSERVED §\"Confirmation step\": compact playback (Problem/Goals/Scope in/Scope out/Project/Stack) + \"You MUST receive explicit approval before proceeding to Step 2.\" → PASS (verified by Orchestrator at the human's request).\n3. AC3 answers JSON has the 4 definition fields: EXPECT problem_statement (string) + goals/scope_in/scope_out (arrays) in the example + collected. OBSERVED Step 2 JSON example includes all four; live run with those fields produced a correct PROJECT.md. → PASS.\n4. AC4 routes via dist/init.cjs answers-mode, notes the skip, no double-confirm: EXPECT Step 3 runs dist/init.cjs --answers-file with a TASK-046 note (no --yes, single gate). OBSERVED the note present; live run exited 0 without hanging (no second confirm). → PASS.\n5. End-to-end materialization: EXPECT PROJECT.md gets ## Problem/## Goals/## Scope (in)/## Scope (out) + project-context.md briefing. OBSERVED live run (routine-builder) rendered all four sections in order + the briefing definition block. → PASS.\n\nOVERALL: PASS (5/5). Every AC covered. Note: the live functional proof used the REBUILT dist/init.cjs (commit 6d41a1a) — the bundle was stale before this UAT; rebuilding it is what makes the conversational command actually exercise the 045/046 behavior."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T16:55:09.079Z",
+      "body": "CLOSED — uat-only, done on UAT 5/5 PASS (every AC covered; steps 1–2 delegated to orchestrator per the human, 3–5 proven by live execution of the shipped bundle). Linked commits: 8517f94 (command rewrite) + 6d41a1a (dist rebuild that makes the command actually run the new behavior). commands/init-project.md now LEADS with adaptive one-at-a-time discovery (problem→goals→scope→identity/stack), plays back the definition and requires explicit approval before writing, documents the 4 TASK-045 fields as arrays in the answers JSON, and notes answers-mode skips the CLI confirm (single gate, no --yes). Doc-reference test (init-command.spec.js) stayed green. 🎉 DISCOVERY-FIRST INIT epic-let COMPLETE: 045 (storage) + 046 (CLI discovery-first + confirm) + 047 (conversational rewrite) all done. Follow-up minted: TASK-048 (make problem_statement a required discovery question — human product decision from the 046 review LOW)."
+    }
+  ],
+  "created_at": "2026-06-15T15:30:05.401Z",
+  "updated_at": "2026-06-15T16:55:11.668Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

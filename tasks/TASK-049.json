@@ -1,0 +1,28 @@
+{
+  "key": "TASK-049",
+  "title": "Automated dist-parity spec: fail when committed dist/ is stale vs source",
+  "description": "During the discovery-first init epic-let, dist/init.cjs was left STALE after TASK-045 and TASK-046 (the developers changed bundled source — src/project-md.js, src/question-library.js, src/agent-generator.js, bin/init.js — but did not rebuild the committed bundle). The full test:all suite passed GREEN anyway because there is no automated check that the committed dist/*.cjs matches a fresh build. The stale bundle was caught only by a live end-to-end run by the orchestrator; without that, the shipped /init-project command and CLI would have run old code in users' projects.\n\nAdd a permanent sensor so this can never silently ship again: a spec (or a CI/precommit check) that rebuilds the plugin bundles and fails if the committed dist/ differs from the fresh build. The repo already relies on this invariant informally (prior decisions note 'reviewer checks git diff --stat dist/ empty' as a MANUAL step) — this ticket makes it an automated gate.\n\nDesign notes / open questions for the implementer:\n- The check must run `npm run build:plugin` (or invoke esbuild equivalently) into a temp/throwaway output and byte-compare against the committed dist/*.cjs (init.cjs, new-task.cjs, mcp-server.cjs, task-board.cjs — whatever build:plugin emits), rather than mutating the working tree.\n- Decide tier placement: this is slow (spawns a build), so it belongs in the e2e/slow tier and/or the release gate, NOT the fast inner loop. Consider gating it to run only in test:all to keep test:changed fast.\n- Beware environment non-determinism in esbuild output (banner, paths). If byte-equality is flaky, compare a normalized form or a content hash of the emitted modules.\n- This is test/release infrastructure, so the ticket itself runs the full test:all gate.",
+  "acceptance_criteria": [
+    "A new automated check rebuilds the plugin bundle(s) via the project's build pipeline into a non-committed location and compares the result against the committed dist/*.cjs; it FAILS when they differ (i.e. when a source change was not accompanied by a dist rebuild).",
+    "The check is placed in the slow/release tier (runs under npm run test:all and/or a release/precommit gate), NOT in the fast inner loop (test:changed / test:watch stay fast).",
+    "A deliberate proof: temporarily editing a bundled source file without rebuilding makes the check FAIL (red), and rebuilding makes it PASS (green) — demonstrating the sensor is non-vacuous (document this red-green proof, do not leave the source edit committed).",
+    "Any esbuild output non-determinism (banners, absolute paths) is handled so the check is stable across machines (byte-compare a normalized form or a content hash, with the normalization documented).",
+    "Docs/policy updated: the CLAUDE.md or state note that previously described the 'reviewer checks git diff --stat dist/ empty' MANUAL step references the new automated gate; npm run test:all stays green."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "build",
+    "dist",
+    "test-infra"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-15T17:09:23.464Z",
+  "updated_at": "2026-06-15T17:09:23.464Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

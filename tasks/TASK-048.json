@@ -1,0 +1,43 @@
+{
+  "key": "TASK-048",
+  "title": "Make problem_statement a required discovery question",
+  "description": "Product decision from the TASK-046 review (LOW-1) and human call: the four discovery questions were all shipped required:false (skippable with Enter). The human wants `problem_statement` to be REQUIRED so the interactive CLI wizard cannot start without the operator stating the problem — directly addressing the original 'empieza sin preguntar' complaint. goals/scope_in/scope_out STAY optional (required:false) — only the problem statement is mandatory.\n\nScope: src/question-library.js — make problem_statement a required question (drop its required:false so the engine treats it as required and re-prompts on empty input). Leave goals/scope_in/scope_out optional. This affects ONLY the interactive `node bin/init.js` path; answers-mode (the /init-project conversational command) bypasses the questionnaire, and validateSuppliedAnswers does NOT require problem_statement (the conversational discovery enforces it in chat) — so do NOT add problem_statement to REQUIRED_ANSWER_KEYS unless a spec shows it's needed. Rebuild dist/init.cjs and commit it (the bundle is what the shipped CLI/command run).\n\nConfirm no regression: existing init/intake e2e tests that drive the wizard must still answer problem_statement (the scripted prompts already provide it via the helper) — a required problem_statement must not cause an infinite re-prompt in any existing test.",
+  "acceptance_criteria": [
+    "src/question-library.js: the problem_statement question is REQUIRED (no required:false; the question-engine re-prompts on empty input for it); goals, scope_in, scope_out remain required:false (optional).",
+    "A spec asserts problem_statement is required: an interactive wizard run that returns '' for problem_statement is re-prompted (engine does not accept the empty answer and move on), while an empty goals/scope answer is accepted as a skip.",
+    "No regression: existing interactive-wizard e2e tests still pass (the scripted prompter provides a non-empty problem_statement, so no infinite re-prompt); answers-mode is unaffected (problem_statement is NOT added to REQUIRED_ANSWER_KEYS unless a spec proves it necessary).",
+    "dist/init.cjs is rebuilt from source and committed so the shipped CLI/command enforce the required problem_statement; a check confirms git diff --stat dist/ is empty after a fresh npm run build:plugin."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "init",
+    "wizard",
+    "discovery"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-046"
+  ],
+  "linked_commits": [
+    "4ec809e",
+    "a60cb32"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "reviewer",
+      "at": "2026-06-15T17:06:36.596Z",
+      "body": "APPROVE (0 HIGH / 0 MEDIUM / 1 LOW). All 4 ACs verified fresh. AC1: required:false removed from problem_statement, prompt text updated; goals/scope_in/scope_out retain required:false. AC2 (non-vacuous): spec asserts prompter called TWICE for empty-then-value problem_statement (re-prompt) vs ONCE for empty goals (skip→null) — couples to the engine's `required = q.required !== false` + empty-input error branch; would fail RED under the old optional path (empirically 1 call). AC3: REQUIRED_ANSWER_KEYS unchanged (problem_statement NOT added); PROJECT.md schema still lists problem_statement optional (project-definition-schema.spec.js:71 green) — wizard-requiredness vs field-requiredness separation holds; no infinite re-prompt (webSaasAnswers + resumed remainingAnswers supply it). AC4: ran npm run build:plugin, git diff --stat dist/ EMPTY — committed bundle matches fresh build. Full gate npm run test:all 579 passed / 4 skipped (shared helper touched → full gate). Test-side changes safe/matched (scripted-prompter optional-id removal + webSaasAnswers add; init.spec.js resumed remainingAnswers + comment) — none weakening, no masking. RED-state confirmed for the right reasons. LOW: dead `id: ctx.id ?? null` bookkeeping in the AC2 prompter (ctx has no id field) — cosmetic, deferred."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T17:06:43.634Z",
+      "body": "CLOSED — done on green review (clean APPROVE, 0 HIGH/0 MEDIUM). Linked commits: 4ec809e (test) + a60cb32 (impl + dist rebuild). problem_statement is now a REQUIRED discovery question — the interactive CLI wizard re-prompts on empty so an init can't proceed without the operator stating the problem (directly closes the original 'empieza sin preguntar' complaint). goals/scope stay optional. answers-mode + PROJECT.md schema deliberately unchanged (problem_statement stays optional at the FIELD level; the conversational /init-project enforces it in chat). dist rebuilt + committed (parity verified empty). 🎉 DISCOVERY-FIRST INIT epic-let fully complete: 045 (storage) + 046 (CLI discovery-first + confirm gate) + 047 (conversational rewrite) + 048 (problem_statement required). Full suite 579 passed / 4 skipped."
+    }
+  ],
+  "created_at": "2026-06-15T16:55:40.402Z",
+  "updated_at": "2026-06-15T17:06:46.995Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

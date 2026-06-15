@@ -1,0 +1,55 @@
+{
+  "key": "TASK-046",
+  "title": "Discovery-first intake + confirmation gate (CLI wizard)",
+  "description": "Make \"define well what you want to do\" the FIRST thing the init wizard does, and confirm the captured definition before materializing anything.\n\nTwo parts:\n1) src/question-library.js — add discovery questions (problem, goals, scope-in, scope-out) and place them at the FRONT of COMMON_QUESTIONS so the wizard leads with WHAT/WHY before name/type/stack. The new questions map to the TASK-045 fields. Keep ids globally unique; goals/scope are free-text (the engine has no list type today — accept comma-separated and document the split, mirroring primary_use_cases handling) unless a cleaner approach is chosen during implementation.\n2) bin/init.js — add a CONFIRMATION step after the questionnaire and before writeProjectMd/seedBacklog: print a compact summary of the captured definition + identity and require the operator to confirm (default-yes on Enter; a flag e.g. --no-confirm or --yes suppresses the prompt for non-interactive/answers-mode runs). On rejection, do not materialize (re-run / abort cleanly with no partial writes).\n\nConstraints: answers-mode (--answers-file) and already_initialized/forced/resumed branches must keep working; confirmation must be skippable in answers-mode so the conversational command (TASK-047) and tests are not blocked on a TTY. No partial PROJECT.md on abort. Backlog-seeder unchanged.\n\nDepends on TASK-045 (the fields must exist in schema/writer first).",
+  "acceptance_criteria": [
+    "src/question-library.js COMMON_QUESTIONS leads with the discovery questions (problem, goals, scope-in, scope-out) BEFORE project_name; buildIntakeQuestions() ordering test asserts the discovery block is first; all ids remain globally unique and the existing type-specific concatenation is unchanged.",
+    "The discovery answers flow through bin/init.js into writeProjectMd as the TASK-045 definition fields (problem_statement/goals/scope_in/scope_out) and appear in the resulting PROJECT.md body sections.",
+    "bin/init.js prints a compact captured-definition summary and prompts for confirmation AFTER the questionnaire and BEFORE any disk write in the interactive `created` path; empty/Enter input defaults to confirm.",
+    "Confirmation is suppressed in non-interactive answers-mode (and via an explicit flag) so --answers-file runs and already_initialized/forced/resumed branches are unaffected; a spec asserts the prompter is never called in answers-mode.",
+    "On an explicit NO at the confirmation prompt, no PROJECT.md, no session bundle mutation, and no seeded backlog are written (no partial materialization); a spec verifies the filesystem is unchanged.",
+    "New specs encode the ordering, the answer→PROJECT.md flow, the confirm-default-yes, the answers-mode skip, and the abort-no-write behavior; the scaled gate runs (this touches intake logic; run npm run test:all since it is adjacent to schema/test-infra and the wizard contract)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "init",
+    "wizard",
+    "discovery"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-045"
+  ],
+  "linked_commits": [
+    "945390d",
+    "7490780"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T15:49:48.084Z",
+      "body": "Scope addition (rolled in from the TASK-045 review — these LOWs become REACHABLE precisely here, when the CLI starts collecting the definition fields): (1) When this ticket adds the discovery questions and splits comma-separated goals/scope input into arrays, add the missing empty-omission guard for the string→array path: a bare empty string must NOT produce a one-item empty bullet ['']; it must yield omission (empty array / absent). Mirror the project-md empty-omission contract uniformly. (2) Add the AC2 order assertion TASK-045 left open: a spec locking successCriteriaIdx < problemIdx (i.e. the definition sections render AFTER the existing well-known sections in PROJECT.md), so a future BODY_SECTIONS reordering that floats definition above Description/Success criteria is caught. Both are part of the tdd specs for this ticket."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T15:53:02.463Z",
+      "body": "Plan + tier (at plan time): verification_tier=tdd (intake ordering logic + confirmation-gate control flow + string→array splitting = source logic/state shape). Scaled gate applies (NOT full test:all): this ticket does NOT touch tasks/schema.json or test infra, so per-ticket gate = npm run test:changed + the developer-proposed affected e2e (expect the init/wizard + question-library specs). Section naming CONFIRMED by human: keep ## Problem / ## Goals / ## Scope (in) / ## Scope (out) — matches the 045 writer already on main, no rework. Design: discovery questions (problem_statement, goals, scope_in, scope_out) go at the FRONT of COMMON_QUESTIONS (ask-order only; PROJECT.md render order is fixed by BODY_SECTIONS, unaffected). goals/scope collected as free-text and split on commas into arrays (cleanest approach at the developer's discretion; mirror primary_use_cases handling). Confirmation gate in bin/init.js fires AFTER the questionnaire and BEFORE any disk write in the interactive `created` path, default-yes, suppressed in answers-mode + via explicit flag, no partial materialization on NO. Includes the 2 rolled-in TASK-045 LOWs (empty-string→[] omission guard; successCriteriaIdx<problemIdx order assertion). Developer in TEST mode first."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-06-15T16:48:16.508Z",
+      "body": "APPROVE (0 HIGH / 0 MEDIUM / 2 LOW / 1 NIT). All ACs (1–6b) independently verified in a fresh context. Full gate green at impl commit 7490780: npm run test:all 576 passed / 4 skipped (4 skips pre-existing env-gated). RED-state confirmed: TEST commit 945390d fails for the right reasons against pre-impl (discovery questions absent; pre-impl even reproduces the [''] stray-bullet bug, proving the AC6a empty-omission spec is non-vacuous). Confirmation gate provably precedes ALL filesystem writes — {aborted:true} early-return at bin/init.js precedes writeProjectMd + project-context + seedBacklog + use-case suite + workflows; AC5 specs independently assert absence of PROJECT.md, backlog, AND project-context.md; {state:'cancelled'} exits 0, no throw. The three IMPL-phase test-side edits are legitimate, none weakening: init.spec.js comment-only (zero assertion lines changed); scripted-prompter.js additive signatures + optional-id fallback for genuinely-optional new questions (verified NON-masking — abort tests use explicit 'n' override and never hit the default-yes fallback; __confirm__ synthetic id never collides with a real answer key); intake-e2e.spec.js normalizes expected shape to mirror the real string→array round-trip (equality assertion preserved). LOW-1: all four discovery questions are required:false — consistent with AC6a (which presupposes skippability) so NOT an AC violation, but flagged as a product-intent decision (could argue problem_statement should be required given the 'define first' framing). LOW-2: redundant belt-and-suspenders assertion in empty_goals test (harmless). NIT: buildDefinitionSummary's KNOWN_SUMMARY_IDS must stay in sync with the question catalog (a future new common question would fall into the Stack: line) — maintenance smell, deferred."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T16:48:26.077Z",
+      "body": "CLOSED — done on green review (clean APPROVE, 0 HIGH/0 MEDIUM). Linked commits: 945390d (test) + 7490780 (impl). tdd tier: tests-first then impl. Scaled gate ESCALATED to full test:all because the ticket modified a shared test helper (scripted-prompter.js) = test infra — 576 passed / 4 skipped. Live: the CLI wizard now LEADS with the four discovery questions (problem/goals/scope-in/scope-out), splits comma input into arrays (empty→omitted heading, no stray bullet), and gates materialization behind a confirmation prompt (default-yes, --yes to skip, auto-skipped in answers-mode, NO writes nothing). Both rolled-in TASK-045 LOWs discharged (empty-string→[] omission; successCriteriaIdx<problemIdx order assertion). NIT (KNOWN_SUMMARY_IDS sync) deferred without ticket. LOW-1 (required:false on discovery questions) surfaced to the human as a product decision — it bears directly on the original 'empieza sin preguntar' complaint; pending their call on whether problem_statement should be mandatory. Epic-let: 045 + 046 DONE → next 047 (conversational /init-project rewrite, uat-only)."
+    }
+  ],
+  "created_at": "2026-06-15T15:29:40.418Z",
+  "updated_at": "2026-06-15T16:48:29.935Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

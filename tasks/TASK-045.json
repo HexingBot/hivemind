@@ -1,0 +1,48 @@
+{
+  "key": "TASK-045",
+  "title": "PROJECT.md definition sections: problem, goals, scope (in/out) + agent briefing",
+  "description": "The init flow today captures only a one-sentence description plus enum/stack answers, then materializes PROJECT.md and seeds a generic backlog. There is no place to record WHAT the project is really trying to do. This ticket adds the storage layer for an enriched project definition so the discovery-first intake (TASK-046) and the conversational rewrite (TASK-047) have somewhere to write it.\n\nScope: extend the PROJECT.md schema + writer/reader to carry four new narrative definition fields, rendered as BODY prose sections (consistent with the existing `## Stack` etc. body-section pattern — NOT frontmatter), and surface them in the per-project agent briefing so subagents know the problem/goals/scope rather than just the stack.\n\nFields: problem_statement (prose), goals (list), scope_in (list), scope_out (list).\n\nThe backlog-seeder is explicitly OUT OF SCOPE for this ticket and the whole epic-let (human decision: keep slug-template seeding). All new fields are OPTIONAL/back-compatible so existing PROJECT.md files and the 044-era fixtures still parse and round-trip unchanged.\n\nRelated: TASK-046 (discovery-first intake + confirmation), TASK-047 (conversational /init-project rewrite) both depend on this.",
+  "acceptance_criteria": [
+    "state/PROJECT.schema.json gains optional properties for problem_statement (string), goals (array of strings), scope_in (array of strings), scope_out (array of strings); additionalProperties:false is preserved and all existing PROJECT.md fixtures still validate.",
+    "src/project-md.js writeProjectMd renders the new definition as body prose sections (e.g. `## Problem`, `## Goals`, `## Scope (in)`, `## Scope (out)`) in a fixed, documented order; sections are omitted entirely when the corresponding answer is absent/empty (no empty headings).",
+    "src/project-md.js readProjectMd round-trips the new sections losslessly: a write-then-read returns the same problem_statement/goals/scope_in/scope_out values, including list items containing commas or other punctuation.",
+    "Back-compatibility: a PROJECT.md written before this change (no definition sections) reads back with the new fields absent/undefined and existing fields unchanged; no existing spec regresses.",
+    "src/agent-generator.js generateProjectContext surfaces the definition (problem/goals/scope) in .claude/agents/project-context.md so subagents read it before working; when the fields are absent the briefing degrades gracefully (section omitted, no crash).",
+    "New specs encode each AC (schema validation, writer omission rule, round-trip incl. punctuation, back-compat read, agent-briefing render); npm run test:all stays green (schema change → full-suite gate per policy)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "init",
+    "project-md",
+    "discovery"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "dd41073",
+    "d89bcac"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T15:30:27.201Z",
+      "body": "Plan + tier (at plan time): verification_tier=tdd. This is a schema change + writer/reader parsing logic + agent-briefing render — squarely tdd per the rubric (schema changes, parsing, state shape). Because it touches tasks-adjacent schema/test-infra surface and is the foundation the rest of the epic builds on, the release-grade gate applies: npm run test:all (full fast+slow) at hand-off, not just test:changed. Decision: definition fields render as BODY prose sections (## Problem / ## Goals / ## Scope (in) / ## Scope (out)), NOT frontmatter — consistent with the existing ## Stack body-section pattern; all four optional/back-compat. Developer spawned in TEST mode first (failing specs encoding all 6 ACs) before any impl. Epic-let: 045 -> (046 || 047). Backlog-seeder explicitly untouched (human decision: enriched definition only, keep slug-template seeding)."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-06-15T15:49:24.519Z",
+      "body": "APPROVE (0 HIGH / 0 MEDIUM / 2 LOW / 2 NIT). All six ACs independently verified in a fresh context. Schema gains the four optional fields with additionalProperties:false preserved (AC1); writer renders ## Problem/## Goals/## Scope (in)/## Scope (out) in fixed order before ## Stack with a test-pinned empty-omission guard — empirically non-vacuous: removing the guard fails 3 omission specs (AC2); round-trip lossless incl. comma/colon punctuation in bullets (AC3); back-compat holds, old PROJECT.md reads new fields absent + existing intact (AC4); generateProjectContext surfaces the definition under ## Problem with nested ### Goals/### Scope and degrades gracefully when absent, verified via both injected-answers and disk-read paths (AC5); npm run test:all green 543 passed / 4 skipped, 63 files (AC6). RED-state verified against e918621: 20/34 new specs fail for the right reasons pre-impl. Impl commit did not touch tests (git diff dd41073 d89bcac -- tests/ empty). 2 LOW rolled to TASK-046 (both only reachable once wizard intake collects these fields): (LOW1) AC2 pins relative order of the new sections + < Stack but not the \"after existing sections\" half — one assertion locking successCriteriaIdx < problemIdx would close it; (LOW2) string-vs-array empty asymmetry — a bare-string goals:'' yields a one-item empty bullet instead of omission, needs a guard when the CLI splits comma-separated input into arrays. 2 NIT (briefing nested-heading layout is a deliberate documented choice; multi-line problem_statement losslessness unexercised but shares the battle-tested Description code path) deferred without follow-up."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T15:49:30.890Z",
+      "body": "CLOSED — done on green review (clean APPROVE, 0 HIGH/0 MEDIUM). Linked commits: dd41073 (test) + d89bcac (impl). tdd tier ran tests-first then impl; full release gate applied (schema change) and is green at 543 passed / 4 skipped. Storage layer for the enriched project definition is live: problem_statement (prose), goals/scope_in/scope_out (bullets) as PROJECT.md body sections, all optional/back-compat, surfaced in .claude/agents/project-context.md. The 2 review LOWs were rolled into TASK-046 as scope additions (they only become reachable once the wizard intake collects these fields). Epic-let progress: 045 DONE → next 046 (discovery-first intake + confirmation) and 047 (conversational rewrite), both unblocked."
+    }
+  ],
+  "created_at": "2026-06-15T15:29:22.421Z",
+  "updated_at": "2026-06-15T15:49:34.046Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

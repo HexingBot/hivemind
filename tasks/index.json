@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-13T04:16:13.647Z",
+  "generated_at": "2026-06-15T17:09:23.464Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -244,12 +244,42 @@
     {
       "key": "TASK-043",
       "title": "Doc-drift cleanup: wizard help text reviewer=fable → inherit",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "low"
     },
     {
       "key": "TASK-044",
       "title": "Twin of TASK-040: --apply-models prints false init epilogue",
+      "status": "in_progress",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-045",
+      "title": "PROJECT.md definition sections: problem, goals, scope (in/out) + agent briefing",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-046",
+      "title": "Discovery-first intake + confirmation gate (CLI wizard)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-047",
+      "title": "Conversational /init-project: adaptive discovery + confirmation before materializing",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-048",
+      "title": "Make problem_statement a required discovery question",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-049",
+      "title": "Automated dist-parity spec: fail when committed dist/ is stale vs source",
       "status": "todo",
       "priority": "medium"
     }
