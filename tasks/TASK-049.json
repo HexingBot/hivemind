@@ -9,7 +9,7 @@
     "Any esbuild output non-determinism (banners, absolute paths) is handled so the check is stable across machines (byte-compare a normalized form or a content hash, with the normalization documented).",
     "Docs/policy updated: the CLAUDE.md or state note that previously described the 'reviewer checks git diff --stat dist/ empty' MANUAL step references the new automated gate; npm run test:all stays green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "build",
@@ -18,11 +18,30 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "97702c4",
+    "aa147e6"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T17:25:23.164Z",
+      "body": "Plan + tier: verification_tier=tests-after, BUT this is test/release infrastructure → the FULL test:all gate applies (per the policy clause: any ticket touching test infra runs test:all). Design locked: refactor scripts/build-plugin.mjs to accept an OUTPUT-DIR override (env var, default dist/ — default behavior byte-unchanged) so the parity spec rebuilds with the SAME esbuild config (single source of truth, NOT a duplicated options block in the test). The spec (slow tier, tests/e2e/) builds all four bundles (init/new-task/mcp-server/task-board) into a mkdtemp dir and byte-compares each against the committed dist/<name>; fails on any diff. Slow tier by directory so the fast inner loop (test:changed/test:watch) stays fast. Red-green proof required (edit a bundled source without rebuilding → red; rebuild → green) per AC3 — the sensor must be provably non-vacuous (the red-green-plant standing practice for new static locks). esbuild is deterministic for a pinned version + same cwd; byte-compare should hold, but handle any cwd-relative-path comment non-determinism (normalize + document) if it surfaces. Single IMPL phase (tests-after)."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-06-15T17:43:19.182Z",
+      "body": "APPROVE-WITH-FOLLOWUPS (0 HIGH / 0 MEDIUM / 2 LOW). All 5 ACs verified fresh. Independently reproduced the RED on TWO source files (not trusting the dev): a string-literal edit to src/project-md.js (no rebuild) → spec FAILED naming exactly dist/init.cjs; an edit to src/task-store.js (bundled by all four) → spec FAILED naming ALL FOUR bundles — confirms the spec accumulates every mismatch into drifted[] and asserts once, not bail-on-first. Reverted both, tree clean, spec green. Determinism: spec spawns the build with cwd=REPO_ROOT sharing the buildTo() export (one esbuild code path for both builds); 2 isolation runs byte-stable; not self-referential (builds working-tree source, compares to committed dist — proven by the RED reproductions). Default build byte-unchanged: npm run build:plugin → git diff --stat dist/ EMPTY. AC5 CLAUDE.md note present + accurate. Full gate test:all 583 passed / 4 skipped. 2 LOW (both authorized for in-band fix): (1) BUNDLE_NAMES hand-duplicated vs the exported ENTRYPOINT_NAMES — a 5th bundle would be silently unchecked + false single-source-of-truth comment; (2) inaccurate red-green evidence comment claiming new-task.cjs bundles project-md.js (it does not)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T17:43:27.520Z",
+      "body": "CLOSED — done on green review (APPROVE-WITH-FOLLOWUPS, 0 HIGH/0 MEDIUM; both LOWs fixed in-band, not deferred). Linked commits: 97702c4 (impl: build-plugin.mjs OUTPUT-DIR override + buildTo()/ENTRYPOINT_NAMES exports + tests/e2e/dist-parity.spec.js + CLAUDE.md note) + aa147e6 (review fixes: spec imports ENTRYPOINT_NAMES so the parity check auto-covers any future 5th bundle; corrected evidence comment). Verified in-band fix myself: ENTRYPOINT_NAMES wired, parity spec green 2/2, dist clean. The stale-dist gap that bit 045/046 is now an automated release-tier gate — npm run test:all fails if committed dist/*.cjs (all four bundles) drifts from a fresh build. Red-green-proven non-vacuous (reviewer independently reproduced). The manual 'git diff --stat dist/ empty' reviewer step is retired in favor of this sensor (CLAUDE.md updated). Backlog now drained of actionable tickets — only TASK-003 (Jira) remains, blocked on Atlassian creds."
+    }
+  ],
   "created_at": "2026-06-15T17:09:23.464Z",
-  "updated_at": "2026-06-15T17:09:23.464Z",
+  "updated_at": "2026-06-15T17:43:30.030Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

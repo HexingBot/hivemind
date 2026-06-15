@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-15T17:21:51.340Z",
+  "generated_at": "2026-06-15T17:43:30.030Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -280,7 +280,7 @@
     {
       "key": "TASK-049",
       "title": "Automated dist-parity spec: fail when committed dist/ is stale vs source",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     }
   ]
