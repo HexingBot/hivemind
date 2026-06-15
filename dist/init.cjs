@@ -8178,6 +8178,38 @@ var PROJECT_TYPES = Object.freeze([
   "other"
 ]);
 var COMMON_QUESTIONS = Object.freeze([
+  // TASK-046 — Discovery-first intake: the four definition questions lead the
+  // wizard so the operator defines WHAT they are building before the project is
+  // named and classified. All four are type:'string', no `when` predicate (asked
+  // of every project type). Comma-separated answers for goals/scope_in/scope_out
+  // are normalized into arrays by bin/init.js normalizeDefinitionAnswers() before
+  // writeProjectMd is called. An empty answer is accepted here (the field is
+  // optional prose); the normalizer converts '' → [] which writeProjectMd renders
+  // as no heading (TASK-045 empty-omission guard).
+  {
+    id: "problem_statement",
+    type: "string",
+    required: false,
+    prompt: "What problem are you solving? (one or two sentences, or press Enter to skip)"
+  },
+  {
+    id: "goals",
+    type: "string",
+    required: false,
+    prompt: "Key goals (comma-separated, or press Enter to skip)"
+  },
+  {
+    id: "scope_in",
+    type: "string",
+    required: false,
+    prompt: "In scope (comma-separated, or press Enter to skip)"
+  },
+  {
+    id: "scope_out",
+    type: "string",
+    required: false,
+    prompt: "Out of scope / non-goals (comma-separated, or press Enter to skip)"
+  },
   {
     id: "project_name",
     type: "string",
@@ -8481,6 +8513,21 @@ var PROJECT_schema_default = {
           ]
         }
       }
+    },
+    problem_statement: {
+      type: "string"
+    },
+    goals: {
+      type: "array",
+      items: { type: "string" }
+    },
+    scope_in: {
+      type: "array",
+      items: { type: "string" }
+    },
+    scope_out: {
+      type: "array",
+      items: { type: "string" }
     }
   }
 };
@@ -8493,7 +8540,11 @@ var BODY_SECTIONS = [
   { id: "project_description", heading: "Description", bullets: false },
   { id: "target_users", heading: "Target users", bullets: false },
   { id: "primary_use_cases", heading: "Primary use cases", bullets: true },
-  { id: "success_criteria", heading: "Success criteria", bullets: false }
+  { id: "success_criteria", heading: "Success criteria", bullets: false },
+  { id: "problem_statement", heading: "Problem", bullets: false },
+  { id: "goals", heading: "Goals", bullets: true },
+  { id: "scope_in", heading: "Scope (in)", bullets: true },
+  { id: "scope_out", heading: "Scope (out)", bullets: true }
 ];
 var FRONTMATTER_IDS = /* @__PURE__ */ new Set(["project_name", "project_type"]);
 var SPECIAL_FRONTMATTER_IDS = /* @__PURE__ */ new Set(["agent_models"]);
@@ -8561,14 +8612,18 @@ function renderProjectMd(answers, createdAt) {
   for (const sec of BODY_SECTIONS) {
     if (!Object.prototype.hasOwnProperty.call(answers, sec.id)) continue;
     const value = answers[sec.id];
-    out.push(`## ${sec.heading}`);
     if (sec.bullets) {
       const items = Array.isArray(value) ? value : [value];
+      if (items.length === 0) continue;
+      out.push(`## ${sec.heading}`);
       for (const item of items) {
         out.push(`- ${item}`);
       }
     } else {
-      out.push(String(value));
+      const str = String(value);
+      if (str.length === 0) continue;
+      out.push(`## ${sec.heading}`);
+      out.push(str);
     }
     out.push("");
   }
@@ -8814,7 +8869,13 @@ var ROUNDTRIP_NOISE_IDS = /* @__PURE__ */ new Set([
   "created_at",
   "schema_version",
   // TASK-036 — agent_models is project config, not a stack entry.
-  "agent_models"
+  "agent_models",
+  // TASK-045 — definition fields are rendered in their own ## Problem section
+  // below; they must not appear as Stack bullets.
+  "problem_statement",
+  "goals",
+  "scope_in",
+  "scope_out"
 ]);
 var TYPE_SPECIFIC_GUIDANCE = Object.freeze({
   "web-saas": [
@@ -8888,6 +8949,32 @@ function renderProjectContext(answers, generatedAt) {
   out.push(`schema_version: ${SCHEMA_VERSION2}`);
   out.push("---");
   out.push("");
+  const hasProblem = answers.problem_statement && String(answers.problem_statement).length > 0;
+  const hasGoals = Array.isArray(answers.goals) && answers.goals.length > 0;
+  const hasScopeIn = Array.isArray(answers.scope_in) && answers.scope_in.length > 0;
+  const hasScopeOut = Array.isArray(answers.scope_out) && answers.scope_out.length > 0;
+  if (hasProblem || hasGoals || hasScopeIn || hasScopeOut) {
+    out.push("## Problem");
+    if (hasProblem) {
+      out.push(String(answers.problem_statement));
+      out.push("");
+    }
+    if (hasGoals) {
+      out.push("### Goals");
+      for (const g of answers.goals) out.push(`- ${g}`);
+      out.push("");
+    }
+    if (hasScopeIn) {
+      out.push("### Scope (in)");
+      for (const s of answers.scope_in) out.push(`- ${s}`);
+      out.push("");
+    }
+    if (hasScopeOut) {
+      out.push("### Scope (out)");
+      for (const s of answers.scope_out) out.push(`- ${s}`);
+      out.push("");
+    }
+  }
   out.push("## Stack");
   const stackEntries = [];
   for (const [key, value] of Object.entries(answers)) {
@@ -9814,7 +9901,8 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--answers-file",
   "--claude-md-consent",
   "--apply-models",
-  "--apply-workflows"
+  "--apply-workflows",
+  "--yes"
 ]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file"]);
 var TASK_FILE_RE2 = /^TASK-\d{3,}\.json$/;
@@ -9826,7 +9914,8 @@ function parseArgs(argv) {
     answersFile: null,
     claudeMdConsent: false,
     applyModels: false,
-    applyWorkflows: false
+    applyWorkflows: false,
+    yes: false
   };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
@@ -9839,6 +9928,7 @@ function parseArgs(argv) {
     if (tok === "--claude-md-consent") out.claudeMdConsent = true;
     if (tok === "--apply-models") out.applyModels = true;
     if (tok === "--apply-workflows") out.applyWorkflows = true;
+    if (tok === "--yes") out.yes = true;
     if (tok === "--answers-file") {
       const value = argv[i + 1];
       if (value === void 0 || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -9919,6 +10009,83 @@ function validateSuppliedAnswers(answers) {
     );
   }
 }
+var DEFINITION_LIST_IDS = ["goals", "scope_in", "scope_out"];
+function normalizeDefinitionAnswers(answers) {
+  if (!answers || typeof answers !== "object") return answers;
+  const needsNorm = DEFINITION_LIST_IDS.some(
+    (id) => Object.prototype.hasOwnProperty.call(answers, id) && answers[id] !== null && answers[id] !== void 0
+  );
+  if (!needsNorm) return answers;
+  const out = { ...answers };
+  for (const id of DEFINITION_LIST_IDS) {
+    if (!Object.prototype.hasOwnProperty.call(out, id)) continue;
+    const v = out[id];
+    if (v === null || v === void 0) continue;
+    if (Array.isArray(v)) {
+      out[id] = v.map((s) => typeof s === "string" ? s.trim() : String(s)).filter(Boolean);
+    } else {
+      const str = typeof v === "string" ? v : String(v);
+      out[id] = str.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return out;
+}
+function buildDefinitionSummary(answers) {
+  const lines = [];
+  const add = (label, value) => {
+    if (value === null || value === void 0) return;
+    if (Array.isArray(value)) {
+      if (value.length === 0) return;
+      lines.push(`  ${label}: ${value.join(", ")}`);
+    } else {
+      const s = String(value).trim();
+      if (s.length === 0) return;
+      lines.push(`  ${label}: ${s}`);
+    }
+  };
+  add("Problem", answers.problem_statement);
+  add("Goals", answers.goals);
+  add("Scope in", answers.scope_in);
+  add("Scope out", answers.scope_out);
+  add("Project", answers.project_name);
+  add("Type", answers.project_type);
+  const KNOWN_SUMMARY_IDS = /* @__PURE__ */ new Set([
+    "problem_statement",
+    "goals",
+    "scope_in",
+    "scope_out",
+    "project_name",
+    "project_description",
+    "project_type",
+    "target_users",
+    "primary_use_cases",
+    "success_criteria",
+    "agent_models"
+  ]);
+  const stackKeys = Object.keys(answers).filter(
+    (k) => !KNOWN_SUMMARY_IDS.has(k) && answers[k] !== null && answers[k] !== void 0
+  );
+  if (stackKeys.length > 0) {
+    const stackStr = stackKeys.map((k) => {
+      const v = answers[k];
+      return Array.isArray(v) ? `${k}: ${v.join(", ")}` : `${k}: ${v}`;
+    }).join("; ");
+    lines.push(`  Stack: ${stackStr}`);
+  }
+  return lines.join("\n");
+}
+async function askConfirm({ answers, prompter }) {
+  const summary = buildDefinitionSummary(answers);
+  console.log("\n--- Captured definition ---");
+  if (summary.length > 0) console.log(summary);
+  console.log("---------------------------\n");
+  const answer = await prompter({
+    prompt: "Confirm and create project? [Y/n]",
+    type: "string"
+  });
+  const trimmed = typeof answer === "string" ? answer.trim() : "";
+  return trimmed === "" || /^y/i.test(trimmed);
+}
 function normalizeAgentModelsAnswer(answers) {
   if (!answers || !Object.prototype.hasOwnProperty.call(answers, "agent_models")) {
     return answers;
@@ -9939,7 +10106,8 @@ async function runWizardAndWriteProjectMd({
   sessionId,
   prompter,
   now,
-  suppliedAnswers
+  suppliedAnswers,
+  skipConfirm
 }) {
   let answers;
   if (suppliedAnswers) {
@@ -9954,6 +10122,13 @@ async function runWizardAndWriteProjectMd({
     }));
   }
   answers = normalizeAgentModelsAnswer(answers);
+  answers = normalizeDefinitionAnswers(answers);
+  if (!skipConfirm && typeof prompter === "function") {
+    const confirmed = await askConfirm({ answers, prompter });
+    if (!confirmed) {
+      return { aborted: true };
+    }
+  }
   await writeProjectMd({ repoRoot, answers, now });
   await generateProjectContext({ repoRoot, answers, now });
   try {
@@ -10045,15 +10220,21 @@ async function runInit({
     return { state: "applied_workflows", projectMdPath, sessionId: null };
   }
   const explicitConsent = parsed.claudeMdConsent || Boolean(answers && answers.claude_md_consent === true);
+  const skipConfirm = parsed.yes || Boolean(answers);
   if (parsed.force) {
     const { sessionId: sessionId2 } = await startSession({ repoRoot });
-    await runWizardAndWriteProjectMd({
+    const wResult2 = await runWizardAndWriteProjectMd({
       repoRoot,
       sessionId: sessionId2,
       prompter,
       now,
-      suppliedAnswers: answers
+      suppliedAnswers: answers,
+      skipConfirm
     });
+    if (wResult2 && wResult2.aborted) {
+      console.log("Init cancelled \u2014 no changes written.");
+      return { state: "cancelled", projectMdPath, sessionId: sessionId2 };
+    }
     await maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent });
     return { state: "forced", projectMdPath, sessionId: sessionId2 };
   }
@@ -10072,13 +10253,18 @@ async function runInit({
     const partial = tryReadIntake(candidatePath);
     if (partial) {
       const sessionId2 = pointer.active_session_id;
-      await runWizardAndWriteProjectMd({
+      const wResult2 = await runWizardAndWriteProjectMd({
         repoRoot,
         sessionId: sessionId2,
         prompter,
         now,
-        suppliedAnswers: answers
+        suppliedAnswers: answers,
+        skipConfirm
       });
+      if (wResult2 && wResult2.aborted) {
+        console.log("Init cancelled \u2014 no changes written.");
+        return { state: "cancelled", projectMdPath, sessionId: sessionId2 };
+      }
       await maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent });
       return { state: "resumed", projectMdPath, sessionId: sessionId2 };
     }
@@ -10092,13 +10278,18 @@ async function runInit({
     });
   }
   const { sessionId } = await startSession({ repoRoot });
-  await runWizardAndWriteProjectMd({
+  const wResult = await runWizardAndWriteProjectMd({
     repoRoot,
     sessionId,
     prompter,
     now,
-    suppliedAnswers: answers
+    suppliedAnswers: answers,
+    skipConfirm
   });
+  if (wResult && wResult.aborted) {
+    console.log("Init cancelled \u2014 no changes written.");
+    return { state: "cancelled", projectMdPath, sessionId };
+  }
   await maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent });
   return { state: "created", projectMdPath, sessionId };
 }
@@ -10119,6 +10310,9 @@ function realReadlinePrompter() {
 }
 function printFriendlyOutcome({ state, projectMdPath, sessionId }) {
   if (state === "already_initialized" || state === "applied_workflows") {
+    return;
+  }
+  if (state === "cancelled") {
     return;
   }
   console.log(`* PROJECT.md written to ${projectMdPath}`);
