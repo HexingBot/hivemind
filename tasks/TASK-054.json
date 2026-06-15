@@ -1,0 +1,32 @@
+{
+  "key": "TASK-054",
+  "title": "Web console epic P4: create-ticket on the board + unified \"OS\" shell + live refresh on orchestrator changes",
+  "description": "EPIC \"Agentic OS web console\" — P4 board + shell. Complete the user's \"create or move tickets like an agentic OS\" ask and fuse the three panels (chat, skills, board) into one cohesive layout.\\n\\nDeliverables:\\n1. CREATE-TICKET from the browser: the existing board only MOVES tickets (drag → status). Add a \"New ticket\" affordance (a form/modal) that POSTs to a new endpoint (e.g. POST /api/tasks) which mints a ticket through the task-store createTask path (NOT a hand-rolled write) so schema validation + atomic write + index regeneration all hold. Minimal required fields a non-technical user can fill (title, description, priority, optional acceptance criteria); sensible defaults for the rest. Reuse the board hardening (Host allowlist, Content-Type, body cap) and validate input server-side.\\n2. UNIFIED SHELL: arrange chat + skill buttons + kanban board (+ optionally the existing /graph link) into a single \"agentic OS\" page layout — a friendly desktop where the non-technical user can see tickets, press skill buttons, and chat with the orchestrator in one place. Keep it simple HTML/CSS, consistent with the existing dark theme; no front-end framework.\\n3. LIVE REFRESH: when the orchestrator (via the chat session) moves or creates tickets, the board reflects it without a manual reload — e.g. the board re-fetches /api/tasks on a turn-end event from the chat stream, or on a lightweight poll. Keep it cheap; no websockets beyond what TASK-051 already established.\\n\\nverification_tier tests-after: the create-ticket endpoint is real state mutation worth specs (valid create mints via the store; invalid input rejected 400 with no partial write; index regenerated); layout + live-refresh are UI/UAT. Failing-or-first specs for POST /api/tasks (happy path mints + appears in /api/tasks; bad input rejected; no partial file on rejection). Rebuild dist/ + full test:all at hand-off (bundled board entrypoint + touches task creation surface). Terse UAT: create a ticket from the browser → it appears on the board and on disk; ask the orchestrator in chat to move a ticket → board updates live without reload.",
+  "acceptance_criteria": [
+    "A POST /api/tasks endpoint mints a ticket through the task-store createTask path (schema-validated, atomic write, index.json regenerated) — NOT a hand-rolled file write; a browser 'New ticket' form collects minimal fields (title, description, priority, optional ACs) with defaults for the rest, behind the existing Host/Content-Type/body-cap guards.",
+    "Invalid create input is rejected with a 400 and leaves NO partial task file and an unchanged index (verified by a spec, mirroring the no-partial-write discipline used elsewhere in the store).",
+    "The page presents a unified single-screen layout combining chat, skill buttons, and the kanban board (simple HTML/CSS, existing dark theme, no front-end framework), usable by a non-technical user without commands.",
+    "The board reflects orchestrator-driven create/move actions WITHOUT a manual reload (re-fetch on chat turn-end or a cheap poll), so a ticket the orchestrator moves in chat updates the columns live.",
+    "Pure-logic mutation seams (create endpoint validation, store delegation, no-partial-write) carry regression locks; layout/refresh are covered by UAT not redundant specs (new-test budget respected).",
+    "dist/ rebuilt and npm run test:all green; a terse UAT script is recorded and run with the human (create a ticket from the browser → appears on board + on disk; orchestrator moves a ticket in chat → board updates live), all steps PASS."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "web-console",
+    "epic-web-console",
+    "frontend",
+    "board"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-053"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-15T20:08:24.446Z",
+  "updated_at": "2026-06-15T20:08:24.446Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

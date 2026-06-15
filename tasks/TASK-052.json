@@ -1,0 +1,32 @@
+{
+  "key": "TASK-052",
+  "title": "Web console epic P2: chat UI panel — streaming render of orchestrator output + subagent/tool activity",
+  "description": "EPIC \"Agentic OS web console\" — P2 front-end chat. Add a chat panel to the board server's served HTML (inline assets, zero-dep, simple HTML — nothing for the user to install) that consumes the TASK-051 streaming endpoint and renders a live conversation with the orchestrator.\\n\\nDeliverables:\\n1. A chat panel in the page: scrollable message history (user turns + orchestrator turns), an input box + send button, and a busy/streaming indicator. On send it POSTs to /api/chat/:sessionId and renders the streamed normalized events from GET /api/chat/:sessionId/stream incrementally (text deltas appended live).\\n2. Surface the AGENTIC activity that makes this feel like an OS, not a chatbot: when the stream reports a tool_use or a subagent (developer/reviewer/researcher) spawn, show a compact activity chip/line (e.g. \"▸ spawned developer\", \"▸ moved TASK-xxx → in_review\") distinct from plain assistant text. Errors render as a clear inline error, not a silent stall.\\n3. A session id is established per tab (per the TASK-051 design) and reused for the tab's lifetime so continuity holds. Reconnect/stream-end handled gracefully (no infinite spinner).\\n4. XSS discipline matching the existing board/graph code: build DOM via createElement + textContent, NEVER innerHTML with stream content. Orchestrator/user text is untrusted display data.\\n\\nFront-end behavior over a real browser → verification_tier tests-after with a UAT step (human-observable). Add a MINIMAL set of regression locks only where pure logic exists (e.g. the client event-to-DOM mapping helper if factored out, or any normalization shared with the server); do not over-spec DOM rendering. The board HTML is inside src/task-board.js which is bundled → rebuild dist/ and run test:all at hand-off (TASK-049 gate). Provide a terse UAT script (open console, type a message, observe streamed reply + an activity chip when a subagent spawns, observe a clean error path).",
+  "acceptance_criteria": [
+    "The served page includes a chat panel (message history, input + send, streaming indicator) that POSTs a turn to /api/chat/:sessionId and renders streamed normalized events incrementally (orchestrator text appears token/delta-wise, not only after the full turn).",
+    "tool_use and subagent-spawn events render as distinct compact activity chips/lines (visually separable from plain assistant text), and a stream error renders as a clear inline error rather than a silent stall or infinite spinner.",
+    "A per-tab session id is established and reused for the tab lifetime (continuity preserved across multiple turns in the same tab); stream end / reconnect is handled without a stuck busy indicator.",
+    "All stream/user content is rendered via createElement + textContent (no innerHTML with untrusted content), consistent with the existing board/graph XSS discipline.",
+    "Any extracted pure-logic helper (e.g. event→view mapping) carries a minimal regression lock; no redundant DOM-render specs are added (new-test budget respected).",
+    "dist/ rebuilt and npm run test:all green at hand-off; a terse UAT script is recorded on the ticket and run with the human (send a message → streamed reply; trigger a subagent → activity chip; error path → inline error), all steps PASS."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "web-console",
+    "epic-web-console",
+    "frontend",
+    "chat"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-051"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-15T20:07:30.120Z",
+  "updated_at": "2026-06-15T20:07:30.120Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

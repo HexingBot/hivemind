@@ -1,0 +1,32 @@
+{
+  "key": "TASK-053",
+  "title": "Web console epic P3: skill buttons — enumerate available skills, run-on-click into the orchestrator session",
+  "description": "EPIC \"Agentic OS web console\" — P3 skill buttons. Add a panel of buttons that lets a non-technical user activate the framework's skills/commands without typing commands. Per the locked scope, clicking a button RUNS the skill immediately (sends the invocation into the active orchestrator session from TASK-051/052) — no confirmation step.\\n\\nDeliverables:\\n1. A backend endpoint (e.g. GET /api/skills) that enumerates the available, user-facing skills/commands the orchestrator can run. SOURCE OF TRUTH: derive from what actually ships — e.g. the plugin commands/ directory and/or a curated allowlist of safe orchestrator actions (e.g. /task-status, /code-review, init/help). Do NOT hand-maintain a list that silently drifts from disk; read the real artifacts where practical. Each entry: {id/command, label, description}.\\n2. A skill-buttons panel in the page rendering one button per enumerated skill (label + tooltip from description). Clicking POSTs the corresponding invocation as a user turn to /api/chat/:sessionId (reusing the TASK-051 send path) so it streams back in the chat exactly like a typed command. Because run-is-immediate, the chat stream is the user's feedback that it fired.\\n3. SAFETY: since buttons run immediately and the orchestrator can mutate state/spawn agents, the enumerated set must be a VETTED allowlist (no arbitrary command injection from the client — the client sends a skill id, the server maps it to the known invocation; the client cannot post an arbitrary command string through this path). Validate the skill id server-side against the enumerated set; reject unknown ids.\\n\\nverification_tier tests-after (the enumeration + id→invocation mapping is real logic worth a lock; the button rendering is UI). Failing-or-first specs: /api/skills returns the vetted set; an unknown skill id is rejected (not executed); the id→invocation map is covered. Minimal UI specs only. Rebuild dist/ + test:all at hand-off (bundled board entrypoint). Terse UAT: click a read-only skill button (e.g. /task-status or help) and observe it run in the chat stream; attempt an unknown id via the API and observe rejection.",
+  "acceptance_criteria": [
+    "A backend endpoint enumerates a VETTED allowlist of user-facing skills/commands ({id, label, description}); the set is derived from shipped artifacts where practical (e.g. commands/ dir) rather than a drift-prone hand list, and this is unit-tested.",
+    "The page renders one button per enumerated skill (label + description tooltip); clicking a button sends the mapped invocation as a user turn via the existing /api/chat/:sessionId path so it streams back in the chat like a typed command.",
+    "The client sends only a skill ID; the server maps id→known invocation and REJECTS an unknown/unlisted id (no arbitrary client-supplied command string is ever executed through this path) — verified by a unit test that an unknown id is rejected, not run.",
+    "Run-on-click is immediate (no confirmation), matching the locked scope; the chat stream is the user's confirmation that the skill fired.",
+    "Pure-logic seams (enumeration, id→invocation mapping, unknown-id rejection) carry regression locks; UI rendering is not over-specced (new-test budget respected).",
+    "dist/ rebuilt and npm run test:all green; a terse UAT script is recorded and run with the human (click a safe/read-only skill → runs in chat; unknown id via API → rejected), all steps PASS."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "web-console",
+    "epic-web-console",
+    "frontend",
+    "skills"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-052"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-15T20:07:51.549Z",
+  "updated_at": "2026-06-15T20:07:51.549Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

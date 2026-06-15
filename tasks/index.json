@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-15T17:43:30.030Z",
+  "generated_at": "2026-06-15T20:39:00.379Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -281,6 +281,48 @@
       "key": "TASK-049",
       "title": "Automated dist-parity spec: fail when committed dist/ is stale vs source",
       "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-050",
+      "title": "Web console epic P0: research spike — persistent headless orchestrator session over the existing claude login",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-051",
+      "title": "Web console epic P1: backend orchestrator-session bridge (persistent session manager + stream + send endpoints)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-052",
+      "title": "Web console epic P2: chat UI panel — streaming render of orchestrator output + subagent/tool activity",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-053",
+      "title": "Web console epic P3: skill buttons — enumerate available skills, run-on-click into the orchestrator session",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-054",
+      "title": "Web console epic P4: create-ticket on the board + unified \"OS\" shell + live refresh on orchestrator changes",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-055",
+      "title": "Web console epic P5 (optional): live session-state panel — the \"OS status bar\"",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-056",
+      "title": "Web console epic P6: package + secure — dist entrypoint, one-click launcher, /console command, docs, security review, release",
+      "status": "todo",
       "priority": "medium"
     }
   ]

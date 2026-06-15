@@ -1,0 +1,32 @@
+{
+  "key": "TASK-055",
+  "title": "Web console epic P5 (optional): live session-state panel — the \"OS status bar\"",
+  "description": "EPIC \"Agentic OS web console\" — P5 (OPTIONAL; may be folded into TASK-054 if the shell already feels complete). Add a read-only status panel that surfaces the orchestrator's live session state so the non-technical user can SEE what the framework is doing — the \"agentic OS status bar\".\\n\\nDeliverables:\\n1. A backend endpoint (e.g. GET /api/session) that reads the v2 pointer (state/session.json) → active bundle (state/sessions/<id>/session.json) and returns a SAFE, summarized projection: workflow_step, active_task, open_questions, blockers, next_action, and the most recent decision(s). Do NOT dump the entire bundle (it is large and full of internal prose) — return a curated, bounded summary. Reuse the RESUME-FIRST read path semantics. Absent/idle session → a clean \"idle\" projection, never a 500.\\n2. A status panel in the shell rendering that projection (current step, active ticket, open questions, blockers), refreshed on chat turn-end (same cheap signal as the board live-refresh) so it tracks the orchestrator as work proceeds.\\n3. XSS discipline as elsewhere (createElement + textContent).\\n\\nverification_tier uat-only (read-only projection of existing state; the read path is already specced in the session/bundle modules — add specs ONLY if a new non-trivial projection/summarization function is introduced, in which case bump to tests-after for that function). Terse UAT: open the console mid-work, observe the status panel showing the current workflow_step + active_task; advance a turn, observe it update. If TASK-054 already delivered a satisfying shell and this adds little, the orchestrator may close this as folded-into-054 with a note rather than building a redundant panel.",
+  "acceptance_criteria": [
+    "A GET /api/session endpoint returns a SAFE bounded summary (workflow_step, active_task, open_questions, blockers, next_action, recent decision) derived via the RESUME-FIRST pointer→bundle read path; it never dumps the full bundle and returns a clean 'idle' projection (not a 500) when there is no active session.",
+    "A status panel in the shell renders that projection and refreshes on chat turn-end (or a cheap poll) so it tracks the orchestrator as work proceeds.",
+    "Content is rendered via createElement + textContent (XSS discipline consistent with the rest of the console).",
+    "If a new non-trivial summarization/projection function is introduced it carries a regression lock (tests-after for that function); otherwise the ticket stays uat-only with no redundant specs.",
+    "A terse UAT script is recorded and run with the human (open mid-work → panel shows current step + active task; advance a turn → panel updates), all steps PASS — OR the ticket is closed as 'folded into TASK-054' with a recorded rationale if the unified shell already covers the need.",
+    "If any code ships, dist/ is rebuilt and npm run test:all is green at hand-off."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "web-console",
+    "epic-web-console",
+    "frontend",
+    "optional"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-054"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-15T20:08:57.560Z",
+  "updated_at": "2026-06-15T20:08:57.560Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

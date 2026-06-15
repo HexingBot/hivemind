@@ -1,0 +1,33 @@
+{
+  "key": "TASK-056",
+  "title": "Web console epic P6: package + secure — dist entrypoint, one-click launcher, /console command, docs, security review, release",
+  "description": "EPIC \"Agentic OS web console\" — P6 capstone: make the console installable/launchable by a NON-TECHNICAL user and harden it for release.\\n\\nDeliverables:\\n1. ONE-CLICK LAUNCHER (the no-terminal requirement): a frictionless way to start the console without typing commands — e.g. a double-clickable launcher (a .cmd on Windows + a .sh on macOS/Linux, or an npm script the /console command runs) that starts the board/console server bound to 127.0.0.1 and opens the default browser at the URL. After this one click the user lives entirely in buttons + chat. Document the exact launch path for a non-technical user in the README.\\n2. LAUNCH COMMAND: a plugin slash command (e.g. /agentic-framework:console) that starts the console for users already inside Claude Code, mirroring how /task-status launches the board. (commands/ entry; parity with existing command conventions.)\\n3. PACKAGING: ensure the console ships in the bundle pipeline — if a new entrypoint exists it joins scripts/build-plugin.mjs ENTRYPOINT_NAMES and dist/ is rebuilt (TASK-049 dist-parity gate must pass). Keep the \"nothing to install\" promise: served HTML is inline/zero-dep; the only runtime prerequisite is the `claude` CLI the user already has.\\n4. SECURITY REVIEW: because the console spawns the orchestrator (which can mutate files + run skills/subagents) and exposes chat + run-immediately skill buttons on a local port, run a focused security pass: confirm the Host allowlist covers all new routes, the session-id and skill-id guards reject abuse, no arbitrary command string is executable from the client, the body caps hold, and document the trust model (local-only, single-user, reuses existing login) plus residual risks in the README/SECURITY note.\\n5. DOCS: README section for the non-technical operator: what the console is, the one-click launch, and the honest note that usage counts against their existing Claude plan (no NEW cost, but not free of plan usage).\\n6. RELEASE: bump the plugin version at BOTH pin sites (.claude-plugin/plugin.json + tests/publish-config.spec.js EXPECTED_VERSION), run the full release gate (npm run test:all + claude plugin validate), and tag — this epic is a coherent minor version bump. (Human approval required before tagging/pushing per Principle #4.)\\n\\nverification_tier tests-after for the code seams (launcher script presence/shape, command file parity, version-pin consistency, ENTRYPOINT_NAMES coverage) + manual/UAT for the live launch and the security walkthrough. This is a release/packaging ticket touching publish config + test infra → the FULL test:all gate applies. UAT: a non-technical-style launch (double-click → browser opens to the console), the /console command launch, and a security walkthrough of the new routes.",
+  "acceptance_criteria": [
+    "A one-click launcher exists (double-clickable .cmd + .sh, or an equivalent the /console command runs) that starts the console on 127.0.0.1 and opens the browser, requiring NO typed commands from the user; the README documents the exact non-technical launch path.",
+    "A plugin slash command (e.g. /agentic-framework:console) launches the console from within Claude Code, following the existing command conventions (commands/ entry, parity-checked like the others).",
+    "If a new bundled entrypoint exists it is added to scripts/build-plugin.mjs ENTRYPOINT_NAMES and dist/ is rebuilt so the TASK-049 dist-parity gate passes; the served console remains zero-dep/inline (nothing for the user to install beyond the `claude` CLI they already have).",
+    "A focused security review is recorded: Host allowlist covers ALL new routes, session-id + skill-id guards reject abuse, the client cannot execute an arbitrary command string, body caps hold; the trust model (local-only, single-user, reuses existing login) and residual risks are documented.",
+    "README gains a non-technical-operator section: what the console is, the one-click launch, and the honest 'no NEW cost but counts against your existing plan' note.",
+    "Release gate: version bumped at BOTH pin sites (.claude-plugin/plugin.json + tests/publish-config.spec.js EXPECTED_VERSION), npm run test:all green, claude plugin validate PASS, and the tag/push performed only after explicit human approval; a UAT covering the double-click launch, the /console command, and the security walkthrough is recorded with all steps PASS."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "web-console",
+    "epic-web-console",
+    "packaging",
+    "security",
+    "release"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-054"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-15T20:09:24.032Z",
+  "updated_at": "2026-06-15T20:09:24.032Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

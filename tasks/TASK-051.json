@@ -1,0 +1,32 @@
+{
+  "key": "TASK-051",
+  "title": "Web console epic P1: backend orchestrator-session bridge (persistent session manager + stream + send endpoints)",
+  "description": "EPIC \"Agentic OS web console\" — P1 backend. Implement the server-side bridge that lets the browser talk to a PERSISTENT live orchestrator session, per the architecture chosen in TASK-050. EXTEND the existing zero-dep board server (src/task-board.js / createBoardServer) rather than standing up a new app; reuse its hardening (Host allowlist ALLOWED_HOST_RE, Content-Type guard, 64 KiB body cap, traversal guards).\\n\\nDeliverables:\\n1. A session-manager module (e.g. src/orchestrator-bridge.js) that spawns + supervises a long-lived `claude` process (per the TASK-050 process model) in cwd = repoRoot, reusing the existing login (NO API key). One session per browser tab/session id; lifecycle: create, route a user message in, stream events out, detect process death, and stop/clean up. Pure-logic seams (session registry keyed by id, message framing to the child's stdin, parsing the child's stdout event stream into normalized UI events {type: text|tool|subagent|turn-end|error, ...}) MUST be unit-testable WITHOUT spawning a real process (inject the child/process via a factory so tests feed canned stdout chunks).\\n2. New routes on the board server: POST /api/chat/:sessionId {message} → enqueues the user turn to that session (400/404/413/415 mapped like the existing endpoints); GET /api/chat/:sessionId/stream → a streaming response (SSE per TASK-050) that relays normalized events to the page; plus session create/stop as the chosen design dictates. All new routes sit BEHIND the Host allowlist and reuse sendJson / readBody.\\n3. Robustness: a dead/exited child surfaces a normalized error event (never an uncaught throw or a hung stream); body cap + content-type guards on the POST; session ids validated against a strict pattern (traversal/abuse guard, same discipline as the task-key guard).\\n\\nThis is the load-bearing seam → verification_tier tdd. Write failing specs FIRST that encode: session-registry create/lookup/stop; stdin message framing; stdout→normalized-event parsing across the event kinds from TASK-050 (including a split-across-chunks case and a malformed-line case); child-death → error event; route-level 400/404/413/415 mapping; and the no-API-key invariant asserted at the spawn boundary (assert the spawn args/env the manager would use — do NOT shell out to a real `claude` in a unit test). A real end-to-end spawn, if included, goes in the slow tier (tests/e2e/) and may be it.skip if it requires an interactive login not available in CI. Rebuild dist/ (npm run build:plugin) since bin/task-board.js is a bundled entrypoint and src/task-board.js changes — the dist-parity gate (TASK-049) will fail test:all otherwise. This ticket touches the bundled board entrypoint; run the full test:all gate at hand-off.",
+  "acceptance_criteria": [
+    "A session-manager module spawns and supervises a long-lived `claude` orchestrator process in cwd=repoRoot reusing the existing login with NO API key (the spawn args/env are asserted by a unit test to contain no API-key credential and to use the TASK-050-confirmed flags); the child is injectable so unit tests run without a real process.",
+    "The manager exposes a session registry (create by id, look up, stop/cleanup) and is unit-tested for create/duplicate/lookup-miss/stop; session ids are validated against a strict pattern and an invalid id is rejected, not path-joined.",
+    "Inbound user messages are framed to the child's stdin per the TASK-050 envelope, and the child's stdout is parsed into normalized UI events {text|tool|subagent|turn-end|error}; parsing is unit-tested across at least: a normal multi-event turn, an event split across two stdout chunks, and a malformed/garbage line (which yields a normalized error event, never a throw).",
+    "The board server gains POST /api/chat/:sessionId (send a turn) and GET /api/chat/:sessionId/stream (SSE relay) plus any session create/stop route from the design; all new routes sit behind the existing Host allowlist, and the POST reuses the Content-Type (415), body-cap (413), and JSON-parse (400) guards; unknown/dead session → 404 or a normalized error event, never a hang or uncaught throw.",
+    "A child process that exits/dies mid-session produces a single normalized error event to any open stream and marks the session stopped — verified by a unit test feeding an injected child an 'exit' signal.",
+    "Tests-first discipline: the failing-spec commit precedes the implementation commit; dist/ is rebuilt so npm run test:all (including the TASK-049 dist-parity gate) passes green at hand-off."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "web-console",
+    "epic-web-console",
+    "backend",
+    "bridge"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-050"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-15T20:07:04.284Z",
+  "updated_at": "2026-06-15T20:07:04.284Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
