@@ -30,10 +30,9 @@
 //   only includes tests/*.spec.js).
 //
 // RED-GREEN EVIDENCE (do not remove — documents non-vacuity proof):
-//   RED:  added `// TASK-049 proof edit` to src/project-md.js WITHOUT rebuilding;
+//   RED:  changed error string in src/project-md.js (line 121) WITHOUT rebuilding;
 //         ran spec → FAILED: "init.cjs differs from committed dist/init.cjs"
-//         and "new-task.cjs differs from committed dist/new-task.cjs" (both
-//         bundle src/project-md.js transitively).
+//         (only init.cjs bundles project-md.js; new-task.cjs does NOT).
 //   GREEN: ran `npm run build:plugin` → dist rebuilt → spec PASSED.
 //   CLEAN: reverted the proof edit from src/project-md.js; rebuilt dist/ so
 //          committed artifacts are clean.
@@ -47,11 +46,14 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 import { REPO_ROOT } from '../helpers/repoRoot.js';
+import { ENTRYPOINT_NAMES } from '../../scripts/build-plugin.mjs';
 
-// The four canonical bundle names — sourced from the build script's export so
-// this list and the build pipeline share a single source of truth.
-// We resolve the build script path directly; the export is the canonical list.
-const BUNDLE_NAMES = ['init.cjs', 'new-task.cjs', 'mcp-server.cjs', 'task-board.cjs'];
+// ENTRYPOINT_NAMES is the canonical list of bundle filenames exported by the
+// build script itself — ['init.cjs', 'new-task.cjs', 'mcp-server.cjs',
+// 'task-board.cjs']. Importing it here means a future 5th entrypoint added to
+// build-plugin.mjs is automatically covered by this parity check without any
+// change to this file.
+const BUNDLE_NAMES = ENTRYPOINT_NAMES;
 
 const DIST_DIR = join(REPO_ROOT, 'dist');
 const BUILD_SCRIPT = join(REPO_ROOT, 'scripts', 'build-plugin.mjs');
