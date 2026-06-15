@@ -30,6 +30,38 @@ export const PROJECT_TYPES = Object.freeze([
 ]);
 
 export const COMMON_QUESTIONS = Object.freeze([
+  // TASK-046 — Discovery-first intake: the four definition questions lead the
+  // wizard so the operator defines WHAT they are building before the project is
+  // named and classified. All four are type:'string', no `when` predicate (asked
+  // of every project type). Comma-separated answers for goals/scope_in/scope_out
+  // are normalized into arrays by bin/init.js normalizeDefinitionAnswers() before
+  // writeProjectMd is called. An empty answer is accepted here (the field is
+  // optional prose); the normalizer converts '' → [] which writeProjectMd renders
+  // as no heading (TASK-045 empty-omission guard).
+  {
+    id: 'problem_statement',
+    type: 'string',
+    required: false,
+    prompt: 'What problem are you solving? (one or two sentences, or press Enter to skip)',
+  },
+  {
+    id: 'goals',
+    type: 'string',
+    required: false,
+    prompt: 'Key goals (comma-separated, or press Enter to skip)',
+  },
+  {
+    id: 'scope_in',
+    type: 'string',
+    required: false,
+    prompt: 'In scope (comma-separated, or press Enter to skip)',
+  },
+  {
+    id: 'scope_out',
+    type: 'string',
+    required: false,
+    prompt: 'Out of scope / non-goals (comma-separated, or press Enter to skip)',
+  },
   {
     id: 'project_name',
     type: 'string',

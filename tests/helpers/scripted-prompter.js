@@ -8,7 +8,22 @@
 // Substring fragments unique to each question library prompt. Keep this map
 // in sync with src/question-library.js wording — substring (not prefix) is
 // fine because each question's prompt has at least one distinctive token.
+//
+// TASK-046 — discovery questions added at the front (matching the new
+// COMMON_QUESTIONS order). The confirmation gate prompt is mapped to the
+// synthetic id '__confirm__' so tests that don't need to script a confirm
+// answer fall through to KNOWN_OPTIONAL_IDS and return '' (default-yes).
 const PROMPT_SIGNATURES = {
+  // TASK-046 — discovery questions (lead the intake in the new ordering)
+  problem_statement: 'What problem are you solving',
+  goals: 'Key goals',
+  scope_in: 'In scope',
+  scope_out: 'Out of scope',
+  // TASK-046 — confirmation gate. Maps to '__confirm__' (a synthetic id never
+  // present in the answers map), which KNOWN_OPTIONAL_IDS below treats as
+  // optional so it returns '' (default-yes) without throwing. Tests that need
+  // to script an explicit 'n' must use a custom prompter wrapper.
+  __confirm__: 'Confirm and create project',
   project_name: 'Project name',
   project_description: 'One sentence describing',
   project_type: 'What kind of project',
@@ -32,15 +47,30 @@ const PROMPT_SIGNATURES = {
   agent_models: 'Per-agent model overrides',
 };
 
-// Question ids declared `required: false` in src/question-library.js. For
+// Question ids declared `required: false` in src/question-library.js, plus
+// the synthetic '__confirm__' id for the TASK-046 confirmation gate. For
 // these (and ONLY these), a missing scripted answer falls back to '' — the
 // engine treats empty input to an optional question as a skip, so
 // subset-answer tests keep passing when an optional question is added to the
-// catalog. Every other id keeps the loud throw: the engine's required-field
-// loop is while(true), so silently returning '' for a forgotten REQUIRED
-// answer would re-prompt forever (vitest timeout) instead of surfacing a
-// named error — the header promise ("surface loudly rather than hang") holds.
-const KNOWN_OPTIONAL_IDS = new Set(['agent_models']);
+// catalog. The confirmation gate is also treated as optional so existing tests
+// that drive runInit interactively but don't need to assert on confirmation
+// automatically confirm with the default-yes (empty answer).
+//
+// Every other id keeps the loud throw: the engine's required-field loop is
+// while(true), so silently returning '' for a forgotten REQUIRED answer would
+// re-prompt forever (vitest timeout) instead of surfacing a named error — the
+// header promise ("surface loudly rather than hang") holds.
+const KNOWN_OPTIONAL_IDS = new Set([
+  'agent_models',
+  // TASK-046 — discovery questions are required:false in COMMON_QUESTIONS;
+  // tests that don't supply them get '' (skip) from the engine.
+  'problem_statement',
+  'goals',
+  'scope_in',
+  'scope_out',
+  // TASK-046 — confirmation gate (synthetic id, never in answers map).
+  '__confirm__',
+]);
 
 /**
  * Build a scripted prompter from a {questionId: answerString} map.
@@ -89,6 +119,9 @@ function resolveQuestionId(promptText) {
 
 /**
  * Web-saas full-branch answers — used by the forced and created tests.
+ * TASK-046: discovery questions are optional (required:false), so tests that
+ * don't need them simply omit them — makeScriptedPrompter returns '' for
+ * missing optional ids.
  */
 export function webSaasAnswers(overrides = {}) {
   return {

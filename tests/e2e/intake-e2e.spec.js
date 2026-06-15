@@ -90,6 +90,27 @@ describe('intake — end-to-end for web-saas', () => {
     // so drop it from the round-trip expectation (absent stays absent).
     if (answers.agent_models === null) delete answers.agent_models;
 
+    // TASK-046 — discovery list fields (goals, scope_in, scope_out) are
+    // collected as type:'string' by the engine but writeProjectMd renders them
+    // as bullet lists (wrapping a string value in [value] for rendering).
+    // readProjectMd reads them back as string[] via parseBullets. The round-trip
+    // therefore transforms string → array. Normalize the pre-write answers to
+    // the expected post-read shape before the equality comparison.
+    // Also drop null values from skipped optional questions (engine sets null
+    // for required:false when user presses Enter; writeProjectMd omits null keys).
+    for (const id of ['problem_statement', 'goals', 'scope_in', 'scope_out']) {
+      const v = answers[id];
+      if (v === null || v === undefined) {
+        // Skipped optional question — absent after round-trip.
+        delete answers[id];
+      } else if (id !== 'problem_statement' && typeof v === 'string') {
+        // goals/scope_in/scope_out: string → single-item array (written as one bullet).
+        // normalizeDefinitionAnswers in bin/init.js does this for runInit callers;
+        // this test calls writeProjectMd directly so we mirror the transform here.
+        answers[id] = [v];
+      }
+    }
+
     // Persist → re-read.
     const repoDir = makeTmpDir('af-intake-e2e');
     await writeProjectMd({

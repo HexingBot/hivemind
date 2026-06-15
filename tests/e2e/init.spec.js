@@ -150,8 +150,12 @@ describe('AC4 — resumed branch', () => {
     const repoDir = makeTmpDir('af-init-resumed');
 
     // Seed an active session bundle on disk with a partial intake.json.
-    // The first three common questions are already answered; the wizard must
-    // resume from question #4 (target_users) onward.
+    // Three intake answers are already recorded (project_name, project_description,
+    // project_type). TASK-046 reordered COMMON_QUESTIONS so discovery questions
+    // (problem_statement, goals, scope_in, scope_out) now come first, but they
+    // are required:false so makeScriptedPrompter returns '' for them (the engine
+    // skips them on empty input). The wizard resumes by asking only the ids not
+    // yet present in the saved answers map.
     const sessionId = '20260526T120000Z-abcdef01';
     const bundleDir = join(repoDir, 'state', 'sessions', sessionId);
     mkdirSync(bundleDir, { recursive: true });

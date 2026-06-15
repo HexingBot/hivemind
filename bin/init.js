@@ -120,6 +120,7 @@ const KNOWN_FLAGS = new Set([
   '--claude-md-consent',
   '--apply-models',
   '--apply-workflows',
+  '--yes',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
 // token is not treated as an unknown positional by the strict parser).
@@ -144,6 +145,7 @@ function parseArgs(argv) {
     claudeMdConsent: false,
     applyModels: false,
     applyWorkflows: false,
+    yes: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
@@ -156,6 +158,7 @@ function parseArgs(argv) {
     if (tok === '--claude-md-consent') out.claudeMdConsent = true;
     if (tok === '--apply-models') out.applyModels = true;
     if (tok === '--apply-workflows') out.applyWorkflows = true;
+    if (tok === '--yes') out.yes = true;
     if (tok === '--answers-file') {
       const value = argv[i + 1];
       if (value === undefined || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -289,6 +292,129 @@ function validateSuppliedAnswers(answers) {
 }
 
 /**
+ * TASK-046 — normalize the comma-separated free-text answers for the
+ * three list-typed definition fields (goals, scope_in, scope_out) into
+ * the string[] that writeProjectMd's bullet-section renderer expects.
+ *
+ * Transformation rules (non-mutating — returns a new object or the same
+ * object when no relevant keys are present):
+ *   - If the value is already an array: trim each item and remove empties,
+ *     pass through. This lets TASK-047's answers-mode supply arrays directly
+ *     without re-splitting on commas inside items.
+ *   - If the value is a non-empty string: split on ',' → trim → filter(Boolean).
+ *     "ship fast, iterate, learn" → ['ship fast', 'iterate', 'learn'].
+ *     An empty or whitespace-only string → [] (writeProjectMd's empty-omission
+ *     guard then emits no heading — AC6a "stray `- ` bullet" bug is fixed here).
+ *   - null / undefined: leave as-is (the field stays absent from the output
+ *     object; writeProjectMd's hasOwnProperty guard skips it entirely).
+ *
+ * problem_statement is left as a string (prose, not split).
+ */
+const DEFINITION_LIST_IDS = ['goals', 'scope_in', 'scope_out'];
+
+function normalizeDefinitionAnswers(answers) {
+  if (!answers || typeof answers !== 'object') return answers;
+
+  // Check whether any of the list ids are actually present before allocating
+  // a new object — avoids unnecessary copies for the common answers-mode case
+  // where arrays are already correct.
+  const needsNorm = DEFINITION_LIST_IDS.some(
+    (id) => Object.prototype.hasOwnProperty.call(answers, id) &&
+            answers[id] !== null && answers[id] !== undefined,
+  );
+  if (!needsNorm) return answers;
+
+  const out = { ...answers };
+  for (const id of DEFINITION_LIST_IDS) {
+    if (!Object.prototype.hasOwnProperty.call(out, id)) continue;
+    const v = out[id];
+    if (v === null || v === undefined) continue;
+    if (Array.isArray(v)) {
+      // Already an array (e.g. from --answers-file / TASK-047 path).
+      // Trim each item and drop empties, but never re-split on commas
+      // (a comma inside an array item is intentional).
+      out[id] = v.map((s) => (typeof s === 'string' ? s.trim() : String(s))).filter(Boolean);
+    } else {
+      // Free-text wizard answer: split on comma, trim, drop empties.
+      const str = typeof v === 'string' ? v : String(v);
+      out[id] = str.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return out;
+}
+
+/**
+ * TASK-046 — build a compact captured-definition summary to show the operator
+ * before asking for confirmation. Each defined field gets one line; undefined /
+ * empty fields are omitted so the summary stays terse.
+ */
+function buildDefinitionSummary(answers) {
+  const lines = [];
+  const add = (label, value) => {
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      if (value.length === 0) return;
+      lines.push(`  ${label}: ${value.join(', ')}`);
+    } else {
+      const s = String(value).trim();
+      if (s.length === 0) return;
+      lines.push(`  ${label}: ${s}`);
+    }
+  };
+  add('Problem', answers.problem_statement);
+  add('Goals', answers.goals);
+  add('Scope in', answers.scope_in);
+  add('Scope out', answers.scope_out);
+  add('Project', answers.project_name);
+  add('Type', answers.project_type);
+  // Compact stack summary: any key not in the well-known set
+  const KNOWN_SUMMARY_IDS = new Set([
+    'problem_statement', 'goals', 'scope_in', 'scope_out',
+    'project_name', 'project_description', 'project_type',
+    'target_users', 'primary_use_cases', 'success_criteria',
+    'agent_models',
+  ]);
+  const stackKeys = Object.keys(answers).filter(
+    (k) => !KNOWN_SUMMARY_IDS.has(k) && answers[k] !== null && answers[k] !== undefined,
+  );
+  if (stackKeys.length > 0) {
+    const stackStr = stackKeys.map((k) => {
+      const v = answers[k];
+      return Array.isArray(v) ? `${k}: ${v.join(', ')}` : `${k}: ${v}`;
+    }).join('; ');
+    lines.push(`  Stack: ${stackStr}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * TASK-046 — Ask the operator to confirm the captured definition before any
+ * artifacts are written. Fires only in the interactive path (prompter present,
+ * not answers-mode, not --yes). Returns true to proceed, false to abort.
+ *
+ * Decision rule: empty input OR a Y/y prefix → confirm (proceed).
+ * Anything else → abort. The prompt text must be recognizable by the
+ * scripted-prompter helper (matches on 'confirm' in the prompt text).
+ */
+async function askConfirm({ answers, prompter }) {
+  const summary = buildDefinitionSummary(answers);
+  // eslint-disable-next-line no-console
+  console.log('\n--- Captured definition ---');
+  // eslint-disable-next-line no-console
+  if (summary.length > 0) console.log(summary);
+  // eslint-disable-next-line no-console
+  console.log('---------------------------\n');
+
+  const answer = await prompter({
+    prompt: 'Confirm and create project? [Y/n]',
+    type: 'string',
+  });
+  const trimmed = typeof answer === 'string' ? answer.trim() : '';
+  // Empty (Enter) or anything starting with Y/y → confirm.
+  return trimmed === '' || /^y/i.test(trimmed);
+}
+
+/**
  * TASK-036 — normalize the agent_models intake answer to the shape
  * writeProjectMd expects:
  *   - null / undefined / empty string (question skipped) → key removed
@@ -330,7 +456,7 @@ function normalizeAgentModelsAnswer(answers) {
  * seedBacklog, with the seedBacklog try/catch) is identical for both sources.
  */
 async function runWizardAndWriteProjectMd({
-  repoRoot, sessionId, prompter, now, suppliedAnswers,
+  repoRoot, sessionId, prompter, now, suppliedAnswers, skipConfirm,
 }) {
   let answers;
   if (suppliedAnswers) {
@@ -351,6 +477,25 @@ async function runWizardAndWriteProjectMd({
   // the object map writeProjectMd expects BEFORE any artifact is written, so
   // the frontmatter carries a real map and --apply-models can consume it.
   answers = normalizeAgentModelsAnswer(answers);
+  // TASK-046 — normalize goals/scope_in/scope_out from free-text comma strings
+  // into string[] arrays so writeProjectMd renders them as bullet lists. An
+  // empty string normalizes to [] which triggers the TASK-045 empty-omission
+  // guard (no heading emitted). Arrays passed directly (answers-mode / TASK-047)
+  // are trimmed+filtered but never re-split on commas inside items.
+  answers = normalizeDefinitionAnswers(answers);
+  // TASK-046 — confirmation gate (interactive path only). Fires AFTER the
+  // questionnaire collects all answers and BEFORE any artifact is written, so
+  // the operator can review the captured definition. Suppressed when:
+  //   (a) suppliedAnswers is truthy (answers-mode / --answers-file), or
+  //   (b) skipConfirm is true (--yes flag), or
+  //   (c) prompter is not a function (no-TTY fallback).
+  // On abort, return {aborted:true} without touching the filesystem.
+  if (!skipConfirm && typeof prompter === 'function') {
+    const confirmed = await askConfirm({ answers, prompter });
+    if (!confirmed) {
+      return { aborted: true };
+    }
+  }
   await writeProjectMd({ repoRoot, answers, now });
   // TASK-013 — emit the per-project agent briefing alongside PROJECT.md.
   // The in-memory `answers` are passed through so the generator doesn't have
@@ -566,12 +711,21 @@ export async function runInit({
     parsed.claudeMdConsent ||
     Boolean(answers && answers.claude_md_consent === true);
 
+  // TASK-046 — skipConfirm: suppress the confirmation gate when in answers-mode
+  // (suppliedAnswers → no prompter, no TTY) or when --yes was passed explicitly.
+  const skipConfirm = parsed.yes || Boolean(answers);
+
   // ---- Branch 2: forced (takes precedence over already_initialized) ----
   if (parsed.force) {
     const { sessionId } = await startSession({ repoRoot });
-    await runWizardAndWriteProjectMd({
-      repoRoot, sessionId, prompter, now, suppliedAnswers: answers,
+    const wResult = await runWizardAndWriteProjectMd({
+      repoRoot, sessionId, prompter, now, suppliedAnswers: answers, skipConfirm,
     });
+    if (wResult && wResult.aborted) {
+      // eslint-disable-next-line no-console
+      console.log('Init cancelled — no changes written.');
+      return { state: 'cancelled', projectMdPath, sessionId };
+    }
     await maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent });
     return { state: 'forced', projectMdPath, sessionId };
   }
@@ -601,9 +755,14 @@ export async function runInit({
     const partial = tryReadIntake(candidatePath);
     if (partial) {
       const sessionId = pointer.active_session_id;
-      await runWizardAndWriteProjectMd({
-        repoRoot, sessionId, prompter, now, suppliedAnswers: answers,
+      const wResult = await runWizardAndWriteProjectMd({
+        repoRoot, sessionId, prompter, now, suppliedAnswers: answers, skipConfirm,
       });
+      if (wResult && wResult.aborted) {
+        // eslint-disable-next-line no-console
+        console.log('Init cancelled — no changes written.');
+        return { state: 'cancelled', projectMdPath, sessionId };
+      }
       await maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent });
       return { state: 'resumed', projectMdPath, sessionId };
     }
@@ -629,9 +788,14 @@ export async function runInit({
     });
   }
   const { sessionId } = await startSession({ repoRoot });
-  await runWizardAndWriteProjectMd({
-    repoRoot, sessionId, prompter, now, suppliedAnswers: answers,
+  const wResult = await runWizardAndWriteProjectMd({
+    repoRoot, sessionId, prompter, now, suppliedAnswers: answers, skipConfirm,
   });
+  if (wResult && wResult.aborted) {
+    // eslint-disable-next-line no-console
+    console.log('Init cancelled — no changes written.');
+    return { state: 'cancelled', projectMdPath, sessionId };
+  }
   await maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent });
   return { state: 'created', projectMdPath, sessionId };
 }
@@ -664,6 +828,11 @@ function realReadlinePrompter() {
 function printFriendlyOutcome({ state, projectMdPath, sessionId }) {
   if (state === 'already_initialized' || state === 'applied_workflows') {
     // Summary already printed inside runInit's detection branch.
+    return;
+  }
+  // TASK-046 — user declined the confirmation gate; no artifacts written.
+  if (state === 'cancelled') {
+    // Message already printed inline (console.log 'Init cancelled…').
     return;
   }
   // eslint-disable-next-line no-console
