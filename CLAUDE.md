@@ -115,6 +115,10 @@ Rules:
 - **`npm run test:all` is reserved for release, milestone, and publish points**, and for any ticket that touches test infrastructure or `tasks/schema.json`. `test:changed` and `test:watch` are inner-loop accelerators — the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs, which is why full `test:all` still runs at those checkpoints.
 - New slow specs (anything calling `makeTmpDir` or spawning a process) go under `tests/e2e/`; pure-logic specs stay at the top level of `tests/`. The folder *is* the tier — keep the boundary clean so the fast tier stays fast.
 
+### dist/ artifact freshness (TASK-049)
+
+`dist/*.cjs` are committed build artifacts bundled by `npm run build:plugin`. Any source change in `bin/` or `src/` that is not followed by a rebuild ships a stale bundle silently. The automated gate is `tests/e2e/dist-parity.spec.js` (runs under `npm run test:all`): it rebuilds all four bundles into a temp dir using the same esbuild config and byte-compares them against committed `dist/`. If they differ, the gate fails with the bundle name and the instruction to run `npm run build:plugin`. **No manual `git diff --stat dist/` check is needed** — `test:all` catches stale dist/ automatically. Remember to commit updated `dist/` after every `npm run build:plugin` that changes the bundles.
+
 ## Per-Agent Model Assignment
 
 Each subagent declares its model in the `model:` frontmatter field of its agent definition file:

@@ -20,6 +20,13 @@
 // `#!/usr/bin/env node` shebang and esbuild preserves it. Adding a banner.js
 // shebang would emit a SECOND shebang on line 2 (a SyntaxError) — guarded by the
 // `exactly_one_shebang` spec in tests/plugin-deps.spec.js.
+//
+// TASK-049 — OUTPUT-DIR OVERRIDE:
+//   Set BUILD_PLUGIN_OUT_DIR env var to redirect output (used by the dist-parity
+//   spec to rebuild into a temp dir for byte-comparison). Default is dist/ as
+//   before — a plain `npm run build:plugin` is byte-unchanged.
+//   The ENTRYPOINT_NAMES export allows the parity spec to enumerate the four
+//   expected bundle filenames without duplicating knowledge.
 
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
@@ -28,22 +35,38 @@ import { mkdirSync } from 'node:fs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dir, '..');
-const OUT_DIR = join(REPO_ROOT, 'dist');
+const DEFAULT_OUT_DIR = join(REPO_ROOT, 'dist');
 
-// Entrypoint -> output bundle.
-const ENTRYPOINTS = [
-  { entry: join(REPO_ROOT, 'bin', 'init.js'), outfile: join(OUT_DIR, 'init.cjs') },
-  { entry: join(REPO_ROOT, 'bin', 'new-task.js'), outfile: join(OUT_DIR, 'new-task.cjs') },
-  // TASK-026 P6 — the MCP task-store server. Same options; the SDK + zod inline.
-  { entry: join(REPO_ROOT, 'src', 'mcp-server.js'), outfile: join(OUT_DIR, 'mcp-server.cjs') },
-  // TASK-034 — the kanban task board server. Zero external deps; inlines task-store.
-  { entry: join(REPO_ROOT, 'bin', 'task-board.js'), outfile: join(OUT_DIR, 'task-board.cjs') },
+// The four canonical bundle output filenames — exported so the parity spec can
+// enumerate them without duplicating knowledge here.
+export const ENTRYPOINT_NAMES = [
+  'init.cjs',
+  'new-task.cjs',
+  'mcp-server.cjs',
+  'task-board.cjs',
 ];
 
-async function main() {
-  mkdirSync(OUT_DIR, { recursive: true });
+/**
+ * Build all four plugin bundles into `outDir`.
+ * cwd MUST be the repo root so esbuild source-path comments are identical
+ * between the committed build and a parity-check temp build.
+ *
+ * @param {string} outDir  Absolute path to the output directory.
+ */
+export async function buildTo(outDir) {
+  mkdirSync(outDir, { recursive: true });
 
-  for (const { entry, outfile } of ENTRYPOINTS) {
+  // Entrypoint -> output bundle (derived from outDir so callers can redirect).
+  const entrypoints = [
+    { entry: join(REPO_ROOT, 'bin', 'init.js'), outfile: join(outDir, 'init.cjs') },
+    { entry: join(REPO_ROOT, 'bin', 'new-task.js'), outfile: join(outDir, 'new-task.cjs') },
+    // TASK-026 P6 — the MCP task-store server. Same options; the SDK + zod inline.
+    { entry: join(REPO_ROOT, 'src', 'mcp-server.js'), outfile: join(outDir, 'mcp-server.cjs') },
+    // TASK-034 — the kanban task board server. Zero external deps; inlines task-store.
+    { entry: join(REPO_ROOT, 'bin', 'task-board.js'), outfile: join(outDir, 'task-board.cjs') },
+  ];
+
+  for (const { entry, outfile } of entrypoints) {
     await build({
       entryPoints: [entry],
       bundle: true,
@@ -61,8 +84,16 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error(err);
-  process.exit(1);
-});
+// When invoked directly (not imported), run main() which respects
+// BUILD_PLUGIN_OUT_DIR for output-dir override. Default is dist/.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const outDir = process.env.BUILD_PLUGIN_OUT_DIR
+    ? process.env.BUILD_PLUGIN_OUT_DIR
+    : DEFAULT_OUT_DIR;
+
+  buildTo(outDir).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error(err);
+    process.exit(1);
+  });
+}
