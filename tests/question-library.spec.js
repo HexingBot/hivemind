@@ -5,6 +5,16 @@
 // missing file — that's the right failure mode for the tests-first commit.
 //
 // Covers ACs 1, 2, 3 + the engine-compatibility cross-check (AC8 partial).
+//
+// TASK-046 — AC1: discovery-first ordering. COMMON_QUESTIONS must lead with
+// the four discovery questions (problem_statement, goals, scope_in, scope_out)
+// BEFORE project_name. The `build_intake_questions_concatenates` test from
+// TASK-011 is unchanged — it asserts common questions come first in intake, in
+// their COMMON_QUESTIONS order. The new describe block at the bottom specifies
+// what that order must be.
+// NOTE: this file was updated at TASK-046 to add ordering assertions.
+// The existing `common_questions_min_six` test does NOT check order, so it
+// needs no changes (it only checks membership).
 
 import { describe, it, expect, afterAll } from 'vitest';
 
@@ -227,6 +237,122 @@ describe('question-library — engine compatibility', () => {
         expect(
           Object.prototype.hasOwnProperty.call(result.answers, id),
           `answers must NOT contain "${id}" (it belongs to type "${type}", but we picked web-saas)`,
+        ).toBe(false);
+      }
+    }
+  });
+});
+
+// =====================================================================
+// TASK-046 AC1 — Discovery-first ordering in COMMON_QUESTIONS.
+//
+// The four discovery questions (problem_statement, goals, scope_in,
+// scope_out) must appear BEFORE project_name in COMMON_QUESTIONS, so
+// that buildIntakeQuestions() leads with discovery.
+//
+// Relation to existing TASK-011 tests:
+//   * `build_intake_questions_concatenates` (above) asserts intake[0..N-1]
+//     mirrors COMMON_QUESTIONS exactly — it will automatically enforce that
+//     any COMMON_QUESTIONS reorder flows through to buildIntakeQuestions().
+//     The tests below specify WHAT that order must be.
+//   * `common_questions_min_six` only checks membership — it does not pin
+//     order, so it does not need to change.
+// =====================================================================
+describe('TASK-046 AC1 — discovery-first ordering in COMMON_QUESTIONS', () => {
+  it('COMMON_QUESTIONS_leads_with_four_discovery_question_ids', async () => {
+    const lib = await import(PROD.questionLibrary);
+
+    const ids = lib.COMMON_QUESTIONS.map((q) => q.id);
+    // The first four question ids must be the discovery questions in this order.
+    expect(ids[0], 'first question must be problem_statement').toBe('problem_statement');
+    expect(ids[1], 'second question must be goals').toBe('goals');
+    expect(ids[2], 'third question must be scope_in').toBe('scope_in');
+    expect(ids[3], 'fourth question must be scope_out').toBe('scope_out');
+  });
+
+  it('buildIntakeQuestions_first_four_are_discovery_questions', async () => {
+    const lib = await import(PROD.questionLibrary);
+
+    const intake = lib.buildIntakeQuestions();
+    // The first four question ids in the full intake must be the discovery
+    // questions — COMMON_QUESTIONS leads the concatenation, so this follows
+    // from the COMMON_QUESTIONS ordering above, but we assert it directly on
+    // the intake array so any future refactor of buildIntakeQuestions cannot
+    // break the invariant by reordering internally.
+    const EXPECTED_FIRST_FOUR = ['problem_statement', 'goals', 'scope_in', 'scope_out'];
+    for (let i = 0; i < EXPECTED_FIRST_FOUR.length; i++) {
+      expect(
+        intake[i].id,
+        `intake[${i}].id must be ${EXPECTED_FIRST_FOUR[i]} (discovery-first ordering)`,
+      ).toBe(EXPECTED_FIRST_FOUR[i]);
+    }
+  });
+
+  it('project_name_appears_after_the_four_discovery_questions', async () => {
+    const lib = await import(PROD.questionLibrary);
+
+    const intake = lib.buildIntakeQuestions();
+    const discoveryIds = ['problem_statement', 'goals', 'scope_in', 'scope_out'];
+    const projectNameIdx = intake.findIndex((q) => q.id === 'project_name');
+
+    expect(projectNameIdx, 'project_name must appear in intake').toBeGreaterThan(-1);
+
+    for (const dId of discoveryIds) {
+      const dIdx = intake.findIndex((q) => q.id === dId);
+      expect(dIdx, `${dId} must appear in intake`).toBeGreaterThan(-1);
+      expect(
+        dIdx,
+        `${dId} (discovery question) must come before project_name in intake`,
+      ).toBeLessThan(projectNameIdx);
+    }
+  });
+
+  it('all_intake_question_ids_remain_globally_unique', async () => {
+    // This is a regression guard: adding discovery questions to COMMON_QUESTIONS
+    // must not introduce duplicate ids (the engine rejects non-unique ids).
+    const lib = await import(PROD.questionLibrary);
+
+    const intake = lib.buildIntakeQuestions();
+    const ids = intake.map((q) => q.id);
+    const uniqueCount = new Set(ids).size;
+
+    expect(
+      uniqueCount,
+      `buildIntakeQuestions() returned ${ids.length} questions but only ${uniqueCount} unique ids — duplicates detected`,
+    ).toBe(ids.length);
+  });
+
+  it('discovery_questions_are_type_string_no_when_predicate', async () => {
+    // Discovery questions are common (asked of every project), so they MUST
+    // NOT have a `when` predicate. They must also be type 'string' (free-text
+    // collected in the wizard; comma-split normalization happens in bin/init.js).
+    const lib = await import(PROD.questionLibrary);
+
+    const discoveryIds = ['problem_statement', 'goals', 'scope_in', 'scope_out'];
+    for (const id of discoveryIds) {
+      const q = lib.COMMON_QUESTIONS.find((cq) => cq.id === id);
+      expect(q, `COMMON_QUESTIONS must include a question with id "${id}"`).toBeDefined();
+      expect(
+        q.when,
+        `discovery question "${id}" must NOT have a when predicate (it is common to all types)`,
+      ).toBeUndefined();
+      expect(
+        q.type,
+        `discovery question "${id}" must be type "string" (comma-split handled in bin/init.js)`,
+      ).toBe('string');
+    }
+  });
+
+  it('type_specific_concatenation_is_unchanged_after_discovery_insertion', async () => {
+    // Regression guard: no discovery id must appear in a type-specific branch.
+    const lib = await import(PROD.questionLibrary);
+
+    const discoveryIds = new Set(['problem_statement', 'goals', 'scope_in', 'scope_out']);
+    for (const [type, qs] of Object.entries(lib.TYPE_SPECIFIC_QUESTIONS)) {
+      for (const q of qs) {
+        expect(
+          discoveryIds.has(q.id),
+          `TYPE_SPECIFIC_QUESTIONS["${type}"] must NOT contain discovery question id "${q.id}"`,
         ).toBe(false);
       }
     }
