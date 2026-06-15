@@ -7981,6 +7981,176 @@ async function loadGraph({ repoRoot }) {
   return JSON.parse(raw);
 }
 
+// src/orchestrator-bridge.js
+var import_node_child_process = require("node:child_process");
+function buildSpawnArgv() {
+  return [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--input-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--permission-mode",
+    "bypassPermissions",
+    "--allowedTools",
+    "Read,Edit,Write,Bash,Agent"
+  ];
+}
+function buildChildEnv(baseEnv) {
+  const env = { ...baseEnv };
+  delete env.ANTHROPIC_API_KEY;
+  delete env.ANTHROPIC_AUTH_TOKEN;
+  return env;
+}
+function createStreamParser() {
+  let buffer = "";
+  function normalizeLine(raw) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return { type: "error", message: `malformed JSON: ${e.message}` };
+    }
+    if (parsed.type === "system" && parsed.subtype === "init") {
+      return { type: "session", sessionId: parsed.session_id };
+    }
+    if (parsed.type === "result") {
+      return { type: "turn-end" };
+    }
+    if (parsed.type === "stream_event") {
+      const ev = parsed.event;
+      if (!ev) return null;
+      if (ev.type === "message_stop") {
+        return { type: "turn-end" };
+      }
+      if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
+        return { type: "text", text: ev.delta.text };
+      }
+      if (ev.type === "content_block_start" && ev.content_block && ev.content_block.type === "tool_use") {
+        const name = ev.content_block.name;
+        if (name === "Agent" || name === "Task") {
+          return { type: "subagent", name };
+        }
+        return { type: "tool", name };
+      }
+    }
+    return null;
+  }
+  return {
+    push(chunk) {
+      buffer += chunk;
+      const events = [];
+      let newlineIdx;
+      while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newlineIdx).trim();
+        buffer = buffer.slice(newlineIdx + 1);
+        if (line.length === 0) continue;
+        const event = normalizeLine(line);
+        if (event !== null) {
+          events.push(event);
+        }
+      }
+      return events;
+    },
+    flush() {
+      const remaining = buffer.trim();
+      buffer = "";
+      if (remaining.length === 0) return [];
+      const event = normalizeLine(remaining);
+      return event !== null ? [event] : [];
+    }
+  };
+}
+var SESSION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+function createSessionManager({ repoRoot, spawnFn } = {}) {
+  const _spawn = spawnFn || function defaultSpawn(command, args, options) {
+    return (0, import_node_child_process.spawn)(command, args, options);
+  };
+  const sessions = /* @__PURE__ */ new Map();
+  const children = /* @__PURE__ */ new Map();
+  function create(sessionId) {
+    if (!SESSION_ID_RE.test(sessionId)) {
+      throw new Error(`invalid session id: ${JSON.stringify(sessionId)}`);
+    }
+    if (sessions.has(sessionId)) {
+      throw new Error(`duplicate session id: ${sessionId}`);
+    }
+    const child = _spawn("claude", buildSpawnArgv(), {
+      cwd: repoRoot,
+      env: buildChildEnv(process.env),
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    children.set(sessionId, child);
+    const parser = createStreamParser();
+    const subscribers = /* @__PURE__ */ new Set();
+    function broadcast(event) {
+      for (const cb of subscribers) {
+        try {
+          cb(event);
+        } catch {
+        }
+      }
+    }
+    child.stdout.on("data", (chunk) => {
+      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      const events = parser.push(text);
+      for (const ev of events) {
+        broadcast(ev);
+      }
+    });
+    const session = {
+      id: sessionId,
+      stopped: false,
+      send(text) {
+        const line = JSON.stringify({
+          type: "user",
+          message: { role: "user", content: text }
+        }) + "\n";
+        child.stdin.write(line);
+      },
+      subscribe(cb) {
+        subscribers.add(cb);
+      }
+    };
+    child.on("exit", (code) => {
+      session.stopped = true;
+      sessions.delete(sessionId);
+      children.delete(sessionId);
+      broadcast({
+        type: "error",
+        message: `session ${sessionId} process exited with code ${code}`
+      });
+    });
+    sessions.set(sessionId, session);
+    return session;
+  }
+  function get(sessionId) {
+    return sessions.get(sessionId);
+  }
+  function has(sessionId) {
+    return sessions.has(sessionId);
+  }
+  function stop(sessionId) {
+    if (!sessions.has(sessionId)) return;
+    const child = children.get(sessionId);
+    sessions.delete(sessionId);
+    children.delete(sessionId);
+    if (child) {
+      try {
+        child.stdin.end();
+      } catch {
+        try {
+          child.kill();
+        } catch {
+        }
+      }
+    }
+  }
+  return { create, get, has, stop };
+}
+
 // src/task-board.js
 async function readAllTasksForBoard(repoRoot) {
   const tasksDir2 = (0, import_node_path4.join)(repoRoot, "tasks");
@@ -8654,7 +8824,8 @@ function injectGraphData(graphObj) {
   const body = buildGraphBody(graphObj);
   return template.replace(GRAPH_DATA_SENTINEL, () => json).replace(GRAPH_BODY_SENTINEL, () => body);
 }
-function createBoardServer({ repoRoot }) {
+function createBoardServer({ repoRoot, bridge } = {}) {
+  const sessionManager = bridge || createSessionManager({ repoRoot });
   const html = buildHtml();
   const htmlBytes = Buffer.from(html, "utf8");
   const server = import_node_http.default.createServer(async (req, res) => {
@@ -8746,6 +8917,104 @@ function createBoardServer({ repoRoot }) {
       if (req.method === "GET" && pathname === "/api/graph") {
         const graph = await loadGraph({ repoRoot });
         sendJson(res, 200, graph);
+        return;
+      }
+      const chatStopRe = /^\/api\/chat\/([^/]+)\/stop$/;
+      const chatStopMatch = chatStopRe.exec(pathname);
+      if (req.method === "POST" && chatStopMatch) {
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatStopMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: "malformed percent-encoding in session id" });
+          return;
+        }
+        if (SESSION_ID_RE.test(rawId) && sessionManager.has(rawId)) {
+          sessionManager.stop(rawId);
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      const chatStreamRe = /^\/api\/chat\/([^/]+)\/stream$/;
+      const chatStreamMatch = chatStreamRe.exec(pathname);
+      if (req.method === "GET" && chatStreamMatch) {
+        let onEvent = function(ev) {
+          try {
+            res.write(`data: ${JSON.stringify(ev)}
+
+`);
+          } catch {
+          }
+        };
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatStreamMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: "malformed percent-encoding in session id" });
+          return;
+        }
+        if (!SESSION_ID_RE.test(rawId)) {
+          sendJson(res, 400, { error: `invalid session id: ${rawId}` });
+          return;
+        }
+        if (!sessionManager.has(rawId)) {
+          sessionManager.create(rawId);
+        }
+        const session = sessionManager.get(rawId);
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        });
+        res.flushHeaders();
+        session.subscribe(onEvent);
+        req.socket.on("close", () => {
+        });
+        return;
+      }
+      const chatSendRe = /^\/api\/chat\/([^/]+)$/;
+      const chatSendMatch = chatSendRe.exec(pathname);
+      if (req.method === "POST" && chatSendMatch) {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatSendMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: "malformed percent-encoding in session id" });
+          return;
+        }
+        if (!SESSION_ID_RE.test(rawId)) {
+          sendJson(res, 400, { error: `invalid session id: ${rawId}` });
+          return;
+        }
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        const { message } = body;
+        if (!message || typeof message !== "string") {
+          sendJson(res, 400, { error: "body must include a non-empty `message` string" });
+          return;
+        }
+        if (!sessionManager.has(rawId)) {
+          sessionManager.create(rawId);
+        }
+        const session = sessionManager.get(rawId);
+        session.send(message);
+        sendJson(res, 200, { ok: true });
         return;
       }
       sendJson(res, 404, { error: `not found: ${pathname}` });

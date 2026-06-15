@@ -41,6 +41,7 @@ import { join } from 'node:path';
 
 import { transitionStatus, TASK_FILENAME_RE } from './task-store.js';
 import { loadGraph } from './knowledge-graph.js';
+import { createSessionManager, SESSION_ID_RE } from './orchestrator-bridge.js';
 
 // ---------------------------------------------------------------------------
 // Internal: read all task files from tasks/ without any caching.
@@ -786,8 +787,16 @@ function injectGraphData(graphObj) {
 
 // ---------------------------------------------------------------------------
 // Public factory — returns an http.Server (pre-listen).
+//
+// Options:
+//   repoRoot  {string}               — project root for task reads + session cwd
+//   bridge    {object|undefined}     — injected session manager (for tests);
+//                                      when omitted, the real createSessionManager
+//                                      is constructed with repoRoot.
 // ---------------------------------------------------------------------------
-export function createBoardServer({ repoRoot }) {
+export function createBoardServer({ repoRoot, bridge } = {}) {
+  // Use the injected bridge, or construct the real one lazily.
+  const sessionManager = bridge || createSessionManager({ repoRoot });
   const html = buildHtml();
   const htmlBytes = Buffer.from(html, 'utf8');
 
@@ -910,6 +919,130 @@ export function createBoardServer({ repoRoot }) {
       if (req.method === 'GET' && pathname === '/api/graph') {
         const graph = await loadGraph({ repoRoot });
         sendJson(res, 200, graph);
+        return;
+      }
+
+      // -----------------------------------------------------------------------
+      // Chat routes — all behind the Host allowlist (already checked above).
+      // -----------------------------------------------------------------------
+
+      // POST /api/chat/:sessionId/stop — stop a session (idempotent).
+      const chatStopRe = /^\/api\/chat\/([^/]+)\/stop$/;
+      const chatStopMatch = chatStopRe.exec(pathname);
+      if (req.method === 'POST' && chatStopMatch) {
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatStopMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: 'malformed percent-encoding in session id' });
+          return;
+        }
+        // Idempotent — stop regardless of whether id is valid or session exists.
+        if (SESSION_ID_RE.test(rawId) && sessionManager.has(rawId)) {
+          sessionManager.stop(rawId);
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      // GET /api/chat/:sessionId/stream — SSE relay.
+      const chatStreamRe = /^\/api\/chat\/([^/]+)\/stream$/;
+      const chatStreamMatch = chatStreamRe.exec(pathname);
+      if (req.method === 'GET' && chatStreamMatch) {
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatStreamMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: 'malformed percent-encoding in session id' });
+          return;
+        }
+        if (!SESSION_ID_RE.test(rawId)) {
+          sendJson(res, 400, { error: `invalid session id: ${rawId}` });
+          return;
+        }
+
+        // Create session if it doesn't exist yet (lazy creation on first stream).
+        if (!sessionManager.has(rawId)) {
+          sessionManager.create(rawId);
+        }
+        const session = sessionManager.get(rawId);
+
+        // SSE response headers — keep alive, no buffering.
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        });
+        res.flushHeaders();
+
+        // Subscribe to session events and relay as SSE data frames.
+        function onEvent(ev) {
+          try {
+            res.write(`data: ${JSON.stringify(ev)}\n\n`);
+          } catch { /* socket may be closed */ }
+        }
+        session.subscribe(onEvent);
+
+        // Clean up when the client disconnects.
+        req.socket.on('close', () => {
+          // Nothing to unsubscribe — broadcast loop simply ignores dead sockets.
+        });
+        return;
+      }
+
+      // POST /api/chat/:sessionId — send a user turn.
+      const chatSendRe = /^\/api\/chat\/([^/]+)$/;
+      const chatSendMatch = chatSendRe.exec(pathname);
+      if (req.method === 'POST' && chatSendMatch) {
+        // CONTENT-TYPE GUARD
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        // Decode and validate the session id.
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatSendMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: 'malformed percent-encoding in session id' });
+          return;
+        }
+        if (!SESSION_ID_RE.test(rawId)) {
+          sendJson(res, 400, { error: `invalid session id: ${rawId}` });
+          return;
+        }
+
+        // Read and validate the request body.
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
+          return;
+        }
+
+        const { message } = body;
+        if (!message || typeof message !== 'string') {
+          sendJson(res, 400, { error: 'body must include a non-empty `message` string' });
+          return;
+        }
+
+        // Ensure the session exists (create if absent).
+        if (!sessionManager.has(rawId)) {
+          sessionManager.create(rawId);
+        }
+        const session = sessionManager.get(rawId);
+        session.send(message);
+
+        sendJson(res, 200, { ok: true });
         return;
       }
 
