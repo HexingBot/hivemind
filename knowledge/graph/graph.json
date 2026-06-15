@@ -38,6 +38,12 @@
       "label": "Windows atomic rename is not truly atomic"
     },
     {
+      "id": "ke-claude-headless-bridge",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
+      "label": "Headless claude stream-json bridge: persistent session mechanics + subscription auth"
+    },
+    {
       "id": "skill-orchestrator-routing",
       "type": "skill",
       "ref": "skills/orchestrator-routing/SKILL.md",
@@ -90,6 +96,24 @@
       "type": "task",
       "ref": "tasks/TASK-042.json",
       "label": "Retire reviewer fable pin → inherit (default main model)"
+    },
+    {
+      "id": "decision-20260615-web-console",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-15T19:00:00Z",
+      "label": "Agentic OS web console: browser window into a persistent orchestrator session via the existing claude login (no API key); extend the board server; local-only"
+    },
+    {
+      "id": "task-050",
+      "type": "task",
+      "ref": "tasks/TASK-050.json",
+      "label": "Web console P0 spike: persistent headless orchestrator session over the existing claude login"
+    },
+    {
+      "id": "task-051",
+      "type": "task",
+      "ref": "tasks/TASK-051.json",
+      "label": "Web console P1: orchestrator-session bridge + chat routes"
     }
   ],
   "edges": [
@@ -137,6 +161,21 @@
       "from": "task-042",
       "to": "decision-20260612-fable-retired",
       "relation": "produced-by"
+    },
+    {
+      "from": "task-050",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-051",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "ke-claude-headless-bridge",
+      "to": "task-050",
+      "relation": "learned-in"
     }
   ]
 }
