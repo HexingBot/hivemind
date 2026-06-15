@@ -7,7 +7,7 @@
     "tests/verification-policy-docs.spec.js line ~274 comment updated to describe the current reviewer+inherit contract; no executable assertion changed.",
     "fable remains a valid alias everywhere (VALID_MODEL_ALIASES / MODEL_ALIASES / AGENT_MODEL_ALIASES untouched); npm run test:changed plus affected specs green."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "low",
   "labels": [
     "config",
@@ -18,11 +18,29 @@
   "depends_on": [
     "TASK-042"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "7fe4bbd"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T17:18:48.004Z",
+      "body": "Plan + tier: verification_tier=uat-only (pure display-text/comment change, no logic, no applier, fable stays a valid alias). Developer in IMPL only, no new specs; verified via UAT (grep + a wizard help-text render check). Must rebuild dist (question-library.js is bundled into dist/init.cjs). Scaled gate: test:changed + any spec pinning the help-text wording. fable remains valid everywhere (alias lists untouched)."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-15T17:21:42.580Z",
+      "body": "UAT — doc-drift fix, verified by Orchestrator at the human's standing delegation (uat-only, 2-line text change; a full fresh-context reviewer would be disproportionate for a display-string fix).\n\n1. AC1 help text: EXPECT the agent-models wizard prompt + nearby comment show reviewer=inherit (not fable), developer/researcher still sonnet. OBSERVED src/question-library.js:106 (comment) and :116 (prompt) both read \"Defaults: reviewer=inherit, developer=sonnet, researcher=sonnet\"; grep for reviewer=fable in src/ returns NONE. → PASS.\n2. AC2 stale comment: EXPECT tests/verification-policy-docs.spec.js ~line 274 comment describes reviewer+inherit, no executable assertion changed. OBSERVED comment updated to /reviewer/i && /inherit/i; verification-policy-docs.spec.js 7/7 green. → PASS.\n3. AC3 fable still valid + dist + green: EXPECT alias lists untouched, dist rebuilt, tests green. OBSERVED 'fable' still present in all three alias sets (question-library.js:138, project-md.js:96, agent-generator.js:268); npm run build:plugin → git diff --stat dist/ EMPTY (committed bundle matches fresh build); test:changed 7/7 + fast tier 171/2. → PASS.\n\nOVERALL: PASS (3/3). All ACs covered."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T17:21:48.510Z",
+      "body": "CLOSED — uat-only, done on UAT 3/3 PASS (verified by orchestrator per the human's standing delegation; a full fresh-context review is disproportionate for a display-string + comment change). Linked commit: 7fe4bbd (text + dist rebuild). Wizard agent-models help text now reflects the TASK-042 reviewer=inherit policy; stale spec comment aligned; fable preserved as a valid alias everywhere; dist parity verified. Both v0.3.0 post-release follow-ups (TASK-043, TASK-044) now closed."
+    }
+  ],
   "created_at": "2026-06-13T03:55:24.189Z",
-  "updated_at": "2026-06-15T15:28:37.508Z",
+  "updated_at": "2026-06-15T17:21:51.340Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }

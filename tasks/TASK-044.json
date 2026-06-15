@@ -8,7 +8,7 @@
     "dist/ rebuilt byte-fresh; npm run test:changed + named init e2e specs green.",
     "No behavioral change to the actual model application or filesystem — output-only fix."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "cli",
@@ -18,11 +18,29 @@
   "depends_on": [
     "TASK-040"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "b90e766"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T17:10:23.714Z",
+      "body": "Plan + tier: verification_tier=tests-after (output-only bug fix, behavior provable by running the binary, low edge-risk). Single IMPL phase: fix printFriendlyOutcome to early-return for applied_models + no_op (their summaries already print inside runInit), prove by running, then add the minimal stdout regression lock (spawn real dist/init.cjs --apply-models against a tmp project with a PROJECT.md agent_models map; assert the summary line present and NO 'PROJECT.md written'/'state/sessions/null'/'Next step:'). Rebuild dist (it's bundled). Scaled gate: test:changed + named init e2e specs (NOT test:all — no schema/test-infra change; the new spec is a regression lock, not shared infra). Same defect class TASK-040 just fixed for --apply-workflows."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-06-15T17:18:13.877Z",
+      "body": "APPROVE (0 HIGH / 0 MEDIUM / 0 LOW). All 4 ACs verified fresh. AC1/AC3: printFriendlyOutcome refactored to a SELF_SUMMARIZING_STATES Set containing exactly the 5 self-printing states (already_initialized, applied_workflows, applied_models, no_op, cancelled); created/forced/resumed correctly excluded and still print the normal epilogue (confirmed via init/init-command specs). AC2 non-vacuous: the lock asserts absence of the exact three false strings the old epilogue emitted (PROJECT.md written / state/sessions/null / Next step:) — each would fail pre-fix since sessionId is null for these states — plus positively asserts the summary line, so it can't pass via spawn failure; covers both applied_models (with map) and no_op (without). AC3: ran npm run build:plugin, git diff --stat dist/ EMPTY — committed bundle byte-fresh. AC4: output-only — commit touches 3 files, no applyAgentModels/filesystem mutation. Named e2e gate 58 passed/1 skip; fast tier 171/2."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T17:18:18.908Z",
+      "body": "CLOSED — done on green review (clean APPROVE, 0/0/0). Linked commit: b90e766 (impl + regression lock + dist rebuild, one logical change per the same-fix-regression-check rule). The --apply-models / no_op false-stdout epilogue is fixed and locked; printFriendlyOutcome now uses a SELF_SUMMARIZING_STATES Set so a future apply-* flag can't reintroduce the defect class. Twin of TASK-040 closed. Scaled gate green (named e2e 58/1, fast 171/2); dist parity verified empty."
+    }
+  ],
   "created_at": "2026-06-13T04:15:33.913Z",
-  "updated_at": "2026-06-15T15:28:39.509Z",
+  "updated_at": "2026-06-15T17:18:22.226Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
