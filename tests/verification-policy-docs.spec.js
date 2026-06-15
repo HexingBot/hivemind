@@ -271,7 +271,7 @@ describe('L8 — TASK-033 drift guard: VERIFICATION_TIER enum is identical acros
 //       NO COLLISION.
 //
 //   tests/agent-models.spec.js:97-119  (claude_md_documents_per_agent_model_strategy)
-//     Asserts: /model/i, /reviewer/i && /fable/i, /developer/i && /sonnet/i
+//     Asserts: /model/i, /reviewer/i && /inherit/i, /developer/i && /sonnet/i
 //     → The Per-Agent Model Assignment section is not touched by TASK-028.
 //       NO COLLISION.
 //

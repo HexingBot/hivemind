@@ -103,7 +103,7 @@ export const COMMON_QUESTIONS = Object.freeze([
   },
   // TASK-036 — optional per-agent model overrides. `required: false` allows
   // the user to skip by pressing Enter; skipping writes NO agent_models key to
-  // PROJECT.md. Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.
+  // PROJECT.md. Defaults: reviewer=inherit, developer=sonnet, researcher=sonnet.
   // A non-empty answer must be comma/space-separated agent=model pairs; the
   // validate hook rejects malformed pairs, unknown agents, and invalid model
   // values with an error naming the offender (the engine re-prompts).
@@ -113,7 +113,7 @@ export const COMMON_QUESTIONS = Object.freeze([
     required: false,
     prompt:
       'Per-agent model overrides (optional, e.g. reviewer=opus developer=haiku).\n' +
-      'Defaults: reviewer=fable, developer=sonnet, researcher=sonnet.\n' +
+      'Defaults: reviewer=inherit, developer=sonnet, researcher=sonnet.\n' +
       'Press Enter to keep defaults (writes no agent_models key)',
     validate(value) {
       // The engine only calls this for non-empty input (required:false empty
