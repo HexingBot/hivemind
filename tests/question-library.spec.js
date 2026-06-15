@@ -358,3 +358,124 @@ describe('TASK-046 AC1 — discovery-first ordering in COMMON_QUESTIONS', () => 
     }
   });
 });
+
+// =====================================================================
+// TASK-048 AC1 — problem_statement is required; goals/scope_in/scope_out stay optional.
+// =====================================================================
+describe('TASK-048 AC1 — problem_statement required, discovery peers optional', () => {
+  it('problem_statement_is_required', async () => {
+    // `required !== false` is how the engine decides to re-prompt on empty.
+    // Removing `required: false` (or setting `required: true`) makes it required.
+    const lib = await import(PROD.questionLibrary);
+
+    const q = lib.COMMON_QUESTIONS.find((cq) => cq.id === 'problem_statement');
+    expect(q, 'COMMON_QUESTIONS must include problem_statement').toBeDefined();
+    expect(
+      q.required,
+      'problem_statement must NOT carry required:false — it must be required (absent or true)',
+    ).not.toBe(false);
+  });
+
+  it('goals_scope_in_scope_out_remain_optional', async () => {
+    // Only problem_statement changes. The other three discovery questions stay
+    // required:false so the operator can skip them by pressing Enter.
+    const lib = await import(PROD.questionLibrary);
+
+    for (const id of ['goals', 'scope_in', 'scope_out']) {
+      const q = lib.COMMON_QUESTIONS.find((cq) => cq.id === id);
+      expect(q, `COMMON_QUESTIONS must include ${id}`).toBeDefined();
+      expect(
+        q.required,
+        `"${id}" must remain required:false (optional, skippable)`,
+      ).toBe(false);
+    }
+  });
+});
+
+// =====================================================================
+// TASK-048 AC2 — engine re-prompts on empty problem_statement; accepts
+// empty goals (optional skip).
+// =====================================================================
+describe('TASK-048 AC2 — re-prompt behavior for required problem_statement vs optional goals', () => {
+  it('empty_problem_statement_causes_reprompt_non_empty_accepted', async () => {
+    // The engine loops until a non-empty answer is given for required questions.
+    // Simulate: first call returns '' (rejected), second call returns a real value.
+    // Assert the prompter was called twice for problem_statement.
+    const lib = await import(PROD.questionLibrary);
+    const { runQuestionnaire } = await import(PROD.questionEngine);
+
+    // Minimal two-question set: problem_statement (required) + goals (optional).
+    // We derive them from the actual COMMON_QUESTIONS to stay coupled to the
+    // real question objects (including their required field).
+    const problemQ = lib.COMMON_QUESTIONS.find((q) => q.id === 'problem_statement');
+    const goalsQ = lib.COMMON_QUESTIONS.find((q) => q.id === 'goals');
+    expect(problemQ).toBeDefined();
+    expect(goalsQ).toBeDefined();
+
+    const questions = [problemQ, goalsQ];
+
+    // Prompter call log: [ctx, ...]
+    const calls = [];
+    // Script: first answer for problem_statement is '' (should be rejected),
+    // second is a real value. goals gets '' (should be accepted as a skip).
+    const scriptedAnswers = ['', 'We need to solve context loss.', ''];
+    let i = 0;
+    const prompter = async (ctx) => {
+      calls.push({ id: ctx.id ?? null, prompt: ctx.prompt, error: ctx.error ?? null });
+      if (i >= scriptedAnswers.length) {
+        throw new Error(
+          `prompter exhausted after ${i} answers; engine asked: ${JSON.stringify(ctx)}`,
+        );
+      }
+      return scriptedAnswers[i++];
+    };
+
+    const result = await runQuestionnaire({
+      questions,
+      prompter,
+      persistTo: null,
+      now: () => '2026-06-15T00:00:00Z',
+    });
+
+    // problem_statement: prompter called TWICE (first '' rejected, then real value accepted).
+    const problemCalls = calls.filter((c) => c.prompt === problemQ.prompt);
+    expect(
+      problemCalls.length,
+      'engine must call the prompter twice for problem_statement (first empty rejected, second accepted)',
+    ).toBe(2);
+
+    // First call has no error field; second call carries an error message.
+    expect(
+      problemCalls[0].error,
+      'first problem_statement call must have no error context',
+    ).toBeNull();
+    expect(
+      typeof problemCalls[1].error,
+      'second problem_statement call must carry an error string (re-prompt signal)',
+    ).toBe('string');
+    expect(
+      problemCalls[1].error.length,
+      'error message must be non-empty',
+    ).toBeGreaterThan(0);
+
+    // goals: prompter called ONCE and empty '' accepted as a skip (null stored).
+    const goalsCalls = calls.filter((c) => c.prompt === goalsQ.prompt);
+    expect(
+      goalsCalls.length,
+      'engine must call the prompter exactly once for goals (empty accepted, no re-prompt)',
+    ).toBe(1);
+    expect(
+      result.answers.goals,
+      'empty goals answer must be stored as null (optional skip)',
+    ).toBeNull();
+
+    // problem_statement must be stored with the real value.
+    expect(result.answers.problem_statement).toBe('We need to solve context loss.');
+
+    // Total prompter calls: 2 (problem_statement x2) + 1 (goals x1) = 3.
+    expect(
+      calls.length,
+      'total prompter calls must be 3 (2 for required problem_statement + 1 for optional goals)',
+    ).toBe(3);
+  });
+});
