@@ -825,14 +825,21 @@ function realReadlinePrompter() {
   };
 }
 
+// States that print their own summary line inside runInit and need no further
+// output from printFriendlyOutcome.  Add any future apply-* state here so the
+// false-epilogue defect (TASK-040, TASK-044) can never silently recur.
+const SELF_SUMMARIZING_STATES = new Set([
+  'already_initialized',
+  'applied_workflows',
+  'applied_models',
+  'no_op',
+  'cancelled',
+]);
+
 function printFriendlyOutcome({ state, projectMdPath, sessionId }) {
-  if (state === 'already_initialized' || state === 'applied_workflows') {
-    // Summary already printed inside runInit's detection branch.
-    return;
-  }
-  // TASK-046 — user declined the confirmation gate; no artifacts written.
-  if (state === 'cancelled') {
-    // Message already printed inline (console.log 'Init cancelled…').
+  if (SELF_SUMMARIZING_STATES.has(state)) {
+    // Summary already printed inside runInit's detection branch (or inline for
+    // 'cancelled').  No further output needed.
     return;
   }
   // eslint-disable-next-line no-console

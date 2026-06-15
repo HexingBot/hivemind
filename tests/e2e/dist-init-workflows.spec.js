@@ -218,3 +218,181 @@ describe('TASK-040 stdout lock — --apply-workflows suppresses normal-init epil
     ).not.toContain('Next step:');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-044 stdout regression lock — --apply-models must NOT print the
+// normal-init epilogue (false PROJECT.md-written + literal null session path).
+// ---------------------------------------------------------------------------
+//
+// This spec is the regression lock for the defect found in TASK-044:
+//   printFriendlyOutcome had no case for 'applied_models' or 'no_op' states
+//   and fell through to the normal-init epilogue, printing three false lines
+//   after the correct summary line emitted inside runInit.
+//
+// The fix introduces SELF_SUMMARIZING_STATES (a Set) in bin/init.js so any
+// future apply-* state can be registered in one place.
+//
+// VACUITY CONFIRMATION (red-green):
+//   RED:   ran this spec against dist/init.cjs built from bin/init.js BEFORE
+//          the fix (SELF_SUMMARIZING_STATES set absent; only 'already_initialized'
+//          and 'applied_workflows' guarded) — spec failed because stdout contained
+//          'PROJECT.md written', 'state/sessions/null', and 'Next step:'.
+//   GREEN: ran again after adding 'applied_models' + 'no_op' to
+//          SELF_SUMMARIZING_STATES and rebuilding dist/ — spec passes.
+
+describe('TASK-044 stdout lock — --apply-models suppresses normal-init epilogue', () => {
+  it('apply_models_stdout_has_summary_line_but_no_false_epilogue', () => {
+    expect(existsSync(DIST_INIT_CJS), 'dist/init.cjs must exist').toBe(true);
+
+    // Create a tmp project with a PROJECT.md that carries an agent_models map
+    // AND a matching .claude/agents/developer.md so the applier has a file to patch.
+    const projectDir = makeTmp('af-am-stdout');
+
+    // Write a minimal PROJECT.md with a valid agent_models frontmatter map.
+    // The inline-map format ({key: value}) matches what writeProjectMd emits.
+    const projectMdContent = [
+      '---',
+      'name: am-stdout-test',
+      'type: cli-tool',
+      'created_at: 2026-06-15T00:00:00Z',
+      'schema_version: 1',
+      'agent_models: {developer: haiku}',
+      '---',
+      '',
+      '# am-stdout-test',
+      '',
+      '## Stack',
+      '- project_type: cli-tool',
+      '',
+    ].join('\n');
+    writeFileSync(join(projectDir, 'PROJECT.md'), projectMdContent, 'utf8');
+
+    // Write a minimal developer agent file so applyAgentModels has a target.
+    const agentsDir = join(projectDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(
+      join(agentsDir, 'developer.md'),
+      [
+        '---',
+        'name: developer',
+        'description: Developer subagent.',
+        'model: sonnet',
+        '---',
+        '',
+        '# developer',
+        '',
+        'Agent body.',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [DIST_INIT_CJS, '--apply-models'],
+      {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          CLAUDE_PROJECT_DIR: projectDir,
+        },
+        encoding: 'utf8',
+        timeout: 60000,
+      },
+    );
+
+    const diagnostics = `exit=${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`;
+
+    // Must exit cleanly.
+    expect(
+      result.status,
+      `dist/init.cjs --apply-models must exit 0. ${diagnostics}`,
+    ).toBe(0);
+
+    // MUST contain the --apply-models summary line.
+    expect(
+      result.stdout,
+      `stdout must contain the --apply-models summary line. ${diagnostics}`,
+    ).toMatch(/--apply-models: updated \d+ file\(s\)/);
+
+    // Must NOT contain false "PROJECT.md written" line.
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'PROJECT.md written' (no PROJECT.md was written by --apply-models). ${diagnostics}`,
+    ).not.toContain('PROJECT.md written');
+
+    // Must NOT contain the literal "state/sessions/null" path (null sessionId).
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'state/sessions/null' (no session was minted). ${diagnostics}`,
+    ).not.toContain('state/sessions/null');
+
+    // Must NOT contain the "Next step:" line.
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'Next step:' line. ${diagnostics}`,
+    ).not.toContain('Next step:');
+  });
+
+  it('apply_models_no_op_stdout_has_summary_line_but_no_false_epilogue', () => {
+    expect(existsSync(DIST_INIT_CJS), 'dist/init.cjs must exist').toBe(true);
+
+    // PROJECT.md WITHOUT agent_models — triggers the no_op branch.
+    const projectDir = makeTmp('af-am-noop-stdout');
+    const projectMdContent = [
+      '---',
+      'name: am-noop-test',
+      'type: other',
+      'created_at: 2026-06-15T00:00:00Z',
+      'schema_version: 1',
+      '---',
+      '',
+      '# am-noop-test',
+      '',
+    ].join('\n');
+    writeFileSync(join(projectDir, 'PROJECT.md'), projectMdContent, 'utf8');
+
+    const result = spawnSync(
+      process.execPath,
+      [DIST_INIT_CJS, '--apply-models'],
+      {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          CLAUDE_PROJECT_DIR: projectDir,
+        },
+        encoding: 'utf8',
+        timeout: 60000,
+      },
+    );
+
+    const diagnostics = `exit=${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`;
+
+    expect(
+      result.status,
+      `dist/init.cjs --apply-models (no_op) must exit 0. ${diagnostics}`,
+    ).toBe(0);
+
+    // MUST contain the no-op summary line.
+    expect(
+      result.stdout,
+      `stdout must contain the no-op summary line. ${diagnostics}`,
+    ).toMatch(/--apply-models: no agent_models map/);
+
+    // Must NOT print the false epilogue lines.
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'PROJECT.md written'. ${diagnostics}`,
+    ).not.toContain('PROJECT.md written');
+
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'state/sessions/null'. ${diagnostics}`,
+    ).not.toContain('state/sessions/null');
+
+    expect(
+      result.stdout,
+      `stdout must NOT contain 'Next step:'. ${diagnostics}`,
+    ).not.toContain('Next step:');
+  });
+});

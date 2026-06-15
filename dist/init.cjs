@@ -10307,11 +10307,15 @@ function realReadlinePrompter() {
     return rl.question(`${text} `);
   };
 }
+var SELF_SUMMARIZING_STATES = /* @__PURE__ */ new Set([
+  "already_initialized",
+  "applied_workflows",
+  "applied_models",
+  "no_op",
+  "cancelled"
+]);
 function printFriendlyOutcome({ state, projectMdPath, sessionId }) {
-  if (state === "already_initialized" || state === "applied_workflows") {
-    return;
-  }
-  if (state === "cancelled") {
+  if (SELF_SUMMARIZING_STATES.has(state)) {
     return;
   }
   console.log(`* PROJECT.md written to ${projectMdPath}`);
