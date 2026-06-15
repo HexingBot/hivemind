@@ -8241,6 +8241,10 @@ function buildHtml() {
     --radius: 8px;
     --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --chat-width: 360px;
+    --chip-tool: #d29922;
+    --chip-subagent: #388bfd;
+    --chip-error: #f85149;
   }
 
   body {
@@ -8249,6 +8253,8 @@ function buildHtml() {
     color: var(--text);
     min-height: 100vh;
     padding: 16px;
+    display: flex;
+    flex-direction: column;
   }
 
   header {
@@ -8258,6 +8264,7 @@ function buildHtml() {
     margin-bottom: 20px;
     border-bottom: 1px solid var(--border);
     padding-bottom: 12px;
+    flex-shrink: 0;
   }
 
   header h1 {
@@ -8280,6 +8287,21 @@ function buildHtml() {
     padding: 10px 14px;
     margin-bottom: 12px;
     font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  /* Main content area: board + chat side by side */
+  .main-layout {
+    display: flex;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+    align-items: flex-start;
+  }
+
+  .board-area {
+    flex: 1;
+    min-width: 0;
   }
 
   .board {
@@ -8427,6 +8449,178 @@ function buildHtml() {
     padding: 16px 8px;
     font-style: italic;
   }
+
+  /* -------------------------------------------------------------------------
+   * Chat panel \u2014 TASK-052
+   * XSS note: all message content goes through .textContent, never innerHTML.
+   * ------------------------------------------------------------------------- */
+  #chat-panel {
+    flex: 0 0 var(--chat-width);
+    width: var(--chat-width);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 120px);
+    position: sticky;
+    top: 16px;
+  }
+
+  .chat-header {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: var(--radius) var(--radius) 0 0;
+    flex-shrink: 0;
+  }
+
+  .chat-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  .chat-status {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-family: var(--mono);
+  }
+
+  .chat-status.streaming {
+    color: var(--accent);
+  }
+
+  .chat-status.error {
+    color: var(--chip-error);
+  }
+
+  #chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .chat-bubble {
+    max-width: 90%;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.83rem;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+
+  .chat-bubble.user {
+    background: #1c2a3a;
+    border: 1px solid #2a3f56;
+    color: var(--text);
+    align-self: flex-end;
+  }
+
+  .chat-bubble.assistant {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    color: var(--text);
+    align-self: flex-start;
+  }
+
+  .chat-chip {
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    padding: 3px 8px;
+    border-radius: 10px;
+    align-self: flex-start;
+    border: 1px solid transparent;
+  }
+
+  .chat-chip.tool {
+    color: var(--chip-tool);
+    border-color: #3d2f0a;
+    background: #231b06;
+  }
+
+  .chat-chip.subagent {
+    color: var(--chip-subagent);
+    border-color: #1a2a4a;
+    background: #0d1a2e;
+  }
+
+  .chat-chip.error {
+    color: var(--chip-error);
+    border-color: #3d1a1a;
+    background: #1e0d0d;
+  }
+
+  .chat-chip.conn-lost {
+    color: var(--text-muted);
+    border-color: var(--border);
+    background: transparent;
+    font-style: italic;
+  }
+
+  .chat-input-row {
+    padding: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  #chat-input {
+    flex: 1;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.83rem;
+    padding: 7px 10px;
+    resize: none;
+    min-height: 36px;
+    max-height: 100px;
+    outline: none;
+    line-height: 1.4;
+  }
+
+  #chat-input:focus {
+    border-color: var(--accent);
+  }
+
+  #chat-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #chat-send {
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 0.83rem;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: var(--font);
+  }
+
+  #chat-send:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  #chat-send:not(:disabled):hover {
+    background: #79b8ff;
+  }
 </style>
 </head>
 <body>
@@ -8437,44 +8631,63 @@ function buildHtml() {
   </div>
 </header>
 <div id="error-banner"></div>
-<div class="board" id="board">
-  <div class="column" data-status="todo" id="col-todo">
-    <div class="column-header">
-      <span class="column-title">Todo</span>
-      <span class="column-count" id="count-todo">0</span>
+<div class="main-layout">
+  <div class="board-area">
+    <div class="board" id="board">
+      <div class="column" data-status="todo" id="col-todo">
+        <div class="column-header">
+          <span class="column-title">Todo</span>
+          <span class="column-count" id="count-todo">0</span>
+        </div>
+        <div class="cards" id="cards-todo"></div>
+      </div>
+      <div class="column" data-status="in_progress" id="col-in_progress">
+        <div class="column-header">
+          <span class="column-title">In Progress</span>
+          <span class="column-count" id="count-in_progress">0</span>
+        </div>
+        <div class="cards" id="cards-in_progress"></div>
+      </div>
+      <div class="column" data-status="in_review" id="col-in_review">
+        <div class="column-header">
+          <span class="column-title">In Review</span>
+          <span class="column-count" id="count-in_review">0</span>
+        </div>
+        <div class="cards" id="cards-in_review"></div>
+      </div>
+      <div class="column" data-status="blocked" id="col-blocked">
+        <div class="column-header">
+          <span class="column-title">Blocked</span>
+          <span class="column-count" id="count-blocked">0</span>
+        </div>
+        <div class="cards" id="cards-blocked"></div>
+      </div>
+      <div class="column" data-status="done" id="col-done">
+        <div class="column-header">
+          <span class="column-title">Done</span>
+          <span class="column-count" id="count-done">0</span>
+        </div>
+        <div class="cards" id="cards-done"></div>
+      </div>
     </div>
-    <div class="cards" id="cards-todo"></div>
   </div>
-  <div class="column" data-status="in_progress" id="col-in_progress">
-    <div class="column-header">
-      <span class="column-title">In Progress</span>
-      <span class="column-count" id="count-in_progress">0</span>
+  <!-- TASK-052: Chat panel \u2014 layout placeholder; full unified OS layout is TASK-054 -->
+  <div id="chat-panel">
+    <div class="chat-header">
+      <span class="chat-title">Orchestrator</span>
+      <span class="chat-status" id="chat-status">idle</span>
     </div>
-    <div class="cards" id="cards-in_progress"></div>
-  </div>
-  <div class="column" data-status="in_review" id="col-in_review">
-    <div class="column-header">
-      <span class="column-title">In Review</span>
-      <span class="column-count" id="count-in_review">0</span>
+    <div id="chat-messages"></div>
+    <div class="chat-input-row">
+      <textarea id="chat-input" rows="1" placeholder="Send a message..." aria-label="Chat message"></textarea>
+      <button id="chat-send">Send</button>
     </div>
-    <div class="cards" id="cards-in_review"></div>
-  </div>
-  <div class="column" data-status="blocked" id="col-blocked">
-    <div class="column-header">
-      <span class="column-title">Blocked</span>
-      <span class="column-count" id="count-blocked">0</span>
-    </div>
-    <div class="cards" id="cards-blocked"></div>
-  </div>
-  <div class="column" data-status="done" id="col-done">
-    <div class="column-header">
-      <span class="column-title">Done</span>
-      <span class="column-count" id="count-done">0</span>
-    </div>
-    <div class="cards" id="cards-done"></div>
   </div>
 </div>
 <script>
+  // ---------------------------------------------------------------------------
+  // Board logic (unchanged from original)
+  // ---------------------------------------------------------------------------
   const STATUSES = ['todo', 'in_progress', 'in_review', 'blocked', 'done'];
 
   const errBanner = document.getElementById('error-banner');
@@ -8598,6 +8811,167 @@ function buildHtml() {
   }
 
   fetchAndRender();
+
+  // ---------------------------------------------------------------------------
+  // Chat panel \u2014 TASK-052
+  //
+  // XSS discipline: all message/event text is rendered via document.createElement
+  // + .textContent.  innerHTML is NEVER used with stream or user content.
+  // Per-tab session id: generated once via crypto.randomUUID() and reused for
+  // the lifetime of this tab so conversation continuity is preserved.
+  // ---------------------------------------------------------------------------
+
+  // Per-tab session id \u2014 matches SESSION_ID_RE /^[A-Za-z0-9_-]{1,64}$/
+  // crypto.randomUUID() returns xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
+  // Prefix "tab-" makes it 40 chars total, well within the 64-char limit.
+  const sessionId = 'tab-' + crypto.randomUUID();
+
+  const chatMessages = document.getElementById('chat-messages');
+  const chatInput = document.getElementById('chat-input');
+  const chatSend = document.getElementById('chat-send');
+  const chatStatusEl = document.getElementById('chat-status');
+
+  // Current streaming assistant bubble (created on first text chunk of a turn,
+  // appended to on subsequent text chunks, finalized on turn-end).
+  var currentAssistantBubble = null;
+
+  function setChatStatus(text, cls) {
+    chatStatusEl.textContent = text;
+    chatStatusEl.className = 'chat-status' + (cls ? ' ' + cls : '');
+  }
+
+  function setInputBusy(busy) {
+    chatInput.disabled = busy;
+    chatSend.disabled = busy;
+    if (busy) {
+      setChatStatus('streaming\u2026', 'streaming');
+    } else {
+      setChatStatus('idle', '');
+    }
+  }
+
+  // Append a message bubble or chip to the chat history and scroll to bottom.
+  // NEVER sets innerHTML with content \u2014 only textContent is used.
+  function appendBubble(text, cls) {
+    var el = document.createElement('div');
+    el.className = cls;
+    el.textContent = text;
+    chatMessages.appendChild(el);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return el;
+  }
+
+  // Handle a normalized SSE event from /api/chat/:sessionId/stream.
+  // All branches render via textContent only \u2014 XSS safe.
+  function handleStreamEvent(evt) {
+    var type = evt.type;
+
+    if (type === 'text') {
+      // Incremental text: create bubble on first chunk, append on subsequent.
+      if (!currentAssistantBubble) {
+        currentAssistantBubble = appendBubble('', 'chat-bubble assistant');
+      }
+      currentAssistantBubble.textContent += evt.text || '';
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    } else if (type === 'tool') {
+      // Tool-use activity chip \u2014 compact, distinct from assistant text.
+      appendBubble('\u25B8 ' + (evt.name || 'tool'), 'chat-chip tool');
+
+    } else if (type === 'subagent') {
+      // Subagent-spawn activity chip \u2014 visually distinct accent color.
+      appendBubble('\u25B8 spawned ' + (evt.name || 'agent'), 'chat-chip subagent');
+
+    } else if (type === 'turn-end') {
+      // Finalize: clear the in-progress bubble pointer, unblock input.
+      currentAssistantBubble = null;
+      setInputBusy(false);
+
+    } else if (type === 'error') {
+      // Inline error \u2014 never a silent stall or infinite spinner.
+      appendBubble('\u26A0 ' + (evt.message || 'stream error'), 'chat-chip error');
+      currentAssistantBubble = null;
+      setInputBusy(false);
+
+    } else if (type === 'session') {
+      // Optional session-init event \u2014 log for diagnostics, do not render.
+      // (No content rendered \u2014 safe to ignore or console.log if needed.)
+    }
+  }
+
+  // Open the SSE stream for this tab's session.  EventSource auto-reconnects
+  // on network interruption \u2014 we only need to handle the error state visually.
+  var sseConnected = false;
+  var connLostChip = null;
+
+  var evtSource = new EventSource('/api/chat/' + encodeURIComponent(sessionId) + '/stream');
+
+  evtSource.onopen = function() {
+    sseConnected = true;
+    if (connLostChip) {
+      connLostChip.remove();
+      connLostChip = null;
+    }
+  };
+
+  evtSource.onmessage = function(e) {
+    var evt;
+    try { evt = JSON.parse(e.data); } catch { return; }
+    handleStreamEvent(evt);
+  };
+
+  evtSource.onerror = function() {
+    // Show a subtle inline state \u2014 do NOT lock the UI (EventSource auto-reconnects).
+    if (!connLostChip) {
+      connLostChip = appendBubble('connection lost \u2014 reconnecting\u2026', 'chat-chip conn-lost');
+    }
+    // Always unblock input so the user is never stuck.
+    if (chatInput.disabled) {
+      currentAssistantBubble = null;
+      setInputBusy(false);
+    }
+    sseConnected = false;
+  };
+
+  // Send a user turn: append the user bubble immediately, POST to the server.
+  async function sendMessage() {
+    var message = chatInput.value.trim();
+    if (!message) return;
+
+    // Append user bubble immediately (optimistic) \u2014 textContent only, XSS safe.
+    appendBubble(message, 'chat-bubble user');
+    chatInput.value = '';
+    currentAssistantBubble = null;
+    setInputBusy(true);
+
+    try {
+      var res = await fetch('/api/chat/' + encodeURIComponent(sessionId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message }),
+      });
+      if (!res.ok) {
+        var errText = 'Send failed (' + res.status + ')';
+        try { var b = await res.json(); errText = b.error || errText; } catch {}
+        appendBubble('\u26A0 ' + errText, 'chat-chip error');
+        setInputBusy(false);
+      }
+      // On success: the streamed reply arrives via the EventSource.
+    } catch (err) {
+      appendBubble('\u26A0 ' + (err.message || 'network error'), 'chat-chip error');
+      setInputBusy(false);
+    }
+  }
+
+  chatSend.addEventListener('click', sendMessage);
+
+  chatInput.addEventListener('keydown', function(e) {
+    // Enter without Shift sends; Shift+Enter inserts a newline.
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
 </script>
 </body>
 </html>`;
