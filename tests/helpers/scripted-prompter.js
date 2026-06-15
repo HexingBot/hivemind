@@ -60,11 +60,15 @@ const PROMPT_SIGNATURES = {
 // while(true), so silently returning '' for a forgotten REQUIRED answer would
 // re-prompt forever (vitest timeout) instead of surfacing a named error — the
 // header promise ("surface loudly rather than hang") holds.
+//
+// TASK-048 — problem_statement is now REQUIRED (required:false removed from the
+// question library). It has been removed from KNOWN_OPTIONAL_IDS and added to
+// webSaasAnswers() so all existing wizard-interactive tests provide a non-empty
+// answer and do not infinite-loop.
 const KNOWN_OPTIONAL_IDS = new Set([
   'agent_models',
-  // TASK-046 — discovery questions are required:false in COMMON_QUESTIONS;
+  // TASK-046 — goals/scope_in/scope_out remain required:false in COMMON_QUESTIONS;
   // tests that don't supply them get '' (skip) from the engine.
-  'problem_statement',
   'goals',
   'scope_in',
   'scope_out',
@@ -125,6 +129,9 @@ function resolveQuestionId(promptText) {
  */
 export function webSaasAnswers(overrides = {}) {
   return {
+    // TASK-048 — problem_statement is now required; supply a non-empty sentinel
+    // so wizard-interactive tests do not infinite-loop on the required-field prompt.
+    problem_statement: 'Teams lose context between sessions.',
     project_name: 'new-project',
     project_description: 'a brand new test project',
     project_type: 'web-saas',

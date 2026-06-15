@@ -41,8 +41,7 @@ export const COMMON_QUESTIONS = Object.freeze([
   {
     id: 'problem_statement',
     type: 'string',
-    required: false,
-    prompt: 'What problem are you solving? (one or two sentences, or press Enter to skip)',
+    prompt: 'What problem are you solving? (one or two sentences)',
   },
   {
     id: 'goals',

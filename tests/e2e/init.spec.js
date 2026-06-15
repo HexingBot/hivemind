@@ -152,10 +152,11 @@ describe('AC4 — resumed branch', () => {
     // Seed an active session bundle on disk with a partial intake.json.
     // Three intake answers are already recorded (project_name, project_description,
     // project_type). TASK-046 reordered COMMON_QUESTIONS so discovery questions
-    // (problem_statement, goals, scope_in, scope_out) now come first, but they
-    // are required:false so makeScriptedPrompter returns '' for them (the engine
-    // skips them on empty input). The wizard resumes by asking only the ids not
-    // yet present in the saved answers map.
+    // (problem_statement, goals, scope_in, scope_out) now come first. TASK-048
+    // made problem_statement required. Since the partial intake does NOT include
+    // problem_statement, the engine will ask it on resume — remainingAnswers
+    // supplies a non-empty value. goals/scope_in/scope_out remain optional so
+    // makeScriptedPrompter returns '' for them (accepted as skips).
     const sessionId = '20260526T120000Z-abcdef01';
     const bundleDir = join(repoDir, 'state', 'sessions', sessionId);
     mkdirSync(bundleDir, { recursive: true });
@@ -204,6 +205,9 @@ describe('AC4 — resumed branch', () => {
     });
 
     const remainingAnswers = {
+      // TASK-048 — problem_statement is now required; the partial intake above
+      // did not include it, so the engine will ask it on resume.
+      problem_statement: 'Context was lost mid-session.',
       target_users: 'people',
       primary_use_cases: 'automation',
       success_criteria: 'ships',
