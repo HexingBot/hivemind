@@ -46,6 +46,21 @@
           ]
         }
       }
+    },
+    "problem_statement": {
+      "type": "string"
+    },
+    "goals": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "scope_in": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "scope_out": {
+      "type": "array",
+      "items": { "type": "string" }
     }
   }
 }

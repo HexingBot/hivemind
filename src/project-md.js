@@ -66,11 +66,19 @@ const FRONTMATTER_SCHEMA = (__projectSchema && __projectSchema.properties)
 // order is the order sections appear in the file. `bullets: true` means the
 // section value is rendered as a markdown bullet list and parsed back as an
 // array; otherwise the section is a single prose block.
+//
+// TASK-045 — four definition sections (problem_statement, goals, scope_in,
+// scope_out) are appended AFTER the existing well-known sections and BEFORE
+// the ## Stack section (which is always emitted last, outside this loop).
 const BODY_SECTIONS = [
   { id: 'project_description', heading: 'Description', bullets: false },
   { id: 'target_users', heading: 'Target users', bullets: false },
   { id: 'primary_use_cases', heading: 'Primary use cases', bullets: true },
   { id: 'success_criteria', heading: 'Success criteria', bullets: false },
+  { id: 'problem_statement', heading: 'Problem', bullets: false },
+  { id: 'goals', heading: 'Goals', bullets: true },
+  { id: 'scope_in', heading: 'Scope (in)', bullets: true },
+  { id: 'scope_out', heading: 'Scope (out)', bullets: true },
 ];
 
 // Frontmatter answer ids are written into YAML rather than the body. Everything
@@ -208,14 +216,23 @@ function renderProjectMd(answers, createdAt) {
   for (const sec of BODY_SECTIONS) {
     if (!Object.prototype.hasOwnProperty.call(answers, sec.id)) continue;
     const value = answers[sec.id];
-    out.push(`## ${sec.heading}`);
+    // TASK-045 — omit the section entirely when the value is empty: an empty
+    // string for prose sections or an empty array for bullet sections produces
+    // no heading and no content (matching the absent-key behaviour). This guard
+    // covers both the new definition sections and any existing section whose
+    // caller supplies an empty value.
     if (sec.bullets) {
       const items = Array.isArray(value) ? value : [value];
+      if (items.length === 0) continue;
+      out.push(`## ${sec.heading}`);
       for (const item of items) {
         out.push(`- ${item}`);
       }
     } else {
-      out.push(String(value));
+      const str = String(value);
+      if (str.length === 0) continue;
+      out.push(`## ${sec.heading}`);
+      out.push(str);
     }
     out.push('');
   }

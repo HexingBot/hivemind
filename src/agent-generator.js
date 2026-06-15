@@ -60,6 +60,12 @@ const ROUNDTRIP_NOISE_IDS = new Set([
   'schema_version',
   // TASK-036 — agent_models is project config, not a stack entry.
   'agent_models',
+  // TASK-045 — definition fields are rendered in their own ## Problem section
+  // below; they must not appear as Stack bullets.
+  'problem_statement',
+  'goals',
+  'scope_in',
+  'scope_out',
 ]);
 
 // Per-project_type guidance bullets. Adding a new project_type means appending
@@ -165,6 +171,38 @@ function renderProjectContext(answers, generatedAt) {
   out.push(`schema_version: ${SCHEMA_VERSION}`);
   out.push('---');
   out.push('');
+
+  // --- ## Problem (definition block: problem_statement, goals, scope_in, scope_out) ---
+  // TASK-045 — surface the project definition so subagents understand the
+  // problem context before starting work. Each sub-field is rendered only when
+  // it is present and non-empty; the entire section is omitted when all four
+  // are absent, so existing projects that lack the new fields see no change.
+  const hasProblem = answers.problem_statement && String(answers.problem_statement).length > 0;
+  const hasGoals = Array.isArray(answers.goals) && answers.goals.length > 0;
+  const hasScopeIn = Array.isArray(answers.scope_in) && answers.scope_in.length > 0;
+  const hasScopeOut = Array.isArray(answers.scope_out) && answers.scope_out.length > 0;
+  if (hasProblem || hasGoals || hasScopeIn || hasScopeOut) {
+    out.push('## Problem');
+    if (hasProblem) {
+      out.push(String(answers.problem_statement));
+      out.push('');
+    }
+    if (hasGoals) {
+      out.push('### Goals');
+      for (const g of answers.goals) out.push(`- ${g}`);
+      out.push('');
+    }
+    if (hasScopeIn) {
+      out.push('### Scope (in)');
+      for (const s of answers.scope_in) out.push(`- ${s}`);
+      out.push('');
+    }
+    if (hasScopeOut) {
+      out.push('### Scope (out)');
+      for (const s of answers.scope_out) out.push(`- ${s}`);
+      out.push('');
+    }
+  }
 
   // --- ## Stack ---
   out.push('## Stack');
