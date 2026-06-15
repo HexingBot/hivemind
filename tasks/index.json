@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-15T20:39:00.379Z",
+  "generated_at": "2026-06-15T21:03:14.599Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -292,7 +292,7 @@
     {
       "key": "TASK-051",
       "title": "Web console epic P1: backend orchestrator-session bridge (persistent session manager + stream + send endpoints)",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {

@@ -10,7 +10,7 @@
     "A child process that exits/dies mid-session produces a single normalized error event to any open stream and marks the session stopped — verified by a unit test feeding an injected child an 'exit' signal.",
     "Tests-first discipline: the failing-spec commit precedes the implementation commit; dist/ is rebuilt so npm run test:all (including the TASK-049 dist-parity gate) passes green at hand-off."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "web-console",
@@ -22,11 +22,31 @@
   "depends_on": [
     "TASK-050"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "283d811",
+    "feef150",
+    "b01b3a2"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T20:39:50.047Z",
+      "body": "Plan + tier: verification_tier=tdd → developer spawned in TEST mode first (failing specs encoding each AC), then IMPL mode. This ticket touches the bundled board entrypoint (src/task-board.js + new src/orchestrator-bridge.js, bundled via bin/task-board.js) → the FULL test:all gate applies at hand-off, and dist/ MUST be rebuilt (TASK-049 dist-parity gate). Design locked from the TASK-050 spike (tasks/TASK-050.research.md + claude-headless skill): bridge module src/orchestrator-bridge.js spawns a long-lived `claude` child per sessionId via an INJECTABLE spawn fn (no real process in unit tests — feed canned stdout chunks); no-API-key spawn (argv: -p --output-format stream-json --input-format stream-json --verbose --include-partial-messages …; env with ANTHROPIC_API_KEY + ANTHROPIC_AUTH_TOKEN DELETED; cwd=repoRoot); session registry (create/lookup/stop); stdin NDJSON framing {\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":...}}; stdout stream-json → normalized {text|tool|subagent|turn-end|error} with newline-buffering for split-across-chunks + malformed-line→error-event (never throw); child-death→single error event + stopped. New board routes: POST /api/chat/:sessionId, GET /api/chat/:sessionId/stream (SSE), + session create/stop — all behind the existing Host allowlist, reusing Content-Type(415)/body-cap(413)/JSON(400) guards + a strict sessionId pattern guard. Pure-logic specs (registry, framing, parsing, spawn-arg/no-key assertion, child-death) → tests/ fast tier; route/SSE specs spinning up createBoardServer → tests/e2e/. The one open spike item (stdin envelope not officially documented) is handled by an it.skip real-spawn smoke test in e2e — do NOT spawn a real `claude` in CI (nested session + burns Agent-SDK credit)."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-06-15T21:02:55.806Z",
+      "body": "APPROVE (after one in-band MEDIUM fix). Initial pass: APPROVE-WITH-FOLLOWUPS, 0 HIGH / 1 MEDIUM / 2 LOW / 2 NIT, all 6 ACs PASS, full test:all 648 passed/5 skipped. Independently TRACED the load-bearing no-API-key invariant: the production default spawn in createSessionManager routes env through buildChildEnv(process.env) (deletes ANTHROPIC_API_KEY + ANTHROPIC_AUTH_TOKEN) — NOT process.env directly — so a real session cannot leak the key / bill per-token. Parser cannot throw on the data path (JSON.parse wrapped → error event); routes sit behind the Host allowlist with CT-415/body-413/JSON-400 guards + SESSION_ID_RE; child-death → single error event + stopped. Red-green confirmed non-vacuous (spawn test inspects captured env/args; split test feeds two pushes; child-death asserts exactly one error + stopped). MEDIUM: SSE /stream close handler was a no-op → subscriber leak. FIXED in-band (b01b3a2): unsubscribe(cb)=subscribers.delete added + wired into the close handler + non-vacuous regression lock (subscribe→unsubscribe→emit asserts not-called). Re-verified COLD: fix present, lock non-vacuous, no scope creep / no weakening (test count +1 only), existing board behavior unchanged, dist/task-board.cjs rebuilt, test:all 649 passed/5 skipped. The `typeof session.unsubscribe==='function'` route guard is acceptable (the real manager always exposes unsubscribe; the fast-tier lock pins that contract, so the soft guard cannot mask a production regression). Deferred non-blocking: stop() graceful-vs-kill fallback (LOW), thin flush test (LOW), Task dead branch + auto-create comment (NIT — comment added)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-15T21:03:05.196Z",
+      "body": "CLOSED — done on clean APPROVE (MEDIUM fixed in-band + cold re-verify). Linked commits: 283d811 (failing specs, tdd) + feef150 (impl: src/orchestrator-bridge.js + chat routes on src/task-board.js + dist rebuild) + b01b3a2 (review fix: SSE unsubscribe + regression lock + dist rebuild). The orchestrator-session bridge is live behind the board server: per-tab persistent `claude` child (no-API-key spawn via buildChildEnv), stream-json→normalized {text|tool|subagent|turn-end|error} parser (newline-buffered, malformed→error never throws), POST /api/chat/:sessionId + GET /api/chat/:sessionId/stream (SSE) + POST .../stop, all behind the Host allowlist with the existing guards. Full test:all gate green (649 passed/5 skipped, dist-parity included). The in-band MEDIUM fix followed the standing precedent (fix when the very next ticket — TASK-052, which opens /stream — would be bitten immediately). Next: TASK-052 (chat UI consuming /stream)."
+    }
+  ],
   "created_at": "2026-06-15T20:07:04.284Z",
-  "updated_at": "2026-06-15T20:07:04.284Z",
+  "updated_at": "2026-06-15T21:03:14.599Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
