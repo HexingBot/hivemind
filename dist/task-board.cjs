@@ -7719,8 +7719,8 @@ function resolveRepoRoot(env, cwd) {
 
 // src/task-board.js
 var import_node_http = __toESM(require("node:http"), 1);
-var import_promises3 = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+var import_promises4 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
 
 // src/task-store.js
 var import_promises = require("node:fs/promises");
@@ -8154,12 +8154,86 @@ function createSessionManager({ repoRoot, spawnFn } = {}) {
   return { create, get, has, stop };
 }
 
+// src/skill-catalog.js
+var import_promises3 = require("node:fs/promises");
+var import_node_fs3 = require("node:fs");
+var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
+var CURATED_SKILLS = [
+  {
+    id: "help",
+    label: "Help",
+    description: "Ask the orchestrator what it can do for you",
+    invocation: "What can you help me with right now? List the actions and tickets available."
+  },
+  {
+    id: "status",
+    label: "Status",
+    description: "Get a brief status update on current work in progress",
+    invocation: "Give me a brief status update: what is the current active task, what step are you on, and what is the next action?"
+  }
+];
+function deriveLabel(id) {
+  return id.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+function extractFrontmatterDescription(text) {
+  const lines = text.split(/\r?\n/);
+  if (lines[0] !== "---") return null;
+  let closeIdx = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i] === "---") {
+      closeIdx = i;
+      break;
+    }
+  }
+  if (closeIdx === -1) return null;
+  for (let i = 1; i < closeIdx; i++) {
+    const m = lines[i].match(/^description:\s*(.+)$/);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+async function listSkills({ repoRoot } = {}) {
+  const commandsDir = repoRoot ? (0, import_node_path4.join)(repoRoot, "commands") : null;
+  const commandSkills = [];
+  if (commandsDir && (0, import_node_fs3.existsSync)(commandsDir)) {
+    let entries;
+    try {
+      entries = await (0, import_promises3.readdir)(commandsDir);
+    } catch {
+      entries = [];
+    }
+    const mdFiles = entries.filter((name) => name.endsWith(".md")).sort();
+    for (const filename of mdFiles) {
+      const id = (0, import_node_path5.basename)(filename, ".md");
+      const filePath = (0, import_node_path4.join)(commandsDir, filename);
+      let text;
+      try {
+        text = await (0, import_promises3.readFile)(filePath, "utf8");
+      } catch {
+        continue;
+      }
+      const description = extractFrontmatterDescription(text) || `Run /${id}`;
+      const invocation = `/agentic-framework:${id}`;
+      const label = deriveLabel(id);
+      commandSkills.push({ id, label, description, invocation });
+    }
+  }
+  return [...commandSkills, ...CURATED_SKILLS];
+}
+async function resolveSkillInvocation(repoRoot, id) {
+  if (!id || typeof id !== "string") return null;
+  const skills = await listSkills({ repoRoot });
+  const found = skills.find((s) => s.id === id);
+  return found ? found.invocation : null;
+}
+
 // src/task-board.js
 async function readAllTasksForBoard(repoRoot) {
-  const tasksDir2 = (0, import_node_path4.join)(repoRoot, "tasks");
+  const tasksDir2 = (0, import_node_path6.join)(repoRoot, "tasks");
   let entries;
   try {
-    entries = await (0, import_promises3.readdir)(tasksDir2);
+    entries = await (0, import_promises4.readdir)(tasksDir2);
   } catch (err) {
     if (err && err.code === "ENOENT") return [];
     throw err;
@@ -8167,7 +8241,7 @@ async function readAllTasksForBoard(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises3.readFile)((0, import_node_path4.join)(tasksDir2, name), "utf8");
+    const raw = await (0, import_promises4.readFile)((0, import_node_path6.join)(tasksDir2, name), "utf8");
     out.push(JSON.parse(raw));
   }
   return out;
@@ -8621,6 +8695,87 @@ function buildHtml() {
   #chat-send:not(:disabled):hover {
     background: #79b8ff;
   }
+
+  /* -------------------------------------------------------------------------
+   * Skills panel \u2014 TASK-053
+   * Shows one button per vetted skill from the catalog.
+   * Clicking a button invokes the skill via POST /api/chat/:sessionId/skill.
+   * ------------------------------------------------------------------------- */
+  #skills-panel {
+    flex: 0 0 var(--chat-width);
+    width: var(--chat-width);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 120px);
+    position: sticky;
+    top: 16px;
+    overflow: hidden;
+  }
+
+  .skills-header {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: var(--radius) var(--radius) 0 0;
+    flex-shrink: 0;
+  }
+
+  .skills-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  #skills-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+  }
+
+  .skill-btn {
+    width: 100%;
+    text-align: left;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.83rem;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    word-break: break-word;
+  }
+
+  .skill-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: #1c2a3a;
+  }
+
+  .skill-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #skills-error {
+    font-size: 0.75rem;
+    color: var(--chip-error);
+    padding: 6px 10px;
+    display: none;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+  }
 </style>
 </head>
 <body>
@@ -8670,6 +8825,14 @@ function buildHtml() {
         <div class="cards" id="cards-done"></div>
       </div>
     </div>
+  </div>
+  <!-- TASK-053: Skills panel \u2014 vetted catalog of orchestrator actions -->
+  <div id="skills-panel">
+    <div class="skills-header">
+      <span class="skills-title">Actions</span>
+    </div>
+    <div id="skills-list"></div>
+    <div id="skills-error"></div>
   </div>
   <!-- TASK-052: Chat panel \u2014 layout placeholder; full unified OS layout is TASK-054 -->
   <div id="chat-panel">
@@ -8972,6 +9135,72 @@ function buildHtml() {
       sendMessage();
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Skills panel \u2014 TASK-053
+  //
+  // On load: fetch /api/skills \u2192 render one button per skill.
+  // Click \u2192 POST /api/chat/:sessionId/skill { skillId: id }.
+  // The server maps id \u2192 canonical invocation server-side; the client never
+  // posts an arbitrary command string through this path.
+  //
+  // XSS discipline: label and description come from disk (trusted data),
+  // but they are always set via .textContent / title attribute \u2014 never innerHTML.
+  // ---------------------------------------------------------------------------
+  var skillsList = document.getElementById('skills-list');
+  var skillsError = document.getElementById('skills-error');
+
+  function showSkillsError(msg) {
+    skillsError.textContent = msg;
+    skillsError.style.display = 'block';
+    setTimeout(function() { skillsError.style.display = 'none'; }, 5000);
+  }
+
+  async function runSkill(id) {
+    try {
+      var res = await fetch('/api/chat/' + encodeURIComponent(sessionId) + '/skill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skillId: id }),
+      });
+      if (!res.ok) {
+        var errText = 'Skill failed (' + res.status + ')';
+        try { var b = await res.json(); errText = b.error || errText; } catch {}
+        showSkillsError(errText);
+      }
+      // On success: the streamed reply arrives via the EventSource automatically.
+    } catch (err) {
+      showSkillsError(err.message || 'network error');
+    }
+  }
+
+  async function loadSkills() {
+    try {
+      var res = await fetch('/api/skills');
+      if (!res.ok) {
+        showSkillsError('Failed to load skills (' + res.status + ')');
+        return;
+      }
+      var skills = await res.json();
+      skillsList.innerHTML = '';
+      for (var i = 0; i < skills.length; i++) {
+        var skill = skills[i];
+        var btn = document.createElement('button');
+        btn.className = 'skill-btn';
+        btn.textContent = skill.label;
+        if (skill.description) btn.title = skill.description;
+        // Capture id in closure via a local binding.
+        (function(skillId) {
+          btn.addEventListener('click', function() { runSkill(skillId); });
+        }(skill.id));
+        skillsList.appendChild(btn);
+      }
+    } catch (err) {
+      showSkillsError('Failed to load skills: ' + (err.message || 'unknown error'));
+    }
+  }
+
+  loadSkills();
 </script>
 </body>
 </html>`;
@@ -9294,6 +9523,68 @@ function createBoardServer({ repoRoot, bridge } = {}) {
       if (req.method === "GET" && pathname === "/api/graph") {
         const graph = await loadGraph({ repoRoot });
         sendJson(res, 200, graph);
+        return;
+      }
+      if (req.method === "GET" && pathname === "/api/skills") {
+        const skills = await listSkills({ repoRoot });
+        const clientSkills = skills.map(({ id, label, description }) => ({ id, label, description }));
+        const payload = JSON.stringify(clientSkills, null, 2);
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Length": Buffer.byteLength(payload),
+          "Cache-Control": "no-cache"
+        });
+        res.end(payload);
+        return;
+      }
+      const chatSkillRe = /^\/api\/chat\/([^/]+)\/skill$/;
+      const chatSkillMatch = chatSkillRe.exec(pathname);
+      if (req.method === "POST" && chatSkillMatch) {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatSkillMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: "malformed percent-encoding in session id" });
+          return;
+        }
+        if (!SESSION_ID_RE.test(rawId)) {
+          sendJson(res, 400, { error: `invalid session id: ${rawId}` });
+          return;
+        }
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        const { skillId } = body;
+        if (!skillId || typeof skillId !== "string") {
+          sendJson(res, 400, { error: "body must include a non-empty `skillId` string" });
+          return;
+        }
+        const invocation = await resolveSkillInvocation(repoRoot, skillId);
+        if (invocation === null) {
+          sendJson(res, 400, { error: `unknown skill id: ${skillId}` });
+          return;
+        }
+        if (!sessionManager.has(rawId)) {
+          sessionManager.create(rawId);
+        }
+        const session = sessionManager.get(rawId);
+        session.send(invocation);
+        sendJson(res, 200, { ok: true });
         return;
       }
       const chatStopRe = /^\/api\/chat\/([^/]+)\/stop$/;

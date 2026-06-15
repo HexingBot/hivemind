@@ -42,6 +42,7 @@ import { join } from 'node:path';
 import { transitionStatus, TASK_FILENAME_RE } from './task-store.js';
 import { loadGraph } from './knowledge-graph.js';
 import { createSessionManager, SESSION_ID_RE } from './orchestrator-bridge.js';
+import { listSkills, resolveSkillInvocation } from './skill-catalog.js';
 
 // ---------------------------------------------------------------------------
 // Internal: read all task files from tasks/ without any caching.
@@ -541,6 +542,87 @@ function buildHtml() {
   #chat-send:not(:disabled):hover {
     background: #79b8ff;
   }
+
+  /* -------------------------------------------------------------------------
+   * Skills panel — TASK-053
+   * Shows one button per vetted skill from the catalog.
+   * Clicking a button invokes the skill via POST /api/chat/:sessionId/skill.
+   * ------------------------------------------------------------------------- */
+  #skills-panel {
+    flex: 0 0 var(--chat-width);
+    width: var(--chat-width);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 120px);
+    position: sticky;
+    top: 16px;
+    overflow: hidden;
+  }
+
+  .skills-header {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: var(--radius) var(--radius) 0 0;
+    flex-shrink: 0;
+  }
+
+  .skills-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  #skills-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+  }
+
+  .skill-btn {
+    width: 100%;
+    text-align: left;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.83rem;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    word-break: break-word;
+  }
+
+  .skill-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: #1c2a3a;
+  }
+
+  .skill-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #skills-error {
+    font-size: 0.75rem;
+    color: var(--chip-error);
+    padding: 6px 10px;
+    display: none;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+  }
 </style>
 </head>
 <body>
@@ -590,6 +672,14 @@ function buildHtml() {
         <div class="cards" id="cards-done"></div>
       </div>
     </div>
+  </div>
+  <!-- TASK-053: Skills panel — vetted catalog of orchestrator actions -->
+  <div id="skills-panel">
+    <div class="skills-header">
+      <span class="skills-title">Actions</span>
+    </div>
+    <div id="skills-list"></div>
+    <div id="skills-error"></div>
   </div>
   <!-- TASK-052: Chat panel — layout placeholder; full unified OS layout is TASK-054 -->
   <div id="chat-panel">
@@ -892,6 +982,72 @@ function buildHtml() {
       sendMessage();
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Skills panel — TASK-053
+  //
+  // On load: fetch /api/skills → render one button per skill.
+  // Click → POST /api/chat/:sessionId/skill { skillId: id }.
+  // The server maps id → canonical invocation server-side; the client never
+  // posts an arbitrary command string through this path.
+  //
+  // XSS discipline: label and description come from disk (trusted data),
+  // but they are always set via .textContent / title attribute — never innerHTML.
+  // ---------------------------------------------------------------------------
+  var skillsList = document.getElementById('skills-list');
+  var skillsError = document.getElementById('skills-error');
+
+  function showSkillsError(msg) {
+    skillsError.textContent = msg;
+    skillsError.style.display = 'block';
+    setTimeout(function() { skillsError.style.display = 'none'; }, 5000);
+  }
+
+  async function runSkill(id) {
+    try {
+      var res = await fetch('/api/chat/' + encodeURIComponent(sessionId) + '/skill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skillId: id }),
+      });
+      if (!res.ok) {
+        var errText = 'Skill failed (' + res.status + ')';
+        try { var b = await res.json(); errText = b.error || errText; } catch {}
+        showSkillsError(errText);
+      }
+      // On success: the streamed reply arrives via the EventSource automatically.
+    } catch (err) {
+      showSkillsError(err.message || 'network error');
+    }
+  }
+
+  async function loadSkills() {
+    try {
+      var res = await fetch('/api/skills');
+      if (!res.ok) {
+        showSkillsError('Failed to load skills (' + res.status + ')');
+        return;
+      }
+      var skills = await res.json();
+      skillsList.innerHTML = '';
+      for (var i = 0; i < skills.length; i++) {
+        var skill = skills[i];
+        var btn = document.createElement('button');
+        btn.className = 'skill-btn';
+        btn.textContent = skill.label;
+        if (skill.description) btn.title = skill.description;
+        // Capture id in closure via a local binding.
+        (function(skillId) {
+          btn.addEventListener('click', function() { runSkill(skillId); });
+        }(skill.id));
+        skillsList.appendChild(btn);
+      }
+    } catch (err) {
+      showSkillsError('Failed to load skills: ' + (err.message || 'unknown error'));
+    }
+  }
+
+  loadSkills();
 </script>
 </body>
 </html>`;
@@ -1302,6 +1458,91 @@ export function createBoardServer({ repoRoot, bridge } = {}) {
       if (req.method === 'GET' && pathname === '/api/graph') {
         const graph = await loadGraph({ repoRoot });
         sendJson(res, 200, graph);
+        return;
+      }
+
+      // -----------------------------------------------------------------------
+      // Skills routes — TASK-053
+      // -----------------------------------------------------------------------
+
+      // GET /api/skills — return the vetted skill catalog as JSON.
+      // Response omits `invocation` (the client sends only an id; the server
+      // maps id→invocation for security — the client never needs the raw command).
+      if (req.method === 'GET' && pathname === '/api/skills') {
+        const skills = await listSkills({ repoRoot });
+        const clientSkills = skills.map(({ id, label, description }) => ({ id, label, description }));
+        const payload = JSON.stringify(clientSkills, null, 2);
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': Buffer.byteLength(payload),
+          'Cache-Control': 'no-cache',
+        });
+        res.end(payload);
+        return;
+      }
+
+      // POST /api/chat/:sessionId/skill — invoke a vetted skill by id.
+      // The client sends { skillId }, the server maps id→invocation server-side.
+      // Unknown ids are rejected without calling session.send().
+      const chatSkillRe = /^\/api\/chat\/([^/]+)\/skill$/;
+      const chatSkillMatch = chatSkillRe.exec(pathname);
+      if (req.method === 'POST' && chatSkillMatch) {
+        // CONTENT-TYPE GUARD
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        // Decode and validate the session id.
+        let rawId;
+        try {
+          rawId = decodeURIComponent(chatSkillMatch[1]);
+        } catch {
+          sendJson(res, 400, { error: 'malformed percent-encoding in session id' });
+          return;
+        }
+        if (!SESSION_ID_RE.test(rawId)) {
+          sendJson(res, 400, { error: `invalid session id: ${rawId}` });
+          return;
+        }
+
+        // Read and validate the request body.
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
+          return;
+        }
+
+        const { skillId } = body;
+        if (!skillId || typeof skillId !== 'string') {
+          sendJson(res, 400, { error: 'body must include a non-empty `skillId` string' });
+          return;
+        }
+
+        // Resolve skill id → invocation. REJECT unknown ids (no send on unknown).
+        const invocation = await resolveSkillInvocation(repoRoot, skillId);
+        if (invocation === null) {
+          sendJson(res, 400, { error: `unknown skill id: ${skillId}` });
+          return;
+        }
+
+        // Ensure the session exists (same auto-create as the chat POST).
+        if (!sessionManager.has(rawId)) {
+          sessionManager.create(rawId);
+        }
+        const session = sessionManager.get(rawId);
+        session.send(invocation);
+
+        sendJson(res, 200, { ok: true });
         return;
       }
 

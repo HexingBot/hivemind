@@ -146,6 +146,48 @@ describe('TASK-052 — XSS discipline: innerHTML only empty-clear; textContent/c
 });
 
 // ===========================================================================
+// TASK-053 Locks — Skill panel scaffold: page fetches /api/skills and POSTs
+// to the /skill endpoint. Minimal, per new-test budget.
+// ===========================================================================
+describe('TASK-053 — skill panel: page fetches /api/skills', () => {
+  it('script_fetches_api_skills', () => {
+    const script = boardScriptSrc();
+    expect(
+      script.includes('/api/skills'),
+      "the board script must fetch '/api/skills' to load the skill catalog",
+    ).toBe(true);
+  });
+});
+
+describe('TASK-053 — skill panel: page POSTs to /skill endpoint', () => {
+  it('script_posts_to_skill_endpoint', () => {
+    const script = boardScriptSrc();
+    expect(
+      script.includes('/skill'),
+      "the board script must POST to the /skill endpoint when a skill button is clicked",
+    ).toBe(true);
+  });
+
+  it('skill_post_sends_skillId_field', () => {
+    const script = boardScriptSrc();
+    expect(
+      script.includes('skillId'),
+      "the board script must send a skillId field in the skill POST body",
+    ).toBe(true);
+  });
+});
+
+describe('TASK-053 — skill panel: id="skills-panel" present in board HTML', () => {
+  it('served_page_contains_skills_panel_id', () => {
+    const html = boardHtmlSrc();
+    expect(
+      html.includes('id="skills-panel"'),
+      'the served board HTML must include an element with id="skills-panel"',
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
 // Lock 5 — Activity-chip branches: 'subagent' and 'tool' event types handled.
 // Locks the TASK-052 AC2 feature (distinct chips for tool/subagent events).
 // ===========================================================================
