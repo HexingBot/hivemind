@@ -13,6 +13,7 @@
 // lets the OS choose a free ephemeral port.
 
 import { pathToFileURL } from 'node:url';
+import { spawn } from 'node:child_process';
 import { resolveRepoRoot } from '../src/repo-root.js';
 import { createBoardServer } from '../src/task-board.js';
 
@@ -20,7 +21,7 @@ import { createBoardServer } from '../src/task-board.js';
 // Argument parsing — strict: unknown tokens throw so typos surface immediately.
 // ---------------------------------------------------------------------------
 function parseArgs(argv) {
-  const out = { port: 0 };
+  const out = { port: 0, open: false };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
     if (tok === '--port') {
@@ -31,11 +32,39 @@ function parseArgs(argv) {
         throw new Error(`--port value must be an integer 0-65535, got: ${raw}`);
       }
       out.port = n;
+    } else if (tok === '--open') {
+      out.open = true;
     } else {
       throw new Error(`unknown argument: ${tok}`);
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// openBrowser — best-effort: never throws, never crashes the server.
+// Picks the right OS opener: `start ""` on Windows, `open` on macOS, `xdg-open`
+// on Linux. The spawned child is detached so it does not block the server.
+// ---------------------------------------------------------------------------
+export function openBrowser(url, spawnFn = spawn) {
+  try {
+    let cmd, args;
+    if (process.platform === 'win32') {
+      // On Windows, `start ""` is a cmd.exe built-in; we must use cmd.exe /c.
+      cmd = 'cmd.exe';
+      args = ['/c', 'start', '', url];
+    } else if (process.platform === 'darwin') {
+      cmd = 'open';
+      args = [url];
+    } else {
+      cmd = 'xdg-open';
+      args = [url];
+    }
+    const child = spawnFn(cmd, args, { detached: true, stdio: 'ignore' });
+    child.unref();
+  } catch (_err) {
+    // Best-effort: swallow all errors — the server keeps running.
+  }
 }
 
 // Only run when invoked directly (not on import from tests).
@@ -64,8 +93,12 @@ if (__isEntryScript) {
 
   server.listen(opts.port, '127.0.0.1', () => {
     const { port } = server.address();
+    const url = `http://127.0.0.1:${port}`;
     // eslint-disable-next-line no-console
-    console.log(`Task board: http://127.0.0.1:${port}`);
+    console.log(`Task board: ${url}`);
+    if (opts.open) {
+      openBrowser(url);
+    }
   });
 
   process.on('SIGINT', () => {

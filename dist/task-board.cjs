@@ -8,6 +8,10 @@ var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -24,6 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // node_modules/ajv/dist/compile/codegen/code.js
 var require_code = __commonJS({
@@ -7706,7 +7711,13 @@ var require_dist = __commonJS({
 });
 
 // bin/task-board.js
+var task_board_exports = {};
+__export(task_board_exports, {
+  openBrowser: () => openBrowser
+});
+module.exports = __toCommonJS(task_board_exports);
 var import_node_url = require("node:url");
+var import_node_child_process2 = require("node:child_process");
 
 // src/repo-root.js
 function resolveRepoRoot(env, cwd) {
@@ -10457,7 +10468,7 @@ function createBoardServer({ repoRoot, bridge } = {}) {
 // bin/task-board.js
 var import_meta = {};
 function parseArgs(argv) {
-  const out = { port: 0 };
+  const out = { port: 0, open: false };
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
     if (tok === "--port") {
@@ -10468,11 +10479,31 @@ function parseArgs(argv) {
         throw new Error(`--port value must be an integer 0-65535, got: ${raw}`);
       }
       out.port = n;
+    } else if (tok === "--open") {
+      out.open = true;
     } else {
       throw new Error(`unknown argument: ${tok}`);
     }
   }
   return out;
+}
+function openBrowser(url, spawnFn = import_node_child_process2.spawn) {
+  try {
+    let cmd, args;
+    if (process.platform === "win32") {
+      cmd = "cmd.exe";
+      args = ["/c", "start", "", url];
+    } else if (process.platform === "darwin") {
+      cmd = "open";
+      args = [url];
+    } else {
+      cmd = "xdg-open";
+      args = [url];
+    }
+    const child = spawnFn(cmd, args, { detached: true, stdio: "ignore" });
+    child.unref();
+  } catch (_err) {
+  }
 }
 var __isEntryScript = import_meta.url ? Boolean(process.argv[1]) && import_meta.url === (0, import_node_url.pathToFileURL)(process.argv[1]).href : typeof require !== "undefined" && typeof module !== "undefined" && require.main === module;
 if (__isEntryScript) {
@@ -10491,7 +10522,11 @@ if (__isEntryScript) {
   });
   server.listen(opts.port, "127.0.0.1", () => {
     const { port } = server.address();
-    console.log(`Task board: http://127.0.0.1:${port}`);
+    const url = `http://127.0.0.1:${port}`;
+    console.log(`Task board: ${url}`);
+    if (opts.open) {
+      openBrowser(url);
+    }
   });
   process.on("SIGINT", () => {
     if (typeof server.closeAllConnections === "function") {
@@ -10502,3 +10537,7 @@ if (__isEntryScript) {
     });
   });
 }
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  openBrowser
+});
