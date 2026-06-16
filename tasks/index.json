@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T18:44:03.552Z",
+  "generated_at": "2026-06-16T22:19:35.153Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -342,6 +342,24 @@
       "title": "graphify skill + /graph command to use the knowledge graph in a project",
       "status": "done",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-060",
+      "title": "Beta channel scaffold — agentic-framework-beta plugin identity",
+      "status": "in_progress",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-061",
+      "title": "Single-active-session lock (safety prerequisite for autonomy)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-062",
+      "title": "Goal-driven autonomous drive loop (opt-in beta command)",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

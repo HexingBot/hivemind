@@ -1,0 +1,40 @@
+{
+  "key": "TASK-062",
+  "title": "Goal-driven autonomous drive loop (opt-in beta command)",
+  "description": "The L2 controller that makes the per-ticket workflow self-driving toward a goal, with the four human hard-stop gates intact. Deliver (a) an opt-in /agentic-framework-beta:loop command (markdown) that instructs the orchestrator to run the autonomous drive loop, and (b) thin, PURE, testable helper functions in src/ for the non-agentic parts (goal predicate, next-ticket selection, progress, termination/backstop checks), plus (c) codify the stop-gates + standing-authorization switches into the orchestrator-routing skill. The loop drives the EXISTING workflow (read ticket → tier → developer → reviewer → record), it does NOT reimplement it. Autonomy is OPT-IN: the command does nothing until the human starts it with an explicit goal; it acquires the TASK-061 lock before driving and renews it each iteration. The loop MUST hard-stop and yield to the human at: (1) destructive/irreversible ops (close-to-done, push, tag, migrations), (2) UAT verdicts (uat-only cannot self-satisfy), (3) genuinely ambiguous scope, (4) release/version-bump/publish — UNLESS a recorded standing-authorization switch lifts that specific gate. Depends on TASK-061 (lock) and TASK-060 (beta identity).",
+  "acceptance_criteria": [
+    "src/drive-loop.js (or similar) exports PURE helpers with tests: selectNextTicket(readyList, goal) (priority then dependency order), goalSatisfied(tasks, goal) (true when no ready tickets match the goal), goalProgress(tasks, goal) -> {done,total}, and a backstop check (e.g. shouldStop given consecutive-no-progress count and/or a budget/iteration ceiling). Goal = a predicate over the task store (label or explicit key set). No new state storage required beyond what tasks/ already provides.",
+    "commands/loop.md exists, auto-discovered as /agentic-framework-beta:loop, documenting the control loop: acquire lock (TASK-061) → while goal not satisfied and within budget: list_ready(goal) → selectNextTicket → run the standard per-ticket workflow (developer per tier → fresh-context reviewer → loop-back on HIGH) → checkpoint the bundle → renew lock → repeat. It explicitly lists the FOUR hard-stop gates and that the loop pauses and surfaces to the human at each unless a standing-authorization switch lifts it.",
+    "The four hard-stop gates are enforced in the command's instructions AND documented in the orchestrator-routing skill (a new 'Autonomous loop' subsection): the loop never closes-to-done / pushes / bumps version / resolves ambiguous scope / records a UAT PASS without the human, unless an explicit recorded authorization switch covers that gate.",
+    "Standing-authorization switches are documented as an explicit, recorded set (e.g. auto_close_on_green_review, uat_delegated_to_orchestrator, auto_push_after_close) so the loop knows its own boundaries; default = all gates ON (most conservative).",
+    "Backstops documented + helper-enforced: bounded retries on REQUEST-CHANGES, stop after K consecutive no-progress iterations, and a hard iteration/token budget ceiling; the loop logs what it skipped/stopped on (no silent truncation).",
+    "tests-after: implement, prove by running the pure helpers + a dry-run of the loop logic, then add minimal regression locks for the helpers. UAT: a human-observable dry run — start the loop on a tiny scratch goal and confirm it selects the right next ticket, drives one iteration, and HALTS at the close gate (does not auto-close) when no authorization switch is set.",
+    "If any bundled source changes, rebuild dist + npm run test:all green."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "autonomy",
+    "loop",
+    "epic-loop-engineering"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-060",
+    "TASK-061"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T22:19:35.060Z",
+      "body": "Tier = tests-after (assigned at plan time). Rationale: mostly a command (orchestrator-run control loop, prose) + thin PURE helpers (goal predicate / next-ticket selection / progress / backstop) — implement, prove by running + a dry run, then add minimal regression locks on the helpers. UAT (human-observable): dry-run halts at the close gate without auto-closing. Depends on TASK-061 (lock) + TASK-060 (beta identity). The agentic parts (spawning dev/reviewer) are the orchestrator's job, not unit-tested; the helpers are."
+    }
+  ],
+  "created_at": "2026-06-16T22:19:12.567Z",
+  "updated_at": "2026-06-16T22:19:35.060Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
