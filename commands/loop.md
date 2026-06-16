@@ -31,7 +31,8 @@ Call `acquire()` from `src/session-lock.js` before any ticket work begins.
 ### Step 2 — Loop until done, stopped, or stuck
 
 ```
-while NOT goalSatisfied(tasks, goal) AND NOT shouldStop(...):
+while NOT goalSatisfied(tasks, goal)
+      AND NOT shouldStop({ iteration, maxIterations, consecutiveNoProgress, maxNoProgress }).stop:
   tasks = listReady({ repoRoot })
   ticket = selectNextTicket(tasks, goal)          // from src/drive-loop.js
   if ticket is null:
