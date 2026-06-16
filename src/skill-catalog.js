@@ -4,32 +4,33 @@
 // listSkills({ repoRoot }) → array of { id, label, description, invocation }
 //
 // The catalog is derived from two sources:
-//   1. commands/*.md files shipped with the plugin — each file's frontmatter
-//      `description` is read to build an entry. Growing commands/ auto-extends
-//      the catalog; no hand-maintained drift-prone list.
-//   2. A small curated SAFE-ACTIONS allowlist for non-technical users (e.g. a
-//      plain-English "help" prompt). These are always safe, never destructive.
+//   1. commands/*.md files that opt in with `panel_safe: true` in frontmatter.
+//      Commands WITHOUT panel_safe are excluded — clicking a button runs
+//      immediately, so only safe, non-destructive commands should appear.
+//      The catalog auto-grows: any future command with panel_safe: true shows up
+//      without code changes.
+//   2. A curated SAFE-ACTIONS list of plain-English conversational prompts for
+//      non-technical users. These never invoke destructive ops.
 //
-// Stable order: commands entries sorted by id (ascending), then curated entries.
+// Stable order: opt-in commands sorted by id (ascending), then curated entries.
+// De-dup by id: curated wins over a commands/-derived entry with the same id.
 //
 // resolveSkillInvocation(repoRoot, id) → invocation string | null
-//   Returns the full invocation for a known skill id. Returns null for an
-//   unknown id. Used by the route to map client-supplied id → canonical command
-//   and to reject unknown ids without executing anything.
+//   Returns the canonical invocation for a known skill id, or null for an
+//   unknown id. Used by the route to map client id → invocation and reject
+//   unknowns before any send() call.
 //
-// NO new npm dependencies — the frontmatter is a trivial two-line YAML block
-// (key: value) and is parsed with the same minimal regex-based approach used
-// by the in-house parser in src/project-md.js (parseFrontmatter).
+// NO new npm dependencies — frontmatter is parsed with the same minimal
+// regex-based approach used by the in-house parser in src/project-md.js.
 
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { basename } from 'node:path';
+import { join, basename } from 'node:path';
 
 // ---------------------------------------------------------------------------
-// Curated safe-actions allowlist — always appended after the commands/ entries.
-// These entries let non-technical users trigger read-only or helpful operations
-// without typing commands. All entries are non-destructive.
+// Curated safe-actions allowlist — always appended after the opt-in commands.
+// All entries are plain-English orchestrator prompts; none trigger destructive
+// ops. Order here is the display order for the curated section.
 // ---------------------------------------------------------------------------
 const CURATED_SKILLS = [
   {
@@ -41,8 +42,20 @@ const CURATED_SKILLS = [
   {
     id: 'status',
     label: 'Status',
-    description: 'Get a brief status update on current work in progress',
-    invocation: 'Give me a brief status update: what is the current active task, what step are you on, and what is the next action?',
+    description: 'Get a short status of current work',
+    invocation: 'Give me a short status: the active task, what is in progress, and what is next.',
+  },
+  {
+    id: 'next',
+    label: "What's next",
+    description: 'Ask what to work on next',
+    invocation: 'What should I work on next? Suggest the next ticket and why.',
+  },
+  {
+    id: 'new-task',
+    label: 'New task',
+    description: 'Start creating a new task by chatting',
+    invocation: 'I want to create a new task. Ask me what I need, then create the ticket.',
   },
 ];
 
@@ -58,31 +71,26 @@ function deriveLabel(id) {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: extract the `description` field from a simple YAML frontmatter.
-// Only needs to handle `key: value` scalar lines — the commands/*.md files
-// use a minimal frontmatter subset (matching what PROJECT.md uses).
-// Returns null if no description is found or the file has no frontmatter.
+// Internal: parse minimal YAML frontmatter from a commands/*.md file.
+// Returns an object of scalar key→value pairs found between the --- delimiters.
+// Returns {} if the file has no frontmatter or it can't be parsed.
 // ---------------------------------------------------------------------------
-function extractFrontmatterDescription(text) {
-  // Must start with ---
+function parseFrontmatterFields(text) {
   const lines = text.split(/\r?\n/);
-  if (lines[0] !== '---') return null;
+  if (lines[0] !== '---') return {};
 
   let closeIdx = -1;
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === '---') {
-      closeIdx = i;
-      break;
-    }
+    if (lines[i] === '---') { closeIdx = i; break; }
   }
-  if (closeIdx === -1) return null;
+  if (closeIdx === -1) return {};
 
-  // Scan frontmatter lines for `description: <value>`
+  const out = {};
   for (let i = 1; i < closeIdx; i++) {
-    const m = lines[i].match(/^description:\s*(.+)$/);
-    if (m) return m[1].trim();
+    const m = lines[i].match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (m) out[m[1]] = m[2].trim();
   }
-  return null;
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,21 +110,24 @@ export async function listSkills({ repoRoot } = {}) {
 
     const mdFiles = entries
       .filter((name) => name.endsWith('.md'))
-      .sort(); // sort alphabetically → sort by id (filename)
+      .sort(); // sort alphabetically → stable sort by id
 
     for (const filename of mdFiles) {
-      const id = basename(filename, '.md');
-      // Skip if id clashes with a curated entry (curated takes precedence in
-      // the curated section; disk entry is still included before it).
       const filePath = join(commandsDir, filename);
       let text;
       try {
         text = await readFile(filePath, 'utf8');
       } catch {
-        continue; // unreadable file — skip
+        continue; // unreadable — skip
       }
 
-      const description = extractFrontmatterDescription(text) || `Run /${id}`;
+      const fm = parseFrontmatterFields(text);
+
+      // Opt-in gate: only include commands that declare panel_safe: true.
+      if (fm.panel_safe !== 'true') continue;
+
+      const id = basename(filename, '.md');
+      const description = fm.description || `Run /${id}`;
       const invocation = `/agentic-framework:${id}`;
       const label = deriveLabel(id);
 
@@ -124,16 +135,17 @@ export async function listSkills({ repoRoot } = {}) {
     }
   }
 
-  // Stable order: commands sorted by id (already sorted above), then curated.
-  return [...commandSkills, ...CURATED_SKILLS];
+  // De-dup by id: curated wins if a commands/-derived entry has the same id.
+  // Build a Set of curated ids, then filter out any command entry that clashes.
+  const curatedIds = new Set(CURATED_SKILLS.map((s) => s.id));
+  const dedupedCommands = commandSkills.filter((s) => !curatedIds.has(s.id));
+
+  // Stable order: opt-in commands (sorted by id above), then curated entries.
+  return [...dedupedCommands, ...CURATED_SKILLS];
 }
 
 // ---------------------------------------------------------------------------
 // Public: resolveSkillInvocation(repoRoot, id) → string | null
-//
-// Returns the canonical invocation string for a known skill id, or null if
-// the id is not in the catalog. Used by the route to validate client-supplied
-// ids and reject unknowns before any send() call.
 // ---------------------------------------------------------------------------
 export async function resolveSkillInvocation(repoRoot, id) {
   if (!id || typeof id !== 'string') return null;

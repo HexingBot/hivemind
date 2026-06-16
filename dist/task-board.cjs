@@ -7720,7 +7720,7 @@ function resolveRepoRoot(env, cwd) {
 // src/task-board.js
 var import_node_http = __toESM(require("node:http"), 1);
 var import_promises4 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_node_path5 = require("node:path");
 
 // src/task-store.js
 var import_promises = require("node:fs/promises");
@@ -8158,7 +8158,6 @@ function createSessionManager({ repoRoot, spawnFn } = {}) {
 var import_promises3 = require("node:fs/promises");
 var import_node_fs3 = require("node:fs");
 var import_node_path4 = require("node:path");
-var import_node_path5 = require("node:path");
 var CURATED_SKILLS = [
   {
     id: "help",
@@ -8169,16 +8168,28 @@ var CURATED_SKILLS = [
   {
     id: "status",
     label: "Status",
-    description: "Get a brief status update on current work in progress",
-    invocation: "Give me a brief status update: what is the current active task, what step are you on, and what is the next action?"
+    description: "Get a short status of current work",
+    invocation: "Give me a short status: the active task, what is in progress, and what is next."
+  },
+  {
+    id: "next",
+    label: "What's next",
+    description: "Ask what to work on next",
+    invocation: "What should I work on next? Suggest the next ticket and why."
+  },
+  {
+    id: "new-task",
+    label: "New task",
+    description: "Start creating a new task by chatting",
+    invocation: "I want to create a new task. Ask me what I need, then create the ticket."
   }
 ];
 function deriveLabel(id) {
   return id.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
 }
-function extractFrontmatterDescription(text) {
+function parseFrontmatterFields(text) {
   const lines = text.split(/\r?\n/);
-  if (lines[0] !== "---") return null;
+  if (lines[0] !== "---") return {};
   let closeIdx = -1;
   for (let i = 1; i < lines.length; i++) {
     if (lines[i] === "---") {
@@ -8186,12 +8197,13 @@ function extractFrontmatterDescription(text) {
       break;
     }
   }
-  if (closeIdx === -1) return null;
+  if (closeIdx === -1) return {};
+  const out = {};
   for (let i = 1; i < closeIdx; i++) {
-    const m = lines[i].match(/^description:\s*(.+)$/);
-    if (m) return m[1].trim();
+    const m = lines[i].match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (m) out[m[1]] = m[2].trim();
   }
-  return null;
+  return out;
 }
 async function listSkills({ repoRoot } = {}) {
   const commandsDir = repoRoot ? (0, import_node_path4.join)(repoRoot, "commands") : null;
@@ -8205,7 +8217,6 @@ async function listSkills({ repoRoot } = {}) {
     }
     const mdFiles = entries.filter((name) => name.endsWith(".md")).sort();
     for (const filename of mdFiles) {
-      const id = (0, import_node_path5.basename)(filename, ".md");
       const filePath = (0, import_node_path4.join)(commandsDir, filename);
       let text;
       try {
@@ -8213,13 +8224,18 @@ async function listSkills({ repoRoot } = {}) {
       } catch {
         continue;
       }
-      const description = extractFrontmatterDescription(text) || `Run /${id}`;
+      const fm = parseFrontmatterFields(text);
+      if (fm.panel_safe !== "true") continue;
+      const id = (0, import_node_path4.basename)(filename, ".md");
+      const description = fm.description || `Run /${id}`;
       const invocation = `/agentic-framework:${id}`;
       const label = deriveLabel(id);
       commandSkills.push({ id, label, description, invocation });
     }
   }
-  return [...commandSkills, ...CURATED_SKILLS];
+  const curatedIds = new Set(CURATED_SKILLS.map((s) => s.id));
+  const dedupedCommands = commandSkills.filter((s) => !curatedIds.has(s.id));
+  return [...dedupedCommands, ...CURATED_SKILLS];
 }
 async function resolveSkillInvocation(repoRoot, id) {
   if (!id || typeof id !== "string") return null;
@@ -8230,7 +8246,7 @@ async function resolveSkillInvocation(repoRoot, id) {
 
 // src/task-board.js
 async function readAllTasksForBoard(repoRoot) {
-  const tasksDir2 = (0, import_node_path6.join)(repoRoot, "tasks");
+  const tasksDir2 = (0, import_node_path5.join)(repoRoot, "tasks");
   let entries;
   try {
     entries = await (0, import_promises4.readdir)(tasksDir2);
@@ -8241,7 +8257,7 @@ async function readAllTasksForBoard(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises4.readFile)((0, import_node_path6.join)(tasksDir2, name), "utf8");
+    const raw = await (0, import_promises4.readFile)((0, import_node_path5.join)(tasksDir2, name), "utf8");
     out.push(JSON.parse(raw));
   }
   return out;

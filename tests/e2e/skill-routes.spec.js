@@ -82,12 +82,12 @@ describe('TASK-053 — GET /api/skills', () => {
   beforeEach(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'skill-routes-spec-'));
     makeRepoSkeleton(repoRoot, {});
-    // Add a commands/ dir with one fixture command so the catalog is non-empty.
+    // Add a commands/ dir with one opt-in fixture command (panel_safe: true).
     const commandsDir = join(repoRoot, 'commands');
     mkdirSync(commandsDir, { recursive: true });
     writeFileSync(
       join(commandsDir, 'test-cmd.md'),
-      '---\ndescription: A test catalog command\n---\n\n# /agentic-framework:test-cmd\n',
+      '---\ndescription: A test catalog command\npanel_safe: true\n---\n\n# /agentic-framework:test-cmd\n',
       'utf8',
     );
     bridge = makeFakeBridge();
@@ -213,12 +213,12 @@ describe('TASK-053 — POST /api/chat/:sessionId/skill known id', () => {
   beforeEach(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'skill-routes-known-'));
     makeRepoSkeleton(repoRoot, {});
-    // Seed a known command so the catalog has a real entry.
+    // Seed a known command with panel_safe: true so it appears in the catalog.
     const commandsDir = join(repoRoot, 'commands');
     mkdirSync(commandsDir, { recursive: true });
     writeFileSync(
       join(commandsDir, 'my-skill.md'),
-      '---\ndescription: A test skill\n---\n\n# /agentic-framework:my-skill\n',
+      '---\ndescription: A test skill\npanel_safe: true\n---\n\n# /agentic-framework:my-skill\n',
       'utf8',
     );
     bridge = makeFakeBridge();
