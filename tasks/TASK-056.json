@@ -10,7 +10,7 @@
     "README gains a non-technical-operator section: what the console is, the one-click launch, and the honest 'no NEW cost but counts against your existing plan' note.",
     "Release gate: version bumped at BOTH pin sites (.claude-plugin/plugin.json + tests/publish-config.spec.js EXPECTED_VERSION), npm run test:all green, claude plugin validate PASS, and the tag/push performed only after explicit human approval; a UAT covering the double-click launch, the /console command, and the security walkthrough is recorded with all steps PASS."
   ],
-  "status": "todo",
+  "status": "in_review",
   "priority": "medium",
   "labels": [
     "web-console",
@@ -25,9 +25,20 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T02:56:52.208Z",
+      "body": "Plan + tier: tests-after for the code seams + MANUAL/UAT for live launch + a dedicated SECURITY REVIEW pass. This is a release/packaging ticket touching publish config → FULL test:all gate. Sequencing: (1) DEV build phase (this spawn): one-click launcher (console.cmd + console.sh at repo root) that starts the console server on 127.0.0.1 and opens the browser — no typed commands; commands/console.md slash command (mirror commands/task-status.md, framed as the full OS console); README non-technical-operator section + the honest 'no NEW cost but counts against your existing Agent-SDK plan credit' note + a documented trust model (local-only, single-user, reuses existing login) & residual risks; version bump 0.4.0→0.5.0 at BOTH pins (.claude-plugin/plugin.json + tests/publish-config.spec.js EXPECTED_VERSION). The console is already dist/task-board.cjs (in ENTRYPOINT_NAMES + shipped-bin) so no new bundle entry — but rebuild dist if any bundled source changes. Locks (tests-after): launcher files exist + reference the server entry + a 127.0.0.1 URL; commands/console.md parity with command conventions; version-pin consistency at both sites. DO NOT tag or push — the release tag/push is a separate human-approved gate (Principle #4). (2) Then I run an independent SECURITY REVIEW (reviewer, fresh context) across ALL new routes (chat/skill/create/session) + a general review. (3) Then the LIVE UAT + release gate WITH the human — this is where ALL deferred live legs (real streamed reply, click-runs-skill, board-updates-on-chat, status-tracks-work, double-click launch) get exercised in one live launch, then claude plugin validate + tag/push on explicit approval."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-06-16T03:08:24.507Z",
+      "body": "RELEASE-CAPSTONE REVIEW (security + diff) — APPROVE-WITH-FOLLOWUPS, 0 HIGH / 0 MEDIUM / 1 LOW / 2 NIT. test:all 734 passed/5 skipped, dist-parity GREEN, claude plugin validate PASS. SAFE TO SHIP as a local-only single-user tool: YES.\nSECURITY (AC4) — Host guard enforced ONCE before routing (ALLOWED_HOST_RE 127.0.0.1|localhost) so ALL new routes inherit it. Per-route audit all SAFE: POST /api/chat/:sessionId (415/413, SESSION_ID_RE, message→JSON stdin frame to claude child, never exec'd/no shell), GET .../stream + POST .../stop (id-guarded, %-decode-guarded), POST .../skill (skillId→server-mapped via resolveSkillInvocation, unknown→400 no send — no client command string), GET /api/skills (omits raw invocation), POST /api/tasks (415/413, validated, delegates to createTask atomic write, no path-join), GET /api/session (read-only bounded, never 500). No-API-key spawn intact (buildChildEnv strips ANTHROPIC_API_KEY+ANTHROPIC_AUTH_TOKEN, no shell:true). --open opens a FIXED server-derived 127.0.0.1 URL (not client input), try/catch best-effort, stdio:ignore, unref, argv-array (no shell:true) — cannot crash the server or inject args. Trust model documented in README + commands/console.md (local-only, reuses login, no new key/bill but counts against plan Agent-SDK credit, skill buttons run immediately → trusted machine only). No HIGH/MEDIUM security gaps.\nDIFF — AC1-AC5 PASS (launcher console.cmd/console.sh → dist/task-board.cjs --open --port 4517; --open/openBrowser locked non-vacuously; /console command parity; README non-technical + cost + trust; version 0.5.0 at BOTH pins). AC6 PASS for pre-tag scope (version consistent, test:all green, plugin validate PASS). LOW: console-launch.spec version-pin assertion duplicates publish-config.spec (cosmetic). NIT: console.md correctly omits panel_safe (won't appear as a one-click button); README web-console paragraph is dense (future bullet pass). REMAINING (human-gated, not code): live UAT (double-click launch + /console + the deferred live legs) recorded as uat comment, then tag/push on explicit approval."
+    }
+  ],
   "created_at": "2026-06-15T20:09:24.032Z",
-  "updated_at": "2026-06-15T20:09:24.032Z",
+  "updated_at": "2026-06-16T03:08:24.507Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
