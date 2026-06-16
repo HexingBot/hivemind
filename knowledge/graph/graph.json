@@ -120,6 +120,12 @@
       "type": "task",
       "ref": "tasks/TASK-052.json",
       "label": "Web console P2: chat panel UI (streaming render + activity chips)"
+    },
+    {
+      "id": "task-053",
+      "type": "task",
+      "ref": "tasks/TASK-053.json",
+      "label": "Web console P3: skill buttons (panel-safe catalog + run-on-click)"
     }
   ],
   "edges": [
@@ -180,6 +186,11 @@
     },
     {
       "from": "task-052",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-053",
       "to": "decision-20260615-web-console",
       "relation": "produced-by"
     },
