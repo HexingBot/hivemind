@@ -101,16 +101,23 @@ describe('AC3 — marketplace.json reflects this repo as the public marketplace 
     expect(mkt.name).toBe(EXPECTED_MARKETPLACE_NAME);
   });
 
-  it('marketplace_has_exactly_one_plugin_entry', () => {
+  it('marketplace_lists_the_stable_plugin_first_plus_optional_opt_in_channels', () => {
+    // Loop-engineering beta channel: the marketplace may now list an OPT-IN beta
+    // plugin (agentic-framework-beta, sourced from the `beta` branch) alongside
+    // the stable plugin. The stable entry MUST stay first (plugins[0]) and be the
+    // canonical install handle; any additional entries are opt-in channels.
     const mkt = readJson(MARKETPLACE_JSON);
     expect(Array.isArray(mkt.plugins)).toBe(true);
     expect(
       mkt.plugins.length,
-      'a single-plugin marketplace must list exactly one plugin entry',
-    ).toBe(1);
+      'marketplace must list at least the stable plugin',
+    ).toBeGreaterThanOrEqual(1);
+    // Every additional entry beyond stable must be a distinct, clearly-named channel.
+    const names = mkt.plugins.map((p) => p && p.name);
+    expect(new Set(names).size, 'plugin names must be unique').toBe(names.length);
   });
 
-  it('the_plugin_entry_names_agentic_framework_sourced_from_this_repo', () => {
+  it('the_stable_plugin_entry_names_agentic_framework_sourced_from_this_repo', () => {
     const mkt = readJson(MARKETPLACE_JSON);
     const entry = mkt.plugins[0];
     expect(entry.name).toBe(EXPECTED_PLUGIN_NAME);
