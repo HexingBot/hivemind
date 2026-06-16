@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T22:19:35.153Z",
+  "generated_at": "2026-06-16T22:27:00.647Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -346,7 +346,7 @@
     {
       "key": "TASK-060",
       "title": "Beta channel scaffold — agentic-framework-beta plugin identity",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {

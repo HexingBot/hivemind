@@ -15,10 +15,11 @@
 // must remain green — this file touches no production code.
 //
 // AC map (TASK-021):
-//   AC1 — .claude-plugin/plugin.json: name `agentic-framework`. (mcpServers and
-//         version: see the in-body notes — both flipped by TASK-027 P7.)
+//   AC1 — .claude-plugin/plugin.json: name `agentic-framework-beta` on this
+//         branch (TASK-060 beta identity; stable `main` keeps `agentic-framework`).
+//         (mcpServers and version: see the in-body notes — both flipped by TASK-027 P7.)
 //   AC2 — .claude-plugin/marketplace.json: source `./`, valid owner.name,
-//         lists the `agentic-framework` plugin.
+//         lists the `agentic-framework-beta` plugin (TASK-060 beta identity).
 //   AC3 — plugin-root agents/ (exactly the 4) + plugin-root skills/ with the
 //         repo-local tech-training-template skill.
 //   AC4 — shipped-bin allowlist: make-template.js EXCLUDED; init.js +
