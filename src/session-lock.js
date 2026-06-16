@@ -163,13 +163,19 @@ export async function acquire({
  * Renew the heartbeat for the current holder.
  * Should be called periodically by the lock holder to keep the lock fresh.
  *
+ * NO-OP when:
+ *   - The lock file is absent (caller never acquired; minting a phantom lock
+ *     would be a bug).
+ *   - The lock is held by a different pid/hostname (keeping a foreign lock alive
+ *     on the caller's clock is the exact corruption this module prevents).
+ *
  * @param {{
  *   repoRoot: string,
  *   now?: string | (() => string),
  *   pid?: number,
  *   hostname?: string,
  * }} opts
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>} true if the heartbeat was bumped, false if no-op.
  */
 export async function renew({
   repoRoot,
@@ -184,29 +190,51 @@ export async function renew({
   const myHost = hostname ?? os.hostname();
 
   const existing = readLock(repoRoot);
-  const record = {
-    holder_pid: existing?.holder_pid ?? myPid,
-    hostname: existing?.hostname ?? myHost,
-    heartbeat_at: nowIso,
-  };
 
-  await writeLock(repoRoot, record);
+  // Absent lock — no-op.
+  if (existing === null) return false;
+
+  // Foreign lock — no-op: do not keep someone else's lock alive.
+  const sameHolder = existing.holder_pid === myPid && existing.hostname === myHost;
+  if (!sameHolder) return false;
+
+  // We are the holder — bump heartbeat.
+  await writeLock(repoRoot, {
+    holder_pid: myPid,
+    hostname: myHost,
+    heartbeat_at: nowIso,
+  });
+  return true;
 }
 
 /**
- * Release the advisory lock. Idempotent: does not throw if the lock is absent
- * or held by a different process (advisory semantics — the caller should only
- * call release when it knows it holds the lock, but crashes during teardown
- * should never block the repo).
+ * Release the advisory lock. Holder-aware and idempotent:
+ *   - Same holder (pid + hostname match) → deletes the lock file.
+ *   - Foreign lock present → NO-OP (do not delete a lock you don't hold).
+ *   - Absent lock → NO-OP (idempotent, no throw).
  *
- * @param {{ repoRoot: string, pid?: number }} opts
+ * Callers that crash during teardown and no longer know their identity should
+ * rely on the staleness mechanism: the lock will expire automatically.
+ *
+ * @param {{ repoRoot: string, pid?: number, hostname?: string }} opts
  * @returns {Promise<void>}
  */
-export async function release({ repoRoot, pid } = {}) {
+export async function release({ repoRoot, pid, hostname } = {}) {
   if (!repoRoot) throw makeErr('E_LOCK_ARGS', 'release: repoRoot is required');
 
   const p = lockFilePath(repoRoot);
-  if (!existsSync(p)) return; // Already absent — idempotent success.
+  if (!existsSync(p)) return; // Absent — idempotent success.
+
+  // Read who holds the lock before deciding whether to delete.
+  const existing = readLock(repoRoot);
+  if (existing === null) return; // Absent or corrupt — treat as already gone.
+
+  const myPid = pid ?? process.pid;
+  const myHost = hostname ?? os.hostname();
+  const sameHolder = existing.holder_pid === myPid && existing.hostname === myHost;
+
+  // Foreign lock — do NOT delete it.
+  if (!sameHolder) return;
 
   try {
     unlinkSync(p);

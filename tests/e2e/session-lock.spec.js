@@ -266,7 +266,8 @@ describe('AC6 — release is idempotent', () => {
 
     expect(existsSync(lockFilePath(repoDir))).toBe(true);
 
-    await release({ repoRoot: repoDir });
+    // Pass matching identity so holder-aware release() recognises us as the holder.
+    await release({ repoRoot: repoDir, pid: MY_PID, hostname: MY_HOST });
 
     // Lock must be gone after release.
     expect(existsSync(lockFilePath(repoDir)), 'lock file must be removed after release').toBe(false);
@@ -295,7 +296,71 @@ describe('AC6 — release is idempotent', () => {
     });
 
     // Must not throw (advisory lock; release is always safe).
-    await expect(release({ repoRoot: repoDir })).resolves.not.toThrow();
+    await expect(
+      release({ repoRoot: repoDir, pid: MY_PID, hostname: MY_HOST }),
+    ).resolves.not.toThrow();
+
+    // The foreign lock MUST SURVIVE — a caller releasing their own lock
+    // must never destroy a lock they do not hold.
+    expect(
+      existsSync(lockFilePath(repoDir)),
+      'foreign lock file must still exist after a non-holder release()',
+    ).toBe(true);
+
+    // The record must still name the ORIGINAL foreign holder unchanged.
+    const record = JSON.parse(readFileSync(lockFilePath(repoDir), 'utf8'));
+    expect(record.holder_pid).toBe(OTHER_PID);
+    expect(record.hostname).toBe(OTHER_HOST);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC6b — renew is holder-aware (new regression locks added by review HIGH fix)
+// ---------------------------------------------------------------------------
+
+describe('AC6b — renew on absent lock is a no-op', () => {
+  it('renew_on_absent_lock_is_noop', async () => {
+    const { renew } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-renew-absent'));
+    // No lock file — state/ dir exists but .lock does not.
+    expect(existsSync(lockFilePath(repoDir))).toBe(false);
+
+    // renew() must not throw and must NOT create a lock file.
+    await expect(
+      renew({ repoRoot: repoDir, now: () => BASE_TIME, pid: MY_PID, hostname: MY_HOST }),
+    ).resolves.not.toThrow();
+
+    expect(
+      existsSync(lockFilePath(repoDir)),
+      'renew() on absent lock must not create the lock file',
+    ).toBe(false);
+  });
+});
+
+describe('AC6b — renew on foreign lock does not modify it', () => {
+  it('renew_on_foreign_lock_does_not_modify_it', async () => {
+    const { renew } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-renew-foreign'));
+    // Seed a foreign lock with a specific heartbeat.
+    const FOREIGN_HEARTBEAT = TWO_MIN_AGO;
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      heartbeat_at: FOREIGN_HEARTBEAT,
+    });
+
+    // renew() called by MY_PID/MY_HOST must not bump the foreign heartbeat.
+    await expect(
+      renew({ repoRoot: repoDir, now: () => BASE_TIME, pid: MY_PID, hostname: MY_HOST }),
+    ).resolves.not.toThrow();
+
+    // The record must be UNCHANGED — same pid, hostname, and heartbeat_at.
+    const record = JSON.parse(readFileSync(lockFilePath(repoDir), 'utf8'));
+    expect(record.holder_pid).toBe(OTHER_PID);
+    expect(record.hostname).toBe(OTHER_HOST);
+    expect(record.heartbeat_at).toBe(FOREIGN_HEARTBEAT);
   });
 });
 
