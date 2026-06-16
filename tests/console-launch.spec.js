@@ -140,19 +140,21 @@ describe('AC2 — commands/console.md slash command', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC6 — version bump: both pin sites agree on 0.5.0.
-// (Complements publish-config.spec.js which enforces plugin.json shape.)
+// AC6 — version pin consistency: plugin.json agrees with the CANONICAL pin in
+// publish-config.spec.js. This intentionally tracks publish-config's
+// EXPECTED_VERSION rather than re-hard-coding a literal here — one pin site to
+// bump per release (TASK-057: removed the duplicate 0.5.0 literal that forced a
+// double-bump and broke the v0.6.0 release gate).
 // ---------------------------------------------------------------------------
-describe('AC6 — version pin consistency 0.4.0 -> 0.5.0', () => {
-  it('plugin.json carries version 0.5.0', () => {
+describe('AC6 — version pin consistency (tracks publish-config)', () => {
+  it('plugin.json version matches publish-config EXPECTED_VERSION and is valid semver', () => {
     const pluginJson = JSON.parse(
       readFileSync(join(REPO_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'),
     );
-    expect(pluginJson.version).toBe('0.5.0');
-  });
-
-  it('publish-config.spec.js EXPECTED_VERSION is 0.5.0', () => {
     const src = readFileSync(join(REPO_ROOT, 'tests', 'publish-config.spec.js'), 'utf8');
-    expect(src).toMatch(/EXPECTED_VERSION\s*=\s*'0\.5\.0'/);
+    const m = src.match(/EXPECTED_VERSION\s*=\s*'([^']+)'/);
+    expect(m, 'publish-config.spec.js must declare EXPECTED_VERSION').not.toBeNull();
+    expect(pluginJson.version).toBe(m[1]);
+    expect(pluginJson.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 });

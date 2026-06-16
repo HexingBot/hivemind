@@ -26,6 +26,24 @@
       "label": "Orchestrator is the main session thread with the orchestrator-routing skill; no orchestrator subagent ships"
     },
     {
+      "id": "decision-20260615-web-console",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-15T19:00:00Z",
+      "label": "Agentic OS web console: browser window into a persistent orchestrator session via the existing claude login (no API key); extend the board server; local-only"
+    },
+    {
+      "id": "decision-20260616-os-ergonomics",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "v0.6.0 OS-ergonomics trio: console launcher into projects + /update + graphify skill+/graph"
+    },
+    {
+      "id": "ke-claude-headless-bridge",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
+      "label": "Headless claude stream-json bridge: persistent session mechanics + subscription auth"
+    },
+    {
       "id": "ke-session-audit-logs-gitignore",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/session-audit-logs-vs-wildcard-gitignore.md",
@@ -38,10 +56,10 @@
       "label": "Windows atomic rename is not truly atomic"
     },
     {
-      "id": "ke-claude-headless-bridge",
-      "type": "knowledge_entry",
-      "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
-      "label": "Headless claude stream-json bridge: persistent session mechanics + subscription auth"
+      "id": "skill-graphify",
+      "type": "skill",
+      "ref": "skills/graphify/SKILL.md",
+      "label": "graphify skill"
     },
     {
       "id": "skill-orchestrator-routing",
@@ -98,12 +116,6 @@
       "label": "Retire reviewer fable pin → inherit (default main model)"
     },
     {
-      "id": "decision-20260615-web-console",
-      "type": "decision",
-      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-15T19:00:00Z",
-      "label": "Agentic OS web console: browser window into a persistent orchestrator session via the existing claude login (no API key); extend the board server; local-only"
-    },
-    {
       "id": "task-050",
       "type": "task",
       "ref": "tasks/TASK-050.json",
@@ -144,9 +156,37 @@
       "type": "task",
       "ref": "tasks/TASK-056.json",
       "label": "Web console P6: launcher + /console + security review + v0.5.0 release"
+    },
+    {
+      "id": "task-057",
+      "type": "task",
+      "ref": "tasks/TASK-057.json",
+      "label": "Materialize console launcher into user projects at init"
+    },
+    {
+      "id": "task-058",
+      "type": "task",
+      "ref": "tasks/TASK-058.json",
+      "label": "/agentic-framework:update command"
+    },
+    {
+      "id": "task-059",
+      "type": "task",
+      "ref": "tasks/TASK-059.json",
+      "label": "graphify skill + /agentic-framework:graph command"
     }
   ],
   "edges": [
+    {
+      "from": "ke-claude-headless-bridge",
+      "to": "task-050",
+      "relation": "learned-in"
+    },
+    {
+      "from": "skill-graphify",
+      "to": "task-059",
+      "relation": "learned-in"
+    },
     {
       "from": "skill-orchestrator-routing",
       "to": "task-032",
@@ -228,9 +268,19 @@
       "relation": "produced-by"
     },
     {
-      "from": "ke-claude-headless-bridge",
-      "to": "task-050",
-      "relation": "learned-in"
+      "from": "task-057",
+      "to": "decision-20260616-os-ergonomics",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-058",
+      "to": "decision-20260616-os-ergonomics",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-059",
+      "to": "decision-20260616-os-ergonomics",
+      "relation": "produced-by"
     }
   ]
 }

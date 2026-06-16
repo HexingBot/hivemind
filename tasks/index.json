@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T03:13:40.038Z",
+  "generated_at": "2026-06-16T18:44:03.552Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -322,6 +322,24 @@
     {
       "key": "TASK-056",
       "title": "Web console epic P6: package + secure — dist entrypoint, one-click launcher, /console command, docs, security review, release",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-057",
+      "title": "Materialize console launcher into user projects at init",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-058",
+      "title": "/agentic-framework:update command to update the plugin from a project",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-059",
+      "title": "graphify skill + /graph command to use the knowledge graph in a project",
       "status": "done",
       "priority": "medium"
     }

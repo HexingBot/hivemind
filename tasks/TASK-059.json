@@ -1,0 +1,49 @@
+{
+  "key": "TASK-059",
+  "title": "graphify skill + /graph command to use the knowledge graph in a project",
+  "description": "The framework has its own knowledge graph (src/knowledge-graph.js with loadGraph/addNode/addEdge/removeNode/removeEdge/neighbors/nodesByType, plus /graph and /api/graph views on the board server), but no user-facing skill or slash command to drive it from a project. Ship (1) a graphify Agent Skill under skills/graphify/SKILL.md (byte-identical parity copy in .claude/skills/graphify/SKILL.md) with progressive-disclosure frontmatter describing WHEN to load it, teaching the orchestrator to build/query/inspect the graph via the existing knowledge-graph.js API; and (2) a commands/graph.md slash command (/agentic-framework:graph) that launches the board server and opens the /graph view (like /agentic-framework:console / task-status). RESPECT the recorded design decision (2026-06-11): the graph is an INCREMENTAL INDEX over existing artifacts (knowledge_entry, task, decision, skill nodes + typed edges), NOT a bulk re-scanner and NOT a second copy of state — the skill drives the incremental add/query API and visualization, it does not introduce a bulk artifact-scanner. No new src/ engine logic. This is the framework's OWN graphify, distinct from the unrelated gsd-graphify skill.",
+  "acceptance_criteria": [
+    "skills/graphify/SKILL.md exists with frontmatter whose description clearly states WHEN to load the skill (progressive disclosure), and a byte-identical parity copy exists at .claude/skills/graphify/SKILL.md (locked by the skills-parity test pattern).",
+    "The skill documents the knowledge-graph.js public API (loadGraph/addNode/addEdge/removeNode/removeEdge/neighbors/nodesByType), the node types and typed edges, and gives concrete how-to recipes for build/query/inspect against a project's knowledge/graph/graph.json.",
+    "The skill explicitly states the incremental-index design boundary: it does not bulk-rescan artifacts or duplicate state; it indexes existing artifacts via incremental edges.",
+    "commands/graph.md exists, is auto-discovered as /agentic-framework:graph, and launches node ${CLAUDE_PLUGIN_ROOT}/dist/task-board.cjs then directs the user to the /graph view (consistent with the console/task-status command pattern).",
+    "Any skill-parity / command-manifest tests pass; npm run test:changed plus affected e2e specs are green.",
+    "UAT: loading the skill, the orchestrator can add a node + edge and query neighbors on a scratch graph, and /agentic-framework:graph opens the graph view in the browser."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "graph",
+    "skills",
+    "commands",
+    "epic-os-ergonomics"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "2897951",
+    "8041886"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T17:23:34.584Z",
+      "body": "Tier = uat-only (assigned at plan time). Rationale: skill prose (skills/graphify/SKILL.md + .claude/skills parity) + markdown command (commands/graph.md) driving the EXISTING src/knowledge-graph.js public API — no new engine logic. Glue/docs per the rubric. Design guardrail recorded on the ticket: the graph is an incremental index, NOT a bulk re-scanner (honors the 2026-06-11 decision against a colliding state system). Per-ticket gate: npm run test:changed + skill-parity / command-manifest specs. UAT proves the orchestrator can add+query a node/edge via the skill and that /agentic-framework:graph opens the view."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-16T18:43:39.294Z",
+      "body": "UAT — verified by Orchestrator at the human's request (human granted blanket PASS on the presented script).\nStep 1 (AC1) — graphify SKILL.md in BOTH skills/ and .claude/skills/, frontmatter states WHEN, byte-identical parity locked: observed both present, cmp byte-identical, and tests/graphify-skill.spec.js (added in-band) locks parity. PASS.\nStep 2 (AC2) — documents knowledge-graph.js API + node types + edges + build/query/inspect recipes: observed reviewer verified every signature matches src/knowledge-graph.js. PASS.\nStep 3 (AC3) — explicit incremental-index design boundary (no bulk rescan / no state duplication): observed stated in the CRITICAL Design Boundary section. PASS.\nStep 4 (AC4) — commands/graph.md auto-discovered as /agentic-framework:graph, launches dist/task-board.cjs, points to /graph: observed file present + correct; orchestrator started server, GET /graph and GET /api/graph both returned HTTP 200. PASS.\nStep 5 (AC5) — parity/manifest tests pass: observed plugin-scaffold.spec.js green (graphify added to REPO_LOCAL_SKILLS) + new graphify parity spec 4/4. PASS.\nStep 6 (AC6) — add node+edge + query neighbors on scratch graph; /graph opens: observed orchestrator ran addNode x2 + addEdge + neighbors→[dec-1], nodesByType(task)→[task-999], graph 2 nodes/1 edge; /graph served 200. PASS.\nOVERALL: PASS (6/6)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T18:43:51.505Z",
+      "body": "CLOSED APPROVE-WITH-FOLLOWUPS. graphify skill (skills/graphify/SKILL.md + byte-identical .claude/skills parity) + /agentic-framework:graph command (commands/graph.md launches the board + /graph view). Drives the EXISTING src/knowledge-graph.js API (no new engine logic); honors the incremental-index design boundary. Reviewer: APPROVE-WITH-FOLLOWUPS (0H/1M/0L/0N) — the MEDIUM (missing byte-identity drift-guard, required by AC1) fixed in-band by adding tests/graphify-skill.spec.js (8041886), mirroring mcp-server/orchestrator-routing parity specs. API accuracy fully verified by the reviewer against the source. uat-only done-gate satisfied (uat comment 6/6 PASS, orchestrator-verified incl. live scratch-graph add/query + /graph 200). linked_commits: 2897951 (feat), 8041886 (parity spec). Part of the v0.6.0 OS-ergonomics trio."
+    }
+  ],
+  "created_at": "2026-06-16T17:23:10.240Z",
+  "updated_at": "2026-06-16T18:44:03.409Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}
