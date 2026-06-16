@@ -74,6 +74,12 @@ const __initDir = import.meta.url
 
 const PLUGIN_WORKFLOWS_SRC = join(__initDir, '..', 'workflows');
 
+// Source paths for the console launcher files.
+// These live one level above the entrypoint (plugin root), mirroring the
+// PLUGIN_WORKFLOWS_SRC resolution strategy for both dev-repo and bundled paths.
+const PLUGIN_LAUNCHER_CMD_SRC = join(__initDir, '..', 'console.cmd');
+const PLUGIN_LAUNCHER_SH_SRC  = join(__initDir, '..', 'console.sh');
+
 /**
  * Copy every file from plugin-root workflows/ into the project's .claude/workflows/.
  * Contract (mirrors AC2):
@@ -109,6 +115,49 @@ function materializeWorkflows(repoRoot) {
       skipped.push(entry.name);
     }
   }
+  return { added, skipped };
+}
+
+/**
+ * Copy console.cmd and console.sh from the plugin root into the target project
+ * ROOT (not .claude/ — the user can double-click straight from the project folder).
+ *
+ * Contract (TASK-057, mirrors materializeWorkflows):
+ *   - NEVER overwrites an existing destination file (existsSync check first —
+ *     this also safely no-ops the dev-repo self-copy case where source path ===
+ *     dest path, since the source already exists at that path).
+ *   - If a source launcher file is missing (stripped install), skips it silently.
+ *   - Idempotent: a second call on the same repoRoot is a no-op.
+ *
+ * @param {string} repoRoot - absolute path to the target project root
+ * @returns {{ added: string[], skipped: string[] }} lists of launcher names added/skipped
+ */
+function materializeLaunchers(repoRoot) {
+  const launchers = [
+    { src: PLUGIN_LAUNCHER_CMD_SRC, name: 'console.cmd' },
+    { src: PLUGIN_LAUNCHER_SH_SRC,  name: 'console.sh'  },
+  ];
+
+  const added   = [];
+  const skipped = [];
+
+  for (const { src, name } of launchers) {
+    if (!existsSync(src)) {
+      // Source absent (stripped install or missing file) — skip silently.
+      skipped.push(name);
+      continue;
+    }
+    const dest = join(repoRoot, name);
+    if (existsSync(dest)) {
+      // Destination already exists — never-overwrite contract; also handles the
+      // self-copy case (dev-repo run where src === dest).
+      skipped.push(name);
+    } else {
+      copyFileSync(src, dest);
+      added.push(name);
+    }
+  }
+
   return { added, skipped };
 }
 
@@ -557,6 +606,28 @@ async function runWizardAndWriteProjectMd({
     );
     throw err;
   }
+
+  // TASK-057 — materialize console launchers (console.cmd / console.sh) into
+  // the target project root so the user can double-click to open the console.
+  // Never-overwrite, idempotent (matches materializeWorkflows contract).
+  // Only runs on created/forced/resumed branches; already_initialized
+  // short-circuits before reaching this function.
+  try {
+    materializeLaunchers(repoRoot);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `launcher materializer failed: ${err && err.message ? err.message : err}`,
+    );
+    throw err;
+  }
+
+  // TASK-057 AC5 — discoverability: tell the user how to open the console.
+  // eslint-disable-next-line no-console
+  console.log(
+    'Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), ' +
+    'or use the /agentic-framework:console slash command in Claude Code.',
+  );
 
   return { projectMdPath: join(repoRoot, 'PROJECT.md') };
 }

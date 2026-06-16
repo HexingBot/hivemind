@@ -9872,6 +9872,8 @@ function readProjectClaudeMd(repoRoot) {
 var import_meta = {};
 var __initDir = import_meta.url ? (0, import_node_path12.dirname)((0, import_node_url.fileURLToPath)(import_meta.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
 var PLUGIN_WORKFLOWS_SRC = (0, import_node_path12.join)(__initDir, "..", "workflows");
+var PLUGIN_LAUNCHER_CMD_SRC = (0, import_node_path12.join)(__initDir, "..", "console.cmd");
+var PLUGIN_LAUNCHER_SH_SRC = (0, import_node_path12.join)(__initDir, "..", "console.sh");
 function materializeWorkflows(repoRoot) {
   const srcDir = PLUGIN_WORKFLOWS_SRC;
   if (!(0, import_node_fs14.existsSync)(srcDir)) return { added: [], skipped: [] };
@@ -9889,6 +9891,28 @@ function materializeWorkflows(repoRoot) {
       added.push(entry.name);
     } else {
       skipped.push(entry.name);
+    }
+  }
+  return { added, skipped };
+}
+function materializeLaunchers(repoRoot) {
+  const launchers = [
+    { src: PLUGIN_LAUNCHER_CMD_SRC, name: "console.cmd" },
+    { src: PLUGIN_LAUNCHER_SH_SRC, name: "console.sh" }
+  ];
+  const added = [];
+  const skipped = [];
+  for (const { src, name } of launchers) {
+    if (!(0, import_node_fs14.existsSync)(src)) {
+      skipped.push(name);
+      continue;
+    }
+    const dest = (0, import_node_path12.join)(repoRoot, name);
+    if ((0, import_node_fs14.existsSync)(dest)) {
+      skipped.push(name);
+    } else {
+      (0, import_node_fs14.copyFileSync)(src, dest);
+      added.push(name);
     }
   }
   return { added, skipped };
@@ -10154,6 +10178,17 @@ async function runWizardAndWriteProjectMd({
     );
     throw err;
   }
+  try {
+    materializeLaunchers(repoRoot);
+  } catch (err) {
+    console.warn(
+      `launcher materializer failed: ${err && err.message ? err.message : err}`
+    );
+    throw err;
+  }
+  console.log(
+    "Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), or use the /agentic-framework:console slash command in Claude Code."
+  );
   return { projectMdPath: (0, import_node_path12.join)(repoRoot, "PROJECT.md") };
 }
 async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent }) {
