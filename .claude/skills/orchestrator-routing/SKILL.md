@@ -192,6 +192,80 @@ behavior.
    without a `uat` comment that covers every AC with all steps PASS. A failed
    step sends the ticket back to implementation.
 
+## Autonomous loop
+
+The `/agentic-framework-beta:loop` command runs a goal-driven drive loop that
+self-drives the per-ticket workflow toward a stated goal (label or explicit key
+set). Full protocol is in `commands/loop.md`; the durable contract lives here.
+
+### Single-active-session lock requirement
+
+The loop MUST acquire the TASK-061 advisory lock (`src/session-lock.js`) before
+driving any ticket, and renew it each iteration. If `acquire()` raises
+`E_LOCK_HELD`, the loop stops and surfaces the holder's identity to the human.
+The lock is released in a finally-style step on exit, pause, or any unhandled
+error. A held lock blocks other sessions.
+
+### Four hard-stop gates
+
+The loop pauses and surfaces to the human at each gate unless a standing-
+authorization switch (see below) lifts it:
+
+1. **Destructive / irreversible ops** — close-to-done (ticket → `done`),
+   push to remote, branch deletion, release tagging, database migrations.
+   The loop never closes a ticket autonomously unless `auto_close_on_green_review`
+   is recorded in the session bundle.
+
+2. **UAT verdicts** — tickets with `verification_tier: uat-only` require
+   human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict.
+   Gate lifted only by `uat_delegated_to_orchestrator` (human pre-authorizes
+   orchestrator-verified steps, each recorded as "PASS — verified by Orchestrator
+   at the human's request").
+
+3. **Genuinely ambiguous scope** — if acceptance criteria are contradictory or
+   under-specified, or the loop cannot determine which ticket to work next, it
+   surfaces the ambiguity. No autonomous guess is ever made. No authorization
+   switch covers this gate.
+
+4. **Release / version-bump / publish** — any action that bumps `package.json`,
+   writes a CHANGELOG entry, tags a release, or publishes an artifact is a hard
+   stop. Gate lifted only by `auto_version_bump_on_milestone`.
+
+### Standing-authorization switches
+
+Switches are recorded in the session bundle under `loop_auth` (default all
+`false` — most conservative, all gates ON):
+
+| Switch | Gate lifted |
+|---|---|
+| `auto_close_on_green_review` | Gate 1 (close-to-done only) |
+| `auto_push_after_close` | Gate 1 (push after close only) |
+| `uat_delegated_to_orchestrator` | Gate 2 |
+| `auto_version_bump_on_milestone` | Gate 4 |
+
+Switches are session-scoped. The human must state them explicitly; the
+Orchestrator records the grant in the session bundle and re-reads `loop_auth`
+at each gate. Switches do not persist across sessions unless re-stated.
+
+### Backstops (no silent truncation)
+
+- **Hard iteration ceiling** (`maxIterations`, default 20): the loop stops and
+  surfaces a reason when the ceiling is reached.
+- **Consecutive no-progress ceiling** (`maxNoProgress`, default 3): stops when
+  no ticket is selected for N consecutive iterations (blocked/in_review/dep cycle).
+- **Reviewer retry limit** (`maxReviewerRetries`, default 2): a single ticket
+  may bounce back to the Developer at most twice on a HIGH finding; on the third
+  HIGH the loop surfaces and stops.
+- On any early stop the loop MUST log the reason to the session bundle and list
+  every ticket that was skipped or not started. No silent truncation.
+
+### goalStuck
+
+The loop calls `goalStuck(tasks, goal)` (from `src/drive-loop.js`) to detect
+when the goal is not satisfied but no ticket is selectable (all remaining goal
+tickets are blocked, in_review, or have unsatisfied dependencies). On stuck:
+log the blocking conditions, surface a summary, and stop — do not spin.
+
 ## Guardrails
 
 - **Confirm with the human** before: closing/transitioning tickets in non-trivial
