@@ -138,6 +138,12 @@
       "type": "task",
       "ref": "tasks/TASK-055.json",
       "label": "Web console P5: session-state status bar (bounded projection)"
+    },
+    {
+      "id": "task-056",
+      "type": "task",
+      "ref": "tasks/TASK-056.json",
+      "label": "Web console P6: launcher + /console + security review + v0.5.0 release"
     }
   ],
   "edges": [
@@ -213,6 +219,11 @@
     },
     {
       "from": "task-055",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-056",
       "to": "decision-20260615-web-console",
       "relation": "produced-by"
     },

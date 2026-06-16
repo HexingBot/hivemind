@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T03:08:24.507Z",
+  "generated_at": "2026-06-16T03:13:40.038Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -322,7 +322,7 @@
     {
       "key": "TASK-056",
       "title": "Web console epic P6: package + secure — dist entrypoint, one-click launcher, /console command, docs, security review, release",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     }
   ]
