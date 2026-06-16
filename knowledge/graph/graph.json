@@ -126,6 +126,12 @@
       "type": "task",
       "ref": "tasks/TASK-053.json",
       "label": "Web console P3: skill buttons (panel-safe catalog + run-on-click)"
+    },
+    {
+      "id": "task-054",
+      "type": "task",
+      "ref": "tasks/TASK-054.json",
+      "label": "Web console P4: create-ticket + unified OS shell + live refresh"
     }
   ],
   "edges": [
@@ -191,6 +197,11 @@
     },
     {
       "from": "task-053",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-054",
       "to": "decision-20260615-web-console",
       "relation": "produced-by"
     },

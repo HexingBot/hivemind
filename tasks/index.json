@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T02:19:50.213Z",
+  "generated_at": "2026-06-16T02:42:53.635Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -310,7 +310,7 @@
     {
       "key": "TASK-054",
       "title": "Web console epic P4: create-ticket on the board + unified \"OS\" shell + live refresh on orchestrator changes",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
