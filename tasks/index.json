@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T02:42:53.635Z",
+  "generated_at": "2026-06-16T02:55:10.406Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -316,7 +316,7 @@
     {
       "key": "TASK-055",
       "title": "Web console epic P5 (optional): live session-state panel — the \"OS status bar\"",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {

@@ -132,6 +132,12 @@
       "type": "task",
       "ref": "tasks/TASK-054.json",
       "label": "Web console P4: create-ticket + unified OS shell + live refresh"
+    },
+    {
+      "id": "task-055",
+      "type": "task",
+      "ref": "tasks/TASK-055.json",
+      "label": "Web console P5: session-state status bar (bounded projection)"
     }
   ],
   "edges": [
@@ -202,6 +208,11 @@
     },
     {
       "from": "task-054",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-055",
       "to": "decision-20260615-web-console",
       "relation": "produced-by"
     },
