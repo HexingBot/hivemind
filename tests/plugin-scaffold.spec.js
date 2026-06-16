@@ -54,7 +54,11 @@ const BACKSTOP_SKILL = 'orchestrator-routing';
 // sweep" assertion below now pins all THREE repo-local skills (still excluding
 // any global gsd-*/vue/etc.).
 const MCP_SKILL = 'mcp-server';
-const REPO_LOCAL_SKILLS = [BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL].sort();
+// TASK-059 — the graphify skill is a FOURTH legitimately shipped repo-local
+// skill (documents the knowledge-graph.js public API + /graph command). Exists
+// in BOTH skills/ and .claude/skills/ byte-identical.
+const GRAPHIFY_SKILL = 'graphify';
+const REPO_LOCAL_SKILLS = [BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
 function readJson(path) {
