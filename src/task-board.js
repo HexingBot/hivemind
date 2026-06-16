@@ -43,6 +43,7 @@ import { transitionStatus, createTask, TASK_FILENAME_RE } from './task-store.js'
 import { loadGraph } from './knowledge-graph.js';
 import { createSessionManager, SESSION_ID_RE } from './orchestrator-bridge.js';
 import { listSkills, resolveSkillInvocation } from './skill-catalog.js';
+import { projectSessionState } from './session-projection.js';
 
 // ---------------------------------------------------------------------------
 // Internal: read all task files from tasks/ without any caching.
@@ -219,6 +220,54 @@ function buildHtml() {
 
   .header-link:hover {
     background: var(--card-bg);
+  }
+
+  /* =========================================================================
+   * Status bar — compact session-state strip in the header
+   * ========================================================================= */
+  #session-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    color: var(--text-muted);
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 360px;
+    text-overflow: ellipsis;
+  }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    font-size: 0.68rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .status-chip.idle {
+    color: var(--text-muted);
+  }
+
+  .status-chip.active {
+    color: var(--accent);
+    border-color: #1c2a3a;
+    background: #0d1a2e;
+  }
+
+  .status-chip.warn {
+    color: var(--priority-high);
+    border-color: #3d2f0a;
+    background: #231b06;
   }
 
   /* =========================================================================
@@ -854,6 +903,7 @@ function buildHtml() {
 <header class="app-header">
   <h1>Agentic OS</h1>
   <span class="tagline">agentic software development framework</span>
+  <div id="session-status-bar" aria-label="Session status"></div>
   <a href="/graph" class="header-link">Knowledge graph</a>
 </header>
 
@@ -1430,6 +1480,81 @@ function buildHtml() {
   }
 
   loadSkills();
+
+  // ---------------------------------------------------------------------------
+  // Status bar — TASK-055
+  //
+  // Fetches /api/session on load and on each SSE turn-end event to show the
+  // orchestrator's current workflow step + active task in the header.
+  //
+  // XSS discipline: all content rendered via document.createElement + .textContent.
+  // No innerHTML with content.
+  // ---------------------------------------------------------------------------
+  var statusBar = document.getElementById('session-status-bar');
+
+  function renderStatusBar(data) {
+    while (statusBar.firstChild) statusBar.removeChild(statusBar.firstChild);
+
+    if (!data || data.idle) {
+      var idleChip = document.createElement('span');
+      idleChip.className = 'status-chip idle';
+      idleChip.textContent = 'idle';
+      statusBar.appendChild(idleChip);
+      return;
+    }
+
+    // Workflow step chip.
+    if (data.workflow_step) {
+      var stepChip = document.createElement('span');
+      stepChip.className = 'status-chip active';
+      stepChip.textContent = data.workflow_step;
+      statusBar.appendChild(stepChip);
+    }
+
+    // Active task chip.
+    if (data.active_task) {
+      var taskChip = document.createElement('span');
+      taskChip.className = 'status-chip active';
+      taskChip.textContent = data.active_task;
+      statusBar.appendChild(taskChip);
+    }
+
+    // Open questions / blockers count hint (only if non-zero).
+    var oqCount = Array.isArray(data.open_questions) ? data.open_questions.length : 0;
+    var blCount = Array.isArray(data.blockers) ? data.blockers.length : 0;
+    if (oqCount > 0 || blCount > 0) {
+      var hintChip = document.createElement('span');
+      hintChip.className = 'status-chip warn';
+      var parts = [];
+      if (oqCount > 0) parts.push(oqCount + 'Q');
+      if (blCount > 0) parts.push(blCount + 'B');
+      hintChip.textContent = parts.join(' ');
+      statusBar.appendChild(hintChip);
+    }
+  }
+
+  async function fetchSessionStatus() {
+    try {
+      var res = await fetch('/api/session');
+      if (!res.ok) return;
+      var data = await res.json();
+      renderStatusBar(data);
+    } catch (e) {
+      // Silently ignore — status bar is best-effort.
+    }
+  }
+
+  // Initial load.
+  fetchSessionStatus();
+
+  // Refresh on each turn-end SSE event — hook into the existing handleStreamEvent.
+  var _origHandleStreamEvent = handleStreamEvent;
+  handleStreamEvent = function(evt) {
+    _origHandleStreamEvent(evt);
+    if (evt.type === 'turn-end') {
+      fetchSessionStatus();
+    }
+  };
 </script>
 </body>
 </html>`;
@@ -1750,6 +1875,34 @@ export function createBoardServer({ repoRoot, bridge } = {}) {
       if (req.method === 'GET' && pathname === '/api/tasks') {
         const tasks = await readAllTasksForBoard(repoRoot);
         sendJson(res, 200, tasks);
+        return;
+      }
+
+      // GET /api/session — return bounded session-state projection (no-cache).
+      // Never 500 on absent/idle state; projectSessionState already guarantees this.
+      if (req.method === 'GET' && pathname === '/api/session') {
+        try {
+          const projection = projectSessionState({ repoRoot });
+          const payload = JSON.stringify(projection, null, 2);
+          res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': Buffer.byteLength(payload),
+            'Cache-Control': 'no-cache',
+          });
+          res.end(payload);
+        } catch (err) {
+          // Belt-and-suspenders: projectSessionState should never throw, but guard anyway.
+          sendJson(res, 200, {
+            idle: true,
+            workflow_step: 'idle',
+            active_task: null,
+            open_questions: [],
+            blockers: [],
+            next_action: null,
+            recent_decisions: [],
+            error: (err && err.message) || 'projection failed',
+          });
+        }
         return;
       }
 
