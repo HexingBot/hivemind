@@ -1,11 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "agentic-framework",
-  "displayName": "Agentic Software Development Framework",
-  "description": "Multi-agent orchestrated dev loop: intake wizard, seeded backlog, orchestrator + developer/reviewer/researcher subagents, portable session state.",
+  "name": "agentic-framework-beta",
+  "displayName": "Agentic Software Development Framework (Beta)",
+  "description": "Multi-agent orchestrated dev loop: intake wizard, seeded backlog, orchestrator + developer/reviewer/researcher subagents, portable session state. EXPERIMENTAL beta channel — installs alongside stable agentic-framework.",
   "author": { "name": "Rafael Matovelle" },
   "license": "MIT",
   "keywords": ["orchestration", "subagents", "workflow", "tasks", "tdd"],
-  "version": "0.6.0",
+  "version": "0.7.0-beta.1",
   "mcpServers": "./.mcp.json"
 }

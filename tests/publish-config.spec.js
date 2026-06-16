@@ -37,10 +37,12 @@ import { REPO_ROOT } from './helpers/repoRoot.js';
 const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 const MARKETPLACE_JSON = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
 
-const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-const EXPECTED_VERSION = '0.6.0';
+const SEMVER_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+const EXPECTED_VERSION = '0.7.0-beta.1';
 const EXPECTED_MARKETPLACE_NAME = 'agentic-framework-marketplace';
-const EXPECTED_PLUGIN_NAME = 'agentic-framework';
+// Beta branch: plugin name intentionally diverges from stable 'agentic-framework'
+// to allow side-by-side installation. EXPECTED_MARKETPLACE_NAME stays unchanged.
+const EXPECTED_PLUGIN_NAME = 'agentic-framework-beta';
 const EXPECTED_SOURCE = './';
 
 function readJson(path) {

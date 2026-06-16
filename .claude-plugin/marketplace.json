@@ -5,9 +5,9 @@
   "description": "Distribution marketplace for the Agentic Software Development Framework.",
   "plugins": [
     {
-      "name": "agentic-framework",
+      "name": "agentic-framework-beta",
       "source": "./",
-      "description": "Multi-agent orchestrated development loop as a Claude Code plugin."
+      "description": "Experimental beta channel for the Agentic Software Development Framework. Installs alongside stable agentic-framework for opt-in testing of loop-engineering features."
     }
   ]
 }
