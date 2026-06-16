@@ -188,6 +188,44 @@ describe('TASK-053 — skill panel: id="skills-panel" present in board HTML', ()
 });
 
 // ===========================================================================
+// TASK-054 Locks — New-ticket control + turn-end board refresh.
+// Minimal scaffold greps per new-test budget.
+// ===========================================================================
+describe('TASK-054 — New-ticket control present in board HTML', () => {
+  it('served_page_contains_new_ticket_button', () => {
+    const html = boardHtmlSrc();
+    expect(
+      html.includes('id="new-ticket-btn"') || html.includes("id='new-ticket-btn'"),
+      'the board HTML must contain a New-ticket button (id="new-ticket-btn")',
+    ).toBe(true);
+  });
+
+  it('script_posts_to_api_tasks', () => {
+    const script = boardScriptSrc();
+    expect(
+      script.includes("'/api/tasks'") || script.includes('"/api/tasks"'),
+      "the board script must POST to '/api/tasks' for the create-ticket flow",
+    ).toBe(true);
+  });
+});
+
+describe('TASK-054 — turn-end event triggers board refresh', () => {
+  it('turn_end_branch_calls_fetchAndRender', () => {
+    const script = boardScriptSrc();
+    // The turn-end handler must call fetchAndRender() inside the turn-end branch.
+    // We confirm by checking the branch contains both markers in sequence.
+    const turnEndIdx = script.indexOf("'turn-end'");
+    expect(turnEndIdx, "script must have a 'turn-end' branch").toBeGreaterThan(-1);
+    const afterTurnEnd = script.slice(turnEndIdx);
+    // fetchAndRender() must appear after the turn-end branch start.
+    expect(
+      afterTurnEnd.includes('fetchAndRender()'),
+      "the 'turn-end' branch must call fetchAndRender() for live board refresh",
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
 // Lock 5 — Activity-chip branches: 'subagent' and 'tool' event types handled.
 // Locks the TASK-052 AC2 feature (distinct chips for tool/subagent events).
 // ===========================================================================

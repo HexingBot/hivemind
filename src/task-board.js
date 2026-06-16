@@ -39,7 +39,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { transitionStatus, TASK_FILENAME_RE } from './task-store.js';
+import { transitionStatus, createTask, TASK_FILENAME_RE } from './task-store.js';
 import { loadGraph } from './knowledge-graph.js';
 import { createSessionManager, SESSION_ID_RE } from './orchestrator-bridge.js';
 import { listSkills, resolveSkillInvocation } from './skill-catalog.js';
@@ -122,8 +122,12 @@ const ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
 
 // ---------------------------------------------------------------------------
 // Internal: the inline kanban HTML page (all CSS and JS embedded).
-// TASK-052: extends the board with a side-by-side chat panel that consumes
-// the TASK-051 streaming endpoints (/api/chat/:sessionId and /api/chat/:sessionId/stream).
+// TASK-052: extends the board with a chat panel consuming TASK-051 streaming
+// endpoints (/api/chat/:sessionId and /api/chat/:sessionId/stream).
+// TASK-053: adds a skills panel with one button per vetted skill from the catalog.
+// TASK-054: unified "agentic OS" shell — fuses board, chat, skills into a single
+// cohesive console layout; adds "New ticket" form + POST /api/tasks client;
+// live board refresh on turn-end SSE; deferred polish from TASK-052/053 review.
 //
 // XSS discipline: identical to buildGraphHtml() — all stream/user content is
 // rendered via document.createElement + .textContent.  innerHTML is ONLY used
@@ -138,7 +142,7 @@ function buildHtml() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Task Board</title>
+<title>Agentic OS</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -150,7 +154,6 @@ function buildHtml() {
     --text-muted: #8b949e;
     --accent: #58a6ff;
     --col-bg: #161b22;
-    --col-hover: #1f2937;
     --col-drag-over: #1c2a3a;
     --card-bg: #21262d;
     --card-border: #30363d;
@@ -162,7 +165,7 @@ function buildHtml() {
     --radius: 8px;
     --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    --chat-width: 360px;
+    --side-width: 320px;
     --chip-tool: #d29922;
     --chip-subagent: #388bfd;
     --chip-error: #f85149;
@@ -172,76 +175,364 @@ function buildHtml() {
     font-family: var(--font);
     background: var(--bg);
     color: var(--text);
-    min-height: 100vh;
-    padding: 16px;
+    height: 100vh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
 
-  header {
+  /* =========================================================================
+   * Header bar — branding + nav links
+   * ========================================================================= */
+  .app-header {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 20px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 12px;
+    background: var(--surface);
+    flex-shrink: 0;
+    height: 48px;
+  }
+
+  .app-header h1 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+
+  .app-header .tagline {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-right: auto;
+  }
+
+  .header-link {
+    font-size: 0.78rem;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  .header-link:hover {
+    background: var(--card-bg);
+  }
+
+  /* =========================================================================
+   * Main 3-column console layout:
+   *   left sidebar (skills)  |  board (main)  |  right sidebar (chat)
+   * ========================================================================= */
+  .console {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* =========================================================================
+   * Left sidebar — Actions (skill buttons) + New Ticket
+   * ========================================================================= */
+  .sidebar-left {
+    width: var(--side-width);
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-section + .sidebar-section {
+    border-top: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+
+  .sidebar-heading {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    padding: 10px 14px 6px;
     flex-shrink: 0;
   }
 
-  header h1 {
-    font-size: 1.25rem;
-    font-weight: 600;
+  /* =========================================================================
+   * New Ticket button + form
+   * ========================================================================= */
+  .new-ticket-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% - 28px);
+    margin: 0 14px 10px;
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.83rem;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: var(--font);
+    text-align: left;
+    transition: background 0.15s;
+  }
+
+  .new-ticket-btn:hover {
+    background: #79b8ff;
+  }
+
+  /* Modal overlay */
+  #new-ticket-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #new-ticket-overlay.open {
+    display: flex;
+  }
+
+  #new-ticket-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    width: 480px;
+    max-width: 95vw;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .modal-title {
+    font-size: 0.95rem;
+    font-weight: 700;
     color: var(--text);
   }
 
-  header .subtitle {
-    font-size: 0.8rem;
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .form-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .form-input,
+  .form-select,
+  .form-textarea {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.83rem;
+    padding: 7px 10px;
+    outline: none;
+    width: 100%;
+  }
+
+  .form-input:focus,
+  .form-select:focus,
+  .form-textarea:focus {
+    border-color: var(--accent);
+  }
+
+  .form-textarea {
+    resize: vertical;
+    min-height: 72px;
+    line-height: 1.45;
+  }
+
+  .form-select {
+    cursor: pointer;
+  }
+
+  #new-ticket-error {
+    font-size: 0.78rem;
+    color: var(--priority-critical);
+    display: none;
+    padding: 6px 10px;
+    background: #1e0d0d;
+    border: 1px solid #3d1a1a;
+    border-radius: 4px;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-family: var(--font);
+    font-size: 0.83rem;
+    padding: 7px 16px;
+    cursor: pointer;
+  }
+
+  .btn-cancel:hover {
+    background: var(--card-bg);
+    color: var(--text);
+  }
+
+  .btn-submit {
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #0d1117;
+    font-family: var(--font);
+    font-size: 0.83rem;
+    font-weight: 700;
+    padding: 7px 16px;
+    cursor: pointer;
+  }
+
+  .btn-submit:hover:not(:disabled) {
+    background: #79b8ff;
+  }
+
+  .btn-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* =========================================================================
+   * Skills panel
+   * ========================================================================= */
+  #skills-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #skills-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .skill-btn {
+    width: 100%;
+    text-align: left;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.82rem;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    word-break: break-word;
+  }
+
+  .skill-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: #1c2a3a;
+  }
+
+  .skill-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #skills-error {
+    font-size: 0.75rem;
+    color: var(--chip-error);
+    padding: 6px 10px;
+    display: none;
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  /* =========================================================================
+   * Board — centre scrollable kanban
+   * ========================================================================= */
+  .board-area {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .board-toolbar {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .board-toolbar-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--text-muted);
   }
 
   #error-banner {
     display: none;
     background: #3d1a1a;
-    border: 1px solid var(--priority-critical);
-    border-radius: var(--radius);
+    border-bottom: 1px solid var(--priority-critical);
     color: #fca5a5;
-    padding: 10px 14px;
-    margin-bottom: 12px;
-    font-size: 0.85rem;
+    padding: 8px 14px;
+    font-size: 0.83rem;
     flex-shrink: 0;
-  }
-
-  /* Main content area: board + chat side by side */
-  .main-layout {
-    display: flex;
-    gap: 16px;
-    flex: 1;
-    min-height: 0;
-    align-items: flex-start;
-  }
-
-  .board-area {
-    flex: 1;
-    min-width: 0;
   }
 
   .board {
     display: flex;
-    gap: 12px;
+    gap: 10px;
+    padding: 14px;
     overflow-x: auto;
     align-items: flex-start;
-    padding-bottom: 8px;
+    flex: 1;
+    min-height: 0;
   }
 
   .column {
-    flex: 0 0 220px;
-    min-width: 180px;
+    flex: 0 0 200px;
+    min-width: 160px;
     background: var(--col-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 120px);
+    max-height: 100%;
     transition: background 0.15s, border-color 0.15s;
   }
 
@@ -251,7 +542,7 @@ function buildHtml() {
   }
 
   .column-header {
-    padding: 10px 12px 8px;
+    padding: 8px 10px 6px;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -263,8 +554,8 @@ function buildHtml() {
   }
 
   .column-title {
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-size: 0.72rem;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
@@ -273,8 +564,8 @@ function buildHtml() {
   .column-count {
     background: var(--border);
     color: var(--text-muted);
-    font-size: 0.7rem;
-    font-weight: 600;
+    font-size: 0.68rem;
+    font-weight: 700;
     padding: 1px 6px;
     border-radius: 10px;
     min-width: 20px;
@@ -282,20 +573,20 @@ function buildHtml() {
   }
 
   .cards {
-    padding: 8px;
+    padding: 6px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
     overflow-y: auto;
     flex: 1;
-    min-height: 48px;
+    min-height: 40px;
   }
 
   .card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 6px;
-    padding: 10px 10px 8px;
+    padding: 8px 8px 6px;
     cursor: grab;
     transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
     user-select: none;
@@ -315,13 +606,13 @@ function buildHtml() {
   .card-top {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 5px;
+    gap: 5px;
+    margin-bottom: 4px;
   }
 
   .priority-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
   }
@@ -333,14 +624,14 @@ function buildHtml() {
 
   .card-key {
     font-family: var(--mono);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     color: var(--accent);
     font-weight: 500;
     flex-shrink: 0;
   }
 
   .card-title {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: var(--text);
     line-height: 1.35;
     word-break: break-word;
@@ -349,13 +640,13 @@ function buildHtml() {
   .card-labels {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 6px;
+    gap: 3px;
+    margin-top: 5px;
   }
 
   .label-pill {
-    font-size: 0.65rem;
-    padding: 1px 6px;
+    font-size: 0.62rem;
+    padding: 1px 5px;
     border-radius: 10px;
     background: #21262d;
     border: 1px solid var(--border);
@@ -364,50 +655,54 @@ function buildHtml() {
   }
 
   .empty-col {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     color: var(--border);
     text-align: center;
-    padding: 16px 8px;
+    padding: 14px 6px;
     font-style: italic;
   }
 
-  /* -------------------------------------------------------------------------
-   * Chat panel — TASK-052
+  /* =========================================================================
+   * Right sidebar — Chat panel
    * XSS note: all message content goes through .textContent, never innerHTML.
-   * ------------------------------------------------------------------------- */
-  #chat-panel {
-    flex: 0 0 var(--chat-width);
-    width: var(--chat-width);
+   * ========================================================================= */
+  .sidebar-right {
+    width: var(--side-width);
+    flex-shrink: 0;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 120px);
-    position: sticky;
-    top: 16px;
+    overflow: hidden;
+  }
+
+  #chat-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .chat-header {
-    padding: 10px 12px 8px;
+    padding: 10px 14px 8px;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-radius: var(--radius) var(--radius) 0 0;
     flex-shrink: 0;
   }
 
   .chat-title {
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-size: 0.7rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--text-muted);
   }
 
   .chat-status {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     color: var(--text-muted);
     font-family: var(--mono);
   }
@@ -431,10 +726,10 @@ function buildHtml() {
   }
 
   .chat-bubble {
-    max-width: 90%;
+    max-width: 92%;
     border-radius: 6px;
-    padding: 7px 10px;
-    font-size: 0.83rem;
+    padding: 6px 9px;
+    font-size: 0.82rem;
     line-height: 1.45;
     word-break: break-word;
   }
@@ -454,9 +749,9 @@ function buildHtml() {
   }
 
   .chat-chip {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-family: var(--mono);
-    padding: 3px 8px;
+    padding: 2px 7px;
     border-radius: 10px;
     align-self: flex-start;
     border: 1px solid transparent;
@@ -487,6 +782,13 @@ function buildHtml() {
     font-style: italic;
   }
 
+  .chat-chip.interrupted {
+    color: var(--text-muted);
+    border-color: var(--border);
+    background: transparent;
+    font-style: italic;
+  }
+
   .chat-input-row {
     padding: 10px;
     border-top: 1px solid var(--border);
@@ -503,11 +805,11 @@ function buildHtml() {
     border-radius: 6px;
     color: var(--text);
     font-family: var(--font);
-    font-size: 0.83rem;
-    padding: 7px 10px;
+    font-size: 0.82rem;
+    padding: 6px 9px;
     resize: none;
-    min-height: 36px;
-    max-height: 100px;
+    min-height: 34px;
+    max-height: 96px;
     outline: none;
     line-height: 1.4;
   }
@@ -526,9 +828,9 @@ function buildHtml() {
     color: #0d1117;
     border: none;
     border-radius: 6px;
-    padding: 7px 14px;
-    font-size: 0.83rem;
-    font-weight: 600;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
     cursor: pointer;
     flex-shrink: 0;
     font-family: var(--font);
@@ -542,99 +844,46 @@ function buildHtml() {
   #chat-send:not(:disabled):hover {
     background: #79b8ff;
   }
-
-  /* -------------------------------------------------------------------------
-   * Skills panel — TASK-053
-   * Shows one button per vetted skill from the catalog.
-   * Clicking a button invokes the skill via POST /api/chat/:sessionId/skill.
-   * ------------------------------------------------------------------------- */
-  #skills-panel {
-    flex: 0 0 var(--chat-width);
-    width: var(--chat-width);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100vh - 120px);
-    position: sticky;
-    top: 16px;
-    overflow: hidden;
-  }
-
-  .skills-header {
-    padding: 10px 12px 8px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-radius: var(--radius) var(--radius) 0 0;
-    flex-shrink: 0;
-  }
-
-  .skills-title {
-    font-size: 0.78rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-  }
-
-  #skills-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-height: 0;
-  }
-
-  .skill-btn {
-    width: 100%;
-    text-align: left;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 6px;
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 0.83rem;
-    padding: 8px 10px;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-    word-break: break-word;
-  }
-
-  .skill-btn:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: #1c2a3a;
-  }
-
-  .skill-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  #skills-error {
-    font-size: 0.75rem;
-    color: var(--chip-error);
-    padding: 6px 10px;
-    display: none;
-    flex-shrink: 0;
-    border-top: 1px solid var(--border);
-  }
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>Task Board</h1>
-    <div class="subtitle">Drag cards between columns to update status</div>
-  </div>
+
+<!-- ========================================================================
+  Header bar
+  ======================================================================== -->
+<header class="app-header">
+  <h1>Agentic OS</h1>
+  <span class="tagline">agentic software development framework</span>
+  <a href="/graph" class="header-link">Knowledge graph</a>
 </header>
-<div id="error-banner"></div>
-<div class="main-layout">
-  <div class="board-area">
+
+<!-- ========================================================================
+  3-column console
+  ======================================================================== -->
+<div class="console">
+
+  <!-- LEFT SIDEBAR: New Ticket + Skills/Actions -->
+  <aside class="sidebar-left">
+    <!-- New Ticket section -->
+    <div class="sidebar-section" style="flex: 0 0 auto;">
+      <div class="sidebar-heading">Tickets</div>
+      <button class="new-ticket-btn" id="new-ticket-btn" aria-label="New ticket">+ New ticket</button>
+    </div>
+
+    <!-- Skills/Actions section -->
+    <div class="sidebar-section" id="skills-panel">
+      <div class="sidebar-heading">Actions</div>
+      <div id="skills-list"></div>
+      <div id="skills-error"></div>
+    </div>
+  </aside>
+
+  <!-- CENTRE: Kanban board -->
+  <main class="board-area">
+    <div class="board-toolbar">
+      <span class="board-toolbar-title">Board</span>
+    </div>
+    <div id="error-banner"></div>
     <div class="board" id="board">
       <div class="column" data-status="todo" id="col-todo">
         <div class="column-header">
@@ -672,31 +921,63 @@ function buildHtml() {
         <div class="cards" id="cards-done"></div>
       </div>
     </div>
-  </div>
-  <!-- TASK-053: Skills panel — vetted catalog of orchestrator actions -->
-  <div id="skills-panel">
-    <div class="skills-header">
-      <span class="skills-title">Actions</span>
+  </main>
+
+  <!-- RIGHT SIDEBAR: Chat/Orchestrator -->
+  <aside class="sidebar-right">
+    <div id="chat-panel">
+      <div class="chat-header">
+        <span class="chat-title">Orchestrator</span>
+        <span class="chat-status" id="chat-status">idle</span>
+      </div>
+      <div id="chat-messages"></div>
+      <div class="chat-input-row">
+        <textarea id="chat-input" rows="1" placeholder="Send a message..." aria-label="Chat message"></textarea>
+        <button id="chat-send">Send</button>
+      </div>
     </div>
-    <div id="skills-list"></div>
-    <div id="skills-error"></div>
-  </div>
-  <!-- TASK-052: Chat panel — layout placeholder; full unified OS layout is TASK-054 -->
-  <div id="chat-panel">
-    <div class="chat-header">
-      <span class="chat-title">Orchestrator</span>
-      <span class="chat-status" id="chat-status">idle</span>
+  </aside>
+
+</div>
+
+<!-- ========================================================================
+  New Ticket modal
+  ======================================================================== -->
+<div id="new-ticket-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="new-ticket-modal">
+    <div class="modal-title" id="modal-title">New Ticket</div>
+    <div class="form-row">
+      <label class="form-label" for="nt-title">Title <span style="color:var(--priority-critical)">*</span></label>
+      <input class="form-input" id="nt-title" type="text" placeholder="Short description of the work" autocomplete="off">
     </div>
-    <div id="chat-messages"></div>
-    <div class="chat-input-row">
-      <textarea id="chat-input" rows="1" placeholder="Send a message..." aria-label="Chat message"></textarea>
-      <button id="chat-send">Send</button>
+    <div class="form-row">
+      <label class="form-label" for="nt-description">Description</label>
+      <textarea class="form-textarea" id="nt-description" placeholder="What needs to be done, and why?"></textarea>
+    </div>
+    <div class="form-row">
+      <label class="form-label" for="nt-priority">Priority</label>
+      <select class="form-select" id="nt-priority">
+        <option value="medium" selected>Medium</option>
+        <option value="low">Low</option>
+        <option value="high">High</option>
+        <option value="critical">Critical</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label" for="nt-acs">Acceptance criteria <span style="color:var(--text-muted);font-weight:400">(optional — one per line)</span></label>
+      <textarea class="form-textarea" id="nt-acs" placeholder="The feature works as described.&#10;Edge cases are handled."></textarea>
+    </div>
+    <div id="new-ticket-error"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="nt-cancel">Cancel</button>
+      <button class="btn-submit" id="nt-submit">Create ticket</button>
     </div>
   </div>
 </div>
+
 <script>
   // ---------------------------------------------------------------------------
-  // Board logic (unchanged from original)
+  // Board logic
   // ---------------------------------------------------------------------------
   const STATUSES = ['todo', 'in_progress', 'in_review', 'blocked', 'done'];
 
@@ -781,10 +1062,14 @@ function buildHtml() {
   }
 
   async function fetchAndRender() {
-    const res = await fetch('/api/tasks');
-    if (!res.ok) { showError('Failed to fetch tasks: ' + res.status); return; }
-    const tasks = await res.json();
-    render(tasks);
+    try {
+      const res = await fetch('/api/tasks');
+      if (!res.ok) { showError('Failed to fetch tasks: ' + res.status); return; }
+      const tasks = await res.json();
+      render(tasks);
+    } catch (err) {
+      showError('Failed to fetch tasks: ' + (err.message || 'network error'));
+    }
   }
 
   async function postTransition(key, status) {
@@ -821,6 +1106,96 @@ function buildHtml() {
   }
 
   fetchAndRender();
+
+  // ---------------------------------------------------------------------------
+  // New Ticket form — TASK-054
+  //
+  // XSS discipline: form values are sent as JSON to POST /api/tasks; the minted
+  // key returned by the server is set via .textContent — never innerHTML.
+  // ---------------------------------------------------------------------------
+  var overlay = document.getElementById('new-ticket-overlay');
+  var ntTitle = document.getElementById('nt-title');
+  var ntDesc = document.getElementById('nt-description');
+  var ntPriority = document.getElementById('nt-priority');
+  var ntAcs = document.getElementById('nt-acs');
+  var ntError = document.getElementById('new-ticket-error');
+  var ntSubmit = document.getElementById('nt-submit');
+
+  function openNewTicketModal() {
+    ntTitle.value = '';
+    ntDesc.value = '';
+    ntPriority.value = 'medium';
+    ntAcs.value = '';
+    ntError.style.display = 'none';
+    ntError.textContent = '';
+    ntSubmit.disabled = false;
+    overlay.classList.add('open');
+    ntTitle.focus();
+  }
+
+  function closeNewTicketModal() {
+    overlay.classList.remove('open');
+  }
+
+  document.getElementById('new-ticket-btn').addEventListener('click', openNewTicketModal);
+  document.getElementById('nt-cancel').addEventListener('click', closeNewTicketModal);
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) closeNewTicketModal();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) closeNewTicketModal();
+  });
+
+  async function submitNewTicket() {
+    var title = ntTitle.value.trim();
+    if (!title) {
+      ntError.textContent = 'Title is required.';
+      ntError.style.display = 'block';
+      ntTitle.focus();
+      return;
+    }
+
+    // Parse acceptance criteria: split by newline, drop empty lines.
+    var acsRaw = ntAcs.value.trim();
+    var acceptance_criteria = acsRaw
+      ? acsRaw.split('\\n').map(function(s) { return s.trim(); }).filter(Boolean)
+      : [];
+
+    ntSubmit.disabled = true;
+    ntError.style.display = 'none';
+
+    try {
+      var res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title,
+          description: ntDesc.value.trim(),
+          priority: ntPriority.value,
+          acceptance_criteria: acceptance_criteria.length ? acceptance_criteria : undefined,
+        }),
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        ntError.textContent = data.error || ('Create failed (' + res.status + ')');
+        ntError.style.display = 'block';
+        ntSubmit.disabled = false;
+        return;
+      }
+      // Success: close modal, refresh board.
+      closeNewTicketModal();
+      await fetchAndRender();
+    } catch (err) {
+      ntError.textContent = err.message || 'network error';
+      ntError.style.display = 'block';
+      ntSubmit.disabled = false;
+    }
+  }
+
+  ntSubmit.addEventListener('click', submitNewTicket);
+  document.getElementById('new-ticket-modal').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitNewTicket();
+  });
 
   // ---------------------------------------------------------------------------
   // Chat panel — TASK-052
@@ -894,8 +1269,10 @@ function buildHtml() {
 
     } else if (type === 'turn-end') {
       // Finalize: clear the in-progress bubble pointer, unblock input.
+      // TASK-054: also refresh the board so orchestrator-driven changes appear live.
       currentAssistantBubble = null;
       setInputBusy(false);
+      fetchAndRender();
 
     } else if (type === 'error') {
       // Inline error — never a silent stall or infinite spinner.
@@ -911,13 +1288,12 @@ function buildHtml() {
 
   // Open the SSE stream for this tab's session.  EventSource auto-reconnects
   // on network interruption — we only need to handle the error state visually.
-  var sseConnected = false;
+  // TASK-054 polish: removed dead sseConnected variable.
   var connLostChip = null;
 
   var evtSource = new EventSource('/api/chat/' + encodeURIComponent(sessionId) + '/stream');
 
   evtSource.onopen = function() {
-    sseConnected = true;
     if (connLostChip) {
       connLostChip.remove();
       connLostChip = null;
@@ -935,12 +1311,18 @@ function buildHtml() {
     if (!connLostChip) {
       connLostChip = appendBubble('connection lost — reconnecting…', 'chat-chip conn-lost');
     }
-    // Always unblock input so the user is never stuck.
+    // TASK-054 polish: mark any orphaned assistant bubble as interrupted if
+    // the SSE drops mid-stream, then unblock input.
     if (chatInput.disabled) {
-      currentAssistantBubble = null;
+      if (currentAssistantBubble) {
+        var interrupted = document.createElement('div');
+        interrupted.className = 'chat-chip interrupted';
+        interrupted.textContent = '⌛ interrupted';
+        chatMessages.insertBefore(interrupted, currentAssistantBubble.nextSibling);
+        currentAssistantBubble = null;
+      }
       setInputBusy(false);
     }
-    sseConnected = false;
   };
 
   // Send a user turn: append the user bubble immediately, POST to the server.
@@ -1368,6 +1750,77 @@ export function createBoardServer({ repoRoot, bridge } = {}) {
       if (req.method === 'GET' && pathname === '/api/tasks') {
         const tasks = await readAllTasksForBoard(repoRoot);
         sendJson(res, 200, tasks);
+        return;
+      }
+
+      // POST /api/tasks — create a new task via the task-store.
+      // Body: { title, description, priority, acceptance_criteria? }
+      // Validation mirrors the status-transition route hardening pattern.
+      if (req.method === 'POST' && pathname === '/api/tasks') {
+        // CONTENT-TYPE GUARD
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
+          return;
+        }
+
+        // Server-side validation — fail fast before touching disk.
+        const { title, description = '', priority, acceptance_criteria } = body;
+
+        if (!title || typeof title !== 'string' || !title.trim()) {
+          sendJson(res, 400, { error: 'title must be a non-empty string' });
+          return;
+        }
+
+        const VALID_PRIORITIES = ['low', 'medium', 'high', 'critical'];
+        if (!priority || !VALID_PRIORITIES.includes(priority)) {
+          sendJson(res, 400, {
+            error: `priority must be one of ${VALID_PRIORITIES.join(', ')}; got: ${JSON.stringify(priority)}`,
+          });
+          return;
+        }
+
+        // Apply AC default when acceptance_criteria absent or empty.
+        const DEFAULT_AC = ['The task is complete when the described work is done.'];
+        const resolvedACs =
+          Array.isArray(acceptance_criteria) && acceptance_criteria.length > 0
+            ? acceptance_criteria
+            : DEFAULT_AC;
+
+        try {
+          const { key } = await createTask({
+            repoRoot,
+            title: title.trim(),
+            description: typeof description === 'string' ? description : '',
+            priority,
+            acceptance_criteria: resolvedACs,
+          });
+          sendJson(res, 201, { ok: true, key });
+        } catch (err) {
+          // createTask throws for validation errors (bad priority, empty AC, etc.)
+          // as well as disk errors. Only bubble disk errors to 500; validation
+          // errors (which should have been caught above) stay 400.
+          const msg = (err && err.message) || 'create failed';
+          if (/invalid priority|acceptance_criteria|invalid verification_tier/.test(msg)) {
+            sendJson(res, 400, { error: msg });
+          } else {
+            sendJson(res, 500, { error: msg });
+          }
+        }
         return;
       }
 
