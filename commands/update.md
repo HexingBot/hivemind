@@ -32,6 +32,6 @@ After the plugin updates, run `/agentic-framework:apply-workflows` to bring any 
 
 ## Notes
 
-- The update command requires that you have previously installed the plugin (`claude plugin install agentic-framework@<marketplace>`). If it is not installed, install it first.
+- The update command requires that you have previously installed the plugin (`claude plugin install agentic-framework@agentic-framework-marketplace`). If it is not installed, install it first.
 - Running this command does not affect your project files (`PROJECT.md`, `tasks/`, `state/`) — it only updates the plugin's own code in the plugin cache.
 - If the update fails (e.g. no network access or the marketplace is unreachable), relay the error message and suggest the user check their connection and try again.
