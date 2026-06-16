@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T22:53:23.625Z",
+  "generated_at": "2026-06-16T23:07:51.117Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -359,6 +359,18 @@
       "key": "TASK-062",
       "title": "Goal-driven autonomous drive loop (opt-in beta command)",
       "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-063",
+      "title": "Operating-mode state (loop vs harness) + auto-flip + manual toggle",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-064",
+      "title": "Console live mode badge + toggle control (loop vs harness)",
+      "status": "todo",
       "priority": "high"
     }
   ]

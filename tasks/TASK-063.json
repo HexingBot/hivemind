@@ -1,0 +1,37 @@
+{
+  "key": "TASK-063",
+  "title": "Operating-mode state (loop vs harness) + auto-flip + manual toggle",
+  "description": "BETA-TEST GOAL (goal-mode-switch), part 1 of 2. Give the framework an explicit operating MODE so it can switch between 'harness' (the normal manual, human-gated, one-step-at-a-time orchestrator workflow) and 'loop' (the autonomous drive loop). The mode lives in session state, auto-flips when the drive loop starts/stops, can be toggled manually, and is surfaced through the bounded session projection so the console can show it (TASK-064 renders it). Built on the `beta` branch as the first dogfood-drive goal for /agentic-framework-beta:loop. Backward-compatible: absent mode = 'harness'.",
+  "acceptance_criteria": [
+    "Session state carries a `mode` field with values 'harness' (default) | 'loop'; absence is treated as 'harness' (backward-compatible, existing bundles unaffected).",
+    "A small module/API (e.g. src/operating-mode.js) exports getMode({repoRoot}) and setMode({repoRoot, mode}) with enum validation (reject anything other than harness|loop) and atomic writes; setMode is idempotent.",
+    "Auto-flip: the drive loop sets mode='loop' when it starts driving (after acquiring the TASK-061 lock) and back to 'harness' when it exits/pauses/releases. Wire this into commands/loop.md's control flow AND expose the helper the loop calls; document it in the orchestrator-routing 'Autonomous loop' subsection.",
+    "Manual toggle: a way to set the mode explicitly outside the loop (a function + a /agentic-framework-beta:mode command, or a documented setMode call) so a human can flip it without running the loop.",
+    "src/session-projection.js includes `mode` in its bounded projection so GET /api/session exposes the current mode (never dumps the full bundle).",
+    "tdd: failing tests first encoding default='harness', setMode enum validation (valid flips + rejected garbage), absent-bundle backward-compat, and projection-includes-mode. Then implement. New disk/e2e specs under tests/e2e/; pure-logic at top level.",
+    "If any bundled source changes (task-board/session-projection are bundled into dist/task-board.cjs), rebuild dist via npm run build:plugin and commit; npm run test:all green (state-shape change → release-tier gate)."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "goal-mode-switch",
+    "console",
+    "autonomy"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T23:07:48.373Z",
+      "body": "Tier = tdd (assigned at plan time). Rationale: state-shape change + enum-validated setter + projection wiring — textbook tdd. GOAL `goal-mode-switch` part 1/2. This is the FIRST dogfood-drive target for /agentic-framework-beta:loop: when the loop drives this ticket it exercises the tdd path (TEST→IMPL→review) and should HALT at the close gate (default-on) for human confirmation. Release-tier gate (state-shape + bundled task-board/session-projection)."
+    }
+  ],
+  "created_at": "2026-06-16T23:07:21.695Z",
+  "updated_at": "2026-06-16T23:07:48.373Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

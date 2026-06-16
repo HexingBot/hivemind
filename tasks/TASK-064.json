@@ -1,0 +1,39 @@
+{
+  "key": "TASK-064",
+  "title": "Console live mode badge + toggle control (loop vs harness)",
+  "description": "BETA-TEST GOAL (goal-mode-switch), part 2 of 2. Make the operating mode (from TASK-063) VISIBLE and controllable in the web console: a live badge in the status bar showing HARNESS vs LOOP with distinct styling, updating in real time as the mode flips (e.g. when the autonomous loop starts/stops), plus a manual toggle control (button) in the console that flips the mode. Extends the v0.5.0 console status bar (src/task-board.js + src/session-projection.js + the inline status-bar HTML). Built on the `beta` branch; depends on TASK-063. This is the human-observable payoff of the beta test — the deliverable you watch while the loop drives.",
+  "acceptance_criteria": [
+    "The console status bar renders a mode badge showing HARNESS or LOOP (from GET /api/session's `mode`), with visually distinct styling per mode, XSS-safe (createElement/textContent per the existing board rendering discipline).",
+    "The badge updates LIVE (via the existing session polling/refresh mechanism) so flipping the mode — manually or by the loop auto-flip — is reflected without a page reload.",
+    "A manual toggle control (button) in the console flips the mode: a new hardened POST route (e.g. POST /api/session/mode behind the existing Host allowlist + Content-Type/body-cap guards) calls setMode (TASK-063); the badge reflects the change live.",
+    "Graceful when `mode` is absent (older bundle) — badge defaults to HARNESS, no crash.",
+    "tests-after: implement, prove by running (badge renders + toggle endpoint flips mode + projection reflects it), then add minimal regression locks (route behavior + projection field + render presence). New e2e (server/route) under tests/e2e/.",
+    "UAT (human-observable, dogfood payoff): launch the console, see the mode badge; click the toggle and watch it flip; start /agentic-framework-beta:loop and watch the badge auto-flip to LOOP, then back to HARNESS when the loop halts/exits.",
+    "Rebuild dist (task-board bundle) via npm run build:plugin and commit; npm run test:all green."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "goal-mode-switch",
+    "console",
+    "ui"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-063"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T23:07:51.117Z",
+      "body": "Tier = tests-after (assigned at plan time). Rationale: console UI + a hardened POST route over the existing board server — implement, prove by running, minimal regression locks; human-observable → UAT (the dogfood payoff: watch the badge auto-flip while the loop runs). GOAL `goal-mode-switch` part 2/2, depends on TASK-063. When the loop drives this it exercises the tests-after path AND the UAT gate (uat verdict = a default-on hard-stop). Release-tier gate (bundled task-board rebuild)."
+    }
+  ],
+  "created_at": "2026-06-16T23:07:38.673Z",
+  "updated_at": "2026-06-16T23:07:51.117Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
