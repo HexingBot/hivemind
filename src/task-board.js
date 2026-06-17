@@ -44,6 +44,7 @@ import { loadGraph } from './knowledge-graph.js';
 import { createSessionManager, SESSION_ID_RE } from './orchestrator-bridge.js';
 import { listSkills, resolveSkillInvocation } from './skill-catalog.js';
 import { projectSessionState } from './session-projection.js';
+import { toggleMode } from './operating-mode.js';
 
 // ---------------------------------------------------------------------------
 // Internal: read all task files from tasks/ without any caching.
@@ -268,6 +269,57 @@ function buildHtml() {
     color: var(--priority-high);
     border-color: #3d2f0a;
     background: #231b06;
+  }
+
+  /* Mode badge — HARNESS (default / safe) vs LOOP (autonomous) */
+  .mode-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .mode-badge.harness {
+    color: var(--text-muted);
+    border-color: var(--border);
+    background: var(--card-bg);
+  }
+
+  .mode-badge.loop {
+    color: #3fb950;
+    border-color: #1a3d26;
+    background: #0a1f12;
+  }
+
+  /* Mode toggle button */
+  #mode-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  #mode-toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   /* =========================================================================
@@ -904,6 +956,8 @@ function buildHtml() {
   <h1>Agentic OS</h1>
   <span class="tagline">agentic software development framework</span>
   <div id="session-status-bar" aria-label="Session status"></div>
+  <span id="mode-badge" class="mode-badge harness" aria-label="Operating mode">HARNESS</span>
+  <button id="mode-toggle-btn" aria-label="Toggle operating mode">flip</button>
   <a href="/graph" class="header-link">Knowledge graph</a>
 </header>
 
@@ -1487,13 +1541,29 @@ function buildHtml() {
   // Fetches /api/session on load and on each SSE turn-end event to show the
   // orchestrator's current workflow step + active task in the header.
   //
+  // TASK-064: also renders the mode badge (HARNESS/LOOP) from session.mode.
+  // Graceful when mode is absent — defaults to HARNESS, no crash.
+  //
   // XSS discipline: all content rendered via document.createElement + .textContent.
   // No innerHTML with content.
   // ---------------------------------------------------------------------------
   var statusBar = document.getElementById('session-status-bar');
+  var modeBadge = document.getElementById('mode-badge');
+  var modeToggleBtn = document.getElementById('mode-toggle-btn');
+
+  function renderModeBadge(mode) {
+    // Graceful absent: default to 'harness' if mode is missing or invalid.
+    var m = (mode === 'loop') ? 'loop' : 'harness';
+    modeBadge.textContent = m.toUpperCase();
+    modeBadge.className = 'mode-badge ' + m;
+  }
 
   function renderStatusBar(data) {
     while (statusBar.firstChild) statusBar.removeChild(statusBar.firstChild);
+
+    // Render mode badge — always, regardless of idle/active state.
+    // data may be null (fetch failed) or missing mode field (older bundle).
+    renderModeBadge(data && data.mode);
 
     if (!data || data.idle) {
       var idleChip = document.createElement('span');
@@ -1543,6 +1613,38 @@ function buildHtml() {
       // Silently ignore — status bar is best-effort.
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Mode toggle button — TASK-064
+  //
+  // POSTs to /api/session/mode (no body needed — route calls toggleMode server-
+  // side) then refreshes the session status so the badge updates live.
+  //
+  // Briefly disables the button during the request to prevent double-clicks.
+  // Shows an inline error chip if the route returns a non-2xx or the fetch fails.
+  // ---------------------------------------------------------------------------
+  modeToggleBtn.addEventListener('click', async function() {
+    modeToggleBtn.disabled = true;
+    try {
+      var res = await fetch('/api/session/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        var errText = 'Mode flip failed (' + res.status + ')';
+        try { var b = await res.json(); errText = b.error || errText; } catch {}
+        showError(errText);
+      } else {
+        // Refresh badge live.
+        await fetchSessionStatus();
+      }
+    } catch (err) {
+      showError('Mode flip failed: ' + (err.message || 'network error'));
+    } finally {
+      modeToggleBtn.disabled = false;
+    }
+  });
 
   // Initial load.
   fetchSessionStatus();
@@ -1902,6 +2004,49 @@ export function createBoardServer({ repoRoot, bridge } = {}) {
             recent_decisions: [],
             error: (err && err.message) || 'projection failed',
           });
+        }
+        return;
+      }
+
+      // POST /api/session/mode — flip the operating mode (harness ↔ loop).
+      // Calls toggleMode from src/operating-mode.js.  Same hardening guards as
+      // every other POST route: Host allowlist (already checked above),
+      // Content-Type: application/json required (→ 415), body capped at 64 KiB (→ 413).
+      // Returns 200 { ok: true, mode: <new mode> } on success.
+      // Returns 409 if there is no active session (setMode requirement).
+      if (req.method === 'POST' && pathname === '/api/session/mode') {
+        // CONTENT-TYPE GUARD
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        // BODY-CAP GUARD (body is accepted but not required to carry any fields).
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
+          return;
+        }
+
+        try {
+          const newMode = await toggleMode({ repoRoot });
+          sendJson(res, 200, { ok: true, mode: newMode });
+        } catch (err) {
+          const msg = (err && err.message) || 'mode toggle failed';
+          // No active session → cannot toggle (409 Conflict is the most accurate status).
+          if (/no active session/i.test(msg)) {
+            sendJson(res, 409, { error: msg });
+          } else {
+            sendJson(res, 500, { error: msg });
+          }
         }
         return;
       }

@@ -65,3 +65,17 @@ export async function setMode({ repoRoot, mode }) {
 
   await writeBundleSession(repoRoot, sessionId, updated);
 }
+
+// ---------------------------------------------------------------------------
+// toggleMode({ repoRoot }) → 'harness' | 'loop'
+//
+// Reads the current mode via getMode, flips harness↔loop, calls setMode with
+// the inverted value, then returns the NEW mode.  Requires an active session
+// (setMode will throw if none).
+// ---------------------------------------------------------------------------
+export async function toggleMode({ repoRoot }) {
+  const current = await getMode({ repoRoot });
+  const next = current === 'loop' ? 'harness' : 'loop';
+  await setMode({ repoRoot, mode: next });
+  return next;
+}
