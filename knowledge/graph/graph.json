@@ -2,6 +2,24 @@
   "schema_version": 1,
   "nodes": [
     {
+      "id": "2026-06-16T23:08:38.712Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "BETA-TEST GOAL goal-mode-switch minted (operating-mode harness|loop, dogfood-driven via /agentic-framework-beta:loop)"
+    },
+    {
+      "id": "TASK-063",
+      "type": "task",
+      "ref": "tasks/TASK-063.json",
+      "label": "Operating-mode state (loop vs harness) + auto-flip + manual toggle"
+    },
+    {
+      "id": "TASK-064",
+      "type": "task",
+      "ref": "tasks/TASK-064.json",
+      "label": "Console live mode badge + toggle control (loop vs harness)"
+    },
+    {
       "id": "decision-20260612-deep-workflows",
       "type": "decision",
       "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T17:15:00Z",
@@ -177,6 +195,16 @@
     }
   ],
   "edges": [
+    {
+      "from": "TASK-063",
+      "to": "2026-06-16T23:08:38.712Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-064",
+      "to": "2026-06-16T23:08:38.712Z",
+      "relation": "produced-by"
+    },
     {
       "from": "ke-claude-headless-bridge",
       "to": "task-050",

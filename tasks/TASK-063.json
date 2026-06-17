@@ -11,7 +11,7 @@
     "tdd: failing tests first encoding default='harness', setMode enum validation (valid flips + rejected garbage), absent-bundle backward-compat, and projection-includes-mode. Then implement. New disk/e2e specs under tests/e2e/; pure-logic at top level.",
     "If any bundled source changes (task-board/session-projection are bundled into dist/task-board.cjs), rebuild dist via npm run build:plugin and commit; npm run test:all green (state-shape change → release-tier gate)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "beta",
@@ -21,17 +21,26 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "77c5d65",
+    "96c2fa9",
+    "72d6c35"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-16T23:07:48.373Z",
       "body": "Tier = tdd (assigned at plan time). Rationale: state-shape change + enum-validated setter + projection wiring — textbook tdd. GOAL `goal-mode-switch` part 1/2. This is the FIRST dogfood-drive target for /agentic-framework-beta:loop: when the loop drives this ticket it exercises the tdd path (TEST→IMPL→review) and should HALT at the close gate (default-on) for human confirmation. Release-tier gate (state-shape + bundled task-board/session-projection)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-17T00:31:56.813Z",
+      "body": "CLOSED on green review (dogfood drive of goal-mode-switch via /agentic-framework-beta:loop, gate 1 human-confirmed). Reviewer (fresh context, Opus): APPROVE-WITH-FOLLOWUPS — 0 HIGH / 0 MEDIUM / 1 LOW / 1 NIT. npm run test:all 803 passed / 5 skipped at release tier; all 7 ACs met. Delivered: src/operating-mode.js (getMode/setMode, enum-validated harness|loop, atomic via writeBundleSession, idempotent); mode in bounded session-projection (active + idle, default harness); auto-flip wired into commands/loop.md (set loop after acquire, harness before release) + orchestrator-routing skill subsection (byte-identical parity copy); /agentic-framework-beta:mode manual-toggle command (commands/mode.md); bundle schema (src/schemas.js + state/bundle.schema.json) gained mode (optional, backward-compat) plus a justified fix for pre-existing loop_auth/loop_state drift caught by live-state.spec.js; dist/task-board.cjs rebuilt. Commits 77c5d65 (test) + 96c2fa9 (impl) + 72d6c35 (dist). Follow-ups (non-blocking): toggle path doc-only/untested — fold a toggleMode helper into TASK-064 if the console button needs it; setMode bumps updated_at on idempotent set (NIT). NOT pushed (no auto_push switch)."
     }
   ],
   "created_at": "2026-06-16T23:07:21.695Z",
-  "updated_at": "2026-06-16T23:07:48.373Z",
+  "updated_at": "2026-06-17T00:31:56.854Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

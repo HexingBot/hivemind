@@ -1,0 +1,40 @@
+{
+  "key": "TASK-068",
+  "title": "Console preview panel — iframe (web) / log view (process) + controls + sample fixtures",
+  "description": "BETA-TEST GOAL (goal-app-preview), part 4 of 5 — the HUMAN-OBSERVABLE PAYOFF. A Preview tab/panel in the unified console shell: Start/Stop/Restart controls, a status indicator, an iframe pointing at the running app URL (web mode) or a live log console (process mode), live-updating via the 067 stream/poll, XSS-safe. Also lands the SAMPLE FIXTURES used for UAT: a minimal static web page app and a minimal canvas/Phaser game page (OFFLINE — vendored or plain-canvas, no network dependency), each with a start command + a preview config so they are previewable. Depends on 067.",
+  "acceptance_criteria": [
+    "A Preview panel/tab in the console (extends the v0.5.0 unified shell) with Start/Stop/Restart controls + a state/status indicator.",
+    "Web mode -> an iframe whose src is the running app URL from /api/preview/status; process mode -> a live log view; the panel switches by status.mode. XSS-safe (createElement/textContent; iframe src set only to the resolved localhost URL).",
+    "Live update via the existing stream/poll so state + logs + the iframe appearing/disappearing reflect start/stop WITHOUT a page reload.",
+    "Graceful when mode=none (no preview config) -> a hint card (configure preview in PROJECT.md), no crash; graceful when the previewed process exits.",
+    "Sample fixtures added under tests/fixtures: a minimal web-page app AND a minimal canvas/Phaser game app, OFFLINE (no network), each runnable via a start command, used by the UAT.",
+    "tests-after: implement, prove by running, then minimal regression locks (panel render presence + controls wired + mode-switch + graceful-absent); e2e under tests/e2e/; rebuild dist.",
+    "UAT (human-observable payoff): launch console -> Preview tab -> start the web fixture (see it render live in the iframe) -> start the canvas/phaser fixture (see/play it) -> start a process-only target (see logs) -> stop (preview tears down). npm run test:all green."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "goal-app-preview",
+    "console",
+    "preview",
+    "ui"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-067"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-17T03:40:59.436Z",
+      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tests-after with mandatory UAT (human-observable payoff: see the web app + phaser game render live). Exercises the UAT verdict gate when looped. Bundled => release-tier gate. Deps: TASK-067. To be dogfood-driven via /agentic-framework-beta:loop after context clear."
+    }
+  ],
+  "created_at": "2026-06-17T03:40:58.800Z",
+  "updated_at": "2026-06-17T03:40:59.436Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

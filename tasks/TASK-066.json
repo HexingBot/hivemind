@@ -1,0 +1,37 @@
+{
+  "key": "TASK-066",
+  "title": "Preview process manager — spawn/stop/restart + bounded log capture + URL detection",
+  "description": "BETA-TEST GOAL (goal-app-preview), part 2 of 5. A managed child-process controller for the previewed app. Starts the resolved command as a child process, captures stdout/stderr into a BOUNDED ring buffer, tracks a state machine, detects the served URL/port (from config or by scanning early logs), and stops/restarts cleanly. Single active preview at a time. Mirrors the orchestrator-bridge (src/orchestrator-bridge.js) spawn discipline. Independent of TASK-065 (tested with a hand-built config object); TASK-067 wires the two together.",
+  "acceptance_criteria": [
+    "New module src/preview-process.js exports a controller (e.g. createPreviewController({repoRoot}) or start/stop/restart/getStatus) managing ONE child process launched from a resolved preview config.",
+    "State machine: stopped -> starting -> running (or -> exited/error); getStatus returns { state, mode, url (string|null), pid (number|null), recentLogs (bounded array) }.",
+    "stdout/stderr captured into a BOUNDED buffer (named cap constant on lines and/or bytes, oldest dropped, no unbounded growth); never throws on odd/binary output.",
+    "URL/port detection: use the configured url/port if present; else scan early stdout for the first localhost URL or a listening-on-PORT pattern and surface it in status.",
+    "stop() terminates the child cleanly with no orphan process; restart() = stop then start; stop() is idempotent when already stopped (no throw).",
+    "tdd: failing tests first for state-machine transitions, buffer bounding, URL detection, and idempotent stop, exercised with a trivial spawnable fixture (tiny node http server / echo loop) under tests/e2e/.",
+    "release-tier gate: npm run test:all green; rebuild + commit dist if bundled source changes."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "goal-app-preview",
+    "console",
+    "preview"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-17T03:40:59.236Z",
+      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tdd: state machine + state mutation + bounded buffer + URL parsing. Exercises the close-to-done gate when looped. Deps: none. To be dogfood-driven via /agentic-framework-beta:loop after context clear."
+    }
+  ],
+  "created_at": "2026-06-17T03:40:58.615Z",
+  "updated_at": "2026-06-17T03:40:59.236Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

@@ -1,0 +1,39 @@
+{
+  "key": "TASK-067",
+  "title": "Console preview backend routes — start/stop/restart/status + SSE log stream",
+  "description": "BETA-TEST GOAL (goal-app-preview), part 3 of 5. Hardened routes on createBoardServer (src/task-board.js) wiring the resolver (065) + process manager (066) to the console. Depends on 065 and 066.",
+  "acceptance_criteria": [
+    "New hardened routes on the board server behind the EXISTING Host allowlist + Content-Type 415 + body-cap 413 guards: POST /api/preview/start, POST /api/preview/stop, POST /api/preview/restart, GET /api/preview/status.",
+    "GET /api/preview/status returns bounded JSON { state, mode, url (string|null), source, recentLogs (bounded) } sourced from the process manager + resolver (never dumps unbounded logs).",
+    "A live channel: GET /api/preview/stream (SSE) emitting incremental log lines + state changes, bounded, and cleaning up its listener on client disconnect (mirror the TASK-051 SSE-unsubscribe fix — no leak).",
+    "start resolves config via 065 and launches via 066; when mode=none, start returns a clear 409/400 with the configure hint (no crash).",
+    "tests-after: implement then prove by running (start launches a fixture app, status reflects running + url, stop terminates) + hardening parity (415/413/403) + SSE cleanup; minimal regression locks; e2e under tests/e2e/.",
+    "Bundled (task-board) change => rebuild dist + release-tier gate green."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "goal-app-preview",
+    "console",
+    "preview"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-065",
+    "TASK-066"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-17T03:40:59.336Z",
+      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tests-after: hardened routes over the existing board server, provable by running; minimal regression locks. Bundled (task-board) => release-tier gate. Deps: TASK-065,TASK-066. To be dogfood-driven via /agentic-framework-beta:loop after context clear."
+    }
+  ],
+  "created_at": "2026-06-17T03:40:58.710Z",
+  "updated_at": "2026-06-17T03:40:59.336Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
