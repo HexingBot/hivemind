@@ -8,12 +8,6 @@
       "name": "agentic-framework",
       "source": "./",
       "description": "Multi-agent orchestrated development loop as a Claude Code plugin."
-    },
-    {
-      "name": "agentic-framework-beta",
-      "source": { "source": "github", "repo": "lordiwa/agent-framework", "ref": "beta" },
-      "description": "EXPERIMENTAL beta channel (loop engineering / goal-driven autonomous drive loop). Installs ALONGSIDE stable agentic-framework; opt-in, safe to disable.",
-      "defaultEnabled": false
     }
   ]
 }
