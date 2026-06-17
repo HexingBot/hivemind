@@ -947,6 +947,211 @@ function buildHtml() {
   #chat-send:not(:disabled):hover {
     background: #79b8ff;
   }
+
+  /* =========================================================================
+   * Preview panel — TASK-068
+   * Replaces the right sidebar with a tab switcher: Orchestrator | Preview.
+   * The tab bar and content swap are handled client-side via data-tab attributes.
+   * ========================================================================= */
+
+  .sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .sidebar-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-family: var(--font);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 8px 6px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .sidebar-tab:hover {
+    color: var(--text);
+  }
+
+  .sidebar-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .sidebar-panel {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-panel.active {
+    display: flex;
+  }
+
+  /* Preview header: controls + status indicator */
+  #preview-header {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .preview-btn {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+
+  .preview-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .preview-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .preview-btn.danger:hover:not(:disabled) {
+    border-color: var(--priority-critical);
+    color: var(--priority-critical);
+  }
+
+  #preview-status-chip {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.67rem;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  #preview-status-chip.running {
+    color: #3fb950;
+    border-color: #1a3d26;
+    background: #0a1f12;
+  }
+
+  #preview-status-chip.starting {
+    color: var(--priority-high);
+    border-color: #3d2f0a;
+    background: #231b06;
+  }
+
+  #preview-status-chip.error,
+  #preview-status-chip.exited {
+    color: var(--priority-critical);
+    border-color: #3d1a1a;
+    background: #1e0d0d;
+  }
+
+  /* Preview content area — switches between iframe, log view, hint card */
+  #preview-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Web mode: iframe fills the content area */
+  #preview-iframe {
+    display: none;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #fff;
+    flex: 1;
+  }
+
+  #preview-iframe.visible {
+    display: block;
+  }
+
+  /* Process mode: scrollable log view */
+  #preview-log {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #a0d0a0;
+    background: #0a100a;
+    line-height: 1.5;
+    word-break: break-all;
+  }
+
+  #preview-log.visible {
+    display: block;
+  }
+
+  .log-line {
+    display: block;
+    white-space: pre-wrap;
+  }
+
+  /* None/hint mode */
+  #preview-hint {
+    display: none;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+
+  #preview-hint.visible {
+    display: flex;
+  }
+
+  .hint-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .hint-code {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    text-align: left;
+    width: 100%;
+    max-width: 240px;
+    color: var(--accent);
+    white-space: pre;
+  }
 </style>
 </head>
 <body>
@@ -1029,17 +1234,52 @@ function buildHtml() {
     </div>
   </main>
 
-  <!-- RIGHT SIDEBAR: Chat/Orchestrator -->
+  <!-- RIGHT SIDEBAR: Chat/Orchestrator + Preview tabs -->
   <aside class="sidebar-right">
-    <div id="chat-panel">
-      <div class="chat-header">
-        <span class="chat-title">Orchestrator</span>
-        <span class="chat-status" id="chat-status">idle</span>
+    <!-- Tab bar -->
+    <div class="sidebar-tabs" role="tablist">
+      <button class="sidebar-tab active" id="tab-orchestrator" role="tab" aria-selected="true" aria-controls="panel-orchestrator">Orchestrator</button>
+      <button class="sidebar-tab" id="tab-preview" role="tab" aria-selected="false" aria-controls="panel-preview">Preview</button>
+    </div>
+
+    <!-- Orchestrator panel -->
+    <div id="panel-orchestrator" class="sidebar-panel active" role="tabpanel" aria-labelledby="tab-orchestrator">
+      <div id="chat-panel">
+        <div class="chat-header">
+          <span class="chat-title">Orchestrator</span>
+          <span class="chat-status" id="chat-status">idle</span>
+        </div>
+        <div id="chat-messages"></div>
+        <div class="chat-input-row">
+          <textarea id="chat-input" rows="1" placeholder="Send a message..." aria-label="Chat message"></textarea>
+          <button id="chat-send">Send</button>
+        </div>
       </div>
-      <div id="chat-messages"></div>
-      <div class="chat-input-row">
-        <textarea id="chat-input" rows="1" placeholder="Send a message..." aria-label="Chat message"></textarea>
-        <button id="chat-send">Send</button>
+    </div>
+
+    <!-- Preview panel -->
+    <div id="panel-preview" class="sidebar-panel" role="tabpanel" aria-labelledby="tab-preview">
+      <!-- Controls + status indicator -->
+      <div id="preview-header" aria-label="Preview controls">
+        <button class="preview-btn" id="preview-start-btn" aria-label="Start preview">Start</button>
+        <button class="preview-btn danger" id="preview-stop-btn" aria-label="Stop preview" disabled>Stop</button>
+        <button class="preview-btn" id="preview-restart-btn" aria-label="Restart preview" disabled>Restart</button>
+        <span id="preview-status-chip" aria-live="polite">stopped</span>
+      </div>
+      <!-- Content area: web iframe | process log | hint card -->
+      <div id="preview-content">
+        <!-- Web mode: iframe — src is set ONLY to a validated localhost http URL -->
+        <iframe id="preview-iframe" title="App preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        <!-- Process mode: live log view -->
+        <div id="preview-log" aria-label="Preview process log" aria-live="polite"></div>
+        <!-- None mode: hint card -->
+        <div id="preview-hint">
+          <div class="hint-title">No preview configured</div>
+          <div>Add a preview block to your <strong>PROJECT.md</strong> frontmatter:</div>
+          <pre class="hint-code">preview_command: npm start
+preview_port: 3000</pre>
+          <div style="color: var(--text-muted); font-size: 0.75rem;">or add a <code>dev</code>/<code>start</code>/<code>serve</code> script to package.json</div>
+        </div>
       </div>
     </div>
   </aside>
@@ -1670,6 +1910,268 @@ function buildHtml() {
       fetchSessionStatus();
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Tab switcher — TASK-068
+  // Toggles .active on .sidebar-tab and .sidebar-panel pairs.
+  // ---------------------------------------------------------------------------
+  var tabOrchestrator = document.getElementById('tab-orchestrator');
+  var tabPreview = document.getElementById('tab-preview');
+  var panelOrchestrator = document.getElementById('panel-orchestrator');
+  var panelPreview = document.getElementById('panel-preview');
+
+  function activateTab(tabId) {
+    var isPreview = tabId === 'preview';
+    tabOrchestrator.classList.toggle('active', !isPreview);
+    tabOrchestrator.setAttribute('aria-selected', String(!isPreview));
+    tabPreview.classList.toggle('active', isPreview);
+    tabPreview.setAttribute('aria-selected', String(isPreview));
+    panelOrchestrator.classList.toggle('active', !isPreview);
+    panelPreview.classList.toggle('active', isPreview);
+  }
+
+  tabOrchestrator.addEventListener('click', function() { activateTab('orchestrator'); });
+  tabPreview.addEventListener('click', function() { activateTab('preview'); });
+
+  // ---------------------------------------------------------------------------
+  // Preview panel — TASK-068
+  //
+  // XSS discipline:
+  //   - Log lines appended via createElement + textContent only (never innerHTML).
+  //   - iframe src is validated to be a localhost http URL before assignment.
+  //     The validation regex allows ONLY http://localhost:<port> or
+  //     http://127.0.0.1:<port> — never user-controlled HTML.
+  //   - Status chip text set via textContent.
+  //
+  // Live update: connects to GET /api/preview/stream (SSE) for incremental log
+  // lines ({type:'log',line}) and state changes ({type:'state',...} or
+  // {type:'status',...}). No page reload needed.
+  //
+  // Ring-buffer cap: the log view retains at most MAX_LOG_LINES DOM nodes,
+  // dropping the oldest when the cap is reached.
+  // ---------------------------------------------------------------------------
+
+  var previewStartBtn = document.getElementById('preview-start-btn');
+  var previewStopBtn = document.getElementById('preview-stop-btn');
+  var previewRestartBtn = document.getElementById('preview-restart-btn');
+  var previewStatusChip = document.getElementById('preview-status-chip');
+  var previewIframe = document.getElementById('preview-iframe');
+  var previewLog = document.getElementById('preview-log');
+  var previewHint = document.getElementById('preview-hint');
+
+  var MAX_LOG_LINES = 200;
+
+  // Validate a URL is a safe localhost http URL before assigning to iframe.src.
+  // Accepts only http://localhost:<port> or http://127.0.0.1:<port>.
+  // Returns the validated URL string or null if invalid.
+  function validateLocalhostUrl(url) {
+    if (typeof url !== 'string') return null;
+    if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+/.test(url)) return null;
+    // Extra safety: parse as URL and confirm protocol + hostname.
+    try {
+      var parsed = new URL(url);
+      if (parsed.protocol !== 'http:') return null;
+      if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
+      if (!parsed.port) return null;
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
+  // Append a single log line to the log view (XSS-safe via textContent).
+  function appendLogLine(text) {
+    var line = document.createElement('span');
+    line.className = 'log-line';
+    line.textContent = text;
+    previewLog.appendChild(line);
+    // Trim oldest lines if over cap.
+    while (previewLog.childNodes.length > MAX_LOG_LINES) {
+      previewLog.removeChild(previewLog.firstChild);
+    }
+    previewLog.scrollTop = previewLog.scrollHeight;
+  }
+
+  // Switch the preview content area based on mode + state.
+  // mode: 'web' | 'process' | 'none' | null
+  // state: 'running' | 'starting' | 'stopped' | 'exited' | 'error' | null
+  // url: string | null
+  function applyPreviewMode(mode, state, url) {
+    var isRunning = state === 'running' || state === 'starting';
+
+    // Update status chip.
+    var chipText = state || 'stopped';
+    if (mode && isRunning) chipText = state + ' · ' + mode;
+    previewStatusChip.textContent = chipText;
+    previewStatusChip.className = (state && isRunning) ? state : (state || '');
+
+    // Update button states.
+    var canStart = !isRunning;
+    var canStop = state === 'running' || state === 'starting';
+    var canRestart = state === 'running';
+    previewStartBtn.disabled = !canStart;
+    previewStopBtn.disabled = !canStop;
+    previewRestartBtn.disabled = !canRestart;
+
+    // Hide all content areas first.
+    previewIframe.classList.remove('visible');
+    previewLog.classList.remove('visible');
+    previewHint.classList.remove('visible');
+
+    if (mode === 'web' && state === 'running') {
+      // Web mode running: show iframe with validated localhost URL.
+      var safeUrl = validateLocalhostUrl(url);
+      if (safeUrl) {
+        // Only set src if the URL has changed (avoids pointless reload).
+        if (previewIframe.getAttribute('data-preview-url') !== safeUrl) {
+          previewIframe.src = safeUrl;
+          previewIframe.setAttribute('data-preview-url', safeUrl);
+        }
+        previewIframe.classList.add('visible');
+      } else {
+        // URL missing or invalid — fall back to log view.
+        previewLog.classList.add('visible');
+      }
+    } else if (mode === 'process' || (mode === 'web' && state !== 'running' && isRunning)) {
+      // Process mode, or web starting (url not yet resolved): show log view.
+      previewLog.classList.add('visible');
+    } else if (!mode || mode === 'none' || state === 'stopped' || !state) {
+      if (mode === 'none' || !mode) {
+        // No preview configured: show hint card.
+        previewHint.classList.add('visible');
+      } else {
+        // Stopped/exited/error with a known mode: show log view (last output visible).
+        previewLog.classList.add('visible');
+      }
+    } else {
+      // Fallback for any other combination.
+      previewLog.classList.add('visible');
+    }
+
+    // If stopped/exited, clear iframe src to free the embedded page.
+    if (state === 'stopped' || state === 'exited' || state === 'error') {
+      if (previewIframe.src) {
+        previewIframe.removeAttribute('src');
+        previewIframe.removeAttribute('data-preview-url');
+      }
+    }
+  }
+
+  // Handle an incoming preview SSE event.
+  function handlePreviewEvent(ev) {
+    if (!ev || typeof ev !== 'object') return;
+
+    if (ev.type === 'log' && typeof ev.line === 'string') {
+      appendLogLine(ev.line);
+      return;
+    }
+
+    // State change events: both 'state' (from controller) and 'status' (from
+    // the initial snapshot + route broadcasts) are handled identically.
+    if (ev.type === 'state' || ev.type === 'status') {
+      applyPreviewMode(ev.mode || null, ev.state || null, ev.url || null);
+      // On a status event, also seed recent logs if provided (initial snapshot).
+      if (ev.type === 'status' && Array.isArray(ev.recentLogs)) {
+        previewLog.innerHTML = '';
+        for (var i = 0; i < ev.recentLogs.length; i++) {
+          appendLogLine(ev.recentLogs[i]);
+        }
+      }
+    }
+  }
+
+  // Open SSE stream for preview events.
+  var previewEvtSource = new EventSource('/api/preview/stream');
+
+  previewEvtSource.onmessage = function(e) {
+    var ev;
+    try { ev = JSON.parse(e.data); } catch { return; }
+    handlePreviewEvent(ev);
+  };
+
+  previewEvtSource.onerror = function() {
+    // Non-fatal: EventSource auto-reconnects. Status chip keeps its last value.
+  };
+
+  // Control button handlers.
+  previewStartBtn.addEventListener('click', async function() {
+    previewStartBtn.disabled = true;
+    try {
+      var res = await fetch('/api/preview/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        var err = 'Start failed (' + res.status + ')';
+        try { var b = await res.json(); err = b.error || err; } catch {}
+        previewStatusChip.textContent = 'error: ' + err;
+        previewStatusChip.className = 'error';
+        previewStartBtn.disabled = false;
+        // Show hint if mode=none (409 = not configured).
+        if (res.status === 409) {
+          previewHint.classList.add('visible');
+          previewIframe.classList.remove('visible');
+          previewLog.classList.remove('visible');
+        }
+      }
+      // On success: SSE stream will deliver the state change.
+    } catch (e2) {
+      previewStatusChip.textContent = 'error: ' + (e2.message || 'network error');
+      previewStatusChip.className = 'error';
+      previewStartBtn.disabled = false;
+    }
+  });
+
+  previewStopBtn.addEventListener('click', async function() {
+    previewStopBtn.disabled = true;
+    try {
+      await fetch('/api/preview/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      // SSE will deliver stopped state.
+    } catch (e2) {
+      previewStopBtn.disabled = false;
+    }
+  });
+
+  previewRestartBtn.addEventListener('click', async function() {
+    previewRestartBtn.disabled = true;
+    try {
+      await fetch('/api/preview/restart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      // SSE will deliver updated state.
+    } catch (e2) {
+      previewRestartBtn.disabled = false;
+    }
+  });
+
+  // Initial preview status fetch to seed the UI on page load
+  // (the SSE stream sends a snapshot on connect, but fetch ensures
+  // we reflect the correct mode even if the SSE is slow to connect).
+  async function fetchPreviewStatus() {
+    try {
+      var res = await fetch('/api/preview/status');
+      if (!res.ok) return;
+      var data = await res.json();
+      applyPreviewMode(data.mode || null, data.state || null, data.url || null);
+      // Seed the log view with recent logs.
+      if (Array.isArray(data.recentLogs) && data.recentLogs.length > 0) {
+        for (var i = 0; i < data.recentLogs.length; i++) {
+          appendLogLine(data.recentLogs[i]);
+        }
+      }
+    } catch {
+      // Best-effort: ignore errors, SSE will sync the state.
+    }
+  }
+
+  fetchPreviewStatus();
 </script>
 </body>
 </html>`;
