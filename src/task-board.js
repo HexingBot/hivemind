@@ -45,6 +45,8 @@ import { createSessionManager, SESSION_ID_RE } from './orchestrator-bridge.js';
 import { listSkills, resolveSkillInvocation } from './skill-catalog.js';
 import { projectSessionState } from './session-projection.js';
 import { toggleMode } from './operating-mode.js';
+import { resolvePreviewConfig } from './preview-resolver.js';
+import { createPreviewController, LOG_BUFFER_CAP } from './preview-process.js';
 
 // ---------------------------------------------------------------------------
 // Internal: read all task files from tasks/ without any caching.
@@ -1953,10 +1955,29 @@ function injectGraphData(graphObj) {
 //                                      when omitted, the real createSessionManager
 //                                      is constructed with repoRoot.
 // ---------------------------------------------------------------------------
-export function createBoardServer({ repoRoot, bridge } = {}) {
+export function createBoardServer({ repoRoot, bridge, previewController } = {}) {
   // Use the injected bridge, or construct the real one lazily.
   const sessionManager = bridge || createSessionManager({ repoRoot });
   const html = buildHtml();
+
+  // ---------------------------------------------------------------------------
+  // Single module-level preview controller (single active preview per server,
+  // matching the TASK-066 single-process design). Can be injected for tests.
+  // ---------------------------------------------------------------------------
+  const _preview = previewController || createPreviewController({ repoRoot });
+
+  // SSE subscriber set for the preview stream.
+  const _previewSubs = new Set();
+
+  // Broadcast an event to all active SSE preview stream subscribers.
+  function broadcastPreviewEvent(ev) {
+    for (const sub of _previewSubs) {
+      try {
+        sub(ev);
+      } catch { /* subscriber's socket may be closed */ }
+    }
+  }
+
   const htmlBytes = Buffer.from(html, 'utf8');
 
   const server = http.createServer(async (req, res) => {
@@ -2432,6 +2453,231 @@ export function createBoardServer({ repoRoot, bridge } = {}) {
         session.send(message);
 
         sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      // -----------------------------------------------------------------------
+      // Preview routes — TASK-067
+      // All routes inherit the Host allowlist (already checked above).
+      // POST routes additionally require Content-Type: application/json and
+      // a body ≤ 64 KiB — the same guards as every other mutation endpoint.
+      // -----------------------------------------------------------------------
+
+      // GET /api/preview/status — bounded snapshot from the process manager + resolver.
+      // Never returns unbounded logs (capped to LOG_BUFFER_CAP items, but the response
+      // further clips to 50 most-recent lines to keep the payload bounded).
+      if (req.method === 'GET' && pathname === '/api/preview/status') {
+        const status = _preview.getStatus();
+        const RECENT_CAP = 50;
+        const recentLogs = Array.isArray(status.recentLogs)
+          ? status.recentLogs.slice(-RECENT_CAP)
+          : [];
+        const body = {
+          state: status.state,
+          mode: status.mode,
+          url: status.url !== undefined ? status.url : null,
+          source: status.source !== undefined ? status.source : null,
+          recentLogs,
+        };
+        sendJson(res, 200, body);
+        return;
+      }
+
+      // GET /api/preview/stream — SSE channel.
+      // Emits incremental log lines + state changes. Mirrors the chat /stream
+      // listener-cleanup discipline exactly (TASK-051 unsubscribe-on-disconnect fix).
+      if (req.method === 'GET' && pathname === '/api/preview/stream') {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        });
+        res.flushHeaders();
+
+        function onPreviewEvent(ev) {
+          try {
+            res.write(`data: ${JSON.stringify(ev)}\n\n`);
+          } catch { /* socket may be closed */ }
+        }
+
+        // Send current status immediately so the client has an initial snapshot.
+        const initStatus = _preview.getStatus();
+        const RECENT_CAP = 50;
+        onPreviewEvent({
+          type: 'status',
+          state: initStatus.state,
+          mode: initStatus.mode,
+          url: initStatus.url !== undefined ? initStatus.url : null,
+          recentLogs: Array.isArray(initStatus.recentLogs)
+            ? initStatus.recentLogs.slice(-RECENT_CAP)
+            : [],
+        });
+
+        _previewSubs.add(onPreviewEvent);
+
+        // Clean up listener when the client disconnects — no leak.
+        req.socket.on('close', () => {
+          _previewSubs.delete(onPreviewEvent);
+        });
+
+        return;
+      }
+
+      // POST /api/preview/start — resolve config (065) and launch (066).
+      if (req.method === 'POST' && pathname === '/api/preview/start') {
+        // CONTENT-TYPE GUARD
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
+          return;
+        }
+
+        // Resolve config from the repo.
+        let config;
+        try {
+          config = await resolvePreviewConfig({ repoRoot });
+        } catch (err) {
+          sendJson(res, 500, { error: `resolver error: ${(err && err.message) || 'unknown'}` });
+          return;
+        }
+
+        // mode=none → no preview configured; return a clear 409 with a configure hint.
+        if (config.mode === 'none') {
+          sendJson(res, 409, {
+            error: 'no preview configured',
+            hint: 'Add preview_command, preview_url, or preview_port to PROJECT.md frontmatter, or add a dev/start/serve script to package.json.',
+          });
+          return;
+        }
+
+        // Build the argv: if config.command is a string, pass it as-is to the controller
+        // (the controller now also accepts string[] for space-bearing paths).
+        // Pass the config object directly — the controller handles string | string[].
+        try {
+          await _preview.start(config);
+        } catch (err) {
+          sendJson(res, 500, { error: `start failed: ${(err && err.message) || 'unknown'}` });
+          return;
+        }
+
+        // Notify SSE subscribers of the state change.
+        const newStatus = _preview.getStatus();
+        broadcastPreviewEvent({
+          type: 'status',
+          state: newStatus.state,
+          mode: newStatus.mode,
+          url: newStatus.url !== undefined ? newStatus.url : null,
+        });
+
+        sendJson(res, 200, { ok: true, state: newStatus.state, mode: newStatus.mode, url: newStatus.url });
+        return;
+      }
+
+      // POST /api/preview/stop — terminate the preview process (idempotent).
+      if (req.method === 'POST' && pathname === '/api/preview/stop') {
+        // CONTENT-TYPE GUARD
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
+          return;
+        }
+
+        try {
+          await _preview.stop();
+        } catch (err) {
+          sendJson(res, 500, { error: `stop failed: ${(err && err.message) || 'unknown'}` });
+          return;
+        }
+
+        // Notify SSE subscribers.
+        broadcastPreviewEvent({ type: 'status', state: 'stopped', mode: null, url: null });
+
+        sendJson(res, 200, { ok: true, state: 'stopped' });
+        return;
+      }
+
+      // POST /api/preview/restart — stop then start.
+      if (req.method === 'POST' && pathname === '/api/preview/restart') {
+        // CONTENT-TYPE GUARD
+        const contentType = req.headers['content-type'] || '';
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || '(missing)'}`,
+          });
+          return;
+        }
+
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === 'BODY_TOO_LARGE') {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: 'invalid JSON body' });
+          }
+          return;
+        }
+
+        // Resolve config from the repo.
+        let config;
+        try {
+          config = await resolvePreviewConfig({ repoRoot });
+        } catch (err) {
+          sendJson(res, 500, { error: `resolver error: ${(err && err.message) || 'unknown'}` });
+          return;
+        }
+
+        if (config.mode === 'none') {
+          sendJson(res, 409, {
+            error: 'no preview configured',
+            hint: 'Add preview_command, preview_url, or preview_port to PROJECT.md frontmatter, or add a dev/start/serve script to package.json.',
+          });
+          return;
+        }
+
+        try {
+          await _preview.restart(config);
+        } catch (err) {
+          sendJson(res, 500, { error: `restart failed: ${(err && err.message) || 'unknown'}` });
+          return;
+        }
+
+        const newStatus = _preview.getStatus();
+        broadcastPreviewEvent({
+          type: 'status',
+          state: newStatus.state,
+          mode: newStatus.mode,
+          url: newStatus.url !== undefined ? newStatus.url : null,
+        });
+
+        sendJson(res, 200, { ok: true, state: newStatus.state, mode: newStatus.mode, url: newStatus.url });
         return;
       }
 

@@ -172,10 +172,17 @@ export function createPreviewController({ repoRoot }) {
       ? { ...process.env, ...config.env }
       : { ...process.env };
 
-    // Parse the command string into executable + args.
-    // Simple shell-like split: split on whitespace, no quoting support needed
-    // for the fixture commands used by tests (node <path>).
-    const parts = config.command.trim().split(/\s+/);
+    // Parse the command into executable + args.
+    // Accepts either a pre-split argv (string[]) or a plain string.
+    // When an array is supplied it is used as-is (handles space-bearing paths
+    // and quoted args that a whitespace split would mangle).
+    // When a string is supplied it is split on whitespace — the legacy path.
+    let parts;
+    if (Array.isArray(config.command)) {
+      parts = config.command;
+    } else {
+      parts = config.command.trim().split(/\s+/);
+    }
     const executable = parts[0];
     const args = parts.slice(1);
 

@@ -7717,7 +7717,7 @@ __export(task_board_exports, {
 });
 module.exports = __toCommonJS(task_board_exports);
 var import_node_url = require("node:url");
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process3 = require("node:child_process");
 
 // src/repo-root.js
 function resolveRepoRoot(env, cwd) {
@@ -7730,8 +7730,8 @@ function resolveRepoRoot(env, cwd) {
 
 // src/task-board.js
 var import_node_http = __toESM(require("node:http"), 1);
-var import_promises4 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_promises5 = require("node:fs/promises");
+var import_node_path8 = require("node:path");
 
 // src/task-store.js
 var import_promises = require("node:fs/promises");
@@ -8500,12 +8500,285 @@ async function toggleMode({ repoRoot }) {
   return next;
 }
 
+// src/preview-resolver.js
+var import_promises4 = require("node:fs/promises");
+var import_node_fs7 = require("node:fs");
+var import_node_path7 = require("node:path");
+var PORT_PATTERNS = [
+  /--port\s+(\d+)/,
+  /-p\s+(\d+)/,
+  /PORT=(\d+)/,
+  /localhost:(\d+)/,
+  /0\.0\.0\.0:(\d+)/
+];
+function extractPort(script) {
+  for (const re of PORT_PATTERNS) {
+    const m = script.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+function modeFromPort(port) {
+  if (port !== null) {
+    return { mode: "web", url: `http://localhost:${port}` };
+  }
+  return { mode: "process", url: null };
+}
+async function resolvePreviewConfig({ repoRoot }) {
+  const none = { mode: "none", command: null, cwd: repoRoot, url: null, source: "none" };
+  const projectMdPath = (0, import_node_path7.join)(repoRoot, "PROJECT.md");
+  if ((0, import_node_fs7.existsSync)(projectMdPath)) {
+    try {
+      const text = await (0, import_promises4.readFile)(projectMdPath, "utf8");
+      const frontmatter = extractFrontmatter(text);
+      const hasPreviewFields = frontmatter.preview_command !== void 0 || frontmatter.preview_url !== void 0 || frontmatter.preview_port !== void 0;
+      if (hasPreviewFields) {
+        const command = frontmatter.preview_command ?? null;
+        const explicitMode = frontmatter.preview_mode ?? null;
+        const previewUrl = frontmatter.preview_url ?? null;
+        const previewPort = frontmatter.preview_port ?? null;
+        let url = previewUrl;
+        if (url === null && previewPort !== null) {
+          url = `http://localhost:${previewPort}`;
+        }
+        const mode = explicitMode === "web" || explicitMode === "process" ? explicitMode : url !== null || previewPort !== null ? "web" : "process";
+        return { mode, command, cwd: repoRoot, url, source: "configured" };
+      }
+    } catch {
+    }
+  }
+  const packageJsonPath = (0, import_node_path7.join)(repoRoot, "package.json");
+  if ((0, import_node_fs7.existsSync)(packageJsonPath)) {
+    try {
+      const raw = await (0, import_promises4.readFile)(packageJsonPath, "utf8");
+      const pkg = JSON.parse(raw);
+      const scripts = pkg && typeof pkg.scripts === "object" && pkg.scripts !== null ? pkg.scripts : {};
+      const CANDIDATES = ["dev", "start", "serve"];
+      for (const scriptName of CANDIDATES) {
+        if (typeof scripts[scriptName] === "string") {
+          const scriptStr = scripts[scriptName];
+          const command = `npm run ${scriptName}`;
+          const port = extractPort(scriptStr);
+          const { mode, url } = modeFromPort(port);
+          return { mode, command, cwd: repoRoot, url, source: "inferred" };
+        }
+      }
+    } catch {
+    }
+  }
+  return none;
+}
+function extractFrontmatter(text) {
+  const lines = text.split(/\r?\n/);
+  if (lines[0] !== "---") return {};
+  let closeIdx = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i] === "---") {
+      closeIdx = i;
+      break;
+    }
+  }
+  if (closeIdx === -1) return {};
+  const result = {};
+  for (let i = 1; i < closeIdx; i++) {
+    const line = lines[i];
+    if (line.trim().length === 0) continue;
+    const m = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (m) result[m[1]] = m[2].trim();
+  }
+  return result;
+}
+
+// src/preview-process.js
+var import_node_child_process2 = require("node:child_process");
+var LOG_BUFFER_CAP = 200;
+var RE_FULL_URL = /http:\/\/localhost:\d+/;
+var RE_PORT_ONLY = /[Ll]istening on (?:port )?(\d+)/;
+function createPreviewController({ repoRoot }) {
+  let _state = "stopped";
+  let _mode = null;
+  let _url = null;
+  let _pid = null;
+  let _logs = [];
+  let _child = null;
+  let _configuredUrl = null;
+  function pushLog(line) {
+    _logs.push(line);
+    if (_logs.length > LOG_BUFFER_CAP) {
+      _logs = _logs.slice(_logs.length - LOG_BUFFER_CAP);
+    }
+  }
+  function handleChunk(chunk) {
+    let text;
+    try {
+      text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    } catch {
+      try {
+        text = chunk.toString("latin1");
+      } catch {
+        return;
+      }
+    }
+    const lines = text.split("\n");
+    for (const line of lines) {
+      if (line.length === 0) continue;
+      pushLog(line);
+      if (_url === null && _configuredUrl === null) {
+        const fullMatch = RE_FULL_URL.exec(line);
+        if (fullMatch) {
+          _url = fullMatch[0];
+          continue;
+        }
+        const portMatch = RE_PORT_ONLY.exec(line);
+        if (portMatch) {
+          _url = `http://localhost:${portMatch[1]}`;
+        }
+      }
+    }
+  }
+  function _teardown() {
+    return new Promise((resolve) => {
+      if (_child === null) {
+        resolve();
+        return;
+      }
+      const child = _child;
+      _child = null;
+      if (child.exitCode !== null || child.killed) {
+        resolve();
+        return;
+      }
+      function onExit() {
+        resolve();
+      }
+      child.once("exit", onExit);
+      let killed = false;
+      try {
+        child.kill("SIGTERM");
+        killed = true;
+      } catch {
+      }
+      if (killed) {
+        const fallback = setTimeout(() => {
+          try {
+            child.kill();
+          } catch {
+          }
+        }, 3e3);
+        child.once("exit", () => clearTimeout(fallback));
+      } else {
+        try {
+          child.kill();
+        } catch {
+        }
+      }
+    });
+  }
+  async function start(config) {
+    if (_child !== null) {
+      await _teardown();
+    }
+    _state = "starting";
+    _mode = config.mode ?? null;
+    _configuredUrl = config.url ?? null;
+    _url = _configuredUrl;
+    _pid = null;
+    _logs = [];
+    const childEnv = config.env ? { ...process.env, ...config.env } : { ...process.env };
+    let parts;
+    if (Array.isArray(config.command)) {
+      parts = config.command;
+    } else {
+      parts = config.command.trim().split(/\s+/);
+    }
+    const executable = parts[0];
+    const args = parts.slice(1);
+    let child;
+    try {
+      child = (0, import_node_child_process2.spawn)(executable, args, {
+        cwd: config.cwd || repoRoot,
+        env: childEnv,
+        stdio: ["pipe", "pipe", "pipe"]
+        // NOT detached — explicit requirement; guarantees parent can kill child.
+      });
+    } catch (spawnErr) {
+      _state = "error";
+      _pid = null;
+      _child = null;
+      throw spawnErr;
+    }
+    _child = child;
+    _pid = child.pid ?? null;
+    child.stdout.on("data", (chunk) => {
+      handleChunk(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      handleChunk(chunk);
+    });
+    child.on("error", (err) => {
+      if (_child === child) {
+        _state = "error";
+        _pid = null;
+        pushLog(`[spawn error] ${err.message}`);
+      }
+    });
+    child.on("exit", (code, signal) => {
+      if (_child === child) {
+        if (_state !== "stopped") {
+          _state = "exited";
+        }
+        _pid = null;
+        _child = null;
+        pushLog(`[exit] code=${code} signal=${signal}`);
+      }
+    });
+    await new Promise((resolve) => {
+      if (_state === "error" || _state === "exited") {
+        resolve();
+        return;
+      }
+      setImmediate(() => {
+        if (_child === child && _state === "starting") {
+          _state = "running";
+        }
+        resolve();
+      });
+    });
+  }
+  async function stop() {
+    if (_child === null && _state === "stopped") {
+      return;
+    }
+    await _teardown();
+    _state = "stopped";
+    _mode = null;
+    _url = null;
+    _pid = null;
+    _configuredUrl = null;
+  }
+  async function restart(config) {
+    await stop();
+    await start(config);
+  }
+  function getStatus() {
+    return {
+      state: _state,
+      mode: _mode,
+      url: _url,
+      pid: _pid,
+      // Return a shallow copy to prevent external mutation.
+      recentLogs: _logs.slice()
+    };
+  }
+  return { start, stop, restart, getStatus };
+}
+
 // src/task-board.js
 async function readAllTasksForBoard(repoRoot) {
-  const tasksDir2 = (0, import_node_path7.join)(repoRoot, "tasks");
+  const tasksDir2 = (0, import_node_path8.join)(repoRoot, "tasks");
   let entries;
   try {
-    entries = await (0, import_promises4.readdir)(tasksDir2);
+    entries = await (0, import_promises5.readdir)(tasksDir2);
   } catch (err) {
     if (err && err.code === "ENOENT") return [];
     throw err;
@@ -8513,7 +8786,7 @@ async function readAllTasksForBoard(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises4.readFile)((0, import_node_path7.join)(tasksDir2, name), "utf8");
+    const raw = await (0, import_promises5.readFile)((0, import_node_path8.join)(tasksDir2, name), "utf8");
     out.push(JSON.parse(raw));
   }
   return out;
@@ -10316,9 +10589,19 @@ function injectGraphData(graphObj) {
   const body = buildGraphBody(graphObj);
   return template.replace(GRAPH_DATA_SENTINEL, () => json).replace(GRAPH_BODY_SENTINEL, () => body);
 }
-function createBoardServer({ repoRoot, bridge } = {}) {
+function createBoardServer({ repoRoot, bridge, previewController } = {}) {
   const sessionManager = bridge || createSessionManager({ repoRoot });
   const html = buildHtml();
+  const _preview = previewController || createPreviewController({ repoRoot });
+  const _previewSubs = /* @__PURE__ */ new Set();
+  function broadcastPreviewEvent(ev) {
+    for (const sub of _previewSubs) {
+      try {
+        sub(ev);
+      } catch {
+      }
+    }
+  }
   const htmlBytes = Buffer.from(html, "utf8");
   const server = import_node_http.default.createServer(async (req, res) => {
     try {
@@ -10679,6 +10962,175 @@ function createBoardServer({ repoRoot, bridge } = {}) {
         sendJson(res, 200, { ok: true });
         return;
       }
+      if (req.method === "GET" && pathname === "/api/preview/status") {
+        const status = _preview.getStatus();
+        const RECENT_CAP = 50;
+        const recentLogs = Array.isArray(status.recentLogs) ? status.recentLogs.slice(-RECENT_CAP) : [];
+        const body = {
+          state: status.state,
+          mode: status.mode,
+          url: status.url !== void 0 ? status.url : null,
+          source: status.source !== void 0 ? status.source : null,
+          recentLogs
+        };
+        sendJson(res, 200, body);
+        return;
+      }
+      if (req.method === "GET" && pathname === "/api/preview/stream") {
+        let onPreviewEvent = function(ev) {
+          try {
+            res.write(`data: ${JSON.stringify(ev)}
+
+`);
+          } catch {
+          }
+        };
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        });
+        res.flushHeaders();
+        const initStatus = _preview.getStatus();
+        const RECENT_CAP = 50;
+        onPreviewEvent({
+          type: "status",
+          state: initStatus.state,
+          mode: initStatus.mode,
+          url: initStatus.url !== void 0 ? initStatus.url : null,
+          recentLogs: Array.isArray(initStatus.recentLogs) ? initStatus.recentLogs.slice(-RECENT_CAP) : []
+        });
+        _previewSubs.add(onPreviewEvent);
+        req.socket.on("close", () => {
+          _previewSubs.delete(onPreviewEvent);
+        });
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/preview/start") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        let config;
+        try {
+          config = await resolvePreviewConfig({ repoRoot });
+        } catch (err) {
+          sendJson(res, 500, { error: `resolver error: ${err && err.message || "unknown"}` });
+          return;
+        }
+        if (config.mode === "none") {
+          sendJson(res, 409, {
+            error: "no preview configured",
+            hint: "Add preview_command, preview_url, or preview_port to PROJECT.md frontmatter, or add a dev/start/serve script to package.json."
+          });
+          return;
+        }
+        try {
+          await _preview.start(config);
+        } catch (err) {
+          sendJson(res, 500, { error: `start failed: ${err && err.message || "unknown"}` });
+          return;
+        }
+        const newStatus = _preview.getStatus();
+        broadcastPreviewEvent({
+          type: "status",
+          state: newStatus.state,
+          mode: newStatus.mode,
+          url: newStatus.url !== void 0 ? newStatus.url : null
+        });
+        sendJson(res, 200, { ok: true, state: newStatus.state, mode: newStatus.mode, url: newStatus.url });
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/preview/stop") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        try {
+          await _preview.stop();
+        } catch (err) {
+          sendJson(res, 500, { error: `stop failed: ${err && err.message || "unknown"}` });
+          return;
+        }
+        broadcastPreviewEvent({ type: "status", state: "stopped", mode: null, url: null });
+        sendJson(res, 200, { ok: true, state: "stopped" });
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/preview/restart") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        let config;
+        try {
+          config = await resolvePreviewConfig({ repoRoot });
+        } catch (err) {
+          sendJson(res, 500, { error: `resolver error: ${err && err.message || "unknown"}` });
+          return;
+        }
+        if (config.mode === "none") {
+          sendJson(res, 409, {
+            error: "no preview configured",
+            hint: "Add preview_command, preview_url, or preview_port to PROJECT.md frontmatter, or add a dev/start/serve script to package.json."
+          });
+          return;
+        }
+        try {
+          await _preview.restart(config);
+        } catch (err) {
+          sendJson(res, 500, { error: `restart failed: ${err && err.message || "unknown"}` });
+          return;
+        }
+        const newStatus = _preview.getStatus();
+        broadcastPreviewEvent({
+          type: "status",
+          state: newStatus.state,
+          mode: newStatus.mode,
+          url: newStatus.url !== void 0 ? newStatus.url : null
+        });
+        sendJson(res, 200, { ok: true, state: newStatus.state, mode: newStatus.mode, url: newStatus.url });
+        return;
+      }
       sendJson(res, 404, { error: `not found: ${pathname}` });
     } catch (err) {
       const msg = err && err.message || "internal server error";
@@ -10710,7 +11162,7 @@ function parseArgs(argv) {
   }
   return out;
 }
-function openBrowser(url, spawnFn = import_node_child_process2.spawn) {
+function openBrowser(url, spawnFn = import_node_child_process3.spawn) {
   try {
     let cmd, args;
     if (process.platform === "win32") {
