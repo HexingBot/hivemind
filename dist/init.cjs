@@ -8527,6 +8527,19 @@ var PROJECT_schema_default = {
     scope_out: {
       type: "array",
       items: { type: "string" }
+    },
+    preview_command: {
+      type: "string"
+    },
+    preview_url: {
+      type: "string"
+    },
+    preview_port: {
+      type: "string"
+    },
+    preview_mode: {
+      type: "string",
+      enum: ["web", "process"]
     }
   }
 };
