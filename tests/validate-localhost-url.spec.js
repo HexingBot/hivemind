@@ -9,12 +9,18 @@
 // The test FAILS if the guard regresses — i.e. starts accepting an attack URL
 // or rejecting a legitimate localhost URL.
 //
+// Origin-based validation (fix(TASK-068)): path/query/fragment are allowed so
+// configured preview_url values like http://localhost:3000/ and
+// http://localhost:3000/app work correctly. The XSS guard is carried by the
+// origin checks: protocol, hostname, port, and absence of userinfo.
+//
 // Fast tier (pure logic, no disk I/O) — tests/*.spec.js.
 
 import { describe, it, expect } from 'vitest';
 import { validateLocalhostUrl } from '../src/task-board.js';
 
 describe('validateLocalhostUrl — accept matrix (AC2 XSS guard)', () => {
+  // Origin-only (no path) — auto-detected URL from preview-process stdout
   it('accepts http://localhost:3000', () => {
     expect(validateLocalhostUrl('http://localhost:3000')).toBe('http://localhost:3000');
   });
@@ -29,6 +35,26 @@ describe('validateLocalhostUrl — accept matrix (AC2 XSS guard)', () => {
 
   it('accepts http://127.0.0.1:65535', () => {
     expect(validateLocalhostUrl('http://127.0.0.1:65535')).toBe('http://127.0.0.1:65535');
+  });
+
+  // With trailing slash — common configured preview_url form (regression from 4057f9e)
+  it('accepts http://localhost:3000/ (trailing slash)', () => {
+    expect(validateLocalhostUrl('http://localhost:3000/')).toBe('http://localhost:3000/');
+  });
+
+  // With path — natural configured preview_url form (TASK-069 documented)
+  it('accepts http://localhost:3000/app (path)', () => {
+    expect(validateLocalhostUrl('http://localhost:3000/app')).toBe('http://localhost:3000/app');
+  });
+
+  // With query string
+  it('accepts http://localhost:3000/app?x=1 (path + query)', () => {
+    expect(validateLocalhostUrl('http://localhost:3000/app?x=1')).toBe('http://localhost:3000/app?x=1');
+  });
+
+  // 127.0.0.1 with path — regression lock
+  it('accepts http://127.0.0.1:5173/index.html (127.0.0.1 with path)', () => {
+    expect(validateLocalhostUrl('http://127.0.0.1:5173/index.html')).toBe('http://127.0.0.1:5173/index.html');
   });
 });
 
@@ -126,8 +152,8 @@ describe('validateLocalhostUrl — reject matrix (XSS attack bypass attempts)', 
     expect(validateLocalhostUrl('')).toBeNull();
   });
 
-  // Case sensitivity — the impl uses lowercase 'http:' so uppercase must be rejected
-  // by the anchored regex (the regex is case-sensitive by default).
+  // Case sensitivity — the pre-check regex is case-sensitive, and the URL parser
+  // normalises protocol to lowercase, so HTTP:// fails the pre-check before parse.
   it('rejects HTTP://localhost:3000 (uppercase protocol)', () => {
     expect(validateLocalhostUrl('HTTP://localhost:3000')).toBeNull();
   });

@@ -8863,14 +8863,13 @@ function readBody(req, maxBytes = MAX_BODY_BYTES) {
 var ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
 function validateLocalhostUrl(url) {
   if (typeof url !== "string") return null;
-  if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(url)) return null;
+  if (!/^http:\/\/(localhost|127\.0\.0\.1):/.test(url)) return null;
   try {
     var parsed = new URL(url);
     if (parsed.protocol !== "http:") return null;
     if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") return null;
     if (!parsed.port) return null;
     if (parsed.username || parsed.password) return null;
-    if (parsed.pathname !== "/") return null;
     return url;
   } catch {
     return null;

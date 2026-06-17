@@ -131,37 +131,43 @@ const ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
 // it directly (single-source: the exact same code runs in Node tests AND in the
 // browser, injected via .toString() into the <script> block in buildHtml()).
 //
-// Accepts ONLY http://localhost:<port> or http://127.0.0.1:<port> — the two
-// forms the preview-process URL detector can emit.  All other inputs return
-// null, including:
-//   - non-http protocols (https, javascript, data, ...)
-//   - missing port
-//   - userinfo (@) in the authority
-//   - trailing path that could disguise a redirect
-//   - IPv6, hex/octal IP, hostname typosquats
+// ORIGIN-based validation: accepts any URL whose origin is http://localhost:<port>
+// or http://127.0.0.1:<port>.  Path, query, and fragment are allowed — they are
+// inert as iframe.src navigation targets and the resolver passes preview_url
+// verbatim (so http://localhost:3000/ and http://localhost:3000/app are both valid
+// configured inputs that must not be rejected).
 //
-// The function uses two layers:
-//   1. A strict anchored regex — fast-rejects almost everything before URL parsing.
-//   2. new URL() parse + field-by-field assertions — catches the remaining edge
-//      cases that the regex alone might miss (e.g. encoded characters).
+// The XSS guard is carried entirely by the origin checks:
+//   - protocol must be 'http:' (rejects javascript:, data:, https:, etc.)
+//   - hostname must be localhost or 127.0.0.1 (rejects evil.com, typosquats, IPv6)
+//   - port must be present (rejects http://localhost with no port)
+//   - no userinfo (rejects http://user:pass@localhost:3000 and authority-confusion
+//     attacks like http://localhost:3000@evil.com)
+//
+// The URL-parse is the authority — no end-anchored regex needed because the
+// parsed fields are checked individually and cannot be confused by trailing junk.
+// A cheap protocol/hostname prefix regex still fast-rejects the overwhelming
+// majority of bad inputs before URL construction.
 // ---------------------------------------------------------------------------
 export function validateLocalhostUrl(url) {
   if (typeof url !== 'string') return null;
-  // Layer 1: strict anchored regex.
-  // Anchored at start (^) and end ($) — no trailing junk, no leading whitespace.
-  // Port is required (\d+) and must appear right after the host — no userinfo (@).
-  if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(url)) return null;
-  // Layer 2: URL parse — confirms protocol, hostname, port, and absence of
-  // credentials/path that the regex alone cannot guarantee.
+  // Cheap pre-check: must start with http:// and contain localhost or 127.0.0.1.
+  // Not end-anchored — path/query/fragment are allowed.
+  if (!/^http:\/\/(localhost|127\.0\.0\.1):/.test(url)) return null;
+  // URL parse is the authority for all remaining checks.
   try {
     var parsed = new URL(url);
+    // Protocol must be exactly 'http:' (case-normalised by the URL parser).
     if (parsed.protocol !== 'http:') return null;
+    // Hostname must be localhost or 127.0.0.1 (no IPv6, no hex IP, no typosquats).
     if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
+    // Port must be explicit (rejects http://localhost with no port).
     if (!parsed.port) return null;
-    // Reject any userinfo (username or password in the URL).
+    // Reject any userinfo — covers http://user:pass@localhost:3000 and
+    // authority-confusion attacks like http://localhost:3000@evil.com.
     if (parsed.username || parsed.password) return null;
-    // Reject any path beyond the root (the fixture servers serve from /).
-    if (parsed.pathname !== '/') return null;
+    // Path, search, and hash are intentionally NOT checked — they are inert as
+    // iframe.src targets and are needed for configured preview_url values.
     return url;
   } catch {
     return null;
