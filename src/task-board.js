@@ -2466,17 +2466,36 @@ export function createBoardServer({ repoRoot, bridge, previewController } = {}) 
       // GET /api/preview/status — bounded snapshot from the process manager + resolver.
       // Never returns unbounded logs (capped to LOG_BUFFER_CAP items, but the response
       // further clips to 50 most-recent lines to keep the payload bounded).
+      // source: taken from the controller when running (plumbed from config.source in
+      // start()); falls back to a fresh resolvePreviewConfig call when stopped/never
+      // started so the field is accurate before start is ever called.
       if (req.method === 'GET' && pathname === '/api/preview/status') {
         const status = _preview.getStatus();
         const RECENT_CAP = 50;
         const recentLogs = Array.isArray(status.recentLogs)
           ? status.recentLogs.slice(-RECENT_CAP)
           : [];
+
+        // Determine source: use the controller's stored value when available,
+        // otherwise fall back to the resolver so the field is always informative.
+        let source = status.source !== null && status.source !== undefined
+          ? status.source
+          : null;
+        if (source === null) {
+          try {
+            const cfg = await resolvePreviewConfig({ repoRoot });
+            source = cfg.source;
+          } catch {
+            // Resolver failure is non-fatal for the status route.
+            source = null;
+          }
+        }
+
         const body = {
           state: status.state,
           mode: status.mode,
           url: status.url !== undefined ? status.url : null,
-          source: status.source !== undefined ? status.source : null,
+          source,
           recentLogs,
         };
         sendJson(res, 200, body);
@@ -2484,8 +2503,11 @@ export function createBoardServer({ repoRoot, bridge, previewController } = {}) 
       }
 
       // GET /api/preview/stream — SSE channel.
-      // Emits incremental log lines + state changes. Mirrors the chat /stream
-      // listener-cleanup discipline exactly (TASK-051 unsubscribe-on-disconnect fix).
+      // Emits incremental log lines ({ type:'log', line }) and state changes
+      // ({ type:'state', state, mode, url, source }) from the controller's
+      // subscribe hook. Mirrors the TASK-051 unsubscribe-on-disconnect pattern
+      // exactly — the unsubscribe fn returned by ctrl.subscribe() is called on
+      // socket close so no listener leaks.
       if (req.method === 'GET' && pathname === '/api/preview/stream') {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream; charset=utf-8',
@@ -2501,22 +2523,31 @@ export function createBoardServer({ repoRoot, bridge, previewController } = {}) 
         }
 
         // Send current status immediately so the client has an initial snapshot.
-        const initStatus = _preview.getStatus();
         const RECENT_CAP = 50;
+        const initStatus = _preview.getStatus();
         onPreviewEvent({
           type: 'status',
           state: initStatus.state,
           mode: initStatus.mode,
           url: initStatus.url !== undefined ? initStatus.url : null,
+          source: initStatus.source !== undefined ? initStatus.source : null,
           recentLogs: Array.isArray(initStatus.recentLogs)
             ? initStatus.recentLogs.slice(-RECENT_CAP)
             : [],
         });
 
+        // Subscribe to the controller for incremental log lines + state changes.
+        // The returned unsubscribe function is called on client disconnect.
+        const unsubscribePreview = _preview.subscribe(onPreviewEvent);
+
+        // Also register in the legacy _previewSubs set (kept for broadcastPreviewEvent
+        // calls from route handlers that fire before the controller's own emit).
         _previewSubs.add(onPreviewEvent);
 
         // Clean up listener when the client disconnects — no leak.
+        // Mirrors the TASK-051 chat /stream unsubscribe fix exactly.
         req.socket.on('close', () => {
+          unsubscribePreview();
           _previewSubs.delete(onPreviewEvent);
         });
 
@@ -2564,9 +2595,8 @@ export function createBoardServer({ repoRoot, bridge, previewController } = {}) 
           return;
         }
 
-        // Build the argv: if config.command is a string, pass it as-is to the controller
-        // (the controller now also accepts string[] for space-bearing paths).
-        // Pass the config object directly — the controller handles string | string[].
+        // Pass the config object directly — the resolver always returns command as a
+        // string, and the controller's start() handles both string and string[] forms.
         try {
           await _preview.start(config);
         } catch (err) {

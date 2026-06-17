@@ -8598,15 +8598,29 @@ function createPreviewController({ repoRoot }) {
   let _state = "stopped";
   let _mode = null;
   let _url = null;
+  let _source = null;
   let _pid = null;
   let _logs = [];
   let _child = null;
   let _configuredUrl = null;
+  const _subs = /* @__PURE__ */ new Set();
+  function _emit(ev) {
+    for (const cb of _subs) {
+      try {
+        cb(ev);
+      } catch {
+      }
+    }
+  }
   function pushLog(line) {
     _logs.push(line);
     if (_logs.length > LOG_BUFFER_CAP) {
       _logs = _logs.slice(_logs.length - LOG_BUFFER_CAP);
     }
+    _emit({ type: "log", line });
+  }
+  function _emitState() {
+    _emit({ type: "state", state: _state, mode: _mode, url: _url, source: _source });
   }
   function handleChunk(chunk) {
     let text;
@@ -8680,10 +8694,12 @@ function createPreviewController({ repoRoot }) {
     }
     _state = "starting";
     _mode = config.mode ?? null;
+    _source = config.source ?? null;
     _configuredUrl = config.url ?? null;
     _url = _configuredUrl;
     _pid = null;
     _logs = [];
+    _emitState();
     const childEnv = config.env ? { ...process.env, ...config.env } : { ...process.env };
     let parts;
     if (Array.isArray(config.command)) {
@@ -8720,6 +8736,7 @@ function createPreviewController({ repoRoot }) {
         _state = "error";
         _pid = null;
         pushLog(`[spawn error] ${err.message}`);
+        _emitState();
       }
     });
     child.on("exit", (code, signal) => {
@@ -8730,6 +8747,7 @@ function createPreviewController({ repoRoot }) {
         _pid = null;
         _child = null;
         pushLog(`[exit] code=${code} signal=${signal}`);
+        _emitState();
       }
     });
     await new Promise((resolve) => {
@@ -8740,6 +8758,7 @@ function createPreviewController({ repoRoot }) {
       setImmediate(() => {
         if (_child === child && _state === "starting") {
           _state = "running";
+          _emitState();
         }
         resolve();
       });
@@ -8753,8 +8772,10 @@ function createPreviewController({ repoRoot }) {
     _state = "stopped";
     _mode = null;
     _url = null;
+    _source = null;
     _pid = null;
     _configuredUrl = null;
+    _emitState();
   }
   async function restart(config) {
     await stop();
@@ -8765,12 +8786,19 @@ function createPreviewController({ repoRoot }) {
       state: _state,
       mode: _mode,
       url: _url,
+      source: _source,
       pid: _pid,
       // Return a shallow copy to prevent external mutation.
       recentLogs: _logs.slice()
     };
   }
-  return { start, stop, restart, getStatus };
+  function subscribe(cb) {
+    _subs.add(cb);
+    return function unsubscribe() {
+      _subs.delete(cb);
+    };
+  }
+  return { start, stop, restart, getStatus, subscribe };
 }
 
 // src/task-board.js
@@ -10966,11 +10994,20 @@ function createBoardServer({ repoRoot, bridge, previewController } = {}) {
         const status = _preview.getStatus();
         const RECENT_CAP = 50;
         const recentLogs = Array.isArray(status.recentLogs) ? status.recentLogs.slice(-RECENT_CAP) : [];
+        let source = status.source !== null && status.source !== void 0 ? status.source : null;
+        if (source === null) {
+          try {
+            const cfg = await resolvePreviewConfig({ repoRoot });
+            source = cfg.source;
+          } catch {
+            source = null;
+          }
+        }
         const body = {
           state: status.state,
           mode: status.mode,
           url: status.url !== void 0 ? status.url : null,
-          source: status.source !== void 0 ? status.source : null,
+          source,
           recentLogs
         };
         sendJson(res, 200, body);
@@ -10991,17 +11028,20 @@ function createBoardServer({ repoRoot, bridge, previewController } = {}) {
           "Connection": "keep-alive"
         });
         res.flushHeaders();
-        const initStatus = _preview.getStatus();
         const RECENT_CAP = 50;
+        const initStatus = _preview.getStatus();
         onPreviewEvent({
           type: "status",
           state: initStatus.state,
           mode: initStatus.mode,
           url: initStatus.url !== void 0 ? initStatus.url : null,
+          source: initStatus.source !== void 0 ? initStatus.source : null,
           recentLogs: Array.isArray(initStatus.recentLogs) ? initStatus.recentLogs.slice(-RECENT_CAP) : []
         });
+        const unsubscribePreview = _preview.subscribe(onPreviewEvent);
         _previewSubs.add(onPreviewEvent);
         req.socket.on("close", () => {
+          unsubscribePreview();
           _previewSubs.delete(onPreviewEvent);
         });
         return;

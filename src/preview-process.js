@@ -9,9 +9,12 @@
 //   await ctrl.start(config)   — spawn child; replaces any existing child (single active preview)
 //   await ctrl.stop()          — SIGTERM + fallback kill; idempotent, no throw
 //   await ctrl.restart(config) — stop then start
-//   ctrl.getStatus()           — synchronous; { state, mode, url, pid, recentLogs }
+//   ctrl.getStatus()           — synchronous; { state, mode, url, source, pid, recentLogs }
+//   ctrl.subscribe(cb)         — register a callback for incremental events; returns unsubscribe fn
+//                                Events: { type:'log', line } per log line
+//                                        { type:'state', state, mode, url, source } on state change
 //
-// config = { mode, command, cwd, url, env? }
+// config = { mode, command, cwd, url, source?, env? }
 //
 // States: 'stopped' | 'starting' | 'running' | 'exited' | 'error'
 //
@@ -42,10 +45,24 @@ export function createPreviewController({ repoRoot }) {
   let _state = 'stopped';   // 'stopped'|'starting'|'running'|'exited'|'error'
   let _mode = null;         // string | null
   let _url = null;          // string | null
+  let _source = null;       // 'configured'|'inferred'|'none'|null
   let _pid = null;          // number | null
   let _logs = [];           // ring buffer (array of strings)
   let _child = null;        // ChildProcess | null
   let _configuredUrl = null; // the url field from the last start() config
+
+  // Subscriber set — callbacks registered via subscribe().
+  const _subs = new Set();
+
+  // -------------------------------------------------------------------------
+  // Emit an event to all subscribers.
+  // Never throws — a bad subscriber must not crash the controller.
+  // -------------------------------------------------------------------------
+  function _emit(ev) {
+    for (const cb of _subs) {
+      try { cb(ev); } catch { /* ignore bad subscriber */ }
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Ring buffer helpers
@@ -56,6 +73,16 @@ export function createPreviewController({ repoRoot }) {
       // Drop oldest entries to maintain cap.
       _logs = _logs.slice(_logs.length - LOG_BUFFER_CAP);
     }
+    // Emit incremental log event to subscribers — one event per line, not a
+    // replay of the whole buffer.
+    _emit({ type: 'log', line });
+  }
+
+  // -------------------------------------------------------------------------
+  // Emit a state-change event to all subscribers.
+  // -------------------------------------------------------------------------
+  function _emitState() {
+    _emit({ type: 'state', state: _state, mode: _mode, url: _url, source: _source });
   }
 
   // -------------------------------------------------------------------------
@@ -162,10 +189,12 @@ export function createPreviewController({ repoRoot }) {
     // Reset state for the new launch.
     _state = 'starting';
     _mode = config.mode ?? null;
+    _source = config.source ?? null;
     _configuredUrl = config.url ?? null;
     _url = _configuredUrl; // configured URL wins immediately
     _pid = null;
     _logs = [];
+    _emitState();
 
     // Build child environment: merge process.env with config.env (if supplied).
     const childEnv = config.env
@@ -221,6 +250,7 @@ export function createPreviewController({ repoRoot }) {
         _pid = null;
         // Log the error message into the ring buffer.
         pushLog(`[spawn error] ${err.message}`);
+        _emitState();
       }
     });
 
@@ -234,6 +264,7 @@ export function createPreviewController({ repoRoot }) {
         _pid = null;
         _child = null;
         pushLog(`[exit] code=${code} signal=${signal}`);
+        _emitState();
       }
     });
 
@@ -254,6 +285,7 @@ export function createPreviewController({ repoRoot }) {
       setImmediate(() => {
         if (_child === child && _state === 'starting') {
           _state = 'running';
+          _emitState();
         }
         resolve();
       });
@@ -273,8 +305,10 @@ export function createPreviewController({ repoRoot }) {
     _state = 'stopped';
     _mode = null;
     _url = null;
+    _source = null;
     _pid = null;
     _configuredUrl = null;
+    _emitState();
   }
 
   // -------------------------------------------------------------------------
@@ -293,11 +327,26 @@ export function createPreviewController({ repoRoot }) {
       state: _state,
       mode: _mode,
       url: _url,
+      source: _source,
       pid: _pid,
       // Return a shallow copy to prevent external mutation.
       recentLogs: _logs.slice(),
     };
   }
 
-  return { start, stop, restart, getStatus };
+  // -------------------------------------------------------------------------
+  // subscribe(cb) — register a callback for incremental events.
+  // Returns an unsubscribe function (call it to stop receiving events).
+  // Events:
+  //   { type: 'log', line }                          — one per log line
+  //   { type: 'state', state, mode, url, source }    — on state transition
+  // -------------------------------------------------------------------------
+  function subscribe(cb) {
+    _subs.add(cb);
+    return function unsubscribe() {
+      _subs.delete(cb);
+    };
+  }
+
+  return { start, stop, restart, getStatus, subscribe };
 }
