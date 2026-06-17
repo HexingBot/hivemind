@@ -307,6 +307,53 @@ describe('TASK-068 — Sample fixtures present and launchable (AC5)', () => {
   });
 });
 
+// ===========================================================================
+// Lock 9: Single-source injection — validateLocalhostUrl function body is
+// present in the served HTML (the browser runs the exact same guard the tests
+// import; regression lock for the .toString() injection in buildHtml()).
+// ===========================================================================
+describe('TASK-068 — single-source: validateLocalhostUrl injected into GET / HTML', () => {
+  let repoRoot;
+  let server;
+  let baseUrl;
+
+  beforeEach(async () => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'preview-inject-spec-'));
+    makeEmptyRepo(repoRoot);
+    ({ server, baseUrl } = await startServer(repoRoot));
+  });
+
+  afterEach(async () => {
+    if (server) await closeServer(server);
+    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('GET / HTML contains the validateLocalhostUrl function declaration', async () => {
+    const res = await fetch(`${baseUrl}/`);
+    const html = await res.text();
+    expect(
+      html,
+      'validateLocalhostUrl function must be present in the served HTML (single-source injection)',
+    ).toContain('function validateLocalhostUrl(');
+  });
+
+  it('GET / HTML does NOT contain the raw sentinel comment (sentinel was replaced)', async () => {
+    const res = await fetch(`${baseUrl}/`);
+    const html = await res.text();
+    expect(
+      html,
+      'sentinel comment must not appear literally in the served HTML (must be replaced by fn source)',
+    ).not.toContain('// INJECTED_VALIDATE_LOCALHOST_URL');
+  });
+
+  it('injected validateLocalhostUrl contains the localhost regex', async () => {
+    const res = await fetch(`${baseUrl}/`);
+    const html = await res.text();
+    // The anchored regex pattern must be present in the injected function body.
+    expect(html).toContain('localhost|127\\.0\\.0\\.1');
+  });
+});
+
 /**
  * Spawn a fixture node server, read its first stdout line, kill it, return the line.
  * Times out after 6 s.

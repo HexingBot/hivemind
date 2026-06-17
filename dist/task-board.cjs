@@ -8861,7 +8861,28 @@ function readBody(req, maxBytes = MAX_BODY_BYTES) {
   });
 }
 var ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
+function validateLocalhostUrl(url) {
+  if (typeof url !== "string") return null;
+  if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(url)) return null;
+  try {
+    var parsed = new URL(url);
+    if (parsed.protocol !== "http:") return null;
+    if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") return null;
+    if (!parsed.port) return null;
+    if (parsed.username || parsed.password) return null;
+    if (parsed.pathname !== "/") return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+var VALIDATE_FN_SENTINEL = "// INJECTED_VALIDATE_LOCALHOST_URL";
 function buildHtml() {
+  const fnSrc = validateLocalhostUrl.toString().replace(/^export\s+/, "");
+  const template = buildHtmlTemplate();
+  return template.replace(VALIDATE_FN_SENTINEL, () => fnSrc);
+}
+function buildHtmlTemplate() {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10682,23 +10703,9 @@ preview_port: 3000</pre>
 
   var MAX_LOG_LINES = 200;
 
-  // Validate a URL is a safe localhost http URL before assigning to iframe.src.
-  // Accepts only http://localhost:<port> or http://127.0.0.1:<port>.
-  // Returns the validated URL string or null if invalid.
-  function validateLocalhostUrl(url) {
-    if (typeof url !== 'string') return null;
-    if (!/^http://(localhost|127.0.0.1):d+/.test(url)) return null;
-    // Extra safety: parse as URL and confirm protocol + hostname.
-    try {
-      var parsed = new URL(url);
-      if (parsed.protocol !== 'http:') return null;
-      if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
-      if (!parsed.port) return null;
-      return url;
-    } catch {
-      return null;
-    }
-  }
+  // validateLocalhostUrl \u2014 injected from the server-side export (single source).
+  // The exact same function body runs here in the browser and in Node tests.
+  // INJECTED_VALIDATE_LOCALHOST_URL
 
   // Append a single log line to the log view (XSS-safe via textContent).
   function appendLogLine(text) {
