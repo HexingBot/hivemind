@@ -1,0 +1,46 @@
+{
+  "key": "TASK-061",
+  "title": "Single-active-session lock (safety prerequisite for autonomy)",
+  "description": "The one real crash mode for loop/autonomy is two orchestrators writing state/ + tasks/ concurrently (e.g. a scheduled run while a local session is open). The pointer's active_session_id is advisory; atomic writes prevent torn files but not lost updates. Add a single-active-session advisory lock so a second orchestrator REFUSES to start when another holds the repo, with stale-lock recovery so a crashed holder doesn't deadlock the repo forever. This is the gate between 'same-session loops (safe today)' and 'safe scheduled/cron autonomy'. New module src/session-lock.js; wire acquisition into session start/resume and release into pause/end. Keep it BACKWARD-COMPATIBLE: absence of a lock = unlocked (existing sessions keep working); the lock is advisory and self-healing.",
+  "acceptance_criteria": [
+    "src/session-lock.js exports acquire/renew/release/inspect functions operating on a lock record (holder pid + hostname + heartbeat_at ISO timestamp). Store the lock either in the pointer (state/session.json, additive optional field) or a dedicated state/.lock file — pick one and document why; writes are atomic (tmp+rename).",
+    "acquire(): if a lock exists with a FRESH heartbeat (within a configurable staleness window, default e.g. 5 min) held by a DIFFERENT holder → REFUSE with a clear error naming the holder; otherwise write my holder record and succeed. Re-acquire by the same holder is idempotent.",
+    "Stale-lock recovery: a lock whose heartbeat is older than the staleness window is treated as dead — acquire() steals it (overwrites) and succeeds, so a crashed orchestrator never permanently blocks the repo.",
+    "renew() bumps heartbeat_at for the current holder; release() clears the lock (idempotent — releasing an absent/foreign lock does not throw).",
+    "Backward-compatible: with no lock present, acquire() succeeds (unlocked default); existing session start/resume/pause/end flows keep working; no existing test regresses.",
+    "tdd: failing tests first encoding each AC (fresh-foreign-refuse, same-holder-idempotent, stale-steal, renew, release-idempotent, absent-default-acquire, atomic-write-no-partial). Then implement. New slow specs (temp dir / disk) go under tests/e2e/; pure-logic specs at top level.",
+    "If wired into bin/init.js / src/session-state (bundled), rebuild dist via npm run build:plugin and commit; npm run test:all green (state-shape + bundled-source change → release-tier gate applies)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "state",
+    "autonomy",
+    "epic-loop-engineering"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "7cf0771",
+    "f87903f",
+    "9413624"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T22:19:31.287Z",
+      "body": "Tier = tdd (assigned at plan time). Rationale: state mutation + parsing + concurrency/staleness logic — the textbook tdd case. Failing tests first encode the acquire/refuse/steal/renew/release/default matrix and atomic-write-no-partial before implementation. Release-tier gate applies (state-shape + likely bundled-source wiring)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T22:41:35.453Z",
+      "body": "CLOSED APPROVE-WITH-FOLLOWUPS (after one REQUEST-CHANGES loop). src/session-lock.js: single-active-session advisory lock at state/.lock (holder_pid/hostname/heartbeat_at), atomic writes, configurable staleness window (~5min default), stale-lock steal for crashed-holder recovery. acquire() throws E_LOCK_HELD (names the holder) on fresh-foreign, idempotent same-holder, steals stale/absent. Standalone module (NOT wired into lifecycle defaults → zero regression to existing session flows); the drive loop (TASK-062) is the primary caller. RC HIGH caught by the reviewer: release() originally deleted ANY lock unconditionally (would wipe a live foreign lock → defeats mutual exclusion); MEDIUM: renew() minted/kept-alive absent/foreign locks. Both fixed holder-aware (9413624) with red-green-proven non-vacuous specs (the original foreign-release spec was vacuous — only checked no-throw — which is exactly why TDD missed it; lesson consistent with the standing 'every RC HIGH lives in an unspecced path'). Re-reviewed cold: APPROVE-w-followups. Deferred LOW (no follow-up ticket): release() swallows non-ENOENT unlink errors — acceptable since staleness expiry self-heals. tdd done-gate: green review, no UAT (internal concurrency code, not human-observable). Release-tier gate: npm run test:all 761 passed/5 skipped. linked_commits: 7cf0771 (test), f87903f (impl), 9413624 (RC fix)."
+    }
+  ],
+  "created_at": "2026-06-16T22:18:49.043Z",
+  "updated_at": "2026-06-16T22:41:35.947Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

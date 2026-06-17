@@ -138,6 +138,35 @@ export const bundleStateSchema = {
       },
     },
     pending_human_confirmation: { type: ['string', 'null'], default: null },
+    mode: {
+      type: 'string',
+      enum: ['harness', 'loop'],
+      default: 'harness',
+      description:
+        "Operating mode of the active session. 'harness' = default, human-gated, " +
+        "one-step-at-a-time. 'loop' = autonomous drive loop is active. Absence is " +
+        "treated as 'harness' (backward-compatible). TASK-063.",
+    },
+    loop_auth: {
+      type: 'object',
+      description:
+        'Standing-authorization switches for the autonomous drive loop. ' +
+        'All default false (most conservative). See commands/loop.md.',
+      additionalProperties: false,
+      properties: {
+        auto_close_on_green_review: { type: 'boolean', default: false },
+        auto_push_after_close: { type: 'boolean', default: false },
+        uat_delegated_to_orchestrator: { type: 'boolean', default: false },
+        auto_version_bump_on_milestone: { type: 'boolean', default: false },
+      },
+    },
+    loop_state: {
+      type: 'object',
+      description:
+        'Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle ' +
+        'so crash-recovery can resume. Free-form — contents evolve with the loop implementation.',
+      additionalProperties: true,
+    },
   },
 };
 

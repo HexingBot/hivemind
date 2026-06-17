@@ -15,10 +15,11 @@
 // must remain green — this file touches no production code.
 //
 // AC map (TASK-021):
-//   AC1 — .claude-plugin/plugin.json: name `agentic-framework`. (mcpServers and
-//         version: see the in-body notes — both flipped by TASK-027 P7.)
+//   AC1 — .claude-plugin/plugin.json: name `agentic-framework-beta` on this
+//         branch (TASK-060 beta identity; stable `main` keeps `agentic-framework`).
+//         (mcpServers and version: see the in-body notes — both flipped by TASK-027 P7.)
 //   AC2 — .claude-plugin/marketplace.json: source `./`, valid owner.name,
-//         lists the `agentic-framework` plugin.
+//         lists the `agentic-framework-beta` plugin (TASK-060 beta identity).
 //   AC3 — plugin-root agents/ (exactly the 4) + plugin-root skills/ with the
 //         repo-local tech-training-template skill.
 //   AC4 — shipped-bin allowlist: make-template.js EXCLUDED; init.js +
@@ -77,9 +78,10 @@ describe('AC1 — .claude-plugin/plugin.json declares the plugin', () => {
     expect(manifest).not.toBeNull();
   });
 
-  it('plugin_name_is_agentic_framework', () => {
+  it('plugin_name_is_agentic_framework_beta', () => {
+    // Beta branch: name is agentic-framework-beta for side-by-side install.
     const manifest = readJson(PLUGIN_MANIFEST);
-    expect(manifest.name).toBe('agentic-framework');
+    expect(manifest.name).toBe('agentic-framework-beta');
   });
 
   it('plugin_mcpServers_points_at_the_dot_mcp_json_now_that_P6_ships_it', () => {
@@ -124,11 +126,12 @@ describe('AC2 — .claude-plugin/marketplace.json catalogs the plugin', () => {
     expect(m.owner.name.length).toBeGreaterThan(0);
   });
 
-  it('marketplace_lists_the_agentic_framework_plugin_with_same_repo_source', () => {
+  it('marketplace_lists_the_agentic_framework_beta_plugin_with_same_repo_source', () => {
+    // Beta branch: marketplace entry name is agentic-framework-beta.
     const m = readJson(MARKETPLACE_MANIFEST);
     expect(Array.isArray(m.plugins), 'marketplace.plugins must be an array').toBe(true);
-    const entry = m.plugins.find((p) => p && p.name === 'agentic-framework');
-    expect(entry, 'marketplace must list the agentic-framework plugin').toBeTruthy();
+    const entry = m.plugins.find((p) => p && p.name === 'agentic-framework-beta');
+    expect(entry, 'marketplace must list the agentic-framework-beta plugin').toBeTruthy();
     // Same-repo single-plugin layout: source is the relative repo root.
     expect(entry.source).toBe('./');
   });

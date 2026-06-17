@@ -192,6 +192,181 @@ behavior.
    without a `uat` comment that covers every AC with all steps PASS. A failed
    step sends the ticket back to implementation.
 
+## Autonomous loop
+
+The `/agentic-framework:loop` command runs a goal-driven drive loop that
+self-drives the per-ticket workflow toward a stated goal (label or explicit key
+set). Full protocol is in `commands/loop.md`; the durable contract lives here.
+
+### Single-active-session lock requirement
+
+The loop MUST acquire the TASK-061 advisory lock (`src/session-lock.js`) before
+driving any ticket, and renew it each iteration. If `acquire()` raises
+`E_LOCK_HELD`, the loop stops and surfaces the holder's identity to the human.
+The lock is released in a finally-style step on exit, pause, or any unhandled
+error. A held lock blocks other sessions.
+
+### Operating-mode auto-flip (TASK-063)
+
+The session bundle carries a `mode` field (`'harness'` | `'loop'`, default
+`'harness'`). The loop auto-flips this field via `src/operating-mode.js`:
+
+- **After `acquire()` succeeds (Step 1):** call
+  `setMode({ repoRoot, mode: 'loop' })` to signal that autonomous driving has
+  started. The console (TASK-064) reads this via `GET /api/session` → `mode`.
+- **Before `release()` (Step 3, finally-style):** call
+  `setMode({ repoRoot, mode: 'harness' })` first, then call `release()`. This
+  ensures the mode is reset even if an unhandled error cut the loop short.
+
+The mode can also be set manually outside the loop via
+`/agentic-framework:mode` (see `commands/mode.md`) — useful for crash
+recovery if the loop exited without resetting the mode.
+
+`setMode` is idempotent and validates the value against the `OPERATING_MODES`
+enum (`['harness', 'loop']`); any other value throws immediately before any I/O.
+
+### Four hard-stop gates
+
+The loop pauses and surfaces to the human at each gate unless a standing-
+authorization switch (see below) lifts it:
+
+1. **Destructive / irreversible ops** — close-to-done (ticket → `done`),
+   push to remote, branch deletion, release tagging, database migrations.
+   The loop never closes a ticket autonomously unless `auto_close_on_green_review`
+   is recorded in the session bundle.
+
+2. **UAT verdicts** — tickets with `verification_tier: uat-only` require
+   human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict.
+   Gate lifted only by `uat_delegated_to_orchestrator` (human pre-authorizes
+   orchestrator-verified steps, each recorded as "PASS — verified by Orchestrator
+   at the human's request").
+
+3. **Genuinely ambiguous scope** — if acceptance criteria are contradictory or
+   under-specified, or the loop cannot determine which ticket to work next, it
+   surfaces the ambiguity. No autonomous guess is ever made. No authorization
+   switch covers this gate.
+
+4. **Release / version-bump / publish** — any action that bumps `package.json`,
+   writes a CHANGELOG entry, tags a release, or publishes an artifact is a hard
+   stop. Gate lifted only by `auto_version_bump_on_milestone`.
+
+### Standing-authorization switches
+
+Switches are recorded in the session bundle under `loop_auth` (default all
+`false` — most conservative, all gates ON):
+
+| Switch | Gate lifted |
+|---|---|
+| `auto_close_on_green_review` | Gate 1 (close-to-done only) |
+| `auto_push_after_close` | Gate 1 (push after close only) |
+| `uat_delegated_to_orchestrator` | Gate 2 |
+| `auto_version_bump_on_milestone` | Gate 4 |
+
+Switches are session-scoped. The human must state them explicitly; the
+Orchestrator records the grant in the session bundle and re-reads `loop_auth`
+at each gate. Switches do not persist across sessions unless re-stated.
+
+### Backstops (no silent truncation)
+
+- **Hard iteration ceiling** (`maxIterations`, default 20): the loop stops and
+  surfaces a reason when the ceiling is reached.
+- **Consecutive no-progress ceiling** (`maxNoProgress`, default 3): stops when
+  no ticket is selected for N consecutive iterations (blocked/in_review/dep cycle).
+- **Reviewer retry limit** (`maxReviewerRetries`, default 2): a single ticket
+  may bounce back to the Developer at most twice on a HIGH finding; on the third
+  HIGH the loop surfaces and stops.
+- On any early stop the loop MUST log the reason to the session bundle and list
+  every ticket that was skipped or not started. No silent truncation.
+
+### goalStuck
+
+The loop calls `goalStuck(tasks, goal)` (from `src/drive-loop.js`) to detect
+when the goal is not satisfied but no ticket is selectable (all remaining goal
+tickets are blocked, in_review, or have unsatisfied dependencies). On stuck:
+log the blocking conditions, surface a summary, and stop — do not spin.
+
+## App-preview panel (TASK-069)
+
+The console (`/agentic-framework:preview` or `?tab=preview` on the board URL)
+includes a Preview panel that starts, stops, and restarts the project's dev server
+and shows its output in real time.
+
+### PROJECT.md preview block
+
+Configure preview by adding any of these scalar fields to `PROJECT.md` frontmatter:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `preview_command` | string | Command to run (e.g. `npm start`). Optional — inferred if absent. |
+| `preview_url` | string | Explicit iframe URL (e.g. `http://localhost:3000`). Takes precedence over `preview_port`. |
+| `preview_port` | integer | Port from which to derive the iframe URL. |
+| `preview_mode` | `web` or `process` | Override mode selection (see below). Optional. |
+
+Example:
+
+```yaml
+preview_command: npm start
+preview_port: 3000
+```
+
+### Resolution precedence
+
+1. **Configured** — `PROJECT.md` frontmatter carries any of the three command/URL
+   fields (`preview_command`, `preview_url`, or `preview_port`). `preview_mode` alone
+   does NOT trigger `source=configured`; it is only honoured when one of the three
+   command/URL fields is also present.
+2. **Inferred** — `package.json` scripts scanned in priority order: `dev` > `start` > `serve`.
+   A port pattern in the script string (`--port N`, `-p N`, `PORT=N`, `localhost:N`,
+   `0.0.0.0:N`) derives the iframe URL automatically.
+3. **None** — no usable configuration found; the panel shows a hint instead.
+
+Source is exposed as `source: 'configured' | 'inferred' | 'none'` from
+`src/preview-resolver.js`.
+
+### Mode: web vs process
+
+| Mode | Condition | What the panel shows |
+|---|---|---|
+| `web` | A URL or port is derivable | Live iframe pointed at the app |
+| `process` | No URL/port derivable | Streaming log view of stdout/stderr |
+| `none` | No preview configured | "No preview configured" hint with example YAML |
+
+An explicit `preview_mode: web` or `preview_mode: process` in frontmatter overrides
+the auto-detected mode. An unrecognized value is silently dropped and auto-detection
+resumes.
+
+### Start / stop / restart lifecycle
+
+The Preview panel exposes three buttons; state transitions update live via SSE:
+
+| Action | REST route | Effect |
+|---|---|---|
+| Start | `POST /api/preview/start` | Spawns the command; streams stdout/stderr via SSE |
+| Stop | `POST /api/preview/stop` | Sends SIGTERM; waits for process to exit |
+| Restart | `POST /api/preview/restart` | Stop then Start in sequence |
+| Status poll | `GET /api/preview/status` | Returns `{ state, mode, url, source, recentLogs }` |
+| Log stream | `GET /api/preview/stream` | SSE: `log`, `state`, and `status` events (see below) |
+
+SSE event shapes emitted by `/api/preview/stream`:
+
+| Event type | Shape | When emitted |
+|---|---|---|
+| `log` | `{ type:'log', line }` | Each stdout/stderr line from the child process |
+| `state` | `{ type:'state', state, mode, url, source }` | Every controller state transition |
+| `status` | `{ type:'status', state, mode, url, source, recentLogs }` | Route snapshot on new subscriber connect and inline broadcasts |
+
+### Deep-link to the Preview tab
+
+Append `?tab=preview` (or `#preview`) to the console URL to pre-select the Preview
+panel on page load — no manual click required:
+
+```
+http://127.0.0.1:4517/?tab=preview
+```
+
+The `/agentic-framework:preview` command uses this seam (see
+`commands/preview.md`).
+
 ## Guardrails
 
 - **Confirm with the human** before: closing/transitioning tickets in non-trivial

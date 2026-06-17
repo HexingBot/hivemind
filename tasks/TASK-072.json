@@ -1,0 +1,30 @@
+{
+  "key": "TASK-072",
+  "title": "Preview panel: behavioral test coverage for client mode-switch + deep-link (beyond static-markup locks)",
+  "description": "BETA FINDING (TASK-068 reviewer deferred MEDIUM). The preview panel regression locks assert static SSR markup presence; the client-side behavior — applyPreviewMode web/process/none/stopped branching, the SSE handlePreviewEvent dispatch, and the ?tab=preview/#preview deep-link activateTab — has no behavioral coverage (validateLocalhostUrl is now unit-locked via single-source extraction, but the rest of the client logic is not). A future refactor breaking the mode-switch or deep-link would keep all current locks green. Add behavioral coverage (extract testable pure client logic and/or a lightweight DOM/jsdom harness) so the panel behavior is regression-locked, not just its markup.",
+  "acceptance_criteria": [
+    "The mode-switch logic (web->iframe, process->log view, none->hint, stopped->teardown) is exercised by a behavioral test that would fail if a branch were broken, not merely asserting element presence in static HTML.",
+    "The ?tab=preview / #preview deep-link tab activation is covered by a test that fails if the deep-link IIFE is removed.",
+    "Any extracted client logic uses the established single-source toString-injection pattern (no drift between tested source and shipped client).",
+    "tests-after: minimal, each encodes a real behavior; npm run test:all green; rebuild dist if bundled source changes."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "beta",
+    "goal-app-preview",
+    "console",
+    "preview",
+    "testing",
+    "finding"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-17T15:25:31.671Z",
+  "updated_at": "2026-06-17T15:25:31.671Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

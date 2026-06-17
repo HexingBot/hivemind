@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-16T18:44:03.552Z",
+  "generated_at": "2026-06-17T15:25:31.671Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -341,6 +341,84 @@
       "key": "TASK-059",
       "title": "graphify skill + /graph command to use the knowledge graph in a project",
       "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-060",
+      "title": "Beta channel scaffold — agentic-framework-beta plugin identity",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-061",
+      "title": "Single-active-session lock (safety prerequisite for autonomy)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-062",
+      "title": "Goal-driven autonomous drive loop (opt-in beta command)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-063",
+      "title": "Operating-mode state (loop vs harness) + auto-flip + manual toggle",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-064",
+      "title": "Console live mode badge + toggle control (loop vs harness)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-065",
+      "title": "App-preview config resolver (PROJECT.md preview block + package.json inference)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-066",
+      "title": "Preview process manager — spawn/stop/restart + bounded log capture + URL detection",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-067",
+      "title": "Console preview backend routes — start/stop/restart/status + SSE log stream",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-068",
+      "title": "Console preview panel — iframe (web) / log view (process) + controls + sample fixtures",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-069",
+      "title": "/agentic-framework-beta:preview command + orchestrator-routing preview docs",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-070",
+      "title": "session-lock: stable caller-supplied holder identity (session_id) instead of process.pid",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-071",
+      "title": "loop checkpoint writes must map workflow phases to valid workflow_step enum values",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-072",
+      "title": "Preview panel: behavioral test coverage for client mode-switch + deep-link (beyond static-markup locks)",
+      "status": "todo",
       "priority": "medium"
     }
   ]

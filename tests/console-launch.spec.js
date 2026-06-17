@@ -155,6 +155,7 @@ describe('AC6 — version pin consistency (tracks publish-config)', () => {
     const m = src.match(/EXPECTED_VERSION\s*=\s*'([^']+)'/);
     expect(m, 'publish-config.spec.js must declare EXPECTED_VERSION').not.toBeNull();
     expect(pluginJson.version).toBe(m[1]);
-    expect(pluginJson.version).toMatch(/^\d+\.\d+\.\d+$/);
+    // Beta branch: relaxed to accept prerelease suffix (e.g. 0.7.0-beta.1)
+    expect(pluginJson.version).toMatch(/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/);
   });
 });

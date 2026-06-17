@@ -1,0 +1,53 @@
+{
+  "key": "TASK-064",
+  "title": "Console live mode badge + toggle control (loop vs harness)",
+  "description": "BETA-TEST GOAL (goal-mode-switch), part 2 of 2. Make the operating mode (from TASK-063) VISIBLE and controllable in the web console: a live badge in the status bar showing HARNESS vs LOOP with distinct styling, updating in real time as the mode flips (e.g. when the autonomous loop starts/stops), plus a manual toggle control (button) in the console that flips the mode. Extends the v0.5.0 console status bar (src/task-board.js + src/session-projection.js + the inline status-bar HTML). Built on the `beta` branch; depends on TASK-063. This is the human-observable payoff of the beta test — the deliverable you watch while the loop drives.",
+  "acceptance_criteria": [
+    "The console status bar renders a mode badge showing HARNESS or LOOP (from GET /api/session's `mode`), with visually distinct styling per mode, XSS-safe (createElement/textContent per the existing board rendering discipline).",
+    "The badge updates LIVE (via the existing session polling/refresh mechanism) so flipping the mode — manually or by the loop auto-flip — is reflected without a page reload.",
+    "A manual toggle control (button) in the console flips the mode: a new hardened POST route (e.g. POST /api/session/mode behind the existing Host allowlist + Content-Type/body-cap guards) calls setMode (TASK-063); the badge reflects the change live.",
+    "Graceful when `mode` is absent (older bundle) — badge defaults to HARNESS, no crash.",
+    "tests-after: implement, prove by running (badge renders + toggle endpoint flips mode + projection reflects it), then add minimal regression locks (route behavior + projection field + render presence). New e2e (server/route) under tests/e2e/.",
+    "UAT (human-observable, dogfood payoff): launch the console, see the mode badge; click the toggle and watch it flip; start /agentic-framework-beta:loop and watch the badge auto-flip to LOOP, then back to HARNESS when the loop halts/exits.",
+    "Rebuild dist (task-board bundle) via npm run build:plugin and commit; npm run test:all green."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "goal-mode-switch",
+    "console",
+    "ui"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-063"
+  ],
+  "linked_commits": [
+    "9bb95e2",
+    "8d06a57",
+    "0b1888b"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-06-16T23:07:51.117Z",
+      "body": "Tier = tests-after (assigned at plan time). Rationale: console UI + a hardened POST route over the existing board server — implement, prove by running, minimal regression locks; human-observable → UAT (the dogfood payoff: watch the badge auto-flip while the loop runs). GOAL `goal-mode-switch` part 2/2, depends on TASK-063. When the loop drives this it exercises the tests-after path AND the UAT gate (uat verdict = a default-on hard-stop). Release-tier gate (bundled task-board rebuild)."
+    },
+    {
+      "author": "uat",
+      "at": "2026-06-17T03:23:14.265Z",
+      "body": "UAT — TASK-064 console mode badge + toggle (human, live browser, 2026-06-17). Dogfood payoff of goal-mode-switch.\nStep 1 (AC1): launch console, see mode badge. Expected: badge reads HARNESS, distinct styling. Observed: HARNESS shown, distinct styling. PASS.\nStep 2 (AC2 manual/AC3): click toggle. Expected: badge flips HARNESS->LOOP live, no reload. Observed: flipped live. PASS.\nStep 3 (AC2/AC3): click toggle again. Expected: badge flips LOOP->HARNESS live. Observed: flipped live. PASS.\nStep 4 (AC2 auto-flip/AC6): orchestrator setMode(loop) out-of-band, no chat turn/reload. Expected: badge auto-updates to LOOP without reload. FIRST ATTEMPT FAILED (stayed HARNESS until reload) -> sent back to developer, fix 0b1888b added a 4s /api/session poll -> RE-TESTED: badge flipped to LOOP on its own within ~4s, no reload. PASS (after fix).\nStep 5 (AC4 graceful-absent): older bundle without mode -> badge defaults HARNESS, no crash. PASS — verified by Orchestrator at the human request (covered by regression locks + dev legacy-bundle proof).\nOVERALL: PASS. All ACs covered; the one initial FAIL (step 4) drove a REQUEST-CHANGES fix that now passes."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-17T03:23:14.328Z",
+      "body": "CLOSED on green review + passing UAT (dogfood drive of goal-mode-switch via /agentic-framework-beta:loop). auto_close_on_green_review granted by human; UAT human-confirmed PASS (gate 2 satisfied by human verdict). Reviewer: fix re-review APPROVE (0H/0M/1L); npm run test:all 815 passed / 5 skipped at release tier. Delivered: console status-bar mode badge (HARNESS/LOOP, distinct styling, XSS-safe createElement/textContent) + manual toggle button -> hardened POST /api/session/mode (Host allowlist + CT-415 + body-413, calls toggleMode->setMode) + LIVE updates via a 4s /api/session polling interval (double-registration guarded) so out-of-band loop auto-flips surface without reload. toggleMode helper added to src/operating-mode.js (closed the TASK-063 review follow-up). Commits 9bb95e2 (impl) + 8d06a57 (dist) + 0b1888b (poll fix). Review history: APPROVE-WITH-FOLLOWUPS -> UAT step-4 FAIL -> REQUEST-CHANGES -> poll fix -> APPROVE -> UAT all PASS. NOT pushed (no auto_push switch)."
+    }
+  ],
+  "created_at": "2026-06-16T23:07:38.673Z",
+  "updated_at": "2026-06-17T03:23:14.448Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

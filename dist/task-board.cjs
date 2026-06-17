@@ -7717,7 +7717,7 @@ __export(task_board_exports, {
 });
 module.exports = __toCommonJS(task_board_exports);
 var import_node_url = require("node:url");
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process3 = require("node:child_process");
 
 // src/repo-root.js
 function resolveRepoRoot(env, cwd) {
@@ -7730,8 +7730,8 @@ function resolveRepoRoot(env, cwd) {
 
 // src/task-board.js
 var import_node_http = __toESM(require("node:http"), 1);
-var import_promises4 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_promises5 = require("node:fs/promises");
+var import_node_path8 = require("node:path");
 
 // src/task-store.js
 var import_promises = require("node:fs/promises");
@@ -7841,6 +7841,40 @@ var import_node_path = require("node:path");
 var import_node_crypto = require("node:crypto");
 var RETRY_ATTEMPTS = 5;
 var RETRY_BACKOFF_MS = 50;
+async function atomicWriteFile(target, bytes) {
+  const dir = (0, import_node_path.dirname)(target);
+  const base = (0, import_node_path.basename)(target);
+  const suffix = `${process.pid}-${(0, import_node_crypto.randomBytes)(6).toString("hex")}`;
+  const tmp = (0, import_node_path.join)(dir, `${base}.tmp.${suffix}`);
+  const payload = typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes;
+  const fd = (0, import_node_fs.openSync)(tmp, import_node_fs.constants.O_CREAT | import_node_fs.constants.O_EXCL | import_node_fs.constants.O_WRONLY, 384);
+  try {
+    let written = 0;
+    while (written < payload.length) {
+      written += (0, import_node_fs.writeSync)(fd, payload, written, payload.length - written);
+    }
+    (0, import_node_fs.fsyncSync)(fd);
+  } finally {
+    (0, import_node_fs.closeSync)(fd);
+  }
+  let lastErr;
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      (0, import_node_fs.renameSync)(tmp, target);
+      return { tmp, target };
+    } catch (err) {
+      lastErr = err;
+      if (err && (err.code === "EBUSY" || err.code === "EPERM")) {
+        if (attempt < RETRY_ATTEMPTS - 1) {
+          await sleep(RETRY_BACKOFF_MS);
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 async function atomicWriteFiles(entries) {
   const prepared = [];
   for (const { target, bytes } of entries) {
@@ -8360,6 +8394,12 @@ function readBundleSession(repoRoot, sessionId) {
   const p = bundleSessionPath(repoRoot, sessionId);
   return JSON.parse((0, import_node_fs6.readFileSync)(p, "utf8"));
 }
+async function writeBundleSession(repoRoot, sessionId, payload) {
+  const dir = bundleDirFor(repoRoot, sessionId);
+  if (!(0, import_node_fs6.existsSync)(dir)) (0, import_node_fs6.mkdirSync)(dir, { recursive: true });
+  const target = bundleSessionPath(repoRoot, sessionId);
+  await atomicWriteFile(target, JSON.stringify(payload, null, 2) + "\n");
+}
 
 // src/session-projection.js
 var CAP_NEXT_ACTION = 280;
@@ -8380,6 +8420,7 @@ function idleProjection(extras = {}) {
     blockers: [],
     next_action: null,
     recent_decisions: [],
+    mode: "harness",
     ...extras
   };
 }
@@ -8416,16 +8457,359 @@ function projectSessionState({ repoRoot }) {
     blockers,
     next_action: nextAction,
     recent_decisions: recentDecisions,
-    updated_at: bundle.updated_at
+    updated_at: bundle.updated_at,
+    mode: bundle.mode ?? "harness"
   };
+}
+
+// src/operating-mode.js
+var OPERATING_MODES = ["harness", "loop"];
+async function getMode({ repoRoot }) {
+  try {
+    const pointer = readPointer(repoRoot);
+    if (!pointer || pointer.active_session_id == null) return "harness";
+    const bundle = readBundleSession(repoRoot, pointer.active_session_id);
+    return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
+  } catch (_err) {
+    return "harness";
+  }
+}
+async function setMode({ repoRoot, mode }) {
+  if (!OPERATING_MODES.includes(mode)) {
+    throw new Error(
+      `Invalid mode ${JSON.stringify(mode)}. Must be one of: harness, loop.`
+    );
+  }
+  const pointer = readPointer(repoRoot);
+  if (!pointer || pointer.active_session_id == null) {
+    throw new Error("No active session \u2014 cannot set mode without an active bundle.");
+  }
+  const sessionId = pointer.active_session_id;
+  const bundle = readBundleSession(repoRoot, sessionId);
+  const updated = {
+    ...bundle,
+    mode,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  await writeBundleSession(repoRoot, sessionId, updated);
+}
+async function toggleMode({ repoRoot }) {
+  const current = await getMode({ repoRoot });
+  const next = current === "loop" ? "harness" : "loop";
+  await setMode({ repoRoot, mode: next });
+  return next;
+}
+
+// src/preview-resolver.js
+var import_promises4 = require("node:fs/promises");
+var import_node_fs7 = require("node:fs");
+var import_node_path7 = require("node:path");
+var PORT_PATTERNS = [
+  /--port\s+(\d+)/,
+  /-p\s+(\d+)/,
+  /PORT=(\d+)/,
+  /localhost:(\d+)/,
+  /0\.0\.0\.0:(\d+)/
+];
+function extractPort(script) {
+  for (const re of PORT_PATTERNS) {
+    const m = script.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+function modeFromPort(port) {
+  if (port !== null) {
+    return { mode: "web", url: `http://localhost:${port}` };
+  }
+  return { mode: "process", url: null };
+}
+async function resolvePreviewConfig({ repoRoot }) {
+  const none = { mode: "none", command: null, cwd: repoRoot, url: null, source: "none" };
+  const projectMdPath = (0, import_node_path7.join)(repoRoot, "PROJECT.md");
+  if ((0, import_node_fs7.existsSync)(projectMdPath)) {
+    try {
+      const text = await (0, import_promises4.readFile)(projectMdPath, "utf8");
+      const frontmatter = extractFrontmatter(text);
+      const hasPreviewFields = frontmatter.preview_command !== void 0 || frontmatter.preview_url !== void 0 || frontmatter.preview_port !== void 0;
+      if (hasPreviewFields) {
+        const command = frontmatter.preview_command ?? null;
+        const explicitMode = frontmatter.preview_mode ?? null;
+        const previewUrl = frontmatter.preview_url ?? null;
+        const previewPort = frontmatter.preview_port ?? null;
+        let url = previewUrl;
+        if (url === null && previewPort !== null) {
+          url = `http://localhost:${previewPort}`;
+        }
+        const mode = explicitMode === "web" || explicitMode === "process" ? explicitMode : url !== null || previewPort !== null ? "web" : "process";
+        return { mode, command, cwd: repoRoot, url, source: "configured" };
+      }
+    } catch {
+    }
+  }
+  const packageJsonPath = (0, import_node_path7.join)(repoRoot, "package.json");
+  if ((0, import_node_fs7.existsSync)(packageJsonPath)) {
+    try {
+      const raw = await (0, import_promises4.readFile)(packageJsonPath, "utf8");
+      const pkg = JSON.parse(raw);
+      const scripts = pkg && typeof pkg.scripts === "object" && pkg.scripts !== null ? pkg.scripts : {};
+      const CANDIDATES = ["dev", "start", "serve"];
+      for (const scriptName of CANDIDATES) {
+        if (typeof scripts[scriptName] === "string") {
+          const scriptStr = scripts[scriptName];
+          const command = `npm run ${scriptName}`;
+          const port = extractPort(scriptStr);
+          const { mode, url } = modeFromPort(port);
+          return { mode, command, cwd: repoRoot, url, source: "inferred" };
+        }
+      }
+    } catch {
+    }
+  }
+  return none;
+}
+function extractFrontmatter(text) {
+  const lines = text.split(/\r?\n/);
+  if (lines[0] !== "---") return {};
+  let closeIdx = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i] === "---") {
+      closeIdx = i;
+      break;
+    }
+  }
+  if (closeIdx === -1) return {};
+  const result = {};
+  for (let i = 1; i < closeIdx; i++) {
+    const line = lines[i];
+    if (line.trim().length === 0) continue;
+    const m = line.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
+    if (m) result[m[1]] = m[2].trim();
+  }
+  return result;
+}
+
+// src/preview-process.js
+var import_node_child_process2 = require("node:child_process");
+var LOG_BUFFER_CAP = 200;
+var RE_FULL_URL = /http:\/\/localhost:\d+/;
+var RE_PORT_ONLY = /[Ll]istening on (?:port )?(\d+)/;
+function createPreviewController({ repoRoot }) {
+  let _state = "stopped";
+  let _mode = null;
+  let _url = null;
+  let _source = null;
+  let _pid = null;
+  let _logs = [];
+  let _child = null;
+  let _configuredUrl = null;
+  const _subs = /* @__PURE__ */ new Set();
+  function _emit(ev) {
+    for (const cb of _subs) {
+      try {
+        cb(ev);
+      } catch {
+      }
+    }
+  }
+  function pushLog(line) {
+    _logs.push(line);
+    if (_logs.length > LOG_BUFFER_CAP) {
+      _logs = _logs.slice(_logs.length - LOG_BUFFER_CAP);
+    }
+    _emit({ type: "log", line });
+  }
+  function _emitState() {
+    _emit({ type: "state", state: _state, mode: _mode, url: _url, source: _source });
+  }
+  function handleChunk(chunk) {
+    let text;
+    try {
+      text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    } catch {
+      try {
+        text = chunk.toString("latin1");
+      } catch {
+        return;
+      }
+    }
+    const lines = text.split("\n");
+    for (const line of lines) {
+      if (line.length === 0) continue;
+      pushLog(line);
+      if (_url === null && _configuredUrl === null) {
+        const fullMatch = RE_FULL_URL.exec(line);
+        if (fullMatch) {
+          _url = fullMatch[0];
+          continue;
+        }
+        const portMatch = RE_PORT_ONLY.exec(line);
+        if (portMatch) {
+          _url = `http://localhost:${portMatch[1]}`;
+        }
+      }
+    }
+  }
+  function _teardown() {
+    return new Promise((resolve) => {
+      if (_child === null) {
+        resolve();
+        return;
+      }
+      const child = _child;
+      _child = null;
+      if (child.exitCode !== null || child.killed) {
+        resolve();
+        return;
+      }
+      function onExit() {
+        resolve();
+      }
+      child.once("exit", onExit);
+      let killed = false;
+      try {
+        child.kill("SIGTERM");
+        killed = true;
+      } catch {
+      }
+      if (killed) {
+        const fallback = setTimeout(() => {
+          try {
+            child.kill();
+          } catch {
+          }
+        }, 3e3);
+        child.once("exit", () => clearTimeout(fallback));
+      } else {
+        try {
+          child.kill();
+        } catch {
+        }
+      }
+    });
+  }
+  async function start(config) {
+    if (_child !== null) {
+      await _teardown();
+    }
+    _state = "starting";
+    _mode = config.mode ?? null;
+    _source = config.source ?? null;
+    _configuredUrl = config.url ?? null;
+    _url = _configuredUrl;
+    _pid = null;
+    _logs = [];
+    _emitState();
+    const childEnv = config.env ? { ...process.env, ...config.env } : { ...process.env };
+    let parts;
+    if (Array.isArray(config.command)) {
+      parts = config.command;
+    } else {
+      parts = config.command.trim().split(/\s+/);
+    }
+    const executable = parts[0];
+    const args = parts.slice(1);
+    let child;
+    try {
+      child = (0, import_node_child_process2.spawn)(executable, args, {
+        cwd: config.cwd || repoRoot,
+        env: childEnv,
+        stdio: ["pipe", "pipe", "pipe"]
+        // NOT detached — explicit requirement; guarantees parent can kill child.
+      });
+    } catch (spawnErr) {
+      _state = "error";
+      _pid = null;
+      _child = null;
+      throw spawnErr;
+    }
+    _child = child;
+    _pid = child.pid ?? null;
+    child.stdout.on("data", (chunk) => {
+      handleChunk(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      handleChunk(chunk);
+    });
+    child.on("error", (err) => {
+      if (_child === child) {
+        _state = "error";
+        _pid = null;
+        pushLog(`[spawn error] ${err.message}`);
+        _emitState();
+      }
+    });
+    child.on("exit", (code, signal) => {
+      if (_child === child) {
+        if (_state !== "stopped") {
+          _state = "exited";
+        }
+        _pid = null;
+        _child = null;
+        pushLog(`[exit] code=${code} signal=${signal}`);
+        _emitState();
+      }
+    });
+    await new Promise((resolve) => {
+      if (_state === "error" || _state === "exited") {
+        resolve();
+        return;
+      }
+      setImmediate(() => {
+        if (_child === child && _state === "starting") {
+          _state = "running";
+          _emitState();
+        }
+        resolve();
+      });
+    });
+  }
+  async function stop() {
+    if (_child === null && _state === "stopped") {
+      return;
+    }
+    await _teardown();
+    _state = "stopped";
+    _mode = null;
+    _url = null;
+    _source = null;
+    _pid = null;
+    _configuredUrl = null;
+    _emitState();
+  }
+  async function restart(config) {
+    await stop();
+    await start(config);
+  }
+  function getStatus() {
+    return {
+      state: _state,
+      mode: _mode,
+      url: _url,
+      source: _source,
+      pid: _pid,
+      // Return a shallow copy to prevent external mutation.
+      recentLogs: _logs.slice()
+    };
+  }
+  function subscribe(cb) {
+    _subs.add(cb);
+    return function unsubscribe() {
+      _subs.delete(cb);
+    };
+  }
+  function getSubscriberCount() {
+    return _subs.size;
+  }
+  return { start, stop, restart, getStatus, subscribe, getSubscriberCount };
 }
 
 // src/task-board.js
 async function readAllTasksForBoard(repoRoot) {
-  const tasksDir2 = (0, import_node_path7.join)(repoRoot, "tasks");
+  const tasksDir2 = (0, import_node_path8.join)(repoRoot, "tasks");
   let entries;
   try {
-    entries = await (0, import_promises4.readdir)(tasksDir2);
+    entries = await (0, import_promises5.readdir)(tasksDir2);
   } catch (err) {
     if (err && err.code === "ENOENT") return [];
     throw err;
@@ -8433,7 +8817,7 @@ async function readAllTasksForBoard(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises4.readFile)((0, import_node_path7.join)(tasksDir2, name), "utf8");
+    const raw = await (0, import_promises5.readFile)((0, import_node_path8.join)(tasksDir2, name), "utf8");
     out.push(JSON.parse(raw));
   }
   return out;
@@ -8477,7 +8861,27 @@ function readBody(req, maxBytes = MAX_BODY_BYTES) {
   });
 }
 var ALLOWED_HOST_RE = /^(127\.0\.0\.1|localhost)(:\d+)?$/i;
+function validateLocalhostUrl(url) {
+  if (typeof url !== "string") return null;
+  if (!/^http:\/\/(localhost|127\.0\.0\.1):/.test(url)) return null;
+  try {
+    var parsed = new URL(url);
+    if (parsed.protocol !== "http:") return null;
+    if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") return null;
+    if (!parsed.port) return null;
+    if (parsed.username || parsed.password) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+var VALIDATE_FN_SENTINEL = "// INJECTED_VALIDATE_LOCALHOST_URL";
 function buildHtml() {
+  const fnSrc = validateLocalhostUrl.toString().replace(/^export\s+/, "");
+  const template = buildHtmlTemplate();
+  return template.replace(VALIDATE_FN_SENTINEL, () => fnSrc);
+}
+function buildHtmlTemplate() {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8608,6 +9012,57 @@ function buildHtml() {
     color: var(--priority-high);
     border-color: #3d2f0a;
     background: #231b06;
+  }
+
+  /* Mode badge \u2014 HARNESS (default / safe) vs LOOP (autonomous) */
+  .mode-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .mode-badge.harness {
+    color: var(--text-muted);
+    border-color: var(--border);
+    background: var(--card-bg);
+  }
+
+  .mode-badge.loop {
+    color: #3fb950;
+    border-color: #1a3d26;
+    background: #0a1f12;
+  }
+
+  /* Mode toggle button */
+  #mode-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  #mode-toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   /* =========================================================================
@@ -9233,6 +9688,211 @@ function buildHtml() {
   #chat-send:not(:disabled):hover {
     background: #79b8ff;
   }
+
+  /* =========================================================================
+   * Preview panel \u2014 TASK-068
+   * Replaces the right sidebar with a tab switcher: Orchestrator | Preview.
+   * The tab bar and content swap are handled client-side via data-tab attributes.
+   * ========================================================================= */
+
+  .sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .sidebar-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-family: var(--font);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 8px 6px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .sidebar-tab:hover {
+    color: var(--text);
+  }
+
+  .sidebar-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .sidebar-panel {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-panel.active {
+    display: flex;
+  }
+
+  /* Preview header: controls + status indicator */
+  #preview-header {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .preview-btn {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+
+  .preview-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .preview-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .preview-btn.danger:hover:not(:disabled) {
+    border-color: var(--priority-critical);
+    color: var(--priority-critical);
+  }
+
+  #preview-status-chip {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.67rem;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  #preview-status-chip.running {
+    color: #3fb950;
+    border-color: #1a3d26;
+    background: #0a1f12;
+  }
+
+  #preview-status-chip.starting {
+    color: var(--priority-high);
+    border-color: #3d2f0a;
+    background: #231b06;
+  }
+
+  #preview-status-chip.error,
+  #preview-status-chip.exited {
+    color: var(--priority-critical);
+    border-color: #3d1a1a;
+    background: #1e0d0d;
+  }
+
+  /* Preview content area \u2014 switches between iframe, log view, hint card */
+  #preview-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Web mode: iframe fills the content area */
+  #preview-iframe {
+    display: none;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #fff;
+    flex: 1;
+  }
+
+  #preview-iframe.visible {
+    display: block;
+  }
+
+  /* Process mode: scrollable log view */
+  #preview-log {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #a0d0a0;
+    background: #0a100a;
+    line-height: 1.5;
+    word-break: break-all;
+  }
+
+  #preview-log.visible {
+    display: block;
+  }
+
+  .log-line {
+    display: block;
+    white-space: pre-wrap;
+  }
+
+  /* None/hint mode */
+  #preview-hint {
+    display: none;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+
+  #preview-hint.visible {
+    display: flex;
+  }
+
+  .hint-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .hint-code {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    text-align: left;
+    width: 100%;
+    max-width: 240px;
+    color: var(--accent);
+    white-space: pre;
+  }
 </style>
 </head>
 <body>
@@ -9244,6 +9904,8 @@ function buildHtml() {
   <h1>Agentic OS</h1>
   <span class="tagline">agentic software development framework</span>
   <div id="session-status-bar" aria-label="Session status"></div>
+  <span id="mode-badge" class="mode-badge harness" aria-label="Operating mode">HARNESS</span>
+  <button id="mode-toggle-btn" aria-label="Toggle operating mode">flip</button>
   <a href="/graph" class="header-link">Knowledge graph</a>
 </header>
 
@@ -9313,17 +9975,52 @@ function buildHtml() {
     </div>
   </main>
 
-  <!-- RIGHT SIDEBAR: Chat/Orchestrator -->
+  <!-- RIGHT SIDEBAR: Chat/Orchestrator + Preview tabs -->
   <aside class="sidebar-right">
-    <div id="chat-panel">
-      <div class="chat-header">
-        <span class="chat-title">Orchestrator</span>
-        <span class="chat-status" id="chat-status">idle</span>
+    <!-- Tab bar -->
+    <div class="sidebar-tabs" role="tablist">
+      <button class="sidebar-tab active" id="tab-orchestrator" role="tab" aria-selected="true" aria-controls="panel-orchestrator">Orchestrator</button>
+      <button class="sidebar-tab" id="tab-preview" role="tab" aria-selected="false" aria-controls="panel-preview">Preview</button>
+    </div>
+
+    <!-- Orchestrator panel -->
+    <div id="panel-orchestrator" class="sidebar-panel active" role="tabpanel" aria-labelledby="tab-orchestrator">
+      <div id="chat-panel">
+        <div class="chat-header">
+          <span class="chat-title">Orchestrator</span>
+          <span class="chat-status" id="chat-status">idle</span>
+        </div>
+        <div id="chat-messages"></div>
+        <div class="chat-input-row">
+          <textarea id="chat-input" rows="1" placeholder="Send a message..." aria-label="Chat message"></textarea>
+          <button id="chat-send">Send</button>
+        </div>
       </div>
-      <div id="chat-messages"></div>
-      <div class="chat-input-row">
-        <textarea id="chat-input" rows="1" placeholder="Send a message..." aria-label="Chat message"></textarea>
-        <button id="chat-send">Send</button>
+    </div>
+
+    <!-- Preview panel -->
+    <div id="panel-preview" class="sidebar-panel" role="tabpanel" aria-labelledby="tab-preview">
+      <!-- Controls + status indicator -->
+      <div id="preview-header" aria-label="Preview controls">
+        <button class="preview-btn" id="preview-start-btn" aria-label="Start preview">Start</button>
+        <button class="preview-btn danger" id="preview-stop-btn" aria-label="Stop preview" disabled>Stop</button>
+        <button class="preview-btn" id="preview-restart-btn" aria-label="Restart preview" disabled>Restart</button>
+        <span id="preview-status-chip" aria-live="polite">stopped</span>
+      </div>
+      <!-- Content area: web iframe | process log | hint card -->
+      <div id="preview-content">
+        <!-- Web mode: iframe \u2014 src is set ONLY to a validated localhost http URL -->
+        <iframe id="preview-iframe" title="App preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+        <!-- Process mode: live log view -->
+        <div id="preview-log" aria-label="Preview process log" aria-live="polite"></div>
+        <!-- None mode: hint card -->
+        <div id="preview-hint">
+          <div class="hint-title">No preview configured</div>
+          <div>Add a preview block to your <strong>PROJECT.md</strong> frontmatter:</div>
+          <pre class="hint-code">preview_command: npm start
+preview_port: 3000</pre>
+          <div style="color: var(--text-muted); font-size: 0.75rem;">or add a <code>dev</code>/<code>start</code>/<code>serve</code> script to package.json</div>
+        </div>
       </div>
     </div>
   </aside>
@@ -9827,13 +10524,29 @@ function buildHtml() {
   // Fetches /api/session on load and on each SSE turn-end event to show the
   // orchestrator's current workflow step + active task in the header.
   //
+  // TASK-064: also renders the mode badge (HARNESS/LOOP) from session.mode.
+  // Graceful when mode is absent \u2014 defaults to HARNESS, no crash.
+  //
   // XSS discipline: all content rendered via document.createElement + .textContent.
   // No innerHTML with content.
   // ---------------------------------------------------------------------------
   var statusBar = document.getElementById('session-status-bar');
+  var modeBadge = document.getElementById('mode-badge');
+  var modeToggleBtn = document.getElementById('mode-toggle-btn');
+
+  function renderModeBadge(mode) {
+    // Graceful absent: default to 'harness' if mode is missing or invalid.
+    var m = (mode === 'loop') ? 'loop' : 'harness';
+    modeBadge.textContent = m.toUpperCase();
+    modeBadge.className = 'mode-badge ' + m;
+  }
 
   function renderStatusBar(data) {
     while (statusBar.firstChild) statusBar.removeChild(statusBar.firstChild);
+
+    // Render mode badge \u2014 always, regardless of idle/active state.
+    // data may be null (fetch failed) or missing mode field (older bundle).
+    renderModeBadge(data && data.mode);
 
     if (!data || data.idle) {
       var idleChip = document.createElement('span');
@@ -9884,8 +10597,51 @@ function buildHtml() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Mode toggle button \u2014 TASK-064
+  //
+  // POSTs to /api/session/mode (no body needed \u2014 route calls toggleMode server-
+  // side) then refreshes the session status so the badge updates live.
+  //
+  // Briefly disables the button during the request to prevent double-clicks.
+  // Shows an inline error chip if the route returns a non-2xx or the fetch fails.
+  // ---------------------------------------------------------------------------
+  modeToggleBtn.addEventListener('click', async function() {
+    modeToggleBtn.disabled = true;
+    try {
+      var res = await fetch('/api/session/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        var errText = 'Mode flip failed (' + res.status + ')';
+        try { var b = await res.json(); errText = b.error || errText; } catch {}
+        showError(errText);
+      } else {
+        // Refresh badge live.
+        await fetchSessionStatus();
+      }
+    } catch (err) {
+      showError('Mode flip failed: ' + (err.message || 'network error'));
+    } finally {
+      modeToggleBtn.disabled = false;
+    }
+  });
+
   // Initial load.
   fetchSessionStatus();
+
+  // Polling interval \u2014 catches out-of-band mode changes (e.g. the autonomous loop
+  // writing setMode('loop') to the bundle file with no chat turn occurring).
+  // 4000 ms: live enough that a mode flip surfaces within one poll cycle (~4 s),
+  // but not so frequent as to be chatty on a local loopback.  We guard against
+  // accidental double-registration (e.g. if this script block were ever eval'd
+  // more than once) by storing the interval ID on a module-scope sentinel; if
+  // the sentinel is already set we skip registering a second interval.
+  if (!window.__statusPollId) {
+    window.__statusPollId = setInterval(fetchSessionStatus, 4000);
+  }
 
   // Refresh on each turn-end SSE event \u2014 hook into the existing handleStreamEvent.
   var _origHandleStreamEvent = handleStreamEvent;
@@ -9895,6 +10651,270 @@ function buildHtml() {
       fetchSessionStatus();
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Tab switcher \u2014 TASK-068
+  // Toggles .active on .sidebar-tab and .sidebar-panel pairs.
+  // ---------------------------------------------------------------------------
+  var tabOrchestrator = document.getElementById('tab-orchestrator');
+  var tabPreview = document.getElementById('tab-preview');
+  var panelOrchestrator = document.getElementById('panel-orchestrator');
+  var panelPreview = document.getElementById('panel-preview');
+
+  function activateTab(tabId) {
+    var isPreview = tabId === 'preview';
+    tabOrchestrator.classList.toggle('active', !isPreview);
+    tabOrchestrator.setAttribute('aria-selected', String(!isPreview));
+    tabPreview.classList.toggle('active', isPreview);
+    tabPreview.setAttribute('aria-selected', String(isPreview));
+    panelOrchestrator.classList.toggle('active', !isPreview);
+    panelPreview.classList.toggle('active', isPreview);
+  }
+
+  tabOrchestrator.addEventListener('click', function() { activateTab('orchestrator'); });
+  tabPreview.addEventListener('click', function() { activateTab('preview'); });
+
+  // ---------------------------------------------------------------------------
+  // Deep-link: ?tab=preview (or #preview) pre-selects the Preview tab on load.
+  // TASK-069: /agentic-framework:preview command uses this seam.
+  // ---------------------------------------------------------------------------
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var tabParam = params.get('tab');
+    if (!tabParam) {
+      var h = window.location.hash;
+      if (h === '#preview') tabParam = 'preview';
+    }
+    if (tabParam === 'preview') {
+      activateTab('preview');
+    }
+  })();
+
+  // ---------------------------------------------------------------------------
+  // Preview panel \u2014 TASK-068
+  //
+  // XSS discipline:
+  //   - Log lines appended via createElement + textContent only (never innerHTML).
+  //   - iframe src is validated to be a localhost http URL before assignment.
+  //     The validation regex allows ONLY http://localhost:<port> or
+  //     http://127.0.0.1:<port> \u2014 never user-controlled HTML.
+  //   - Status chip text set via textContent.
+  //
+  // Live update: connects to GET /api/preview/stream (SSE) for incremental log
+  // lines ({type:'log',line}) and state changes ({type:'state',...} or
+  // {type:'status',...}). No page reload needed.
+  //
+  // Ring-buffer cap: the log view retains at most MAX_LOG_LINES DOM nodes,
+  // dropping the oldest when the cap is reached.
+  // ---------------------------------------------------------------------------
+
+  var previewStartBtn = document.getElementById('preview-start-btn');
+  var previewStopBtn = document.getElementById('preview-stop-btn');
+  var previewRestartBtn = document.getElementById('preview-restart-btn');
+  var previewStatusChip = document.getElementById('preview-status-chip');
+  var previewIframe = document.getElementById('preview-iframe');
+  var previewLog = document.getElementById('preview-log');
+  var previewHint = document.getElementById('preview-hint');
+
+  var MAX_LOG_LINES = 200;
+
+  // validateLocalhostUrl \u2014 injected from the server-side export (single source).
+  // The exact same function body runs here in the browser and in Node tests.
+  // INJECTED_VALIDATE_LOCALHOST_URL
+
+  // Append a single log line to the log view (XSS-safe via textContent).
+  function appendLogLine(text) {
+    var line = document.createElement('span');
+    line.className = 'log-line';
+    line.textContent = text;
+    previewLog.appendChild(line);
+    // Trim oldest lines if over cap.
+    while (previewLog.childNodes.length > MAX_LOG_LINES) {
+      previewLog.removeChild(previewLog.firstChild);
+    }
+    previewLog.scrollTop = previewLog.scrollHeight;
+  }
+
+  // Switch the preview content area based on mode + state.
+  // mode: 'web' | 'process' | 'none' | null
+  // state: 'running' | 'starting' | 'stopped' | 'exited' | 'error' | null
+  // url: string | null
+  function applyPreviewMode(mode, state, url) {
+    var isRunning = state === 'running' || state === 'starting';
+
+    // Update status chip.
+    var chipText = state || 'stopped';
+    if (mode && isRunning) chipText = state + ' \xB7 ' + mode;
+    previewStatusChip.textContent = chipText;
+    previewStatusChip.className = (state && isRunning) ? state : (state || '');
+
+    // Update button states.
+    var canStart = !isRunning;
+    var canStop = state === 'running' || state === 'starting';
+    var canRestart = state === 'running';
+    previewStartBtn.disabled = !canStart;
+    previewStopBtn.disabled = !canStop;
+    previewRestartBtn.disabled = !canRestart;
+
+    // Hide all content areas first.
+    previewIframe.classList.remove('visible');
+    previewLog.classList.remove('visible');
+    previewHint.classList.remove('visible');
+
+    if (mode === 'web' && state === 'running') {
+      // Web mode running: show iframe with validated localhost URL.
+      var safeUrl = validateLocalhostUrl(url);
+      if (safeUrl) {
+        // Only set src if the URL has changed (avoids pointless reload).
+        if (previewIframe.getAttribute('data-preview-url') !== safeUrl) {
+          previewIframe.src = safeUrl;
+          previewIframe.setAttribute('data-preview-url', safeUrl);
+        }
+        previewIframe.classList.add('visible');
+      } else {
+        // URL missing or invalid \u2014 fall back to log view.
+        previewLog.classList.add('visible');
+      }
+    } else if (mode === 'process' || (mode === 'web' && state !== 'running' && isRunning)) {
+      // Process mode, or web starting (url not yet resolved): show log view.
+      previewLog.classList.add('visible');
+    } else if (!mode || mode === 'none' || state === 'stopped' || !state) {
+      if (mode === 'none' || !mode) {
+        // No preview configured: show hint card.
+        previewHint.classList.add('visible');
+      } else {
+        // Stopped/exited/error with a known mode: show log view (last output visible).
+        previewLog.classList.add('visible');
+      }
+    } else {
+      // Fallback for any other combination.
+      previewLog.classList.add('visible');
+    }
+
+    // If stopped/exited, clear iframe src to free the embedded page.
+    if (state === 'stopped' || state === 'exited' || state === 'error') {
+      if (previewIframe.src) {
+        previewIframe.removeAttribute('src');
+        previewIframe.removeAttribute('data-preview-url');
+      }
+    }
+  }
+
+  // Handle an incoming preview SSE event.
+  function handlePreviewEvent(ev) {
+    if (!ev || typeof ev !== 'object') return;
+
+    if (ev.type === 'log' && typeof ev.line === 'string') {
+      appendLogLine(ev.line);
+      return;
+    }
+
+    // State change events: both 'state' (from controller) and 'status' (from
+    // the initial snapshot + route broadcasts) are handled identically.
+    if (ev.type === 'state' || ev.type === 'status') {
+      applyPreviewMode(ev.mode || null, ev.state || null, ev.url || null);
+      // On a status event, also seed recent logs if provided (initial snapshot).
+      if (ev.type === 'status' && Array.isArray(ev.recentLogs)) {
+        previewLog.innerHTML = '';
+        for (var i = 0; i < ev.recentLogs.length; i++) {
+          appendLogLine(ev.recentLogs[i]);
+        }
+      }
+    }
+  }
+
+  // Open SSE stream for preview events.
+  var previewEvtSource = new EventSource('/api/preview/stream');
+
+  previewEvtSource.onmessage = function(e) {
+    var ev;
+    try { ev = JSON.parse(e.data); } catch { return; }
+    handlePreviewEvent(ev);
+  };
+
+  previewEvtSource.onerror = function() {
+    // Non-fatal: EventSource auto-reconnects. Status chip keeps its last value.
+  };
+
+  // Control button handlers.
+  previewStartBtn.addEventListener('click', async function() {
+    previewStartBtn.disabled = true;
+    try {
+      var res = await fetch('/api/preview/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        var err = 'Start failed (' + res.status + ')';
+        try { var b = await res.json(); err = b.error || err; } catch {}
+        previewStatusChip.textContent = 'error: ' + err;
+        previewStatusChip.className = 'error';
+        previewStartBtn.disabled = false;
+        // Show hint if mode=none (409 = not configured).
+        if (res.status === 409) {
+          previewHint.classList.add('visible');
+          previewIframe.classList.remove('visible');
+          previewLog.classList.remove('visible');
+        }
+      }
+      // On success: SSE stream will deliver the state change.
+    } catch (e2) {
+      previewStatusChip.textContent = 'error: ' + (e2.message || 'network error');
+      previewStatusChip.className = 'error';
+      previewStartBtn.disabled = false;
+    }
+  });
+
+  previewStopBtn.addEventListener('click', async function() {
+    previewStopBtn.disabled = true;
+    try {
+      await fetch('/api/preview/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      // SSE will deliver stopped state.
+    } catch (e2) {
+      previewStopBtn.disabled = false;
+    }
+  });
+
+  previewRestartBtn.addEventListener('click', async function() {
+    previewRestartBtn.disabled = true;
+    try {
+      await fetch('/api/preview/restart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      // SSE will deliver updated state.
+    } catch (e2) {
+      previewRestartBtn.disabled = false;
+    }
+  });
+
+  // Initial preview status fetch to seed the UI on page load
+  // (the SSE stream sends a snapshot on connect, but fetch ensures
+  // we reflect the correct mode even if the SSE is slow to connect).
+  async function fetchPreviewStatus() {
+    try {
+      var res = await fetch('/api/preview/status');
+      if (!res.ok) return;
+      var data = await res.json();
+      applyPreviewMode(data.mode || null, data.state || null, data.url || null);
+      // Seed the log view with recent logs.
+      if (Array.isArray(data.recentLogs) && data.recentLogs.length > 0) {
+        for (var i = 0; i < data.recentLogs.length; i++) {
+          appendLogLine(data.recentLogs[i]);
+        }
+      }
+    } catch {
+      // Best-effort: ignore errors, SSE will sync the state.
+    }
+  }
+
+  fetchPreviewStatus();
 </script>
 </body>
 </html>`;
@@ -10124,9 +11144,19 @@ function injectGraphData(graphObj) {
   const body = buildGraphBody(graphObj);
   return template.replace(GRAPH_DATA_SENTINEL, () => json).replace(GRAPH_BODY_SENTINEL, () => body);
 }
-function createBoardServer({ repoRoot, bridge } = {}) {
+function createBoardServer({ repoRoot, bridge, previewController } = {}) {
   const sessionManager = bridge || createSessionManager({ repoRoot });
   const html = buildHtml();
+  const _preview = previewController || createPreviewController({ repoRoot });
+  const _previewSubs = /* @__PURE__ */ new Set();
+  function broadcastPreviewEvent(ev) {
+    for (const sub of _previewSubs) {
+      try {
+        sub(ev);
+      } catch {
+      }
+    }
+  }
   const htmlBytes = Buffer.from(html, "utf8");
   const server = import_node_http.default.createServer(async (req, res) => {
     try {
@@ -10171,6 +11201,37 @@ function createBoardServer({ repoRoot, bridge } = {}) {
             recent_decisions: [],
             error: err && err.message || "projection failed"
           });
+        }
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/session/mode") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        try {
+          const newMode = await toggleMode({ repoRoot });
+          sendJson(res, 200, { ok: true, mode: newMode });
+        } catch (err) {
+          const msg = err && err.message || "mode toggle failed";
+          if (/no active session/i.test(msg)) {
+            sendJson(res, 409, { error: msg });
+          } else {
+            sendJson(res, 500, { error: msg });
+          }
         }
         return;
       }
@@ -10456,6 +11517,187 @@ function createBoardServer({ repoRoot, bridge } = {}) {
         sendJson(res, 200, { ok: true });
         return;
       }
+      if (req.method === "GET" && pathname === "/api/preview/status") {
+        const status = _preview.getStatus();
+        const RECENT_CAP = 50;
+        const recentLogs = Array.isArray(status.recentLogs) ? status.recentLogs.slice(-RECENT_CAP) : [];
+        let source = status.source !== null && status.source !== void 0 ? status.source : null;
+        if (source === null) {
+          try {
+            const cfg = await resolvePreviewConfig({ repoRoot });
+            source = cfg.source;
+          } catch {
+            source = null;
+          }
+        }
+        const body = {
+          state: status.state,
+          mode: status.mode,
+          url: status.url !== void 0 ? status.url : null,
+          source,
+          recentLogs
+        };
+        sendJson(res, 200, body);
+        return;
+      }
+      if (req.method === "GET" && pathname === "/api/preview/stream") {
+        let onPreviewEvent = function(ev) {
+          try {
+            res.write(`data: ${JSON.stringify(ev)}
+
+`);
+          } catch {
+          }
+        };
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        });
+        res.flushHeaders();
+        const RECENT_CAP = 50;
+        const initStatus = _preview.getStatus();
+        onPreviewEvent({
+          type: "status",
+          state: initStatus.state,
+          mode: initStatus.mode,
+          url: initStatus.url !== void 0 ? initStatus.url : null,
+          source: initStatus.source !== void 0 ? initStatus.source : null,
+          recentLogs: Array.isArray(initStatus.recentLogs) ? initStatus.recentLogs.slice(-RECENT_CAP) : []
+        });
+        const unsubscribePreview = _preview.subscribe(onPreviewEvent);
+        _previewSubs.add(onPreviewEvent);
+        req.socket.on("close", () => {
+          unsubscribePreview();
+          _previewSubs.delete(onPreviewEvent);
+        });
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/preview/start") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        let body;
+        try {
+          body = await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        let config;
+        try {
+          config = await resolvePreviewConfig({ repoRoot });
+        } catch (err) {
+          sendJson(res, 500, { error: `resolver error: ${err && err.message || "unknown"}` });
+          return;
+        }
+        if (config.mode === "none") {
+          sendJson(res, 409, {
+            error: "no preview configured",
+            hint: "Add preview_command, preview_url, or preview_port to PROJECT.md frontmatter, or add a dev/start/serve script to package.json."
+          });
+          return;
+        }
+        try {
+          await _preview.start(config);
+        } catch (err) {
+          sendJson(res, 500, { error: `start failed: ${err && err.message || "unknown"}` });
+          return;
+        }
+        const newStatus = _preview.getStatus();
+        broadcastPreviewEvent({
+          type: "status",
+          state: newStatus.state,
+          mode: newStatus.mode,
+          url: newStatus.url !== void 0 ? newStatus.url : null
+        });
+        sendJson(res, 200, { ok: true, state: newStatus.state, mode: newStatus.mode, url: newStatus.url });
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/preview/stop") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        try {
+          await _preview.stop();
+        } catch (err) {
+          sendJson(res, 500, { error: `stop failed: ${err && err.message || "unknown"}` });
+          return;
+        }
+        broadcastPreviewEvent({ type: "status", state: "stopped", mode: null, url: null });
+        sendJson(res, 200, { ok: true, state: "stopped" });
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/preview/restart") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        let config;
+        try {
+          config = await resolvePreviewConfig({ repoRoot });
+        } catch (err) {
+          sendJson(res, 500, { error: `resolver error: ${err && err.message || "unknown"}` });
+          return;
+        }
+        if (config.mode === "none") {
+          sendJson(res, 409, {
+            error: "no preview configured",
+            hint: "Add preview_command, preview_url, or preview_port to PROJECT.md frontmatter, or add a dev/start/serve script to package.json."
+          });
+          return;
+        }
+        try {
+          await _preview.restart(config);
+        } catch (err) {
+          sendJson(res, 500, { error: `restart failed: ${err && err.message || "unknown"}` });
+          return;
+        }
+        const newStatus = _preview.getStatus();
+        broadcastPreviewEvent({
+          type: "status",
+          state: newStatus.state,
+          mode: newStatus.mode,
+          url: newStatus.url !== void 0 ? newStatus.url : null
+        });
+        sendJson(res, 200, { ok: true, state: newStatus.state, mode: newStatus.mode, url: newStatus.url });
+        return;
+      }
       sendJson(res, 404, { error: `not found: ${pathname}` });
     } catch (err) {
       const msg = err && err.message || "internal server error";
@@ -10487,7 +11729,7 @@ function parseArgs(argv) {
   }
   return out;
 }
-function openBrowser(url, spawnFn = import_node_child_process2.spawn) {
+function openBrowser(url, spawnFn = import_node_child_process3.spawn) {
   try {
     let cmd, args;
     if (process.platform === "win32") {

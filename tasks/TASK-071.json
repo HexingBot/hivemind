@@ -1,0 +1,28 @@
+{
+  "key": "TASK-071",
+  "title": "loop checkpoint writes must map workflow phases to valid workflow_step enum values",
+  "description": "BETA FINDING. During loop drives the orchestrator checkpoints workflow_step into the session bundle; ad-hoc strings (e.g. \"developer-tests\", \"in_review\") are NOT in the bundle schema enum [idle,fetch,research,test,impl,review,update] and live-state.spec.js fails the release gate (test:all red) when they leak. Codify a mapping from loop/workflow phases to the valid enum values so checkpoints are always schema-valid, and document it so manual orchestrator checkpoints follow it too.",
+  "acceptance_criteria": [
+    "A documented/exported mapping from drive-loop phases (test-writing, implementation, review, ticket-fetch, research, update) to the valid workflow_step enum [idle,fetch,research,test,impl,review,update].",
+    "The drive-loop / checkpoint path writes only enum-valid workflow_step values (no ad-hoc strings).",
+    "A regression lock asserts an invalid phase string is mapped/rejected rather than written verbatim (red-green proven).",
+    "orchestrator-routing skill documents the valid enum + the mapping for manual checkpoints; byte-identical parity copy."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "beta",
+    "loop-engineering",
+    "session-state",
+    "finding"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-17T15:25:31.618Z",
+  "updated_at": "2026-06-17T15:25:31.618Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

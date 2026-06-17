@@ -226,6 +226,40 @@ describe('TASK-054 — turn-end event triggers board refresh', () => {
 });
 
 // ===========================================================================
+// TASK-064 fix — polling interval for out-of-band mode changes.
+//
+// AC2/AC6 regression lock: the client JS must register a setInterval that
+// calls fetchSessionStatus so the mode badge updates when the autonomous loop
+// flips the mode outside a chat turn (no SSE turn-end fires in that case).
+// One lock per acceptance criterion — no padding.
+// ===========================================================================
+describe('TASK-064 — status-bar polling interval wired for out-of-band mode changes', () => {
+  it('script_registers_setInterval_calling_fetchSessionStatus', () => {
+    const script = boardScriptSrc();
+    // Must call setInterval (the polling mechanism).
+    expect(
+      script.includes('setInterval('),
+      'the board script must register a setInterval for polling the session status',
+    ).toBe(true);
+    // The argument to setInterval must reference fetchSessionStatus.
+    expect(
+      script.includes('setInterval(fetchSessionStatus'),
+      'setInterval must call fetchSessionStatus so the mode badge reflects out-of-band changes',
+    ).toBe(true);
+  });
+
+  it('script_guards_against_double_registration_of_polling_interval', () => {
+    const script = boardScriptSrc();
+    // The guard uses a window sentinel so multiple script evaluations do not
+    // stack multiple intervals.
+    expect(
+      script.includes('__statusPollId'),
+      'the polling interval must use a __statusPollId sentinel to prevent double-registration',
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
 // Lock 5 — Activity-chip branches: 'subagent' and 'tool' event types handled.
 // Locks the TASK-052 AC2 feature (distinct chips for tool/subagent events).
 // ===========================================================================
