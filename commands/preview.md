@@ -43,7 +43,7 @@ The panel exposes three buttons: **Start**, **Stop**, and **Restart**. These cal
 The resolver reads your `PROJECT.md` frontmatter. Add any of these fields to configure preview:
 
 ```yaml
-preview_command: npm start        # command to run (optional — inferred if absent)
+preview_command: npm run dev      # command to run (optional — inferred if absent)
 preview_url: http://localhost:3000 # explicit URL for the iframe (optional)
 preview_port: 3000                # port to derive the iframe URL (optional)
 preview_mode: web                 # force 'web' or 'process' (optional)

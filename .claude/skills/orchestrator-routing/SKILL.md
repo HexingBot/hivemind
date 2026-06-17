@@ -311,10 +311,13 @@ preview_port: 3000
 
 ### Resolution precedence
 
-1. **Configured** — `PROJECT.md` frontmatter carries any of the four preview fields.
+1. **Configured** — `PROJECT.md` frontmatter carries any of the three command/URL
+   fields (`preview_command`, `preview_url`, or `preview_port`). `preview_mode` alone
+   does NOT trigger `source=configured`; it is only honoured when one of the three
+   command/URL fields is also present.
 2. **Inferred** — `package.json` scripts scanned in priority order: `dev` > `start` > `serve`.
-   A port pattern in the script string (`--port N`, `-p N`, `PORT=N`, `localhost:N`) derives
-   the iframe URL automatically.
+   A port pattern in the script string (`--port N`, `-p N`, `PORT=N`, `localhost:N`,
+   `0.0.0.0:N`) derives the iframe URL automatically.
 3. **None** — no usable configuration found; the panel shows a hint instead.
 
 Source is exposed as `source: 'configured' | 'inferred' | 'none'` from
@@ -341,8 +344,16 @@ The Preview panel exposes three buttons; state transitions update live via SSE:
 | Start | `POST /api/preview/start` | Spawns the command; streams stdout/stderr via SSE |
 | Stop | `POST /api/preview/stop` | Sends SIGTERM; waits for process to exit |
 | Restart | `POST /api/preview/restart` | Stop then Start in sequence |
-| Status poll | `GET /api/preview/status` | Returns `{ state, url, mode, command }` |
-| Log stream | `GET /api/preview/stream` | SSE: `{type:'log',line}` and `{type:'status',...}` events |
+| Status poll | `GET /api/preview/status` | Returns `{ state, mode, url, source, recentLogs }` |
+| Log stream | `GET /api/preview/stream` | SSE: `log`, `state`, and `status` events (see below) |
+
+SSE event shapes emitted by `/api/preview/stream`:
+
+| Event type | Shape | When emitted |
+|---|---|---|
+| `log` | `{ type:'log', line }` | Each stdout/stderr line from the child process |
+| `state` | `{ type:'state', state, mode, url, source }` | Every controller state transition |
+| `status` | `{ type:'status', state, mode, url, source, recentLogs }` | Route snapshot on new subscriber connect and inline broadcasts |
 
 ### Deep-link to the Preview tab
 
