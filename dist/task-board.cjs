@@ -8380,6 +8380,7 @@ function idleProjection(extras = {}) {
     blockers: [],
     next_action: null,
     recent_decisions: [],
+    mode: "harness",
     ...extras
   };
 }
@@ -8416,7 +8417,8 @@ function projectSessionState({ repoRoot }) {
     blockers,
     next_action: nextAction,
     recent_decisions: recentDecisions,
-    updated_at: bundle.updated_at
+    updated_at: bundle.updated_at,
+    mode: bundle.mode ?? "harness"
   };
 }
 
