@@ -7841,6 +7841,40 @@ var import_node_path = require("node:path");
 var import_node_crypto = require("node:crypto");
 var RETRY_ATTEMPTS = 5;
 var RETRY_BACKOFF_MS = 50;
+async function atomicWriteFile(target, bytes) {
+  const dir = (0, import_node_path.dirname)(target);
+  const base = (0, import_node_path.basename)(target);
+  const suffix = `${process.pid}-${(0, import_node_crypto.randomBytes)(6).toString("hex")}`;
+  const tmp = (0, import_node_path.join)(dir, `${base}.tmp.${suffix}`);
+  const payload = typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes;
+  const fd = (0, import_node_fs.openSync)(tmp, import_node_fs.constants.O_CREAT | import_node_fs.constants.O_EXCL | import_node_fs.constants.O_WRONLY, 384);
+  try {
+    let written = 0;
+    while (written < payload.length) {
+      written += (0, import_node_fs.writeSync)(fd, payload, written, payload.length - written);
+    }
+    (0, import_node_fs.fsyncSync)(fd);
+  } finally {
+    (0, import_node_fs.closeSync)(fd);
+  }
+  let lastErr;
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      (0, import_node_fs.renameSync)(tmp, target);
+      return { tmp, target };
+    } catch (err) {
+      lastErr = err;
+      if (err && (err.code === "EBUSY" || err.code === "EPERM")) {
+        if (attempt < RETRY_ATTEMPTS - 1) {
+          await sleep(RETRY_BACKOFF_MS);
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 async function atomicWriteFiles(entries) {
   const prepared = [];
   for (const { target, bytes } of entries) {
@@ -8360,6 +8394,12 @@ function readBundleSession(repoRoot, sessionId) {
   const p = bundleSessionPath(repoRoot, sessionId);
   return JSON.parse((0, import_node_fs6.readFileSync)(p, "utf8"));
 }
+async function writeBundleSession(repoRoot, sessionId, payload) {
+  const dir = bundleDirFor(repoRoot, sessionId);
+  if (!(0, import_node_fs6.existsSync)(dir)) (0, import_node_fs6.mkdirSync)(dir, { recursive: true });
+  const target = bundleSessionPath(repoRoot, sessionId);
+  await atomicWriteFile(target, JSON.stringify(payload, null, 2) + "\n");
+}
 
 // src/session-projection.js
 var CAP_NEXT_ACTION = 280;
@@ -8420,6 +8460,44 @@ function projectSessionState({ repoRoot }) {
     updated_at: bundle.updated_at,
     mode: bundle.mode ?? "harness"
   };
+}
+
+// src/operating-mode.js
+var OPERATING_MODES = ["harness", "loop"];
+async function getMode({ repoRoot }) {
+  try {
+    const pointer = readPointer(repoRoot);
+    if (!pointer || pointer.active_session_id == null) return "harness";
+    const bundle = readBundleSession(repoRoot, pointer.active_session_id);
+    return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
+  } catch (_err) {
+    return "harness";
+  }
+}
+async function setMode({ repoRoot, mode }) {
+  if (!OPERATING_MODES.includes(mode)) {
+    throw new Error(
+      `Invalid mode ${JSON.stringify(mode)}. Must be one of: harness, loop.`
+    );
+  }
+  const pointer = readPointer(repoRoot);
+  if (!pointer || pointer.active_session_id == null) {
+    throw new Error("No active session \u2014 cannot set mode without an active bundle.");
+  }
+  const sessionId = pointer.active_session_id;
+  const bundle = readBundleSession(repoRoot, sessionId);
+  const updated = {
+    ...bundle,
+    mode,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  await writeBundleSession(repoRoot, sessionId, updated);
+}
+async function toggleMode({ repoRoot }) {
+  const current = await getMode({ repoRoot });
+  const next = current === "loop" ? "harness" : "loop";
+  await setMode({ repoRoot, mode: next });
+  return next;
 }
 
 // src/task-board.js
@@ -8610,6 +8688,57 @@ function buildHtml() {
     color: var(--priority-high);
     border-color: #3d2f0a;
     background: #231b06;
+  }
+
+  /* Mode badge \u2014 HARNESS (default / safe) vs LOOP (autonomous) */
+  .mode-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .mode-badge.harness {
+    color: var(--text-muted);
+    border-color: var(--border);
+    background: var(--card-bg);
+  }
+
+  .mode-badge.loop {
+    color: #3fb950;
+    border-color: #1a3d26;
+    background: #0a1f12;
+  }
+
+  /* Mode toggle button */
+  #mode-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  #mode-toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   /* =========================================================================
@@ -9246,6 +9375,8 @@ function buildHtml() {
   <h1>Agentic OS</h1>
   <span class="tagline">agentic software development framework</span>
   <div id="session-status-bar" aria-label="Session status"></div>
+  <span id="mode-badge" class="mode-badge harness" aria-label="Operating mode">HARNESS</span>
+  <button id="mode-toggle-btn" aria-label="Toggle operating mode">flip</button>
   <a href="/graph" class="header-link">Knowledge graph</a>
 </header>
 
@@ -9829,13 +9960,29 @@ function buildHtml() {
   // Fetches /api/session on load and on each SSE turn-end event to show the
   // orchestrator's current workflow step + active task in the header.
   //
+  // TASK-064: also renders the mode badge (HARNESS/LOOP) from session.mode.
+  // Graceful when mode is absent \u2014 defaults to HARNESS, no crash.
+  //
   // XSS discipline: all content rendered via document.createElement + .textContent.
   // No innerHTML with content.
   // ---------------------------------------------------------------------------
   var statusBar = document.getElementById('session-status-bar');
+  var modeBadge = document.getElementById('mode-badge');
+  var modeToggleBtn = document.getElementById('mode-toggle-btn');
+
+  function renderModeBadge(mode) {
+    // Graceful absent: default to 'harness' if mode is missing or invalid.
+    var m = (mode === 'loop') ? 'loop' : 'harness';
+    modeBadge.textContent = m.toUpperCase();
+    modeBadge.className = 'mode-badge ' + m;
+  }
 
   function renderStatusBar(data) {
     while (statusBar.firstChild) statusBar.removeChild(statusBar.firstChild);
+
+    // Render mode badge \u2014 always, regardless of idle/active state.
+    // data may be null (fetch failed) or missing mode field (older bundle).
+    renderModeBadge(data && data.mode);
 
     if (!data || data.idle) {
       var idleChip = document.createElement('span');
@@ -9885,6 +10032,38 @@ function buildHtml() {
       // Silently ignore \u2014 status bar is best-effort.
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Mode toggle button \u2014 TASK-064
+  //
+  // POSTs to /api/session/mode (no body needed \u2014 route calls toggleMode server-
+  // side) then refreshes the session status so the badge updates live.
+  //
+  // Briefly disables the button during the request to prevent double-clicks.
+  // Shows an inline error chip if the route returns a non-2xx or the fetch fails.
+  // ---------------------------------------------------------------------------
+  modeToggleBtn.addEventListener('click', async function() {
+    modeToggleBtn.disabled = true;
+    try {
+      var res = await fetch('/api/session/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        var errText = 'Mode flip failed (' + res.status + ')';
+        try { var b = await res.json(); errText = b.error || errText; } catch {}
+        showError(errText);
+      } else {
+        // Refresh badge live.
+        await fetchSessionStatus();
+      }
+    } catch (err) {
+      showError('Mode flip failed: ' + (err.message || 'network error'));
+    } finally {
+      modeToggleBtn.disabled = false;
+    }
+  });
 
   // Initial load.
   fetchSessionStatus();
@@ -10173,6 +10352,37 @@ function createBoardServer({ repoRoot, bridge } = {}) {
             recent_decisions: [],
             error: err && err.message || "projection failed"
           });
+        }
+        return;
+      }
+      if (req.method === "POST" && pathname === "/api/session/mode") {
+        const contentType = req.headers["content-type"] || "";
+        if (!/application\/json/i.test(contentType)) {
+          sendJson(res, 415, {
+            error: `Content-Type must be application/json, got: ${contentType || "(missing)"}`
+          });
+          return;
+        }
+        try {
+          await readBody(req);
+        } catch (err) {
+          if (err && err.code === "BODY_TOO_LARGE") {
+            sendJson(res, 413, { error: err.message });
+          } else {
+            sendJson(res, 400, { error: "invalid JSON body" });
+          }
+          return;
+        }
+        try {
+          const newMode = await toggleMode({ repoRoot });
+          sendJson(res, 200, { ok: true, mode: newMode });
+        } catch (err) {
+          const msg = err && err.message || "mode toggle failed";
+          if (/no active session/i.test(msg)) {
+            sendJson(res, 409, { error: msg });
+          } else {
+            sendJson(res, 500, { error: msg });
+          }
         }
         return;
       }
