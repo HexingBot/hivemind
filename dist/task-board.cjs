@@ -8798,7 +8798,10 @@ function createPreviewController({ repoRoot }) {
       _subs.delete(cb);
     };
   }
-  return { start, stop, restart, getStatus, subscribe };
+  function getSubscriberCount() {
+    return _subs.size;
+  }
+  return { start, stop, restart, getStatus, subscribe, getSubscriberCount };
 }
 
 // src/task-board.js

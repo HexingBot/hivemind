@@ -333,10 +333,19 @@ describe('TASK-067 — POST /api/preview/start hardening guards', () => {
 });
 
 // ===========================================================================
-// Lock 6: GET /api/preview/stream — SSE + subscriber count leak assertion
-// (Strengthened: verifies the actual subscriber count returns to baseline)
+// Lock 6: GET /api/preview/stream — SSE content-type + subscriber-count leak
+//
+// The leak regression assertion works as follows:
+//   1. Record baseline = getSubscriberCount() before any SSE connection.
+//   2. Open an SSE connection → count must increase by exactly 1.
+//   3. Destroy the socket (simulate client disconnect).
+//   4. Poll until count returns to baseline → proves the route's
+//      `req.socket.on('close', () => { unsubscribePreview(); ... })` path ran.
+//
+// If the unsubscribe-on-close line were removed, step 4 would time out because
+// the route's onPreviewEvent function would remain in _subs indefinitely.
 // ===========================================================================
-describe('TASK-067 — GET /api/preview/stream SSE + subscriber count cleanup', () => {
+describe('TASK-067 — GET /api/preview/stream SSE content-type + subscriber-count cleanup', () => {
   let repoRoot;
   let server;
   let baseUrl;
@@ -346,7 +355,6 @@ describe('TASK-067 — GET /api/preview/stream SSE + subscriber count cleanup', 
   beforeEach(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'preview-sse-spec-'));
     makeEmptyRepo(repoRoot);
-    // Inject a real controller so we can call subscribe/getSubscriberCount.
     previewController = createPreviewController({ repoRoot });
     ({ server, baseUrl, port } = await startServer(repoRoot, previewController));
   });
@@ -388,18 +396,12 @@ describe('TASK-067 — GET /api/preview/stream SSE + subscriber count cleanup', 
   });
 
   it('subscriber count returns to baseline after client disconnects (no leak)', async () => {
-    // Measure the baseline subscriber count via the controller's subscribe API.
-    // Subscribe a sentinel to record count before/after the SSE client connects.
-    let subCount = 0;
-    const unsubSentinel = previewController.subscribe(() => {});
-    subCount = 0; // sentinel is the baseline; real metric is how many extra we add
+    // Step 1: record the baseline subscriber count before any SSE connection.
+    const baseline = previewController.getSubscriberCount();
 
-    // Record subscriber count by subscribing and immediately unsubscribing to
-    // observe side effects. Instead, use the subscribe return value as a proxy:
-    // we subscribe a no-op, then verify unsubscribe removes it.
-    unsubSentinel(); // clean up sentinel
-
-    // Connect a real SSE client to the board server stream endpoint.
+    // Step 2: open an SSE connection and wait for headers (confirms the route
+    // has run and called subscribe() before we measure).
+    let sseSocket;
     await new Promise((resolve, reject) => {
       const req = http.request(
         {
@@ -410,114 +412,39 @@ describe('TASK-067 — GET /api/preview/stream SSE + subscriber count cleanup', 
           headers: { Host: `127.0.0.1:${port}` },
         },
         (res) => {
-          // Immediately destroy to simulate client disconnect.
-          req.socket.destroy();
+          // Headers received → route has subscribed. Capture socket for later destroy.
+          sseSocket = req.socket;
+          // Assert count increased by exactly 1 (the route's subscribe() call).
+          expect(
+            previewController.getSubscriberCount(),
+            'subscriber count must increase by 1 while SSE client is connected',
+          ).toBe(baseline + 1);
           resolve();
         },
       );
       req.on('error', (err) => {
-        if (err.code === 'ECONNRESET') { resolve(); return; }
+        if (err.code === 'ECONNRESET') return;
         reject(err);
       });
       req.end();
     });
 
-    // Give the server time to process the socket close event.
-    await new Promise((r) => setTimeout(r, 150));
+    // Step 3: destroy the socket to simulate client disconnect.
+    sseSocket.destroy();
 
-    // After disconnect, verify that a new subscription fires exactly once per event
-    // (meaning the disconnected SSE handler was removed, not duplicated).
-    // We do this by subscribing a counter, emitting a controlled state change,
-    // and asserting it fires exactly once — not N times (N=leaked listeners).
-    let fireCount = 0;
-    const unsubCounter = previewController.subscribe(() => { fireCount++; });
+    // Step 4: poll until the count returns to baseline.
+    // The route's `req.socket.on('close', () => { unsubscribePreview(); ... })`
+    // is asynchronous — give it up to 2 s to fire.
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      if (previewController.getSubscriberCount() === baseline) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
 
-    // Trigger one state event by calling stop() (which emits a 'state' event
-    // even when already stopped — the emitState runs regardless).
-    // Actually stop() is a no-op when already stopped. Use the internal subscribe
-    // to verify: send a fake event via the public API — start + stop on a dummy.
-    // Simpler: just check that subscribe works correctly by emitting via start.
-    // Since we can't call internal _emitState() directly, verify the count by
-    // checking that we can subscribe and our callback is called exactly once per
-    // controller event (not multiplied by leaked SSE listeners).
-
-    // Use a direct subscribe+emit round-trip: subscribe a second counter, then
-    // call stop() (which emits 'state' once). Both counters should fire exactly once.
-    let fireCount2 = 0;
-    const unsubCounter2 = previewController.subscribe(() => { fireCount2++; });
-
-    // stop() is already stopped → no-op → no state emit. Use a method that
-    // definitely emits: call getStatus() + check subscribe mechanics directly.
-    // The cleanest approach: verify subscribe returns a working unsubscribe fn,
-    // then confirm the SSE client's subscription was cleaned up by checking
-    // that the _previewSubs set (board-server internal) was decremented.
-    // Since _previewSubs is private to the server closure, we verify indirectly:
-    // a second SSE connection must open cleanly (server not degraded by leaked subs).
-
-    unsubCounter();
-    unsubCounter2();
-
-    // Verify the server is still healthy: a new SSE connection must receive 200.
-    const healthCheck = await new Promise((resolve, reject) => {
-      const req2 = http.request(
-        {
-          host: '127.0.0.1',
-          port,
-          method: 'GET',
-          path: '/api/preview/stream',
-          headers: { Host: `127.0.0.1:${port}` },
-        },
-        (res) => {
-          resolve({ status: res.statusCode });
-          req2.socket.destroy();
-        },
-      );
-      req2.on('error', (err) => {
-        if (err.code === 'ECONNRESET') return;
-        reject(err);
-      });
-      req2.end();
-    });
-    expect(healthCheck.status).toBe(200);
-
-    // The actual subscriber-count leak assertion: subscribe a fresh listener,
-    // trigger a state event via the controller's stop() + start() roundtrip,
-    // and verify it fires exactly once, not twice (which would indicate the
-    // previous SSE client's listener was not removed from _subs).
-    let exactCount = 0;
-    const unsubExact = previewController.subscribe(() => { exactCount++; });
-
-    // Trigger a real state emit from the controller: call stop() to emit
-    // state='stopped' (idempotent call on already-stopped is a no-op, so we
-    // must use a different approach). Instead, verify via a wrapping subscribe:
-    // The controller's _subs set should only contain our test subscriber + any
-    // board-server listeners that were opened and NOT yet closed.
-    // After the disconnect above, the board server should have removed its
-    // listener from _subs. Our exactCount subscriber is the only current sub.
-    // We verify this by subscribing a second counter and confirming both fire
-    // once per event.
-    let exactCount2 = 0;
-    const unsubExact2 = previewController.subscribe(() => { exactCount2++; });
-
-    // Emit a state event via a no-op restart path: we need to trigger _emitState.
-    // The cleanest observable trigger in the public API is to subscribe and count.
-    // Since we can't directly invoke _emitState, we rely on the fact that the
-    // subscribe/unsubscribe machinery is correct if our two subscribers fire
-    // the same number of times as each other (proving no extra ghost listeners
-    // were left from the disconnected SSE session doubling the count).
-    // This is the structural correctness assertion — not a raw count.
-
-    unsubExact();
-    unsubExact2();
-
-    // Core assertion: both counters must agree (they always would if there are
-    // no extra ghost listeners), and the server must still accept new connections.
-    // The meaningful regression is: if the SSE disconnect did NOT clean up, the
-    // board server's onPreviewEvent function would remain in _subs, causing every
-    // subsequent controller event to also attempt a write to the closed socket.
-    // That would cause EPIPE/ERR_STREAM_WRITE_AFTER_END errors on the controller's
-    // _emit path. We verify no such errors surfaced by checking the server is healthy.
-    expect(healthCheck.status).toBe(200);
+    expect(
+      previewController.getSubscriberCount(),
+      'subscriber count must return to baseline after disconnect (no leak)',
+    ).toBe(baseline);
   });
 });
 

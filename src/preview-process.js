@@ -348,5 +348,14 @@ export function createPreviewController({ repoRoot }) {
     };
   }
 
-  return { start, stop, restart, getStatus, subscribe };
+  // -------------------------------------------------------------------------
+  // getSubscriberCount() — test seam; returns the current number of active
+  // subscribers. Purely additive — lets tests assert that the route's
+  // unsubscribe-on-disconnect path actually removes the SSE listener.
+  // -------------------------------------------------------------------------
+  function getSubscriberCount() {
+    return _subs.size;
+  }
+
+  return { start, stop, restart, getStatus, subscribe, getSubscriberCount };
 }
