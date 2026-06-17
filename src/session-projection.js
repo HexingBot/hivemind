@@ -37,6 +37,7 @@ function idleProjection(extras = {}) {
     blockers: [],
     next_action: null,
     recent_decisions: [],
+    mode: 'harness',
     ...extras,
   };
 }
@@ -99,5 +100,6 @@ export function projectSessionState({ repoRoot }) {
     next_action: nextAction,
     recent_decisions: recentDecisions,
     updated_at: bundle.updated_at,
+    mode: bundle.mode ?? 'harness',
   };
 }

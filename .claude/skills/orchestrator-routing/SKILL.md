@@ -206,6 +206,25 @@ driving any ticket, and renew it each iteration. If `acquire()` raises
 The lock is released in a finally-style step on exit, pause, or any unhandled
 error. A held lock blocks other sessions.
 
+### Operating-mode auto-flip (TASK-063)
+
+The session bundle carries a `mode` field (`'harness'` | `'loop'`, default
+`'harness'`). The loop auto-flips this field via `src/operating-mode.js`:
+
+- **After `acquire()` succeeds (Step 1):** call
+  `setMode({ repoRoot, mode: 'loop' })` to signal that autonomous driving has
+  started. The console (TASK-064) reads this via `GET /api/session` → `mode`.
+- **Before `release()` (Step 3, finally-style):** call
+  `setMode({ repoRoot, mode: 'harness' })` first, then call `release()`. This
+  ensures the mode is reset even if an unhandled error cut the loop short.
+
+The mode can also be set manually outside the loop via
+`/agentic-framework-beta:mode` (see `commands/mode.md`) — useful for crash
+recovery if the loop exited without resetting the mode.
+
+`setMode` is idempotent and validates the value against the `OPERATING_MODES`
+enum (`['harness', 'loop']`); any other value throws immediately before any I/O.
+
 ### Four hard-stop gates
 
 The loop pauses and surfaces to the human at each gate unless a standing-
