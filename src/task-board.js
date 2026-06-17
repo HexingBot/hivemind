@@ -1649,6 +1649,17 @@ function buildHtml() {
   // Initial load.
   fetchSessionStatus();
 
+  // Polling interval — catches out-of-band mode changes (e.g. the autonomous loop
+  // writing setMode('loop') to the bundle file with no chat turn occurring).
+  // 4000 ms: live enough that a mode flip surfaces within one poll cycle (~4 s),
+  // but not so frequent as to be chatty on a local loopback.  We guard against
+  // accidental double-registration (e.g. if this script block were ever eval'd
+  // more than once) by storing the interval ID on a module-scope sentinel; if
+  // the sentinel is already set we skip registering a second interval.
+  if (!window.__statusPollId) {
+    window.__statusPollId = setInterval(fetchSessionStatus, 4000);
+  }
+
   // Refresh on each turn-end SSE event — hook into the existing handleStreamEvent.
   var _origHandleStreamEvent = handleStreamEvent;
   handleStreamEvent = function(evt) {
