@@ -59,7 +59,12 @@ const MCP_SKILL = 'mcp-server';
 // skill (documents the knowledge-graph.js public API + /graph command). Exists
 // in BOTH skills/ and .claude/skills/ byte-identical.
 const GRAPHIFY_SKILL = 'graphify';
-const REPO_LOCAL_SKILLS = [BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL].sort();
+// TASK-008 — the claude-code-context-monitor skill is a FIFTH legitimately
+// shipped repo-local skill (documents the context-autoflush feature shipped
+// under context-monitor/). Lives in skills/ only (no .claude/skills/ parity
+// copy required — it is the plugin's own skill, not a dogfood copy).
+const CONTEXT_MONITOR_SKILL = 'claude-code-context-monitor';
+const REPO_LOCAL_SKILLS = [BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
 function readJson(path) {

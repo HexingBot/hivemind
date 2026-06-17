@@ -2981,7 +2981,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3008,7 +3008,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3639,7 +3639,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3897,7 +3897,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -7716,9 +7716,9 @@ __export(init_exports, {
   runInit: () => runInit
 });
 module.exports = __toCommonJS(init_exports);
-var import_node_fs14 = require("node:fs");
-var import_node_path12 = require("node:path");
-var import_node_url = require("node:url");
+var import_node_fs15 = require("node:fs");
+var import_node_path14 = require("node:path");
+var import_node_url2 = require("node:url");
 var import_promises4 = require("node:readline/promises");
 var import_node_process = require("node:process");
 
@@ -7815,7 +7815,7 @@ async function atomicWriteFiles(entries) {
   return results;
 }
 function sleep(ms) {
-  return new Promise((resolve2) => setTimeout(resolve2, ms));
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
 
 // src/pointer.js
@@ -9881,26 +9881,123 @@ function readProjectClaudeMd(repoRoot) {
   return (0, import_node_fs13.existsSync)(path) ? (0, import_node_fs13.readFileSync)(path, "utf8") : null;
 }
 
-// bin/init.js
+// src/claude-settings.js
+var import_node_fs14 = require("node:fs");
+var import_node_path12 = require("node:path");
+var import_node_url = require("node:url");
+var import_node_path13 = require("node:path");
 var import_meta = {};
-var __initDir = import_meta.url ? (0, import_node_path12.dirname)((0, import_node_url.fileURLToPath)(import_meta.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
-var PLUGIN_WORKFLOWS_SRC = (0, import_node_path12.join)(__initDir, "..", "workflows");
-var PLUGIN_LAUNCHER_CMD_SRC = (0, import_node_path12.join)(__initDir, "..", "console.cmd");
-var PLUGIN_LAUNCHER_SH_SRC = (0, import_node_path12.join)(__initDir, "..", "console.sh");
+function resolvePluginRoot() {
+  if (process.env.CLAUDE_PLUGIN_ROOT) {
+    return process.env.CLAUDE_PLUGIN_ROOT;
+  }
+  const here = import_meta.url ? (0, import_node_path13.dirname)((0, import_node_url.fileURLToPath)(import_meta.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
+  return (0, import_node_path12.resolve)(here, "..");
+}
+function buildContextMonitorEntries(pluginRoot) {
+  const cmDir = (0, import_node_path12.join)(pluginRoot, "context-monitor");
+  const statusLineCmd = `node "${(0, import_node_path12.join)(cmDir, "statusline.mjs")}"`;
+  const stopHookCmd = `node "${(0, import_node_path12.join)(cmDir, "stop-hook.mjs")}"`;
+  const sessionStartCmd = `node "${(0, import_node_path12.join)(cmDir, "session-start.mjs")}"`;
+  return {
+    statusLine: {
+      type: "command",
+      command: statusLineCmd
+    },
+    stopHook: {
+      type: "command",
+      command: stopHookCmd
+    },
+    sessionStartHook: {
+      type: "command",
+      matcher: "clear|compact",
+      command: sessionStartCmd
+    }
+  };
+}
+function mergeContextMonitorSettings(existing, entries) {
+  const out = { ...existing };
+  if (!out.statusLine) {
+    out.statusLine = entries.statusLine;
+  }
+  if (!out.hooks || typeof out.hooks !== "object") {
+    out.hooks = {};
+  } else {
+    out.hooks = { ...out.hooks };
+  }
+  if (!Array.isArray(out.hooks.Stop)) {
+    out.hooks.Stop = [];
+  } else {
+    out.hooks.Stop = [...out.hooks.Stop];
+  }
+  const hasStopHook = out.hooks.Stop.some(
+    (h) => h && typeof h.command === "string" && h.command.includes("stop-hook.mjs")
+  );
+  if (!hasStopHook) {
+    out.hooks.Stop.push(entries.stopHook);
+  }
+  if (!Array.isArray(out.hooks.SessionStart)) {
+    out.hooks.SessionStart = [];
+  } else {
+    out.hooks.SessionStart = [...out.hooks.SessionStart];
+  }
+  const hasSessionStartHook = out.hooks.SessionStart.some(
+    (h) => h && typeof h.command === "string" && h.command.includes("session-start.mjs")
+  );
+  if (!hasSessionStartHook) {
+    out.hooks.SessionStart.push(entries.sessionStartHook);
+  }
+  return out;
+}
+function writeClaudeSettings({ repoRoot, pluginRoot }) {
+  const effectivePluginRoot = pluginRoot ?? resolvePluginRoot();
+  const entries = buildContextMonitorEntries(effectivePluginRoot);
+  const claudeDir = (0, import_node_path12.join)(repoRoot, ".claude");
+  const settingsPath = (0, import_node_path12.join)(claudeDir, "settings.json");
+  let existing = {};
+  if ((0, import_node_fs14.existsSync)(settingsPath)) {
+    try {
+      existing = JSON.parse((0, import_node_fs14.readFileSync)(settingsPath, "utf8"));
+      if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+        existing = {};
+      }
+    } catch {
+      existing = {};
+    }
+  }
+  const merged = mergeContextMonitorSettings(existing, entries);
+  const serialized = JSON.stringify(merged, null, 2) + "\n";
+  if ((0, import_node_fs14.existsSync)(settingsPath)) {
+    const currentRaw = (0, import_node_fs14.readFileSync)(settingsPath, "utf8");
+    if (currentRaw === serialized) {
+      return { path: settingsPath, wrote: false };
+    }
+  }
+  (0, import_node_fs14.mkdirSync)(claudeDir, { recursive: true });
+  (0, import_node_fs14.writeFileSync)(settingsPath, serialized, "utf8");
+  return { path: settingsPath, wrote: true };
+}
+
+// bin/init.js
+var import_meta2 = {};
+var __initDir = import_meta2.url ? (0, import_node_path14.dirname)((0, import_node_url2.fileURLToPath)(import_meta2.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
+var PLUGIN_WORKFLOWS_SRC = (0, import_node_path14.join)(__initDir, "..", "workflows");
+var PLUGIN_LAUNCHER_CMD_SRC = (0, import_node_path14.join)(__initDir, "..", "console.cmd");
+var PLUGIN_LAUNCHER_SH_SRC = (0, import_node_path14.join)(__initDir, "..", "console.sh");
 function materializeWorkflows(repoRoot) {
   const srcDir = PLUGIN_WORKFLOWS_SRC;
-  if (!(0, import_node_fs14.existsSync)(srcDir)) return { added: [], skipped: [] };
-  const destDir = (0, import_node_path12.join)(repoRoot, ".claude", "workflows");
-  (0, import_node_fs14.mkdirSync)(destDir, { recursive: true });
+  if (!(0, import_node_fs15.existsSync)(srcDir)) return { added: [], skipped: [] };
+  const destDir = (0, import_node_path14.join)(repoRoot, ".claude", "workflows");
+  (0, import_node_fs15.mkdirSync)(destDir, { recursive: true });
   const added = [];
   const skipped = [];
-  const entries = (0, import_node_fs14.readdirSync)(srcDir, { withFileTypes: true });
+  const entries = (0, import_node_fs15.readdirSync)(srcDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    const srcPath = (0, import_node_path12.join)(srcDir, entry.name);
-    const destPath = (0, import_node_path12.join)(destDir, entry.name);
-    if (!(0, import_node_fs14.existsSync)(destPath)) {
-      (0, import_node_fs14.copyFileSync)(srcPath, destPath);
+    const srcPath = (0, import_node_path14.join)(srcDir, entry.name);
+    const destPath = (0, import_node_path14.join)(destDir, entry.name);
+    if (!(0, import_node_fs15.existsSync)(destPath)) {
+      (0, import_node_fs15.copyFileSync)(srcPath, destPath);
       added.push(entry.name);
     } else {
       skipped.push(entry.name);
@@ -9916,15 +10013,15 @@ function materializeLaunchers(repoRoot) {
   const added = [];
   const skipped = [];
   for (const { src, name } of launchers) {
-    if (!(0, import_node_fs14.existsSync)(src)) {
+    if (!(0, import_node_fs15.existsSync)(src)) {
       skipped.push(name);
       continue;
     }
-    const dest = (0, import_node_path12.join)(repoRoot, name);
-    if ((0, import_node_fs14.existsSync)(dest)) {
+    const dest = (0, import_node_path14.join)(repoRoot, name);
+    if ((0, import_node_fs15.existsSync)(dest)) {
       skipped.push(name);
     } else {
-      (0, import_node_fs14.copyFileSync)(src, dest);
+      (0, import_node_fs15.copyFileSync)(src, dest);
       added.push(name);
     }
   }
@@ -9983,14 +10080,14 @@ function parseArgs(argv) {
   return out;
 }
 function countFrameworkHistory(repoRoot) {
-  const tasksDir2 = (0, import_node_path12.join)(repoRoot, "tasks");
-  if (!(0, import_node_fs14.existsSync)(tasksDir2)) return 0;
-  const taskFiles = (0, import_node_fs14.readdirSync)(tasksDir2).filter((n) => TASK_FILE_RE2.test(n));
+  const tasksDir2 = (0, import_node_path14.join)(repoRoot, "tasks");
+  if (!(0, import_node_fs15.existsSync)(tasksDir2)) return 0;
+  const taskFiles = (0, import_node_fs15.readdirSync)(tasksDir2).filter((n) => TASK_FILE_RE2.test(n));
   if (taskFiles.length === 0) return 0;
   for (const name of taskFiles) {
     let t;
     try {
-      t = JSON.parse((0, import_node_fs14.readFileSync)((0, import_node_path12.join)(tasksDir2, name), "utf8"));
+      t = JSON.parse((0, import_node_fs15.readFileSync)((0, import_node_path14.join)(tasksDir2, name), "utf8"));
     } catch (err) {
       throw new Error(
         `bin/init.js: failed to parse task file ${name}: ${err.message}`
@@ -10016,12 +10113,12 @@ async function maybeArchiveFrameworkHistory({ repoRoot, prompter, noArchive, now
   await archiveFrameworkHistory({ repoRoot, now });
 }
 function intakePath(repoRoot, sessionId) {
-  return (0, import_node_path12.join)(repoRoot, "state", "sessions", sessionId, "intake.json");
+  return (0, import_node_path14.join)(repoRoot, "state", "sessions", sessionId, "intake.json");
 }
 function tryReadIntake(path) {
-  if (!(0, import_node_fs14.existsSync)(path)) return null;
+  if (!(0, import_node_fs15.existsSync)(path)) return null;
   try {
-    const raw = JSON.parse((0, import_node_fs14.readFileSync)(path, "utf8"));
+    const raw = JSON.parse((0, import_node_fs15.readFileSync)(path, "utf8"));
     if (raw && typeof raw === "object" && raw.answers && typeof raw.answers === "object") {
       return raw;
     }
@@ -10202,7 +10299,15 @@ async function runWizardAndWriteProjectMd({
   console.log(
     "Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), or use the /agentic-framework:console slash command in Claude Code."
   );
-  return { projectMdPath: (0, import_node_path12.join)(repoRoot, "PROJECT.md") };
+  try {
+    writeClaudeSettings({ repoRoot });
+  } catch (err) {
+    console.warn(
+      `context-monitor settings scaffold failed: ${err && err.message ? err.message : err}`
+    );
+    throw err;
+  }
+  return { projectMdPath: (0, import_node_path14.join)(repoRoot, "PROJECT.md") };
 }
 async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent }) {
   if (explicitConsent) {
@@ -10240,8 +10345,8 @@ async function runInit({
   if (answers) {
     validateSuppliedAnswers(answers);
   }
-  const projectMdPath = (0, import_node_path12.join)(repoRoot, "PROJECT.md");
-  const projectMdExists = (0, import_node_fs14.existsSync)(projectMdPath);
+  const projectMdPath = (0, import_node_path14.join)(repoRoot, "PROJECT.md");
+  const projectMdExists = (0, import_node_fs15.existsSync)(projectMdPath);
   if (parsed.applyModels) {
     if (!projectMdExists) {
       console.log("--apply-models: PROJECT.md not found; nothing to apply.");
@@ -10377,7 +10482,7 @@ function printFriendlyError(err) {
 function loadAnswersFile(path) {
   let raw;
   try {
-    raw = (0, import_node_fs14.readFileSync)(path, "utf8");
+    raw = (0, import_node_fs15.readFileSync)(path, "utf8");
   } catch (err) {
     throw new Error(`could not read --answers-file ${path}: ${err.message}`);
   }
@@ -10392,7 +10497,7 @@ function loadAnswersFile(path) {
   }
   return parsed;
 }
-var __isEntryScript = import_meta.url ? Boolean(process.argv[1]) && import_meta.url === (0, import_node_url.pathToFileURL)(process.argv[1]).href : typeof require !== "undefined" && typeof module !== "undefined" && require.main === module;
+var __isEntryScript = import_meta2.url ? Boolean(process.argv[1]) && import_meta2.url === (0, import_node_url2.pathToFileURL)(process.argv[1]).href : typeof require !== "undefined" && typeof module !== "undefined" && require.main === module;
 if (__isEntryScript) {
   Promise.resolve().then(() => {
     const argv = process.argv.slice(2);

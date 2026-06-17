@@ -44,6 +44,7 @@ import {
   hasRoutingBlock,
   readProjectClaudeMd,
 } from '../src/claude-md.js';
+import { writeClaudeSettings } from '../src/claude-settings.js';
 
 // ---------------------------------------------------------------------------
 // Workflow materializer
@@ -628,6 +629,22 @@ async function runWizardAndWriteProjectMd({
     'Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), ' +
     'or use the /agentic-framework:console slash command in Claude Code.',
   );
+
+  // TASK-008 — write/merge .claude/settings.json with context-monitor hooks
+  // and statusLine so newly-scaffolded projects are auto-wired. Deep-merge
+  // preserves any pre-existing settings. Warn-before-rethrow (TASK-017 AC5
+  // pattern): PROJECT.md, project-context, backlog, use-case suite, workflows,
+  // and launchers are already on disk; the user must learn about a failed
+  // settings write immediately. Silent-continue is NOT acceptable.
+  try {
+    writeClaudeSettings({ repoRoot });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `context-monitor settings scaffold failed: ${err && err.message ? err.message : err}`,
+    );
+    throw err;
+  }
 
   return { projectMdPath: join(repoRoot, 'PROJECT.md') };
 }
