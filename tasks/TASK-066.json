@@ -11,7 +11,7 @@
     "tdd: failing tests first for state-machine transitions, buffer bounding, URL detection, and idempotent stop, exercised with a trivial spawnable fixture (tiny node http server / echo loop) under tests/e2e/.",
     "release-tier gate: npm run test:all green; rebuild + commit dist if bundled source changes."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "beta",
@@ -21,17 +21,26 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "a15dfed",
+    "46427be",
+    "55dfd70"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-06-17T03:40:59.236Z",
       "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tdd: state machine + state mutation + bounded buffer + URL parsing. Exercises the close-to-done gate when looped. Deps: none. To be dogfood-driven via /agentic-framework-beta:loop after context clear."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-06-17T04:20:00.000Z",
+      "body": "CLOSED done via the goal-app-preview loop drive (iteration 2, auto_close_on_green_review granted). tdd two-phase: TEST a15dfed (20 RED specs, self-contained temp-dir fixtures, orphan-safe afterEach drain) -> IMPL 46427be (src/preview-process.js: createPreviewController + LOG_BUFFER_CAP=200 ring buffer, stopped/starting/running/exited/error state machine, configured-url + scanned-url detection, idempotent stop, restart/double-start child replacement, stderr wired into same buffer, mirrors orchestrator-bridge spawn discipline). Fresh-context review: APPROVE-WITH-FOLLOWUPS, 0 HIGH/2 MEDIUM/2 LOW/2 NIT. IN-BAND FIX 55dfd70: (MEDIUM #1) decoupled starting->running from URL detection so mode:process / no-url children reach running on spawn (was stuck in starting forever — a real AC2 gap for the resolver's process mode); (+LOW) added a stderr-only regression lock. Reviewer cold-verified the fix: APPROVE. Release-tier gate green: npm run test:all 861 passed/5 skipped. DEFERRED to TASK-067 (explicit constraint, see TASK-067 comment): MEDIUM #2 whitespace command parser breaks on quoted/space-bearing argv — TASK-067 feeds real resolver commands in, so it accepts a pre-split argv there. DEFERRED no-ticket: 2 NITs (named KILL_FALLBACK_MS constant; terminal-state field-retention doc note). Commits LOCAL on beta, NOT pushed (auto_push gate ON)."
     }
   ],
   "created_at": "2026-06-17T03:40:58.615Z",
-  "updated_at": "2026-06-17T03:40:59.236Z",
+  "updated_at": "2026-06-17T04:20:00.000Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

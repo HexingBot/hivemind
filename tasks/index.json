@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-17T03:40:59.520Z",
+  "generated_at": "2026-06-17T15:25:31.671Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -376,30 +376,48 @@
     {
       "key": "TASK-065",
       "title": "App-preview config resolver (PROJECT.md preview block + package.json inference)",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-066",
       "title": "Preview process manager — spawn/stop/restart + bounded log capture + URL detection",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-067",
       "title": "Console preview backend routes — start/stop/restart/status + SSE log stream",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-068",
       "title": "Console preview panel — iframe (web) / log view (process) + controls + sample fixtures",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-069",
       "title": "/agentic-framework-beta:preview command + orchestrator-routing preview docs",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-070",
+      "title": "session-lock: stable caller-supplied holder identity (session_id) instead of process.pid",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-071",
+      "title": "loop checkpoint writes must map workflow phases to valid workflow_step enum values",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-072",
+      "title": "Preview panel: behavioral test coverage for client mode-switch + deep-link (beyond static-markup locks)",
       "status": "todo",
       "priority": "medium"
     }

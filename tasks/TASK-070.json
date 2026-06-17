@@ -1,0 +1,29 @@
+{
+  "key": "TASK-070",
+  "title": "session-lock: stable caller-supplied holder identity (session_id) instead of process.pid",
+  "description": "BETA FINDING (recurred 4x across loop drives). src/session-lock.js identifies the holder by process.pid + hostname, but the orchestrator-as-driver runs every acquire/renew/release in a FRESH  subprocess, so each call has a different pid. Consequence: renew() always no-ops (foreign pid), the lock cannot be kept fresh across orchestrator turns (must re-acquire after the 5-min staleness window), and release() no-ops at exit (refuses to delete a foreign lock) so state/.lock must be removed manually. The lock implicitly assumes a single persistent holding process. Add support for a stable caller-supplied holder identity (e.g. the session_id, or a caller token) so acquire/renew/release work across ephemeral driver processes while preserving the advisory + staleness semantics.",
+  "acceptance_criteria": [
+    "acquire/renew/release accept an optional caller-supplied holder identity (e.g. { holder } or { sessionId }); when provided, holder-match uses it instead of process.pid+hostname.",
+    "With a stable holder id, renew() bumps the heartbeat across distinct process pids (simulate by calling with different pid but same holder id) and release() deletes the lock the same holder created across distinct pids.",
+    "Backward-compatible: when no holder id is supplied, behavior is unchanged (pid+hostname identity); all existing session-lock specs still pass.",
+    "Staleness re-acquire semantics preserved (a stale lock is still re-takeable); E_LOCK_HELD still thrown for a FRESH foreign lock under either identity scheme.",
+    "tdd: failing tests first encoding cross-pid renew/release under a stable holder id + the backward-compat path."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "beta",
+    "loop-engineering",
+    "session-lock",
+    "finding"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-06-17T15:25:31.555Z",
+  "updated_at": "2026-06-17T15:25:31.555Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
