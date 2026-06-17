@@ -503,3 +503,44 @@ describe('AC1 — mode field is one of: web | process | none', () => {
     expect(VALID_MODES.has(result.mode)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-065 review fix (MEDIUM) — invalid preview_mode enum value clamped to
+// derived default; mode ∈ {web|process|none} contract is never violated.
+// ---------------------------------------------------------------------------
+describe('AC1 — invalid preview_mode enum value is clamped to derived default', () => {
+  it('bogus preview_mode with port present → mode=web (port-derived)', async () => {
+    const { resolvePreviewConfig } = await import(PREVIEW_RESOLVER_URL);
+    const repoRoot = makeTmpDir('af-pr-bad-mode-port');
+
+    writeProjectMd(repoRoot, {
+      previewCommand: 'npm run dev',
+      previewPort: '3000',
+      previewMode: 'garbage',
+    });
+
+    const result = await resolvePreviewConfig({ repoRoot });
+
+    // Invalid enum → clamped; port present → web.
+    expect(result.mode).toBe('web');
+    expect(result.source).toBe('configured');
+    expect(result.url).toMatch(/3000/);
+  });
+
+  it('bogus preview_mode with no url/port → mode=process (process-derived)', async () => {
+    const { resolvePreviewConfig } = await import(PREVIEW_RESOLVER_URL);
+    const repoRoot = makeTmpDir('af-pr-bad-mode-noport');
+
+    writeProjectMd(repoRoot, {
+      previewCommand: 'python manage.py runserver',
+      previewMode: 'garbage',
+    });
+
+    const result = await resolvePreviewConfig({ repoRoot });
+
+    // Invalid enum → clamped; no url/port → process.
+    expect(result.mode).toBe('process');
+    expect(result.source).toBe('configured');
+    expect(result.url).toBeNull();
+  });
+});

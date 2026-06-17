@@ -96,17 +96,14 @@ export async function resolvePreviewConfig({ repoRoot }) {
         }
 
         // Determine mode:
-        // - explicit preview_mode wins
-        // - else web if url/port present
-        // - else process
-        let mode;
-        if (explicitMode !== null) {
-          mode = explicitMode;
-        } else if (url !== null || previewPort !== null) {
-          mode = 'web';
-        } else {
-          mode = 'process';
-        }
+        // - explicit preview_mode wins IFF it is a valid enum value (web|process)
+        // - an unrecognized preview_mode falls back to url/port-based derivation
+        //   (clamping: source stays 'configured', the bad value is silently dropped)
+        // - else web if url/port present, else process
+        const mode =
+          (explicitMode === 'web' || explicitMode === 'process')
+            ? explicitMode
+            : (url !== null || previewPort !== null ? 'web' : 'process');
 
         return { mode, command, cwd: repoRoot, url, source: 'configured' };
       }
