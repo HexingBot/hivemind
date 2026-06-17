@@ -82,24 +82,19 @@ export function createPreviewController({ repoRoot }) {
       pushLog(line);
 
       // URL detection: only scan when no URL is known yet AND config has no URL.
+      // NOTE: URL detection ONLY populates _url — it does NOT flip state to running.
+      // The starting -> running transition happens on spawn confirmation (see start()).
       if (_url === null && _configuredUrl === null) {
         // Pattern 1: full URL.
         const fullMatch = RE_FULL_URL.exec(line);
         if (fullMatch) {
           _url = fullMatch[0];
-          // A URL being printed signals the server is ready — transition to running.
-          if (_state === 'starting') {
-            _state = 'running';
-          }
           continue;
         }
         // Pattern 2: port-only.
         const portMatch = RE_PORT_ONLY.exec(line);
         if (portMatch) {
           _url = `http://localhost:${portMatch[1]}`;
-          if (_state === 'starting') {
-            _state = 'running';
-          }
         }
       }
     }
@@ -235,30 +230,27 @@ export function createPreviewController({ repoRoot }) {
       }
     });
 
-    // If configuredUrl is set, wait briefly for the process to at least start,
-    // then transition to 'running' after stdout/stderr wiring is complete.
-    // We use a tiny async tick so callers get a consistent experience.
-    if (_configuredUrl !== null) {
-      // Configured URL: transition to running once the process is alive.
-      // Poll briefly until pid is confirmed or error/exited.
-      await new Promise((resolve) => {
-        // Already transitioned above if the process errored synchronously.
-        if (_state === 'error' || _state === 'exited') {
-          resolve();
-          return;
+    // Transition starting -> running on spawn confirmation for ALL configs.
+    // This decouples "process is up" from "URL found" — a healthy long-lived
+    // process with no URL (mode:'process') must still reach running state.
+    // URL detection in handleChunk() independently populates _url whenever a
+    // matching line arrives, without affecting state.
+    await new Promise((resolve) => {
+      // If spawn already errored or exited synchronously, keep that state.
+      if (_state === 'error' || _state === 'exited') {
+        resolve();
+        return;
+      }
+      // Wait one event-loop tick so the child's error/exit events (if any)
+      // can fire before we set running. After that tick, if we're still
+      // starting, the process is confirmed alive.
+      setImmediate(() => {
+        if (_child === child && _state === 'starting') {
+          _state = 'running';
         }
-        // Wait one tick then set running (process is spawned).
-        setImmediate(() => {
-          if (_child === child && _state === 'starting') {
-            _state = 'running';
-          }
-          resolve();
-        });
+        resolve();
       });
-    }
-    // For null-URL configs, state transitions to 'running' happen inside
-    // handleChunk() when a URL pattern is matched in stdout.
-    // We do not block start() waiting for the URL — callers use pollUntil().
+    });
   }
 
   // -------------------------------------------------------------------------

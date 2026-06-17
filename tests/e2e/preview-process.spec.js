@@ -713,3 +713,48 @@ describe('AC2 — getStatus().mode reflects config.mode', () => {
     expect(status.mode).toBe('web');
   });
 });
+
+// ---------------------------------------------------------------------------
+// AC3 regression lock — stderr is captured into the same ring buffer as stdout
+// ---------------------------------------------------------------------------
+
+/**
+ * A process that writes ONLY to stderr (nothing on stdout) then stays alive.
+ * Used to verify stderr is wired into the same ring buffer as stdout.
+ */
+const FIXTURE_STDERR_ONLY_SRC = `
+process.stderr.write('stderr-only-line\\n');
+process.on('SIGTERM', () => process.exit(0));
+process.on('SIGINT',  () => process.exit(0));
+`;
+
+describe('AC3 — stderr captured into the same ring buffer as stdout', () => {
+  it('recentLogs becomes non-empty when the child writes only to stderr', async () => {
+    const { createPreviewController } = await import(PREVIEW_PROCESS_URL);
+    const fixtureDir = makeTmpDir('af-pp-stderr-fixtures');
+    const scriptPath = writeFixture(fixtureDir, 'stderr-only.js', FIXTURE_STDERR_ONLY_SRC);
+
+    const repoRoot = makeTmpDir('af-pp-stderr');
+    const ctrl = trackCtrl(createPreviewController({ repoRoot }));
+
+    const config = {
+      mode: 'process',
+      command: `node ${scriptPath}`,
+      cwd: repoRoot,
+      url: null,
+    };
+
+    await ctrl.start(config);
+
+    // Poll until at least one log line appears (must come from stderr).
+    await pollUntil(
+      ctrl,
+      (s) => s.recentLogs.length > 0,
+      { timeoutMs: 5000 },
+    );
+
+    const status = ctrl.getStatus();
+    expect(status.recentLogs.length).toBeGreaterThan(0);
+    expect(status.recentLogs.some((l) => l.includes('stderr-only-line'))).toBe(true);
+  });
+});
