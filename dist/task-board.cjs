@@ -10675,6 +10675,22 @@ preview_port: 3000</pre>
   tabPreview.addEventListener('click', function() { activateTab('preview'); });
 
   // ---------------------------------------------------------------------------
+  // Deep-link: ?tab=preview (or #preview) pre-selects the Preview tab on load.
+  // TASK-069: /agentic-framework-beta:preview command uses this seam.
+  // ---------------------------------------------------------------------------
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var tabParam = params.get('tab');
+    if (!tabParam) {
+      var h = window.location.hash;
+      if (h === '#preview') tabParam = 'preview';
+    }
+    if (tabParam === 'preview') {
+      activateTab('preview');
+    }
+  })();
+
+  // ---------------------------------------------------------------------------
   // Preview panel \u2014 TASK-068
   //
   // XSS discipline:

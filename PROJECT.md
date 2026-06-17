@@ -46,3 +46,27 @@ Solo developers and small teams using LLM coding agents get inconsistent, unveri
 
 ## Stack
 - architecture_description: Main Claude Code thread = Orchestrator (orchestrator-routing skill); delegates to file-based developer/reviewer/researcher subagents under .claude/agents/. State is files: a state/session.json pointer + self-contained state/sessions/<id>/ bundles; tickets are per-task JSON under tasks/ with a regenerable index. Node CLIs (bin/init.js, bin/new-task.js) + an MCP task-store server are bundled via esbuild into committed dist/*.cjs and shipped as a Claude Code plugin.
+
+## Preview
+
+<!-- Preview panel configuration for /agentic-framework-beta:preview.
+     This repo is a framework (type: other) with no long-running dev server, so
+     no real preview_command is configured here.  When working on a project that
+     HAS a dev server, add the relevant fields to your own PROJECT.md frontmatter
+     and /preview will work out of the box.  Example for a typical web app:
+
+     preview_command: npm run dev
+     preview_port: 3000
+
+     For a fixture-based smoke test you can point at the bundled fixture server:
+     preview_command: node tests/fixtures/preview-web/server.js
+     preview_port: 4520
+
+     Full field reference (all optional):
+       preview_command  — command to spawn (inferred from package.json dev/start/serve if omitted)
+       preview_url      — explicit iframe URL (takes precedence over preview_port)
+       preview_port     — port number; derives iframe URL http://localhost:<port>
+       preview_mode     — 'web' (iframe) | 'process' (log stream); auto-detected if omitted
+
+     See the orchestrator-routing skill for the full precedence and lifecycle docs.
+-->
