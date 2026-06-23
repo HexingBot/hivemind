@@ -10035,6 +10035,7 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--claude-md-consent",
   "--apply-models",
   "--apply-workflows",
+  "--apply-settings",
   "--yes"
 ]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file"]);
@@ -10048,6 +10049,7 @@ function parseArgs(argv) {
     claudeMdConsent: false,
     applyModels: false,
     applyWorkflows: false,
+    applySettings: false,
     yes: false
   };
   for (let i = 0; i < argv.length; i++) {
@@ -10061,6 +10063,7 @@ function parseArgs(argv) {
     if (tok === "--claude-md-consent") out.claudeMdConsent = true;
     if (tok === "--apply-models") out.applyModels = true;
     if (tok === "--apply-workflows") out.applyWorkflows = true;
+    if (tok === "--apply-settings") out.applySettings = true;
     if (tok === "--yes") out.yes = true;
     if (tok === "--answers-file") {
       const value = argv[i + 1];
@@ -10076,6 +10079,9 @@ function parseArgs(argv) {
   }
   if (out.applyWorkflows && (out.force || out.answersFile !== null)) {
     throw new Error("--apply-workflows cannot be combined with --force or --answers-file");
+  }
+  if (out.applySettings && (out.force || out.answersFile !== null)) {
+    throw new Error("--apply-settings cannot be combined with --force or --answers-file");
   }
   return out;
 }
@@ -10371,6 +10377,13 @@ async function runInit({
     );
     return { state: "applied_workflows", projectMdPath, sessionId: null };
   }
+  if (parsed.applySettings) {
+    const { wrote } = writeClaudeSettings({ repoRoot });
+    console.log(
+      `--apply-settings: .claude/settings.json ${wrote ? "written" : "already up-to-date (no write needed)"}.`
+    );
+    return { state: "applied_settings", projectMdPath, sessionId: null };
+  }
   const explicitConsent = parsed.claudeMdConsent || Boolean(answers && answers.claude_md_consent === true);
   const skipConfirm = parsed.yes || Boolean(answers);
   if (parsed.force) {
@@ -10464,6 +10477,7 @@ var SELF_SUMMARIZING_STATES = /* @__PURE__ */ new Set([
   "already_initialized",
   "applied_workflows",
   "applied_models",
+  "applied_settings",
   "no_op",
   "cancelled"
 ]);
