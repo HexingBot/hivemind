@@ -37,13 +37,14 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dir, '..');
 const DEFAULT_OUT_DIR = join(REPO_ROOT, 'dist');
 
-// The four canonical bundle output filenames — exported so the parity spec can
+// The canonical bundle output filenames — exported so the parity spec can
 // enumerate them without duplicating knowledge here.
 export const ENTRYPOINT_NAMES = [
   'init.cjs',
   'new-task.cjs',
   'mcp-server.cjs',
   'task-board.cjs',
+  'report-framework-bug.cjs',
 ];
 
 /**
@@ -64,6 +65,8 @@ export async function buildTo(outDir) {
     { entry: join(REPO_ROOT, 'src', 'mcp-server.js'), outfile: join(outDir, 'mcp-server.cjs') },
     // TASK-034 — the kanban task board server. Zero external deps; inlines task-store.
     { entry: join(REPO_ROOT, 'bin', 'task-board.js'), outfile: join(outDir, 'task-board.cjs') },
+    // TASK-010 — framework bug reporter CLI.
+    { entry: join(REPO_ROOT, 'bin', 'report-framework-bug.js'), outfile: join(outDir, 'report-framework-bug.cjs') },
   ];
 
   for (const { entry, outfile } of entrypoints) {
