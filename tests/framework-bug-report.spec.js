@@ -435,6 +435,125 @@ describe('AC4 — scrubSecrets: AWS key patterns', () => {
   });
 });
 
+describe('AC4 — scrubSecrets: modern OpenAI key patterns (regression: TASK-010 HIGH)', () => {
+  it('redacts sk-proj-... segmented OpenAI project keys', () => {
+    // Real format: sk-proj-<base62_body>-<more_segments>
+    const input = 'OPENAI_KEY=sk-proj-Ab3xYzT3BlbkFJxy9abc123defghijklmnopqrstuvwx';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/sk-proj-/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('redacts sk-svcacct-... OpenAI service-account keys', () => {
+    const input = `key: sk-svcacct-${'A'.repeat(40)}`;
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/sk-svcacct-/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('redacts sk-admin-... OpenAI admin keys', () => {
+    const input = `admin key: sk-admin-${'B'.repeat(30)}`;
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/sk-admin-/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('still redacts legacy sk- keys without a named segment', () => {
+    const input = 'OPENAI_KEY=sk-' + 'H'.repeat(20);
+    expect(scrubSecrets(input)).not.toMatch(/sk-[A-Za-z0-9]{20}/);
+  });
+});
+
+describe('AC4 — scrubSecrets: Slack token patterns (regression: TASK-010 MEDIUM)', () => {
+  it('redacts xoxb- Slack bot tokens', () => {
+    const input = 'token: xoxb-123456789012-1234567890123-abcdefghijklmnop';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/xoxb-/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('redacts xoxp- Slack user tokens', () => {
+    const input = 'slack_user_token=xoxp-' + 'A'.repeat(20);
+    expect(scrubSecrets(input)).not.toMatch(/xoxp-/);
+  });
+
+  it('redacts xoxa- Slack app tokens', () => {
+    const input = 'xoxa-' + '9'.repeat(15);
+    expect(scrubSecrets(input)).not.toMatch(/xoxa-/);
+  });
+
+  it('redacts xoxr- Slack refresh tokens', () => {
+    const input = 'refresh=xoxr-' + 'z'.repeat(15);
+    expect(scrubSecrets(input)).not.toMatch(/xoxr-/);
+  });
+
+  it('redacts xoxs- Slack socket-mode tokens', () => {
+    const input = 'socket=xoxs-' + 'Q'.repeat(15);
+    expect(scrubSecrets(input)).not.toMatch(/xoxs-/);
+  });
+});
+
+describe('AC4 — scrubSecrets: Google API key pattern (regression: TASK-010 MEDIUM)', () => {
+  it('redacts AIza... Google API keys', () => {
+    // Google API keys are exactly AIza + 35 alphanumeric/dash/underscore chars
+    const input = 'google_key=AIza' + 'Bb3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4y5z6';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/AIza[0-9A-Za-z_-]{35}/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('does NOT redact AIza strings shorter than the required body length', () => {
+    // AIza + 34 chars = too short — should pass through
+    const input = 'AIza' + 'x'.repeat(34);
+    // Should not be redacted (34 < 35)
+    expect(scrubSecrets(input)).toBe(input);
+  });
+});
+
+describe('AC4 — scrubSecrets: PEM private key block (regression: TASK-010 MEDIUM)', () => {
+  it('redacts RSA PRIVATE KEY PEM blocks', () => {
+    const pem = [
+      '-----BEGIN RSA PRIVATE KEY-----',
+      'MIIEpAIBAAKCAQEA0Z3VS5JJcds3xHn/ygWep4GHXhB2vBmNkuNKhQFCaXfBi9Z',
+      'MIIEpAIBAAKCAQEA0Z3VS5JJcds3xHn/ygWep4GHXhB2vBmNkuNKhQFCaXfBi9Z',
+      '-----END RSA PRIVATE KEY-----',
+    ].join('\n');
+    const out = scrubSecrets(`key material:\n${pem}\nend`);
+    expect(out).not.toMatch(/BEGIN RSA PRIVATE KEY/);
+    expect(out).not.toMatch(/MIIEpAIBAAK/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('redacts generic PRIVATE KEY PEM blocks (PKCS#8)', () => {
+    const pem = [
+      '-----BEGIN PRIVATE KEY-----',
+      'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7',
+      '-----END PRIVATE KEY-----',
+    ].join('\n');
+    const out = scrubSecrets(pem);
+    expect(out).not.toMatch(/BEGIN PRIVATE KEY/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('does NOT redact BEGIN PUBLIC KEY blocks (not private)', () => {
+    const pub = '-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAw\n-----END PUBLIC KEY-----';
+    expect(scrubSecrets(pub)).toBe(pub);
+  });
+});
+
+describe('AC4 — scrubSecrets: github_pat_ loosened boundary (regression: TASK-010 LOW)', () => {
+  it('redacts github_pat_ tokens with just-under-82-char suffix', () => {
+    // 20 chars after prefix — well below the old 82-char floor
+    const input = 'github_pat_' + 'F'.repeat(20);
+    expect(scrubSecrets(input)).not.toMatch(/github_pat_/);
+  });
+
+  it('still redacts the original 82-char suffix length', () => {
+    const input = 'github_pat_' + 'G'.repeat(82);
+    expect(scrubSecrets(input)).not.toMatch(/github_pat_/);
+  });
+});
+
 describe('AC4 — scrubSecrets: Authorization/Bearer header patterns', () => {
   it('redacts Bearer token values', () => {
     const input = 'Authorization: Bearer mySecretToken123456';

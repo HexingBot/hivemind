@@ -19,7 +19,8 @@ const REDACT_PREFIX = '[REDACTED';
 /** Ordered list of {pattern, label} substitutions applied left-to-right. */
 const SECRET_PATTERNS = [
   // GitHub fine-grained PAT (longer prefix — must come before classic ghp_)
-  { re: /github_pat_[A-Za-z0-9_]{82,}/g, label: 'github_pat' },
+  // Loosened lower bound: `github_pat_` prefix alone is a strong signal; 20+ suffix chars
+  { re: /github_pat_[A-Za-z0-9_]{20,}/g, label: 'github_pat' },
   // GitHub classic tokens
   { re: /ghp_[A-Za-z0-9]{36,}/g, label: 'ghp_token' },
   { re: /gho_[A-Za-z0-9]{36,}/g, label: 'gho_token' },
@@ -28,17 +29,28 @@ const SECRET_PATTERNS = [
   { re: /ghr_[A-Za-z0-9]{36,}/g, label: 'ghr_token' },
   // Anthropic API keys (must come before generic sk-)
   { re: /sk-ant-[A-Za-z0-9\-_]{10,}/g, label: 'sk_ant_key' },
-  // Generic sk- keys (OpenAI etc.) — >=20 chars after prefix
-  { re: /sk-[A-Za-z0-9]{20,}/g, label: 'sk_key' },
+  // Modern OpenAI keys: sk-proj-..., sk-svcacct-..., sk-admin-..., and legacy sk-<chars>
+  // Placed AFTER sk-ant- so Anthropic keys match their specific pattern first.
+  // Allows hyphens and underscores in the body (segmented key format).
+  { re: /sk-(?:proj|svcacct|admin)?-?[A-Za-z0-9_-]{20,}/g, label: 'sk_key' },
   // AWS access key IDs (AKIA* and ASIA*)
   { re: /(?:AKIA|ASIA)[A-Z0-9]{16}/g, label: 'aws_akid' },
+  // Slack tokens: xoxb- (bot), xoxa- (app), xoxp- (user), xoxr- (refresh), xoxs- (socket)
+  { re: /xox[baprs]-[A-Za-z0-9_-]{10,}/g, label: 'slack_token' },
+  // Google API keys (AIza prefix + 35 chars)
+  { re: /AIza[0-9A-Za-z_-]{35}/g, label: 'google_api_key' },
+  // PEM private key blocks — redact the entire block (non-greedy, bounded by END marker).
+  // (?:[A-Z]+ )* matches the optional type word(s) (e.g. "RSA ", "ENCRYPTED ") before
+  // "PRIVATE KEY", including the empty-string case (plain PKCS#8 "PRIVATE KEY").
+  { re: /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )*PRIVATE KEY-----/g, label: 'pem_private_key' },
   // Bearer / Authorization header values — redact the token value that follows.
   // Matches: "Authorization: Bearer <token>", "Authorization: <token>",
   // or standalone "Bearer <token>" lines.
   { re: /(?:Authorization:[^\S\r\n]*(?:Bearer[^\S\r\n]*)?|Bearer[^\S\r\n]+)[A-Za-z0-9\-._~+/]+=*/gi, label: 'bearer_token' },
   // Env-var assignment patterns: FOO_TOKEN=value, BAR_SECRET="value", etc.
+  // The whole match is replaced unconditionally; no capture group is needed.
   {
-    re: /\b(\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL)\s*=\s*["']?[^\s"']{1,}["']?/gi,
+    re: /\b(?:\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL)\s*=\s*["']?[^\s"']{1,}["']?/gi,
     label: 'env_secret',
   },
 ];
@@ -53,8 +65,8 @@ const SECRET_PATTERNS = [
 export function scrubSecrets(text) {
   let out = text;
   for (const { re, label } of SECRET_PATTERNS) {
-    // For patterns with a capture group (bearer, env_secret) we replace the
-    // whole match to avoid leaving the key prefix in the output.
+    // Each pattern uses non-capturing groups only; the whole match is replaced
+    // unconditionally so no prefix leaks into the output.
     out = out.replace(re, `${REDACT_PREFIX}:${label}]`);
   }
   return out;
