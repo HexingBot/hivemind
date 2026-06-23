@@ -170,6 +170,7 @@ const KNOWN_FLAGS = new Set([
   '--claude-md-consent',
   '--apply-models',
   '--apply-workflows',
+  '--apply-settings',
   '--yes',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
@@ -195,6 +196,7 @@ function parseArgs(argv) {
     claudeMdConsent: false,
     applyModels: false,
     applyWorkflows: false,
+    applySettings: false,
     yes: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -208,6 +210,7 @@ function parseArgs(argv) {
     if (tok === '--claude-md-consent') out.claudeMdConsent = true;
     if (tok === '--apply-models') out.applyModels = true;
     if (tok === '--apply-workflows') out.applyWorkflows = true;
+    if (tok === '--apply-settings') out.applySettings = true;
     if (tok === '--yes') out.yes = true;
     if (tok === '--answers-file') {
       const value = argv[i + 1];
@@ -229,6 +232,12 @@ function parseArgs(argv) {
   // contradiction and must fail loudly before any filesystem write.
   if (out.applyWorkflows && (out.force || out.answersFile !== null)) {
     throw new Error('--apply-workflows cannot be combined with --force or --answers-file');
+  }
+  // TASK-009 — strict argv discipline: --apply-settings is a standalone mode
+  // (run writeClaudeSettings, exit); combining it with the wizard mutators is a
+  // contradiction and must fail loudly before any filesystem write.
+  if (out.applySettings && (out.force || out.answersFile !== null)) {
+    throw new Error('--apply-settings cannot be combined with --force or --answers-file');
   }
   return out;
 }
@@ -792,6 +801,23 @@ export async function runInit({
     return { state: 'applied_workflows', projectMdPath, sessionId: null };
   }
 
+  // ---- Branch 0c: --apply-settings (TASK-009) ----
+  // Runs ONLY writeClaudeSettings against the target project — no wizard, no
+  // PROJECT.md read/write, no session bundle, regardless of init state.
+  // Closes the --apply-workflows short-circuit gap: existing projects initialized
+  // before the context-autoflush feature can now get the settings.json wiring
+  // without re-running the full intake wizard. Deep-merge and idempotency are
+  // handled by writeClaudeSettings (same as the full-init path). Works on both
+  // already-initialized and not-yet-initialized projects.
+  if (parsed.applySettings) {
+    const { wrote } = writeClaudeSettings({ repoRoot });
+    // eslint-disable-next-line no-console
+    console.log(
+      `--apply-settings: .claude/settings.json ${wrote ? 'written' : 'already up-to-date (no write needed)'}.`,
+    );
+    return { state: 'applied_settings', projectMdPath, sessionId: null };
+  }
+
   // The CLAUDE.md routing consent is a SEPARATE channel from the intake answers:
   // an explicit signal is either the --claude-md-consent flag or a truthy
   // claude_md_consent key in the supplied answers object.
@@ -920,6 +946,7 @@ const SELF_SUMMARIZING_STATES = new Set([
   'already_initialized',
   'applied_workflows',
   'applied_models',
+  'applied_settings',
   'no_op',
   'cancelled',
 ]);

@@ -1,0 +1,9 @@
+{
+  "SessionStart": [
+    {
+      "type": "command",
+      "matcher": "startup|resume|clear|compact",
+      "command": "node \"${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs\""
+    }
+  ]
+}
