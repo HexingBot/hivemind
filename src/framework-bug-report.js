@@ -32,11 +32,13 @@ const SECRET_PATTERNS = [
   // Modern OpenAI keys: sk-proj-..., sk-svcacct-..., sk-admin-..., and legacy sk-<chars>
   // Placed AFTER sk-ant- so Anthropic keys match their specific pattern first.
   // Allows hyphens and underscores in the body (segmented key format).
-  { re: /sk-(?:proj|svcacct|admin)?-?[A-Za-z0-9_-]{20,}/g, label: 'sk_key' },
+  // \b anchor prevents matching the "sk" tail of ordinary words like task-, risk-, disk-, ask-, desk-.
+  { re: /\bsk-(?:proj|svcacct|admin)?-?[A-Za-z0-9_-]{20,}/g, label: 'sk_key' },
   // AWS access key IDs (AKIA* and ASIA*)
   { re: /(?:AKIA|ASIA)[A-Z0-9]{16}/g, label: 'aws_akid' },
   // Slack tokens: xoxb- (bot), xoxa- (app), xoxp- (user), xoxr- (refresh), xoxs- (socket)
-  { re: /xox[baprs]-[A-Za-z0-9_-]{10,}/g, label: 'slack_token' },
+  // \b anchor prevents matching if "xox" is a suffix of a longer word (e.g. myxoxb-...).
+  { re: /\bxox[baprs]-[A-Za-z0-9_-]{10,}/g, label: 'slack_token' },
   // Google API keys (AIza prefix + 35 chars)
   { re: /AIza[0-9A-Za-z_-]{35}/g, label: 'google_api_key' },
   // PEM private key blocks — redact the entire block (non-greedy, bounded by END marker).

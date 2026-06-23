@@ -610,6 +610,45 @@ describe('AC4 — scrubSecrets: safe text passes through unchanged', () => {
   });
 });
 
+describe('AC4 — scrubSecrets: hyphenated identifier pass-through (regression: TASK-010 HIGH)', () => {
+  // These are legitimate hyphenated identifiers that contain "sk" as a natural
+  // syllable inside a longer word (task, risk, disk, ask, desk). Before the \b
+  // anchor was added to pattern #4, the bare /sk-.../ regex would latch onto the
+  // "sk" tail of those words and mangle the identifier.
+
+  it('does NOT redact task-management-system-component-handler', () => {
+    const text = 'task-management-system-component-handler';
+    expect(scrubSecrets(text)).toBe(text);
+  });
+
+  it('does NOT redact risk-based-assessment-framework-evaluation-model', () => {
+    const text = 'risk-based-assessment-framework-evaluation-model';
+    expect(scrubSecrets(text)).toBe(text);
+  });
+
+  it('does NOT redact disk-usage-monitoring-subsystem-daemon-process', () => {
+    const text = 'disk-usage-monitoring-subsystem-daemon-process';
+    expect(scrubSecrets(text)).toBe(text);
+  });
+
+  it('does NOT redact ask-me-anything-about-the-framework-system-components', () => {
+    const text = 'ask-me-anything-about-the-framework-system-components';
+    expect(scrubSecrets(text)).toBe(text);
+  });
+
+  it('does NOT redact desk-reference-guide-for-system-administration-tasks', () => {
+    const text = 'desk-reference-guide-for-system-administration-tasks';
+    expect(scrubSecrets(text)).toBe(text);
+  });
+
+  it('does NOT redact myxoxb-... (xox as part of a longer word prefix)', () => {
+    // Regression for pattern #6: \b anchor ensures xox- is only matched when
+    // "xox" starts at a word boundary, not as a suffix of a compound word.
+    const text = 'myxoxb-123456789012-1234567890123-abcdefghijklmnop';
+    expect(scrubSecrets(text)).toBe(text);
+  });
+});
+
 describe('AC4 — buildIssueBody scrubs secrets embedded in inputs', () => {
   it('redacts a token that appears in the observed field', () => {
     // buildIssueBody must be a function — TypeError on undefined is the right pre-impl failure
