@@ -253,6 +253,23 @@ Live end-to-end needs Docker + Voyage + `claude` CLI.
   template.
 - **Done when:** an autonomous run respects the hard-stops and the plugin installs clean.
 
+#### Phase 6 — build breakdown
+The drive-loop is pure helpers (`selectNextTicket`/`shouldStop`/…) driven by `commands/loop.md`,
+with 4 documented hard-stop gates (all default OFF). No phase/consolidation hard-stop and no
+loop-until-dry exist yet.
+
+- **P6.1 — autonomy** ▶ *first slice*: `src/drive-loop.js` gains `consolidationGate({completedThisRun,
+  consolidateEvery,autoConsolidate})` — a first-class phase/consolidation hard-stop (pause every
+  N completed tickets for human consolidation; conservative by default, lifted only via
+  `auto_consolidate`, mirroring the loop_auth gates) — and `loopUntilDry({runRound,maxDryRounds,
+  maxRounds})` for the inner research loop. Unit-tested; `commands/loop.md` references them as the
+  consolidation checkpoint.
+- **P6.2 — distribution**: ensure `bin/brain-launch.js` ships and a bootstrap brings the brain up on
+  install (esbuild packaging); wire an engine-only `upstream_push`-style contribution path back to
+  `lordiwa/agent-framework` (the MIT template).
+- **Done when:** an autonomous run respects the hard-stops (incl. consolidation) and the plugin
+  installs clean.
+
 ## Cross-cutting
 - **Auth:** subscription CLI everywhere; never set `ANTHROPIC_API_KEY` in spawned envs.
 - **Testing:** keep vitest two-tier + the dist-parity gate; add brain-fallback tests with fakes.
