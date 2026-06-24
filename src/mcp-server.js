@@ -84,7 +84,7 @@ async function readTask(repoRoot, key) {
  */
 export function createServer({ repoRoot }) {
   const server = new McpServer({
-    name: 'agentic-framework-tasks',
+    name: 'hivemind-tasks',
     version: '0.1.0',
   });
 
@@ -194,7 +194,7 @@ export async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stderr only — stdout is the JSON-RPC channel.
-  console.error(`agentic-framework-tasks MCP server on stdio (repoRoot=${repoRoot})`);
+  console.error(`hivemind-tasks MCP server on stdio (repoRoot=${repoRoot})`);
 }
 
 // Dual ESM/CJS entrypoint guard (mirrors bin/init.js). Under raw Node ESM,

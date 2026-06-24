@@ -1,11 +1,11 @@
 ---
-description: Report a bug in the agentic-framework plugin itself. Gathers the bug details (observed behavior, expected behavior, steps to reproduce, environment, severity, optional evidence) conversationally for a human (or directly from an agent), scrubs secrets from the body, then files the issue on GitHub via the gh CLI or writes it to a local file if gh is unavailable or unauthenticated.
+description: Report a bug in the hivemind plugin itself. Gathers the bug details (observed behavior, expected behavior, steps to reproduce, environment, severity, optional evidence) conversationally for a human (or directly from an agent), scrubs secrets from the body, then files the issue on GitHub via the gh CLI or writes it to a local file if gh is unavailable or unauthenticated.
 panel_safe: true
 ---
 
-# /agentic-framework:report-framework-bug
+# /hivemind:report-framework-bug
 
-File a bug report **against the agentic-framework plugin** (not a project ticket).
+File a bug report **against the hivemind plugin** (not a project ticket).
 The report lands on GitHub at `lordiwa/agent-framework/issues` when the gh CLI is
 available and authenticated, or in a local Markdown file under
 `<projectDir>/.claude/framework-bug-reports/` as a durable fallback.
@@ -18,7 +18,7 @@ guarantee coverage of every custom secret format.
 
 This command is designed for **two kinds of caller**:
 
-- **A human** typing `/agentic-framework:report-framework-bug` — gather the details
+- **A human** typing `/hivemind:report-framework-bug` — gather the details
   conversationally (Step 1), one question at a time.
 - **An agent** invoking this command with the bug details already in hand — skip
   the dialogue, map the details onto the fields in Step 2, and file immediately.

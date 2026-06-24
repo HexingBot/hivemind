@@ -1,5 +1,5 @@
 {
-  "$id": "https://agentic-framework.local/state/sessions/bundle.schema.json",
+  "$id": "https://hivemind.local/state/sessions/bundle.schema.json",
   "title": "BundleSession",
   "description": "Per-session orchestrator state living inside a portable bundle at state/sessions/<id>/session.json. Per resolved Q #8 the version field is named schema_version (matching the pointer file). The length caps that lived on next_action and subagent_results[].summary in the v1 schema were removed: in practice the orchestrator writes multi-paragraph handoff text and 2-4 paragraph subagent summaries, and capping those at 300/1000 characters caused the live bundle to fail validation. subagent_results items also declare two optional fields the orchestrator uses (`task`: free-text label for the run, `agentId`: SendMessage continuation handle) — they are typed explicitly rather than waved through with additionalProperties: true, so the schema still documents the full payload shape.",
   "type": "object",

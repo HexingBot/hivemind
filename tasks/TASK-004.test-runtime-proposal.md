@@ -32,7 +32,7 @@ The atomic-write recipe is the **load-bearing invariant of TASK-004**, and Node 
 ## 3. Directory layout
 
 ```
-agentic-framework/
+hivemind/
 ├── package.json                              # scripts.test → "vitest run"
 ├── vitest.config.ts                          # minimal; default jsdom-off, node env
 ├── tests/

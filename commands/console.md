@@ -1,10 +1,10 @@
 ---
-description: Start the Agentic OS web console (chat with the orchestrator + skill buttons + kanban board with create/drag + live status bar). Use this when you want a browser-based dashboard to drive the framework — create tickets, run skills, chat, and watch the board update in real time.
+description: Start the Hivemind OS web console (chat with the orchestrator + skill buttons + kanban board with create/drag + live status bar). Use this when you want a browser-based dashboard to drive the framework — create tickets, run skills, chat, and watch the board update in real time.
 ---
 
-# /agentic-framework:console
+# /hivemind:console
 
-Start the Agentic OS web console in the background and surface the URL for the human. The console fuses the orchestrator chat, skill action buttons, and the full kanban board (including ticket creation and drag-and-drop status transitions) into a single browser tab.
+Start the Hivemind OS web console in the background and surface the URL for the human. The console fuses the orchestrator chat, skill action buttons, and the full kanban board (including ticket creation and drag-and-drop status transitions) into a single browser tab.
 
 ## Step 1 — Launch the console server in the background
 
@@ -24,7 +24,7 @@ Task board: http://127.0.0.1:4517
 
 Tell the human the console is running and give them the URL:
 
-> The Agentic OS console is running at **http://127.0.0.1:4517**. Open that URL in your browser. You can chat with me there, click skill buttons, create tickets, and drag cards between columns. Tell me when you are done and I will stop the server.
+> The Hivemind OS console is running at **http://127.0.0.1:4517**. Open that URL in your browser. You can chat with me there, click skill buttons, create tickets, and drag cards between columns. Tell me when you are done and I will stop the server.
 
 ## Notes
 

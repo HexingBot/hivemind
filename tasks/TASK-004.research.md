@@ -76,7 +76,7 @@ The pointer file `state/session.json` outside the bundle is **not** part of the 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-framework.local/state/session.schema.json",
+  "$id": "https://hivemind.local/state/session.schema.json",
   "title": "SessionPointer",
   "description": "Pointer file. Names the currently-active session bundle under state/sessions/. Read first on every new chat.",
   "type": "object",
@@ -334,7 +334,7 @@ solution: >                                            # required, string, markd
   Write to a same-directory tmp file, fsync, rename, and on the next read
   sweep for orphaned `*.tmp.*` siblings and promote them if the target is missing.
 tags: [windows, atomic-write, filesystem]              # required, array of strings, >=1, lowercase-kebab
-projects: [agentic-framework]                          # required, array of strings, >=1
+projects: [hivemind]                          # required, array of strings, >=1
 created_at: "2026-05-24T00:00:00Z"                     # required, RFC 3339
 last_seen_at: "2026-05-24T00:00:00Z"                   # required, RFC 3339, updated on reuse
 source_urls:                                           # optional, array of strings (URLs)
@@ -353,7 +353,7 @@ JSON Schema fragment:
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-framework.local/knowledge/schema.json",
+  "$id": "https://hivemind.local/knowledge/schema.json",
   "title": "KnowledgeEntryFrontmatter",
   "type": "object",
   "required": ["id", "problem", "symptoms", "solution", "tags", "projects", "created_at", "last_seen_at"],
@@ -396,7 +396,7 @@ This procedure is deterministic given the same `knowledge/` contents and the sam
 1. Copy the entire `knowledge/` directory tree.
 2. The receiving project gets a working KB immediately with no edits required, **provided** entry bodies follow the no-absolute-paths rule.
 
-**What needs stripping/transforming on export:** essentially nothing if the body rule is enforced. The only field that is project-relative is `projects`, which lists the projects an entry has been validated in. On export this is **kept**, not stripped — it's useful provenance ("this lesson was learned in agentic-framework"). On import, the receiving project may **append** itself to `projects` on first reuse. Frontmatter linting at commit time should reject any body containing `C:\`, `/Users/`, `/home/`, or `\\?\` (a small fixed deny-list); this is the enforcement point for portability.
+**What needs stripping/transforming on export:** essentially nothing if the body rule is enforced. The only field that is project-relative is `projects`, which lists the projects an entry has been validated in. On export this is **kept**, not stripped — it's useful provenance ("this lesson was learned in hivemind"). On import, the receiving project may **append** itself to `projects` on first reuse. Frontmatter linting at commit time should reject any body containing `C:\`, `/Users/`, `/home/`, or `\\?\` (a small fixed deny-list); this is the enforcement point for portability.
 
 **Optional `knowledge/export.json` manifest** — recommended on export: a single JSON file listing entry ids + their `created_at` + their checksum, so the importing project can detect drift. Generated on demand; not stored permanently.
 

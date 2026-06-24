@@ -13,8 +13,8 @@
 //
 // Where <encoded-project-path> is the absolute path to the project root with
 // path separators (`\` and `:`) replaced by `-`. Example for the framework:
-//   C:\Users\srpar\OneDrive\Documents\agentic-framework
-//   → C--Users-srpar-OneDrive-Documents-agentic-framework
+//   C:\Users\srpar\OneDrive\Documents\hivemind
+//   → C--Users-srpar-OneDrive-Documents-hivemind
 //
 // resolveTranscriptDir prefers (1) the CLAUDE_CODE_TRANSCRIPT_DIR env var when
 // set, (2) the discovered ~/.claude/projects/<encoded(repoRoot)>/ path when it

@@ -1,10 +1,10 @@
 ---
-description: Bootstrap the Agentic Software Development Framework in the current project — gather intake answers conversationally and materialize PROJECT.md, the project-context agent briefing, a seeded backlog, and a session bundle.
+description: Bootstrap the Hivemind in the current project — gather intake answers conversationally and materialize PROJECT.md, the project-context agent briefing, a seeded backlog, and a session bundle.
 ---
 
-# /agentic-framework:init-project
+# /hivemind:init-project
 
-You are bootstrapping the Agentic Software Development Framework into the user's
+You are bootstrapping the Hivemind into the user's
 project. This command runs through the **Bash tool**, which has **no interactive
 TTY** — so you (Claude) must gather the intake answers in conversation, write
 them to a JSON file, and run the framework's bundled, self-contained init entry
@@ -56,7 +56,7 @@ Fields to collect across the dialogue (all become parts of the answers JSON):
 ## Step 1b — Ask for CLAUDE.md routing consent (separate channel)
 
 Separately from the intake answers, ask the user whether to add the
-agentic-framework **orchestrator routing block** to their project's `CLAUDE.md`.
+hivemind **orchestrator routing block** to their project's `CLAUDE.md`.
 This block activates the RESUME-FIRST session contract so a fresh orchestrator
 chat picks up where the previous one left off. It is MERGED into a fenced marker
 block — the user's existing `CLAUDE.md` content is preserved byte-for-byte, and a

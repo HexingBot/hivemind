@@ -1,11 +1,11 @@
 ---
-name: agentic-framework
+name: hivemind
 type: other
 created_at: 2026-06-15T18:30:00.000Z
 schema_version: 1
 ---
 
-# agentic-framework
+# hivemind
 
 ## Description
 A multi-agent software-development framework: the main Claude Code thread acts as an Orchestrator that delegates to developer/reviewer/researcher subagents, with a tiered verification policy, portable session state, and a local Jira-shaped task store. Distributed as a self-bootstrapping Claude Code plugin whose marketplace is this repo itself.
@@ -49,7 +49,7 @@ Solo developers and small teams using LLM coding agents get inconsistent, unveri
 
 ## Preview
 
-<!-- Preview panel configuration for /agentic-framework:preview.
+<!-- Preview panel configuration for /hivemind:preview.
      This repo is a framework (type: other) with no long-running dev server, so
      no real preview_command is configured here.  When working on a project that
      HAS a dev server, add the relevant fields to your own PROJECT.md frontmatter

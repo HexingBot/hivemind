@@ -2,7 +2,7 @@
 description: Open the knowledge graph visualization in the browser. Launches the board server and directs the user to the /graph view showing all nodes and edges in the project knowledge graph.
 ---
 
-# /agentic-framework:graph
+# /hivemind:graph
 
 Launch the board server in the background and open the knowledge graph
 visualization at `http://127.0.0.1:4517/graph`. The graph view renders all

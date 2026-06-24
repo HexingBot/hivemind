@@ -21945,7 +21945,7 @@ var import_ajv_formats2 = __toESM(require_dist(), 1);
 // tasks/schema.json
 var schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "https://agentic-framework.local/tasks/schema.json",
+  $id: "https://hivemind.local/tasks/schema.json",
   title: "Task",
   description: "A single unit of work for the agentic team. Field names mirror Jira issue fields so the same task can later be created in Jira without lossy translation.",
   type: "object",
@@ -22393,7 +22393,7 @@ async function readTask(repoRoot, key) {
 }
 function createServer({ repoRoot }) {
   const server = new McpServer({
-    name: "agentic-framework-tasks",
+    name: "hivemind-tasks",
     version: "0.1.0"
   });
   server.registerTool(
@@ -22485,7 +22485,7 @@ async function main() {
   const server = createServer({ repoRoot });
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`agentic-framework-tasks MCP server on stdio (repoRoot=${repoRoot})`);
+  console.error(`hivemind-tasks MCP server on stdio (repoRoot=${repoRoot})`);
 }
 var __isEntryScript = import_meta.url ? Boolean(process.argv[1]) && import_meta.url === (0, import_node_url.pathToFileURL)(process.argv[1]).href : typeof require !== "undefined" && typeof module !== "undefined" && require.main === module;
 if (__isEntryScript) {

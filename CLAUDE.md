@@ -1,4 +1,4 @@
-# Agentic Software Development Framework
+# Hivemind
 
 This repository is operated by a multi-agent team built on the Claude Agent SDK. The main thread **is** the Orchestrator — equipped with the orchestrator-routing skill — and delegates substantive work to specialist subagents (`developer`, `reviewer`, `researcher`) defined in `.claude/agents/`.
 

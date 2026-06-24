@@ -18,8 +18,8 @@ import { join } from 'node:path';
 
 // The EXACT delimiter lines. Only the bytes BETWEEN (and including) these two
 // markers are owned by the framework; everything else in the file is the user's.
-export const BEGIN_MARKER = '<!-- BEGIN agentic-framework routing -->';
-export const END_MARKER = '<!-- END agentic-framework routing -->';
+export const BEGIN_MARKER = '<!-- BEGIN hivemind routing -->';
+export const END_MARKER = '<!-- END hivemind routing -->';
 
 /**
  * The canonical orchestrator activation, worded to the v2 pointer+bundle session
@@ -32,7 +32,7 @@ export const END_MARKER = '<!-- END agentic-framework routing -->';
  */
 export function routingBlockContent() {
   return [
-    '## Orchestrator activation (agentic-framework)',
+    '## Orchestrator activation (hivemind)',
     '',
     'This project is operated by a multi-agent team. The main thread is the',
     '**Orchestrator**: it plans and delegates to the `researcher`, `developer`, and',

@@ -17,39 +17,39 @@
 // MANUAL E2E SEQUENCE (run on a clean machine / fresh shell; PowerShell)
 // =====================================================================
 //
-// Let REPO = C:\Users\srpar\OneDrive\Documents\agentic-framework  (this repo,
+// Let REPO = C:\Users\srpar\OneDrive\Documents\hivemind  (this repo,
 // which IS the marketplace — Q5 resolved).
 //
 // 1. ADD THE MARKETPLACE (this repo, by absolute path or its git URL):
 //      claude plugin marketplace add <REPO-abs-path-or-git-url>
-//    EXPECT: "✔ Successfully added marketplace agentic-framework-marketplace".
+//    EXPECT: "✔ Successfully added marketplace hivemind-marketplace".
 //
 // 2. INSTALL THE PLUGIN:
-//      claude plugin install agentic-framework@agentic-framework-marketplace
-//    EXPECT: "✔ Successfully installed agentic-framework".
+//      claude plugin install hivemind@hivemind-marketplace
+//    EXPECT: "✔ Successfully installed hivemind".
 //
 // 3. CONFIRM THE COMPONENT INVENTORY (deterministic, non-interactive sensor):
-//      claude plugin details agentic-framework
+//      claude plugin details hivemind
 //    EXPECT in the inventory:
 //      • the init-project command (per TASK-020 §D.5 it may surface under the
 //        "Skills" bucket rather than a separate "Commands" bucket — that is the
 //        documented cosmetic nuance; what matters is it REGISTERS).
 //      • the orchestrator-routing backstop skill.
 //      • the three agents (developer / reviewer / researcher) under the
-//        `agentic-framework` namespace (TASK-032 removed the orchestrator
+//        `hivemind` namespace (TASK-032 removed the orchestrator
 //        agent — the Orchestrator is the main session thread).
 //      • version 0.1.0 (the explicit semver pinned in plugin.json — AC3).
 //
 // 4. BOOTSTRAP A FRESH PROJECT. In a brand-new EMPTY temp dir (the user's
 //    "project"), launch `claude` and run:
-//      /agentic-framework:init-project
+//      /hivemind:init-project
 //    EXPECT, ALL written into the PROJECT dir (NOT the plugin cache):
 //      • PROJECT.md at the project root.
 //      • a seeded starter backlog under tasks/ (TASK-NNN.json with `seed` label).
 //      • a session bundle: state/session.json pointer + state/sessions/<id>/.
 //      • .claude/agents/project-context.md.
 //      • the project's CLAUDE.md carries the
-//        `<!-- BEGIN agentic-framework routing -->` … `<!-- END ... -->` block
+//        `<!-- BEGIN hivemind routing -->` … `<!-- END ... -->` block
 //        (written fresh if no CLAUDE.md existed; merged in if one did).
 //    EXPECT NOT: the plugin cache dir (~/.claude/plugins/...) is NOT mutated —
 //      no PROJECT.md / tasks / state written there.
@@ -59,17 +59,17 @@
 //    ticket and run the full loop:
 //      tests-first (developer) → implementation (developer) → review (reviewer)
 //      → transition the ticket to `done`.
-//    EXPECT: the orchestrator spawns the installed `agentic-framework:developer`
-//      and `agentic-framework:reviewer` subagents; a test commit precedes the
+//    EXPECT: the orchestrator spawns the installed `hivemind:developer`
+//      and `hivemind:reviewer` subagents; a test commit precedes the
 //      impl commit; the reviewer runs read-only; the ticket's status reaches
 //      `done` with linked_commits populated — proving the agent team activates
 //      from the INSTALLED plugin, not from this dev repo's local .claude/.
 //
 // 6. CLEAN UP (leave the machine pristine):
-//      claude plugin uninstall agentic-framework
-//      claude plugin marketplace remove agentic-framework-marketplace
+//      claude plugin uninstall hivemind
+//      claude plugin marketplace remove hivemind-marketplace
 //    EXPECT: both "✔ Successfully ..."; `claude plugin list` /
-//      `claude plugin marketplace list` show zero agentic-framework residue.
+//      `claude plugin marketplace list` show zero hivemind residue.
 //
 // RECORD the observed output of steps 1–6 (especially the step-3 inventory and
 // the step-4 project-dir artifact list) in the ticket comment as AC1's proof.

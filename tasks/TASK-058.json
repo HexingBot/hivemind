@@ -1,11 +1,11 @@
 {
   "key": "TASK-058",
-  "title": "/agentic-framework:update command to update the plugin from a project",
-  "description": "There is no first-class command to update the agentic-framework plugin from within a project — users must remember the raw `claude plugin update agentic-framework` CLI. Add a commands/update.md slash command (distributed via the plugin, like apply-workflows.md) that explains and runs the plugin update, and points the user at /agentic-framework:apply-workflows afterward so an already-initialized project picks up any newly-shipped workflows. Pure markdown command file — no src/ code. Mirror the structure and tone of commands/apply-workflows.md.",
+  "title": "/hivemind:update command to update the plugin from a project",
+  "description": "There is no first-class command to update the hivemind plugin from within a project — users must remember the raw `claude plugin update hivemind` CLI. Add a commands/update.md slash command (distributed via the plugin, like apply-workflows.md) that explains and runs the plugin update, and points the user at /hivemind:apply-workflows afterward so an already-initialized project picks up any newly-shipped workflows. Pure markdown command file — no src/ code. Mirror the structure and tone of commands/apply-workflows.md.",
   "acceptance_criteria": [
-    "commands/update.md exists with YAML frontmatter (description) and is auto-discovered as /agentic-framework:update.",
-    "The command body instructs the agent to run `claude plugin update agentic-framework` (via the Bash tool) and to relay the CLI's result to the user.",
-    "The command notes the post-update follow-ups: run /agentic-framework:apply-workflows to retrofit new workflow files into an already-initialized project (and references that the framework self-updates artifacts on next init where applicable).",
+    "commands/update.md exists with YAML frontmatter (description) and is auto-discovered as /hivemind:update.",
+    "The command body instructs the agent to run `claude plugin update hivemind` (via the Bash tool) and to relay the CLI's result to the user.",
+    "The command notes the post-update follow-ups: run /hivemind:apply-workflows to retrofit new workflow files into an already-initialized project (and references that the framework self-updates artifacts on next init where applicable).",
     "The command is human-friendly for a non-technical operator (plain language, no internal jargon), consistent with the existing command docs.",
     "Any command-count or command-manifest test (if one exists) is updated so the suite passes; npm run test:changed plus any affected e2e specs are green."
   ],
@@ -32,12 +32,12 @@
     {
       "author": "uat",
       "at": "2026-06-16T18:43:29.514Z",
-      "body": "UAT — verified by Orchestrator at the human's request (human granted blanket PASS on the presented script).\nStep 1 (AC1) — commands/update.md exists + auto-discovered as /agentic-framework:update: expected a discoverable command file with frontmatter description; observed file present, frontmatter description plain. PASS.\nStep 2 (AC2) — body runs `claude plugin update agentic-framework` via Bash + relays output: expected the correct invocation + relay instruction; observed correct (reviewer confirmed plugin name vs plugin.json/marketplace.json). PASS.\nStep 3 (AC3) — follow-ups note points to /agentic-framework:apply-workflows + states init not needed for already-initialized: observed both present. PASS.\nStep 4 (AC4) — non-technical language consistent with apply-workflows.md/console.md: observed consistent tone/structure. PASS.\nStep 5 (AC5) — suite green, no manifest test broken: observed commands discovered dynamically (no exact-list assertion); skill-catalog.spec.js 20/20. PASS.\nOVERALL: PASS (5/5)."
+      "body": "UAT — verified by Orchestrator at the human's request (human granted blanket PASS on the presented script).\nStep 1 (AC1) — commands/update.md exists + auto-discovered as /hivemind:update: expected a discoverable command file with frontmatter description; observed file present, frontmatter description plain. PASS.\nStep 2 (AC2) — body runs `claude plugin update hivemind` via Bash + relays output: expected the correct invocation + relay instruction; observed correct (reviewer confirmed plugin name vs plugin.json/marketplace.json). PASS.\nStep 3 (AC3) — follow-ups note points to /hivemind:apply-workflows + states init not needed for already-initialized: observed both present. PASS.\nStep 4 (AC4) — non-technical language consistent with apply-workflows.md/console.md: observed consistent tone/structure. PASS.\nStep 5 (AC5) — suite green, no manifest test broken: observed commands discovered dynamically (no exact-list assertion); skill-catalog.spec.js 20/20. PASS.\nOVERALL: PASS (5/5)."
     },
     {
       "author": "orchestrator",
       "at": "2026-06-16T18:43:46.355Z",
-      "body": "CLOSED APPROVE. /agentic-framework:update command added (commands/update.md) — runs `claude plugin update agentic-framework`, relays output, and points to /agentic-framework:apply-workflows as the post-update retrofit (init not needed for already-initialized projects). Reviewer: clean APPROVE (0H/0M/1L/2N); marketplace-name NIT fixed in-band (9f5f193). uat-only done-gate satisfied (uat comment 5/5 PASS, orchestrator-verified). linked_commits: 7688806 (feat), 9f5f193 (NIT fix). Part of the v0.6.0 OS-ergonomics trio (TASK-057/058/059)."
+      "body": "CLOSED APPROVE. /hivemind:update command added (commands/update.md) — runs `claude plugin update hivemind`, relays output, and points to /hivemind:apply-workflows as the post-update retrofit (init not needed for already-initialized projects). Reviewer: clean APPROVE (0H/0M/1L/2N); marketplace-name NIT fixed in-band (9f5f193). uat-only done-gate satisfied (uat comment 5/5 PASS, orchestrator-verified). linked_commits: 7688806 (feat), 9f5f193 (NIT fix). Part of the v0.6.0 OS-ergonomics trio (TASK-057/058/059)."
     }
   ],
   "created_at": "2026-06-16T17:22:58.463Z",

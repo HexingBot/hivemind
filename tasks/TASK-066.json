@@ -31,7 +31,7 @@
     {
       "author": "orchestrator",
       "at": "2026-06-17T03:40:59.236Z",
-      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tdd: state machine + state mutation + bounded buffer + URL parsing. Exercises the close-to-done gate when looped. Deps: none. To be dogfood-driven via /agentic-framework-beta:loop after context clear."
+      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tdd: state machine + state mutation + bounded buffer + URL parsing. Exercises the close-to-done gate when looped. Deps: none. To be dogfood-driven via /hivemind-beta:loop after context clear."
     },
     {
       "author": "orchestrator",

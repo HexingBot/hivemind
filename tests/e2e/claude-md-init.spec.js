@@ -35,8 +35,8 @@ import { webSaasAnswers } from '../helpers/scripted-prompter.js';
 afterAll(cleanupAll);
 
 const FIXED_NOW = '2026-05-28T12:00:00Z';
-const BEGIN = '<!-- BEGIN agentic-framework routing -->';
-const END = '<!-- END agentic-framework routing -->';
+const BEGIN = '<!-- BEGIN hivemind routing -->';
+const END = '<!-- END hivemind routing -->';
 
 function countOccurrences(text, marker) {
   return text.split(marker).length - 1;

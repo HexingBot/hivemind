@@ -18,7 +18,7 @@ symptoms:                                     # array of strings, >= 1
 solution: >                                   # markdown allowed; >= 10 chars
   ...
 tags: [windows, atomic-write, filesystem]     # array of lowercase-kebab strings, >= 1
-projects: [agentic-framework]                 # array of project names this entry has been validated in, >= 1
+projects: [hivemind]                 # array of project names this entry has been validated in, >= 1
 created_at: "YYYY-MM-DDTHH:MM:SSZ"            # RFC 3339, original creation
 last_seen_at: "YYYY-MM-DDTHH:MM:SSZ"          # RFC 3339, updated by Orchestrator on reuse
 ---

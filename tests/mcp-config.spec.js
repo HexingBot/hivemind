@@ -34,7 +34,7 @@ import { REPO_ROOT } from './helpers/repoRoot.js';
 const MCP_JSON = join(REPO_ROOT, '.mcp.json');
 const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 
-const SERVER_NAME = 'agentic-framework-tasks';
+const SERVER_NAME = 'hivemind-tasks';
 
 function readJson(path) {
   expect(existsSync(path), `${path} must exist`).toBe(true);
@@ -146,15 +146,15 @@ describe('AC2 — plugin.json re-declares mcpServers pointing at ./.mcp.json', (
 //   node dist/mcp-server.cjs
 //
 //   # Install from the same-repo local marketplace and confirm registration:
-//   claude plugin marketplace add C:\Users\srpar\OneDrive\Documents\agentic-framework
-//   claude plugin install agentic-framework@agentic-framework-marketplace
-//   claude plugin details agentic-framework
-//     # EXPECT: "MCP servers (1)" listing agentic-framework-tasks, with NO
+//   claude plugin marketplace add C:\Users\srpar\OneDrive\Documents\hivemind
+//   claude plugin install hivemind@hivemind-marketplace
+//   claude plugin details hivemind
+//     # EXPECT: "MCP servers (1)" listing hivemind-tasks, with NO
 //     #         startup error in the details output.
 //
 //   # Leave no residue:
-//   claude plugin uninstall agentic-framework
-//   claude plugin marketplace remove agentic-framework-marketplace
+//   claude plugin uninstall hivemind
+//   claude plugin marketplace remove hivemind-marketplace
 // ===========================================================================
 describe('AC2 — claude plugin details shows MCP servers (1) (MANUAL sensor)', () => {
   it.skip('install_then_details_shows_one_mcp_server_no_startup_error_run_by_hand', () => {

@@ -7743,7 +7743,7 @@ var import_ajv_formats = __toESM(require_dist(), 1);
 // tasks/schema.json
 var schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "https://agentic-framework.local/tasks/schema.json",
+  $id: "https://hivemind.local/tasks/schema.json",
   title: "Task",
   description: "A single unit of work for the agentic team. Field names mirror Jira issue fields so the same task can later be created in Jira without lossy translation.",
   type: "object",
@@ -8353,7 +8353,7 @@ async function listSkills({ repoRoot } = {}) {
       if (fm.panel_safe !== "true") continue;
       const id = (0, import_node_path4.basename)(filename, ".md");
       const description = fm.description || `Run /${id}`;
-      const invocation = `/agentic-framework:${id}`;
+      const invocation = `/hivemind:${id}`;
       const label = deriveLabel(id);
       commandSkills.push({ id, label, description, invocation });
     }
@@ -8887,7 +8887,7 @@ function buildHtmlTemplate() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agentic OS</title>
+<title>Hivemind OS</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -9901,8 +9901,8 @@ function buildHtmlTemplate() {
   Header bar
   ======================================================================== -->
 <header class="app-header">
-  <h1>Agentic OS</h1>
-  <span class="tagline">agentic software development framework</span>
+  <h1>Hivemind OS</h1>
+  <span class="tagline">hivemind \xB7 agentic development framework</span>
   <div id="session-status-bar" aria-label="Session status"></div>
   <span id="mode-badge" class="mode-badge harness" aria-label="Operating mode">HARNESS</span>
   <button id="mode-toggle-btn" aria-label="Toggle operating mode">flip</button>
@@ -10676,7 +10676,7 @@ preview_port: 3000</pre>
 
   // ---------------------------------------------------------------------------
   // Deep-link: ?tab=preview (or #preview) pre-selects the Preview tab on load.
-  // TASK-069: /agentic-framework:preview command uses this seam.
+  // TASK-069: /hivemind:preview command uses this seam.
   // ---------------------------------------------------------------------------
   (function () {
     var params = new URLSearchParams(window.location.search);

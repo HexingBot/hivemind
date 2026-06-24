@@ -1,12 +1,12 @@
 ---
-description: Goal-driven autonomous drive loop for the agentic framework. Use this when you want the orchestrator to self-drive the per-ticket workflow toward a stated goal (label or key set) without repeating manual step-by-step instructions. Requires explicit goal confirmation from the human before starting.
+description: Goal-driven autonomous drive loop for hivemind. Use this when you want the orchestrator to self-drive the per-ticket workflow toward a stated goal (label or key set) without repeating manual step-by-step instructions. Requires explicit goal confirmation from the human before starting.
 ---
 
-# /agentic-framework:loop
+# /hivemind:loop
 
 Run the goal-driven autonomous drive loop. The loop self-drives the framework's existing per-ticket workflow — read ticket, tier, developer, reviewer, checkpoint — toward a human-stated goal, obeying all four hard-stop gates and surfacing to the human whenever it cannot proceed unilaterally.
 
-> **Distinction from the harness built-in `/loop`:** The built-in `/loop` is a Claude Code harness primitive that keeps a single agent turn running. `/agentic-framework:loop` is this framework's orchestrator-level control loop: it is goal-driven, ticket-driven, and namespaced to the `agentic-framework` plugin. The two operate at different abstraction levels and must not be confused.
+> **Distinction from the harness built-in `/loop`:** The built-in `/loop` is a Claude Code harness primitive that keeps a single agent turn running. `/hivemind:loop` is this framework's orchestrator-level control loop: it is goal-driven, ticket-driven, and namespaced to the `hivemind` plugin. The two operate at different abstraction levels and must not be confused.
 
 ## OPT-IN requirement
 

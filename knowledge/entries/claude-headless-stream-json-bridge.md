@@ -34,7 +34,7 @@ solution: >
   is community-confirmed but not officially documented — smoke-test it
   before building the full bridge.
 tags: [claude-cli, headless, stream-json, subscription-auth, sse, web-console]
-projects: [agentic-framework]
+projects: [hivemind]
 created_at: "2026-06-15T19:00:00Z"
 last_seen_at: "2026-06-15T19:00:00Z"
 source_urls:

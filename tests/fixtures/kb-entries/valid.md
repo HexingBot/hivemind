@@ -11,7 +11,7 @@ solution: >
   sweep for orphaned tmp siblings. Promote the tmp file if the target is
   missing; delete it if the target is present and current.
 tags: [windows, atomic-write, filesystem]
-projects: [agentic-framework]
+projects: [hivemind]
 created_at: "2026-05-24T00:00:00Z"
 last_seen_at: "2026-05-24T00:00:00Z"
 source_urls:

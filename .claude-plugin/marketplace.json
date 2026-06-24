@@ -1,11 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
-  "name": "agentic-framework-marketplace",
+  "name": "hivemind-marketplace",
   "owner": { "name": "Rafael Matovelle", "email": "srparca@gmail.com" },
-  "description": "Distribution marketplace for the Agentic Software Development Framework.",
+  "description": "Distribution marketplace for the Hivemind.",
   "plugins": [
     {
-      "name": "agentic-framework",
+      "name": "hivemind",
       "source": "./",
       "description": "Multi-agent orchestrated development loop as a Claude Code plugin."
     }

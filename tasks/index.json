@@ -333,7 +333,7 @@
     },
     {
       "key": "TASK-058",
-      "title": "/agentic-framework:update command to update the plugin from a project",
+      "title": "/hivemind:update command to update the plugin from a project",
       "status": "done",
       "priority": "medium"
     },
@@ -345,7 +345,7 @@
     },
     {
       "key": "TASK-060",
-      "title": "Beta channel scaffold — agentic-framework-beta plugin identity",
+      "title": "Beta channel scaffold — hivemind-beta plugin identity",
       "status": "done",
       "priority": "high"
     },
@@ -399,7 +399,7 @@
     },
     {
       "key": "TASK-069",
-      "title": "/agentic-framework-beta:preview command + orchestrator-routing preview docs",
+      "title": "/hivemind-beta:preview command + orchestrator-routing preview docs",
       "status": "done",
       "priority": "medium"
     },

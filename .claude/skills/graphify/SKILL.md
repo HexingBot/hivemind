@@ -1,6 +1,6 @@
 ---
 name: graphify
-description: How to build, query, and inspect the project knowledge graph stored under knowledge/graph/graph.json using src/knowledge-graph.js. Load this skill when the user or orchestrator wants to add nodes or edges to the graph, query neighbors or type-filtered nodes, inspect the current graph state, or open the /graph visualization in the board. Triggers on knowledge/graph/, addNode, addEdge, neighbors, nodesByType, loadGraph, or /agentic-framework:graph.
+description: How to build, query, and inspect the project knowledge graph stored under knowledge/graph/graph.json using src/knowledge-graph.js. Load this skill when the user or orchestrator wants to add nodes or edges to the graph, query neighbors or type-filtered nodes, inspect the current graph state, or open the /graph visualization in the board. Triggers on knowledge/graph/, addNode, addEdge, neighbors, nodesByType, loadGraph, or /hivemind:graph.
 ---
 
 # Graphify — Project Knowledge Graph Skill
@@ -222,7 +222,7 @@ console.log(JSON.stringify(graph, null, 2));
 
 ## Visualization
 
-Run the `/agentic-framework:graph` slash command to launch the board server and
+Run the `/hivemind:graph` slash command to launch the board server and
 open the graph view at `http://127.0.0.1:4517/graph`. The page renders all nodes
 and edges as an interactive force-directed diagram. The same data is available
 as JSON at `http://127.0.0.1:4517/api/graph`.

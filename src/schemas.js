@@ -16,7 +16,7 @@
 // them — different change axes deserve different version numbers.
 
 export const pointerSchema = {
-  $id: 'https://agentic-framework.local/state/session.schema.json',
+  $id: 'https://hivemind.local/state/session.schema.json',
   title: 'SessionPointer',
   description:
     'Pointer file. Names the currently-active session bundle under state/sessions/. Read first on every new chat.',
@@ -39,7 +39,7 @@ export const pointerSchema = {
 // version field is named schema_version (matching the pointer), not version.
 // Field set: every v1 field, plus session_id, plus lifecycle_state.
 export const bundleStateSchema = {
-  $id: 'https://agentic-framework.local/state/sessions/bundle.schema.json',
+  $id: 'https://hivemind.local/state/sessions/bundle.schema.json',
   title: 'BundleSession',
   description:
     'Per-session orchestrator state living inside a portable bundle at ' +
@@ -174,7 +174,7 @@ export const bundleStateSchema = {
 // is independent of the bundle session.schema_version; the manifest tracks the
 // bundle-layout version, currently 1.
 export const manifestSchema = {
-  $id: 'https://agentic-framework.local/state/sessions/manifest.schema.json',
+  $id: 'https://hivemind.local/state/sessions/manifest.schema.json',
   title: 'BundleManifest',
   type: 'object',
   required: ['session_id', 'schema_version', 'created_at', 'host', 'snapshot_transcript'],

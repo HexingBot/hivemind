@@ -4,8 +4,8 @@
 // LOCKED PUBLISH DECISIONS (human-resolved 2026-05-29T05:15 on TASK-027;
 // originally the deferred §I Q5/Q6 of tasks/TASK-020.research.md):
 //   • Q5 (hosting/name): THIS repo is the public marketplace. marketplace.json
-//     keeps name "agentic-framework-marketplace" with a single plugin entry
-//     `agentic-framework` whose source is "./" (the repo root). No separate
+//     keeps name "hivemind-marketplace" with a single plugin entry
+//     `hivemind` whose source is "./" (the repo root). No separate
 //     catalog repo.
 //   • Q6 (versioning): set an EXPLICIT semver version "0.1.0" in
 //     .claude-plugin/plugin.json (currently it has NO version field).
@@ -22,7 +22,7 @@
 // good" note): plugin.json's `version` is the SINGLE source of version truth.
 // The current marketplace.json plugin entry carries NO version field, and the
 // install string the quickstart documents is
-// `agentic-framework@agentic-framework-marketplace` (marketplace-name scoped,
+// `hivemind@hivemind-marketplace` (marketplace-name scoped,
 // not version-pinned). We therefore do NOT require a version on the marketplace
 // plugin entry; but IF one is ever added it must AGREE with plugin.json (a
 // conditional cross-check below), so the two manifests can never silently
@@ -39,8 +39,8 @@ const MARKETPLACE_JSON = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const EXPECTED_VERSION = '0.9.0';
-const EXPECTED_MARKETPLACE_NAME = 'agentic-framework-marketplace';
-const EXPECTED_PLUGIN_NAME = 'agentic-framework';
+const EXPECTED_MARKETPLACE_NAME = 'hivemind-marketplace';
+const EXPECTED_PLUGIN_NAME = 'hivemind';
 const EXPECTED_SOURCE = './';
 
 function readJson(path) {
@@ -77,7 +77,7 @@ describe('AC3 — plugin.json carries an explicit semver version (Q6 resolved)',
 
   it('plugin_json_name_is_the_published_plugin_name', () => {
     // Regression lock: the namespace-bearing plugin name must stay stable —
-    // it is the public install handle (`agentic-framework@<marketplace>`).
+    // it is the public install handle (`hivemind@<marketplace>`).
     const manifest = readJson(PLUGIN_JSON);
     expect(manifest.name).toBe(EXPECTED_PLUGIN_NAME);
   });
@@ -96,14 +96,14 @@ describe('AC3 — marketplace.json reflects this repo as the public marketplace 
     ).toBe(true);
   });
 
-  it('marketplace_name_is_agentic_framework_marketplace', () => {
+  it('marketplace_name_is_hivemind_marketplace', () => {
     const mkt = readJson(MARKETPLACE_JSON);
     expect(mkt.name).toBe(EXPECTED_MARKETPLACE_NAME);
   });
 
   it('marketplace_lists_the_stable_plugin_first_plus_optional_opt_in_channels', () => {
     // Loop-engineering beta channel: the marketplace may now list an OPT-IN beta
-    // plugin (agentic-framework-beta, sourced from the `beta` branch) alongside
+    // plugin (hivemind-beta, sourced from the `beta` branch) alongside
     // the stable plugin. The stable entry MUST stay first (plugins[0]) and be the
     // canonical install handle; any additional entries are opt-in channels.
     const mkt = readJson(MARKETPLACE_JSON);
@@ -117,7 +117,7 @@ describe('AC3 — marketplace.json reflects this repo as the public marketplace 
     expect(new Set(names).size, 'plugin names must be unique').toBe(names.length);
   });
 
-  it('the_stable_plugin_entry_names_agentic_framework_sourced_from_this_repo', () => {
+  it('the_stable_plugin_entry_names_hivemind_sourced_from_this_repo', () => {
     const mkt = readJson(MARKETPLACE_JSON);
     const entry = mkt.plugins[0];
     expect(entry.name).toBe(EXPECTED_PLUGIN_NAME);

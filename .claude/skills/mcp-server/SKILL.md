@@ -44,7 +44,7 @@ test; or when migrating the task-store MCP surface to a Jira/Atlassian backend
    import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
    import { z } from 'zod';
 
-   const server = new McpServer({ name: 'agentic-framework-tasks', version: '0.1.0' });
+   const server = new McpServer({ name: 'hivemind-tasks', version: '0.1.0' });
    ```
 
 2. **Register a tool** — config is `{ title?, description, inputSchema }`;
@@ -81,7 +81,7 @@ test; or when migrating the task-store MCP surface to a Jira/Atlassian backend
    async function main() {
      const transport = new StdioServerTransport();
      await server.connect(transport);
-     console.error('agentic-framework-tasks MCP server on stdio');
+     console.error('hivemind-tasks MCP server on stdio');
    }
    main().catch((e) => { console.error(e); process.exit(1); });
    ```
@@ -95,7 +95,7 @@ test; or when migrating the task-store MCP surface to a Jira/Atlassian backend
    ```json
    {
      "mcpServers": {
-       "agentic-framework-tasks": {
+       "hivemind-tasks": {
          "command": "node",
          "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp-server.cjs"],
          "env": { "CLAUDE_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}" }
@@ -154,7 +154,7 @@ test; or when migrating the task-store MCP surface to a Jira/Atlassian backend
 - Bundle sanity: `node scripts/build-plugin.mjs` then
   `node dist/mcp-server.cjs` should start and print the stderr banner (Ctrl-C to
   stop); a crash on start means a bundling miss (externals, dynamic require).
-- Install sanity: `claude plugin details agentic-framework` must report
+- Install sanity: `claude plugin details hivemind` must report
   `MCP servers (1)` with no startup error.
 
 ## References

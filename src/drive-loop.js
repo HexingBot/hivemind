@@ -3,7 +3,7 @@
 //
 // DESIGN: All functions are PURE — they operate on plain task objects passed in
 // as arguments and never perform I/O, spawn processes, or call Date.now(). The
-// drive loop orchestrator (implemented in the /agentic-framework:loop command)
+// drive loop orchestrator (implemented in the /hivemind:loop command)
 // handles all I/O and agentic dispatch; these helpers encode only the non-agentic
 // decision logic.
 //

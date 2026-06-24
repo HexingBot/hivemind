@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-The framework should ship as a **Claude Code plugin** named `agentic-framework`, distributed via a git-hosted **marketplace** (`.claude-plugin/marketplace.json`) and installed with `/plugin install agentic-framework@<marketplace>`. The plugin bundles the four subagents (`agents/`), the five existing skills (`skills/`), the CLI entrypoints (`bin/`), the engine modules (`src/`), and a future MCP server (`.mcp.json`). The retargeting problem has a clean answer: the plugin code lives in an immutable cache directory, and **all writes to the user's project must resolve against `${CLAUDE_PROJECT_DIR}`** (the project root Claude Code was launched in), not `process.cwd()` of the plugin's own location and not `import.meta.url`-relative paths. Nearly every `src/` function already takes `repoRoot` as a parameter — the work is confined to the three `bin/` shells (which currently bind `process.cwd()`) and two module-level asset loads (`task-store.js`, `project-md.js`) that read framework-shipped schemas relative to their own file location (those stay valid — the schemas ship inside the plugin). The orchestrator (`CLAUDE.md` RESUME FIRST + First-chat routing) is the one piece that **cannot** ship as-is, because a **plugin-root `CLAUDE.md` is explicitly NOT loaded as project context** (confirmed in the plugins-reference). The recommended activation path is a **bootstrap slash command (`/agentic-framework:init-project`) that generates a project-level `CLAUDE.md`** (or appends a routing block when one already exists), backed by a thin always-on routing skill. The MCP seam is scoped to the **task store** (`list_ready`, `get_task`, `create_task`, `transition_status`, `append_comment`, `list_todos`) so a non-Claude-Code client can read and mutate tickets — but it will **not** get the orchestrator/subagent loop, which is Claude Code-exclusive. The implementation chain is **7 tickets** (scaffold → retarget → runtime-deps → init-command → orchestrator-activation → MCP-server → E2E+docs). No new tech stack warrants a `.claude/skills/<stack>/` skill.
+The framework should ship as a **Claude Code plugin** named `hivemind`, distributed via a git-hosted **marketplace** (`.claude-plugin/marketplace.json`) and installed with `/plugin install hivemind@<marketplace>`. The plugin bundles the four subagents (`agents/`), the five existing skills (`skills/`), the CLI entrypoints (`bin/`), the engine modules (`src/`), and a future MCP server (`.mcp.json`). The retargeting problem has a clean answer: the plugin code lives in an immutable cache directory, and **all writes to the user's project must resolve against `${CLAUDE_PROJECT_DIR}`** (the project root Claude Code was launched in), not `process.cwd()` of the plugin's own location and not `import.meta.url`-relative paths. Nearly every `src/` function already takes `repoRoot` as a parameter — the work is confined to the three `bin/` shells (which currently bind `process.cwd()`) and two module-level asset loads (`task-store.js`, `project-md.js`) that read framework-shipped schemas relative to their own file location (those stay valid — the schemas ship inside the plugin). The orchestrator (`CLAUDE.md` RESUME FIRST + First-chat routing) is the one piece that **cannot** ship as-is, because a **plugin-root `CLAUDE.md` is explicitly NOT loaded as project context** (confirmed in the plugins-reference). The recommended activation path is a **bootstrap slash command (`/hivemind:init-project`) that generates a project-level `CLAUDE.md`** (or appends a routing block when one already exists), backed by a thin always-on routing skill. The MCP seam is scoped to the **task store** (`list_ready`, `get_task`, `create_task`, `transition_status`, `append_comment`, `list_todos`) so a non-Claude-Code client can read and mutate tickets — but it will **not** get the orchestrator/subagent loop, which is Claude Code-exclusive. The implementation chain is **7 tickets** (scaffold → retarget → runtime-deps → init-command → orchestrator-activation → MCP-server → E2E+docs). No new tech stack warrants a `.claude/skills/<stack>/` skill.
 
 ---
 
@@ -19,7 +19,7 @@ Per the [plugins-reference manifest schema](https://code.claude.com/docs/en/plug
 ```json
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "agentic-framework",
+  "name": "hivemind",
   "displayName": "Agentic Software Development Framework",
   "version": "0.1.0",
   "description": "Multi-agent orchestrated dev loop: intake wizard, seeded backlog, orchestrator + developer/reviewer/researcher subagents, portable session state.",
@@ -32,7 +32,7 @@ Per the [plugins-reference manifest schema](https://code.claude.com/docs/en/plug
 
 Field notes (all verified against the reference):
 
-- `name` — **required**, kebab-case, no spaces. Also the **namespace prefix**: skills become `/agentic-framework:<skill>`, agents appear as `agentic-framework:<agent>`. This is public-facing (`/plugin install agentic-framework@<marketplace>`).
+- `name` — **required**, kebab-case, no spaces. Also the **namespace prefix**: skills become `/hivemind:<skill>`, agents appear as `hivemind:<agent>`. This is public-facing (`/plugin install hivemind@<marketplace>`).
 - `displayName` — optional, may contain spaces; requires Claude Code v2.1.143+. Falls back to `name`. **Uncertain/version-gated** — include but treat as cosmetic.
 - `version` — optional but **recommended to set explicitly** for a published plugin, because if omitted the git commit SHA is used and *every commit* counts as a new version. Trade-off documented in the reference: set it and you must bump it on every release; omit it for fast internal iteration. Recommendation: set `version` once we publish; leave unset (commit-SHA versioning) during the impl chain's active development.
 - `author`, `license`, `keywords`, `description` — optional metadata.
@@ -46,12 +46,12 @@ A marketplace is a separate catalog file. For a single-repo distribution where t
 ```json
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
-  "name": "agentic-framework-marketplace",
+  "name": "hivemind-marketplace",
   "owner": { "name": "Rafael Matovelle", "email": "srparca@gmail.com" },
   "description": "Distribution marketplace for the Agentic Software Development Framework.",
   "plugins": [
     {
-      "name": "agentic-framework",
+      "name": "hivemind",
       "source": "./",
       "description": "Multi-agent orchestrated development loop as a Claude Code plugin.",
       "version": "0.1.0"
@@ -64,14 +64,14 @@ Field notes:
 
 - `name` (**required**), `owner` (**required**, `owner.name` required / `owner.email` optional), `plugins[]` (**required**). Each plugin entry needs `name` + `source` at minimum.
 - `source: "./"` — **relative path**, must start with `./`, resolved relative to the **marketplace root** (the repo root), not the `.claude-plugin/` dir. `"./"` means "the plugin is at the repo root" — i.e. `plugin.json` lives at `<repo>/.claude-plugin/plugin.json` and `marketplace.json` lives at the same `<repo>/.claude-plugin/marketplace.json`. **This co-location of both manifests in one `.claude-plugin/` dir is valid** and is the simplest single-plugin layout.
-- Alternative source forms available if we later split the repo: `{ "source": "github", "repo": "owner/agentic-framework" }`, `url`, `git-subdir`, `npm`. Documented but not needed for v1.
-- **Reserved-name caution:** the docs publish a reserved-marketplace-name list; `agentic-framework-marketplace` is not on it, but avoid anything resembling `claude-*`/`anthropic-*`.
+- Alternative source forms available if we later split the repo: `{ "source": "github", "repo": "owner/hivemind" }`, `url`, `git-subdir`, `npm`. Documented but not needed for v1.
+- **Reserved-name caution:** the docs publish a reserved-marketplace-name list; `hivemind-marketplace` is not on it, but avoid anything resembling `claude-*`/`anthropic-*`.
 
 User-facing install sequence:
 
 ```
 /plugin marketplace add <git-url-or-./local-path>
-/plugin install agentic-framework@agentic-framework-marketplace
+/plugin install hivemind@hivemind-marketplace
 ```
 
 ### A.4 Full plugin directory tree
@@ -79,7 +79,7 @@ User-facing install sequence:
 The **hard rule** from the docs: only `plugin.json` (and `marketplace.json` for the same-repo case) go inside `.claude-plugin/`. **Every other component dir must be at the plugin root.** A plugin-root `CLAUDE.md` is *not* loaded as context (this drives §C).
 
 ```
-agentic-framework/                         ← plugin root == repo root == marketplace root
+hivemind/                         ← plugin root == repo root == marketplace root
 ├── .claude-plugin/
 │   ├── plugin.json                         ← manifest (A.2)
 │   └── marketplace.json                    ← catalog (A.3); same-repo single-plugin layout
@@ -91,7 +91,7 @@ agentic-framework/                         ← plugin root == repo root == marke
 ├── skills/                                 ← MOVED from .claude/skills/
 │   └── tech-training-template/SKILL.md     ← (+ any researcher-authored skills)
 ├── commands/                               ← NEW (slash commands; see §C, §D)
-│   └── init-project.md                     ← /agentic-framework:init-project bootstrap
+│   └── init-project.md                     ← /hivemind:init-project bootstrap
 ├── bin/                                    ← on Bash-tool PATH while plugin enabled
 │   ├── init.js
 │   ├── new-task.js
@@ -183,24 +183,24 @@ So we **cannot** ship the orchestrator simply by putting `CLAUDE.md` in the plug
 ### C.2 Option comparison
 
 **Option 1 — Generate a project-level `CLAUDE.md` at init time.**
-The `/agentic-framework:init-project` command (or `bin/init.js`) writes a `CLAUDE.md` into `${CLAUDE_PROJECT_DIR}` containing the RESUME FIRST + First-chat routing + workflow contract. Claude Code *does* load the project's own `CLAUDE.md` as context. Pros: zero ambiguity — the routing lives where Claude already looks; survives across chats with no per-session step. Cons: **collision** when the user's project already has a `CLAUDE.md` (the common case). Must detect and *append a clearly delimited routing block* rather than overwrite, and must be idempotent on re-run.
+The `/hivemind:init-project` command (or `bin/init.js`) writes a `CLAUDE.md` into `${CLAUDE_PROJECT_DIR}` containing the RESUME FIRST + First-chat routing + workflow contract. Claude Code *does* load the project's own `CLAUDE.md` as context. Pros: zero ambiguity — the routing lives where Claude already looks; survives across chats with no per-session step. Cons: **collision** when the user's project already has a `CLAUDE.md` (the common case). Must detect and *append a clearly delimited routing block* rather than overwrite, and must be idempotent on re-run.
 
 **Option 2 — Ship the routing as an always-on plugin skill.**
 A `skills/orchestrator-routing/SKILL.md` (with a `description` that makes Claude load it whenever the user asks to "start/resume work") carries the RESUME-FIRST four-step sequence. Pros: no file written into the user's repo; updates with the plugin; no CLAUDE.md collision. Cons: skills are *model-invoked by description match* — activation is probabilistic, not guaranteed on the very first message of a cold chat, which is exactly when RESUME FIRST must fire. A skill is also more easily "forgotten" mid-session than a top-of-context CLAUDE.md rule. The `settings.json` `agent` key (which can force a plugin agent to be the main thread) is a stronger variant — but plugin `settings.json` only supports `agent` + `subagentStatusLine`, and making the orchestrator the *default main agent* for the user's whole Claude Code install is too invasive.
 
 **Option 3 — Bootstrap slash command that generates the routing (hybrid).**
-A `/agentic-framework:init-project` command runs intake AND writes/merges the project `CLAUDE.md` (Option 1's mechanism), and the plugin *also* ships a lightweight routing skill (Option 2) as a backstop so resume works even before init has run. The command is the explicit, deterministic entry point; the generated CLAUDE.md is the durable activation; the skill is the safety net.
+A `/hivemind:init-project` command runs intake AND writes/merges the project `CLAUDE.md` (Option 1's mechanism), and the plugin *also* ships a lightweight routing skill (Option 2) as a backstop so resume works even before init has run. The command is the explicit, deterministic entry point; the generated CLAUDE.md is the durable activation; the skill is the safety net.
 
 ### C.3 Recommendation
 
 **Option 3 (bootstrap command → generated/merged project `CLAUDE.md`, with a thin routing skill as backstop).** Rationale:
 
 - RESUME FIRST must fire **deterministically on the first message of every new chat**. Only a project-level `CLAUDE.md` rule reliably does that (it loads as context unconditionally). A skill alone (Option 2) is too probabilistic for the one instruction that must never be missed.
-- The **collision case is handled explicitly**: `init-project` checks for an existing `${CLAUDE_PROJECT_DIR}/CLAUDE.md`. If absent, write the full framework CLAUDE.md. If present, **append a fenced, marker-delimited block** (e.g. between `<!-- BEGIN agentic-framework routing -->` / `<!-- END agentic-framework routing -->`) so re-runs replace only that block and never clobber the user's content. This mirrors the framework's existing idempotency discipline (the `seed` label guard, make-template's marker-scoped rewrites).
-- The bootstrap command is the natural home for the existing intake wizard (`bin/init.js`), so AC3 and the init experience converge into one user action: `/agentic-framework:init-project`.
+- The **collision case is handled explicitly**: `init-project` checks for an existing `${CLAUDE_PROJECT_DIR}/CLAUDE.md`. If absent, write the full framework CLAUDE.md. If present, **append a fenced, marker-delimited block** (e.g. between `<!-- BEGIN hivemind routing -->` / `<!-- END hivemind routing -->`) so re-runs replace only that block and never clobber the user's content. This mirrors the framework's existing idempotency discipline (the `seed` label guard, make-template's marker-scoped rewrites).
+- The bootstrap command is the natural home for the existing intake wizard (`bin/init.js`), so AC3 and the init experience converge into one user action: `/hivemind:init-project`.
 - The backstop skill costs little (always-on token cost is just its description) and rescues the "user installed the plugin but hasn't run init yet, and opens a fresh chat" case.
 
-**What the generated CLAUDE.md contains:** the RESUME FIRST four-step sequence, First-chat routing (the `PROJECT.md`-absent → run init branch), the workflow loop, and repository etiquette — i.e. the substance of the current repo-root `CLAUDE.md`, minus framework-development-specific bits. The orchestrator *agent* (`agents/orchestrator.md`) ships via the plugin's `agents/` and is invokable as `agentic-framework:orchestrator`; the generated CLAUDE.md tells the main thread to *act as* the orchestrator and follow RESUME FIRST.
+**What the generated CLAUDE.md contains:** the RESUME FIRST four-step sequence, First-chat routing (the `PROJECT.md`-absent → run init branch), the workflow loop, and repository etiquette — i.e. the substance of the current repo-root `CLAUDE.md`, minus framework-development-specific bits. The orchestrator *agent* (`agents/orchestrator.md`) ships via the plugin's `agents/` and is invokable as `hivemind:orchestrator`; the generated CLAUDE.md tells the main thread to *act as* the orchestrator and follow RESUME FIRST.
 
 ---
 
@@ -309,7 +309,7 @@ These map 1:1 onto the Jira-compatible field names already in `tasks/schema.json
 ```json
 {
   "mcpServers": {
-    "agentic-framework-tasks": {
+    "hivemind-tasks": {
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/src/mcp-server.js"],
       "env": {
@@ -383,7 +383,7 @@ No contradictions with the briefing were found.
 2. **Ship `bin/make-template.js` to users, or keep it publish-time-only?** It is a dev/distribution scrub tool, not a user-facing command, and exposing it on the user's PATH risks a destructive `--yes` run against a real project. **Recommendation:** exclude it from the shipped `bin/` (keep it in the repo for publish-time use), or hard-guard it. Confirm.
 3. **CLAUDE.md collision policy.** Recommended: marker-delimited append/replace into an existing project `CLAUDE.md`, never overwrite. Confirm the marker convention and whether the user should be prompted before the framework writes into their `CLAUDE.md` at all (vs. silent merge). **Recommendation:** prompt once, then idempotent merge.
 4. **Dependency strategy: `${CLAUDE_PLUGIN_DATA}` install vs. vendored bundle.** §B.4 recommends the documented data-dir install pattern; vendoring (esbuild single-file) is the alternative if first-run latency hurts. Confirm preference before P3.
-5. **Marketplace hosting + name.** `agentic-framework-marketplace` (not reserved) hosted in this same git repo via relative `source: "./"`. Confirm the repo will be the public marketplace, or whether a separate catalog repo is wanted. Affects the `source` form in §A.3.
+5. **Marketplace hosting + name.** `hivemind-marketplace` (not reserved) hosted in this same git repo via relative `source: "./"`. Confirm the repo will be the public marketplace, or whether a separate catalog repo is wanted. Affects the `source` form in §A.3.
 6. **Explicit `version` vs. commit-SHA versioning during the impl chain.** Recommend leaving `version` unset (commit-SHA) while iterating P1–P7, then setting an explicit `version` at the first published release. Confirm.
 7. **Does `make-template` also need to scrub a user-project `CLAUDE.md` routing block on uninstall?** Out of scope for TASK-020 but worth a future ticket — the framework writes into the user's `CLAUDE.md`; nothing currently cleans it up. Flag for backlog.
 

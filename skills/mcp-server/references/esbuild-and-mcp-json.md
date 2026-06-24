@@ -44,7 +44,7 @@ banner and wait on stdin. A crash on start is almost always a bundling miss.
 ```json
 {
   "mcpServers": {
-    "agentic-framework-tasks": {
+    "hivemind-tasks": {
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp-server.cjs"],
       "env": { "CLAUDE_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}" }

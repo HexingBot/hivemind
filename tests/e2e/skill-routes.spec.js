@@ -87,7 +87,7 @@ describe('TASK-053 — GET /api/skills', () => {
     mkdirSync(commandsDir, { recursive: true });
     writeFileSync(
       join(commandsDir, 'test-cmd.md'),
-      '---\ndescription: A test catalog command\npanel_safe: true\n---\n\n# /agentic-framework:test-cmd\n',
+      '---\ndescription: A test catalog command\npanel_safe: true\n---\n\n# /hivemind:test-cmd\n',
       'utf8',
     );
     bridge = makeFakeBridge();
@@ -218,7 +218,7 @@ describe('TASK-053 — POST /api/chat/:sessionId/skill known id', () => {
     mkdirSync(commandsDir, { recursive: true });
     writeFileSync(
       join(commandsDir, 'my-skill.md'),
-      '---\ndescription: A test skill\npanel_safe: true\n---\n\n# /agentic-framework:my-skill\n',
+      '---\ndescription: A test skill\npanel_safe: true\n---\n\n# /hivemind:my-skill\n',
       'utf8',
     );
     bridge = makeFakeBridge();
@@ -258,8 +258,8 @@ describe('TASK-053 — POST /api/chat/:sessionId/skill known id', () => {
     ).toBe(1);
     expect(
       session._sendCalls[0],
-      'session.send must be called with /agentic-framework:my-skill',
-    ).toBe('/agentic-framework:my-skill');
+      'session.send must be called with /hivemind:my-skill',
+    ).toBe('/hivemind:my-skill');
   });
 
   it('known skillId (curated help) → 200 and session.send called', async () => {

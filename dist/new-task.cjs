@@ -7730,7 +7730,7 @@ var import_ajv_formats = __toESM(require_dist(), 1);
 // tasks/schema.json
 var schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "https://agentic-framework.local/tasks/schema.json",
+  $id: "https://hivemind.local/tasks/schema.json",
   title: "Task",
   description: "A single unit of work for the agentic team. Field names mirror Jira issue fields so the same task can later be created in Jira without lossy translation.",
   type: "object",

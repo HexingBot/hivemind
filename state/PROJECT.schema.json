@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-framework.local/state/PROJECT.schema.json",
+  "$id": "https://hivemind.local/state/PROJECT.schema.json",
   "title": "PROJECT.md frontmatter",
   "description": "Machine-readable subset of the project-intake answers persisted in PROJECT.md frontmatter. The body of PROJECT.md is human prose and intentionally out of scope of this schema.",
   "type": "object",

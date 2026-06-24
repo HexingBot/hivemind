@@ -23,7 +23,7 @@ per-test temp `repoRoot` instead of relying on the `CLAUDE_PROJECT_DIR` env var.
 ```js
 // src/mcp-server.js (shape)
 export function createServer({ repoRoot }) {
-  const server = new McpServer({ name: 'agentic-framework-tasks', version: '0.1.0' });
+  const server = new McpServer({ name: 'hivemind-tasks', version: '0.1.0' });
   // ...registerTool x6, each closing over `repoRoot`...
   return server;
 }
