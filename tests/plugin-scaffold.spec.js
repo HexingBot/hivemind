@@ -64,7 +64,16 @@ const GRAPHIFY_SKILL = 'graphify';
 // under context-monitor/). Lives in skills/ only (no .claude/skills/ parity
 // copy required — it is the plugin's own skill, not a dogfood copy).
 const CONTEXT_MONITOR_SKILL = 'claude-code-context-monitor';
-const REPO_LOCAL_SKILLS = [BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL].sort();
+// Phase 3 (P3.2) — the six vendored language-agnostic manifest skills (Spine spec layer).
+// Each ships in BOTH skills/ and .claude/skills/ byte-identical (see manifest-skills.spec.js).
+const MANIFEST_SKILLS = [
+  'impl-screen-specs', 'impl-api-contracts', 'impl-state-schemas',
+  'impl-component-catalog', 'impl-project-structure', 'impl-block-tasks',
+];
+const REPO_LOCAL_SKILLS = [
+  BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
+  ...MANIFEST_SKILLS,
+].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
 function readJson(path) {
