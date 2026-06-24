@@ -4,11 +4,6 @@
 > **Status: planning. No implementation has started — this document precedes code.**
 > Build base: a full clone of `lordiwa/agent-framework` (MIT). Working branch: `feat/agentic`.
 > Remotes: `origin` → `wisemancer/hivemind` (private), `upstream` → `lordiwa/agent-framework`.
->
-> **The authority for design intent is the knowledge base in `.knowledge/`** (knowledge-mcp:
-> `canonical/architecture.md` + `canonical/modules/` + `derived/conventions.md` + seven
-> `derived/decisions/` records). `verify_knowledge` = PASS (17 files, 0 BLOCK). Read it via
-> `read_knowledge_base`/`search_knowledge` before any code; this PLAN.md is the phased execution view of it.
 
 ## What hivemind is
 
@@ -127,12 +122,26 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
 - **Polyglot:** JS/TS plugin ↔ Python brain only over MCP; no other coupling.
 - **Degradation:** every brain-dependent feature must have a defined offline behavior.
 
+## Resolved pre-build (design pinned in `.knowledge/`)
+- **Brain MCP tool surface** — pinned in `.knowledge/derived/brain-contract.md`: a Python MCP
+  server *inside wisearcher* exposing `kb_search`, `kb_answer`, `kb_neighbors`, `kb_get`,
+  `kb_ingest`, `research`, `kb_assert`, `kb_health`, each wrapping a real wisearcher function.
+  wisearcher has no MCP server and no internal fallback today — Phase 1 builds the server;
+  hivemind owns the grep fallback at the client boundary (probe `kb_health` at session start).
+- **proposal-engine KB import** — pinned in `.knowledge/derived/proposal-import.md`: a
+  *deterministic* markdown→graph importer (NOT LLM re-extraction, to preserve markers) takes the
+  `project_knowledge_base/` directory and maps files→Source, marked statements→Claim, embedded
+  IDs→Entity, traceability rows→RELATION; marker×tier → wisearcher's decomposed confidence.
+- **OTel/SigNoz config location** — pinned in `.knowledge/derived/conventions.md` § Observability:
+  three places — (1) hivemind's own obs in the plugin, (2) generated-project obs injected into
+  developer/reviewer prompts + manifests (lives in the generated project), (3) the brain owns its
+  own (`obs.py` structlog; OTel deferred there). Standard vendored from
+  `implementation-engine/.claude/shared/OBSERVABILITY.md`. No SigNoz in any compose yet (Phase 6).
+
 ## Open questions (resolve as we go)
-- Exact MCP tool surface for the brain (query + ingest contract).
-- How proposal-engine's KBs feed hivemind's graph (import path / format).
-- Where SigNoz/OTel config lives for generated projects vs hivemind itself.
 - Empirical tuning still pending in wisearcher (entity-resolution thresholds, load-bearing
-  trigger) — inherited, not introduced here.
+  trigger) — inherited, not introduced here; needs runtime data, not a design call.
+- Streaming vs request/response for the long-running `research` brain tool (decide at build).
 
 ## First action
 Phase 0 rebrand, then Phase 1 brain seam (the chosen first vertical slice). No code until this

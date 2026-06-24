@@ -3,70 +3,88 @@ module: conventions
 layer: derived
 tier: T2
 updated: 2026-06-24
-files: [src/**/*.js, .claude/agents/*.md, .claude/skills/**/*.md]
+files: []
 ---
 
 ## Purpose
-Coding and process standards for hivemind. Non-negotiable. Two scopes are kept distinct:
-**(A) hivemind's own code** (the Node plugin + the brain seam), and **(B) the product code
-hivemind generates** for a user's project (governed by the vendored Spine standards).
+Coding standards and patterns for hivemind. These rules apply to all source files and are
+non-negotiable. The Body source is present; Spine standards are vendored from
+`implementation-engine/.claude/shared/` and the Brain is reached over MCP (see [[architecture]],
+[[brain-contract]]).
 
 ## Agent Workflow
-- **Knowledge-first — no code without a plan**: write/update `.knowledge/` then produce `PLAN.md`
-  before any implementation. Hard gate.
-- **Knowledge base only**: during planning/implementation read `.knowledge/` (`read_knowledge_base`,
-  `search_knowledge`), never raw source. Source is for the compiler; `.knowledge/` is for agents.
-- **Observability is non-negotiable**: a feature without defined observability (below) is not coded.
-- **Docker over local installs**: Qdrant, Neo4j, and any service run via Docker — never host installs.
-- **Tier-gated rigor**: scale discipline to risk via the `verification_tier` (`tdd`/`tests-after`/
-  `uat-only`). Core work gets full markers + specs + research; glue gets a light touch. [INFERRED:strong] (decision 003)
+- **Knowledge-first — no code without a plan**: Before suggesting or writing any code, write or
+  update the relevant `.knowledge/` files and call `write_plan` to produce `PLAN.md`. Hard gate.
+- **Knowledge base only**: During planning, read `.knowledge/` via `read_knowledge_base` and
+  `search_knowledge`. Never read raw source for planning. Source is for the compiler.
+- **Observability is non-negotiable**: Every feature defines its logging/tracing/metrics in
+  `.knowledge/` before implementation. No code for an unobserved feature.
+- **Docker over local installs**: The brain runs via `docker compose up`. Never suggest host installs.
 
 ## Observability
-**(A) hivemind itself** (current scale — single operator, local):
-- **Logging**: structured JSON to **stderr only** (stdout is reserved for MCP stdio). Always log:
-  subagent spawn/return, each MCP call to the brain, brain-fallback activation, every gate block
-  (marker/tier/review), and session lifecycle transitions. Correlate by `session_id` + ticket key.
-- **Tracing**: full distributed tracing is **not required at hivemind's current scale**. The trace
-  substitute is the session bundle `lifecycle.log` (append-only) plus `decision→task` edges in the
-  knowledge graph. Revisit if hivemind ever runs multi-operator.
-- **Metrics**: counters emitted to the log stream — tickets by terminal status, gate blocks by kind,
-  brain calls vs. fallbacks, research rounds per mission. No external metrics backend at this scale.
-- **Error reporting**: tool failures return MCP error responses; the plugin logs to stderr and
-  **must not crash the session** — brain/service errors degrade to fallback with a logged message.
+Target stack: **OpenTelemetry → SigNoz**. The binding standard already exists at
+`implementation-engine/.claude/shared/OBSERVABILITY.md` (every functionality emits a span +
+structured log; metric on key paths; **reviewer BLOCKER** if missing) and is **vendored into
+hivemind with the Spine** (Phase 4). [INFERRED:strong]
 
-**(B) product code hivemind generates** (the vendored Spine standard, enforced at review):
-- Every functionality emits an **OpenTelemetry span + a correlated structured log**; metrics on key
-  paths only. Backend = **SigNoz** (recorded as an ADR in the target project). A missing span/log on
-  any functionality is a review BLOCKER; a missing metric on a key path is a SHOULD. [INFERRED:strong] (decision 005; wisengine OBSERVABILITY standard)
+**Config lives in three distinct places** (resolves the PLAN.md open question):
+1. **hivemind's own observability** (plugin startup, agent-loop iterations, MCP calls to the brain,
+   tier gates) — config in the plugin; follows the vendored Spine standard, **does not invent a new
+   convention**. Spans around each loop iteration / brain call / gate; structured JSON logs that
+   record **brain-hit vs grep-KB fallback**; levels: `error` failed gate, `warn` fallback
+   activation, `info` phase/consolidation transitions. [INFERRED:strong]
+2. **Generated projects' observability** — governed by the same `OBSERVABILITY.md`, **injected into
+   the developer + reviewer prompts and manifests** (BLOCK_TASKS ACs name the span); the config
+   lives in the **generated project**, not in hivemind. Phase 4. [INFERRED:strong]
+3. **The Brain (wisearcher)** — owns its own observability: `wisearcher/obs.py` uses `structlog`
+   JSON + metric-as-event helpers (`counter/histogram/gauge`); OTel **tracing is deliberately
+   deferred** there ("not required at current scale"). [INFERRED:strong] (signal:
+   `wisearcher/wisearcher/obs.py:9`) hivemind consumes its structured logs over the seam; it does
+   **not** impose OTel tracing on the brain.
+
+**Metrics** hivemind emits: tickets-by-tier, brain-hit vs fallback, gate blocks (assumption
+laundering), research rounds-until-dry. [INFERRED:weak]
+**Deployment**: no SigNoz / OTel collector is in any `docker-compose` yet (greenfield); when added,
+extend the brain stack's compose file (Phase 6 packaging). [INFERRED:strong] (signal:
+`wisearcher/docker-compose.yml` has only qdrant + neo4j)
 
 ## Patterns
-- **One-way MCP boundary**: plugin (JS, client) → wisearcher (Python, MCP server). Never the reverse;
-  never a second transport.
-- **Graceful degradation**: every brain-dependent path has a defined offline behavior (fallback grep
-  KB), chosen explicitly and logged — never a silent failure. [INFERRED:strong] (decision 006)
-- **Markers travel**: a claim's calibration (`[EXPLICIT]`/`[INFERRED:strong|weak]`/`[ASSUMED]`/
-  `[MISSING_INFO]`) is preserved end-to-end — from the brain's confidence components, onto task ACs,
-  through specs, into review. Dropping a marker is "assumption laundering" and is a review BLOCKER.
-- **Minimalism (Ponytail ladder)**: before building anything, walk necessity → stdlib → native
-  feature → existing dep → one-liner → custom. Speculative abstractions are a review finding.
-- **Error handling**: throw typed errors; catch at boundaries (MCP handlers, subagent edges); a
-  service/brain failure becomes a fallback, never an uncaught crash.
+- **Marker discipline**: every claim carries a calibrated marker; markers must survive downstream
+  (dropping one = assumption laundering, [[meta/guardrails]] KG2). [INFERRED:strong]
+- **Source tiering**: `[EXPLICIT]` requires T1/T2; never raise a claim above its file's `tier`
+  ([[meta/source-tiers]]). [INFERRED:strong]
+- **Tier-gated rigor**: `tdd` / `tests-after` / `uat-only` by risk; core tickets emit a manifest
+  before code, glue skips it. [INFERRED:strong]
+- **Manifests before code on core tickets**: SCREEN_SPECS, API_CONTRACTS, STATE_SCHEMAS,
+  COMPONENT_CATALOG, PROJECT_STRUCTURE, BLOCK_TASKS (Phase 3). [INFERRED:strong]
+- **Minimalism ladder (Ponytail)**: the 6-rung hierarchy in
+  `implementation-engine/.claude/shared/MINIMALISM.md`; reviewer flags gold-plating as a
+  first-class blocker. [INFERRED:strong]
+- **Graceful degradation**: every brain-dependent feature has a defined offline path; the brain has
+  no internal fallback, so hivemind owns it (see [[brain-contract]] § fallback). [INFERRED:strong]
+- **Error handling**: fail gates loudly (block the ticket), fail the brain seam softly (fall back).
 
 ## Decisions
-- **Auth**: subscription CLI only (`claude -p`, key stripped). No `anthropic` SDK dependency, no API
-  key path. [EXPLICIT] (`.claude/skills/claude-headless/SKILL.md`)
-- **No new transport across JS↔Python**: MCP only. [INFERRED:strong] (decision 001)
+- **Subscription CLI auth, never API keys**: spawn `claude -p` with `ANTHROPIC_API_KEY` stripped. [INFERRED:strong]
+- **Vendored Spine, called Brain**: Spine code in-tree; Brain only over MCP. [INFERRED:strong]
+- **Canonical graph over local cache**: write nodes to wisearcher's graph; `knowledge-graph.js` is
+  a projection. [INFERRED:strong]
+- **Import, don't vendor, proposal KBs**: see [[proposal-import]]. [INFERRED:strong]
 
 ## Constraints
-- Never write to stdout from an MCP server (breaks the stdio protocol) — logs go to stderr.
-- Never set `ANTHROPIC_API_KEY` in a spawned env.
-- Never bypass the marker/tier/review gates on a `tdd`-tier ticket.
-- Always keep `dist/*.cjs` rebuilt + committed when `bin/` or `src/` change (dist-parity gate).
+- Never set `ANTHROPIC_API_KEY` in any spawned environment.
+- Never couple plugin↔brain by anything other than MCP.
+- Never ship a brain-dependent feature without a tested offline fallback.
+- Always keep the vitest two-tier suite + dist-parity gate green; add brain-fallback tests with fakes.
+- Never vendor `proposal-engine`; never re-extract a marked proposal claim (preserve its marker).
 
 ## Files
 ```
-src/          — hivemind plugin logic (Node): orchestration bridge, task store, graph bridge, brain client
-.claude/      — agent definitions (developer/reviewer/researcher) + skills (vendored Spine standards)
-dist/         — esbuild bundles (committed build artifacts)
-.knowledge/   — this KB (canonical/derived/meta/skills); the only thing agents read while planning
+src/            — Body: orchestrator, subagents, sessions, tasks/kanban, drive-loop (PRESENT)
+  mcp-server.js — base Node stdio MCP (task-store backend)
+  knowledge-graph.js — local graph; demotes to a projection over the canonical graph
+  drive-loop.js — outer autonomy loop
+tasks/schema.json — Jira-shaped tickets (gain marker + source_tier + confidence in Phase 2)
+src/spine/      — vendored Spine: markers/tiers, manifest skills, validators, observability (TO ADD)
 ```
+[INFERRED:strong] (src/* verified present; src/spine/ is the planned vendor target)
