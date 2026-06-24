@@ -4,6 +4,11 @@
 > **Status: planning. No implementation has started — this document precedes code.**
 > Build base: a full clone of `lordiwa/agent-framework` (MIT). Working branch: `feat/agentic`.
 > Remotes: `origin` → `wisemancer/hivemind` (private), `upstream` → `lordiwa/agent-framework`.
+>
+> **The authority for design intent is the knowledge base in `.knowledge/`** (knowledge-mcp:
+> `canonical/architecture.md` + `canonical/modules/` + `derived/conventions.md` + seven
+> `derived/decisions/` records). `verify_knowledge` = PASS (17 files, 0 BLOCK). Read it via
+> `read_knowledge_base`/`search_knowledge` before any code; this PLAN.md is the phased execution view of it.
 
 ## What hivemind is
 
