@@ -170,6 +170,24 @@ reviewer runs the gate and blocks laundering + tier-ceiling. Unit + e2e verified
   code; `uat-only` glue skips it. Add the independent **verifier** role + coverage matrix.
 - **Done when:** a core ticket emits a manifest before code; a glue ticket skips it.
 
+#### Phase 3 — build breakdown
+The manifest skills are self-contained prompt commands in `implementation-engine/.claude/commands/
+impl-*.md`; the verifier is `manifest-verifier` + `scripts/verify_manifests.mjs` (zero-dep, 6
+invariants → coverage matrix). impl-engine gates by Category(A/B/C); hivemind gates by its own
+`verification_tier` instead. Sub-slices:
+
+- **P3.1 — tier-gate policy** ▶ *first slice*: `src/manifest-policy.js` — the catalog of the six
+  manifests + `requiresManifest(verification_tier)` (tdd/tests-after require a manifest before
+  code; `uat-only` glue skips) + `gateForTicket()`. The orchestrator/reviewer consult it. Unit-tested.
+- **P3.2 — vendor the six manifest skills**: copy `impl-screen-specs|api-contracts|state-schemas|
+  component-catalog|project-structure|block-tasks` into hivemind skills (`skills/` + `.claude/skills/`
+  byte-identical mirrors), adding `name`/`description` frontmatter and repointing `context/`→the
+  project's KB paths. Per-skill parity locks.
+- **P3.3 — verifier + coverage matrix**: port `verify_manifests.mjs` into `scripts/` + a testable JS
+  module of the six invariants; vendor the `manifest-verifier` agent (both mirrors); emit a VERIFY
+  matrix. Independent of the (judgement-based) reviewer.
+- **Done when:** a `tdd` ticket is gated to emit a manifest before code; a `uat-only` ticket skips.
+
 ### Phase 4 — Spine: observable & lean builds
 - Inject the OTel→SigNoz span/log requirement and the Ponytail minimalism ladder into the
   developer + reviewer prompts.
