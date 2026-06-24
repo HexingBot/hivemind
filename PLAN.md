@@ -221,6 +221,31 @@ observability and flags gold-plating as HIGH. Prose-locked (test:all 1200).
   for agents, and grounded human lessons (spaced retrieval).
 - **Done when:** a knowledge cluster yields a `SKILL.md` and a lesson.
 
+#### Phase 5 — build breakdown
+**Scope reality (verified):** wisearcher's skill/teach layers are `[ASSUMED]` design docs only —
+no code exists. Phase 5 **builds** them (minimal-viable), it does not wire existing features. Full
+community-detection clustering is wisearcher's Phase 3 (deferred) — a "cluster" here is an entity's
+neighbourhood (its claims + neighbours), which is enough for the Done-when.
+
+- **P5.1 — the generator** (in `wisearcher/`, Python) ▶ *first slice*: `wisearcher/wisdom.py` —
+  `build_cluster(graph, name)` (entity + neighbours + claims, split into AFFIRMS / `ANTI_PATTERN`+
+  `EXCLUDES` / `CONTRASTS_WITH`+`MISCONCEPTION` + source ids); `generate_skill(cluster, complete)`
+  (LLM prose for how-to + a **deterministic, cited** "When NOT to use" section + Sources — so the
+  provenance/anti-pattern rule is testable without a live LLM); `generate_lesson(cluster, complete,
+  mission)` (mission-grounded body + deterministic discriminating quiz + Sources). `complete` and
+  `graph` injectable → unit-tested with fakes.
+- **P5.2 — expose + consume**: add `kb_generate_skill` / `kb_generate_lesson` to the wisearcher MCP;
+  hivemind writes the generated `SKILL.md` into `.claude/skills/<name>/` and the lesson into a
+  lessons dir, via the brain-client (with graceful fallback).
+- **Done when:** a cluster yields a `SKILL.md` (with a cited "when NOT to use") and a lesson.
+
+**Phase 5 status: complete (built from scratch).** wisearcher gained `wisdom.py` (build_cluster +
+generate_skill/lesson) + MCP tools `kb_generate_skill`/`kb_generate_lesson`; hivemind's brain-client
+gained `generateSkill`/`generateLesson` and `src/wisdom-sink.js` `persistWisdom` writes the
+generated `SKILL.md` into `.claude/skills/<slug>/` and the lesson into `knowledge/lessons/`, skipping
+gracefully when the brain is down. Unit-verified both sides (wisearcher 91; hivemind test:all 1208).
+Live end-to-end needs Docker + Voyage + `claude` CLI.
+
 ### Phase 6 — Autonomy & distribution polish
 - Outer drive-loop wraps inner loop-until-dry research; wisengine phase/consolidation gates
   become first-class hard-stops in the loop.

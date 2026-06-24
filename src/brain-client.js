@@ -160,6 +160,43 @@ export function createBrainClient({
     return { source: 'unavailable', entity: null };
   }
 
+  // Wisdom layer (Phase 5): generate an agent SKILL.md / a human lesson from a graph cluster.
+  // Brain-only (no grep fallback for generation) — returns { source: 'unavailable' } when down so
+  // the caller can skip persisting.
+  async function generateSkill({ name, type }) {
+    emit({ type: 'brain-query', op: 'generate-skill', at: now() });
+    if (await ensureAvailable()) {
+      try {
+        const r = await callRaw('kb_generate_skill', { name, type });
+        emit({ type: 'brain-hit', op: 'generate-skill', name: r.name, at: now() });
+        return { source: 'brain', ...r };
+      } catch (err) {
+        degrade(err.message);
+        emit({ type: 'brain-fallback', op: 'generate-skill', reason: err.message, at: now() });
+      }
+    } else {
+      emit({ type: 'brain-fallback', op: 'generate-skill', reason: 'unavailable', at: now() });
+    }
+    return { source: 'unavailable', skill_md: null };
+  }
+
+  async function generateLesson({ name, mission, type }) {
+    emit({ type: 'brain-query', op: 'generate-lesson', at: now() });
+    if (await ensureAvailable()) {
+      try {
+        const r = await callRaw('kb_generate_lesson', { name, mission, type });
+        emit({ type: 'brain-hit', op: 'generate-lesson', name: r.name, at: now() });
+        return { source: 'brain', ...r };
+      } catch (err) {
+        degrade(err.message);
+        emit({ type: 'brain-fallback', op: 'generate-lesson', reason: err.message, at: now() });
+      }
+    } else {
+      emit({ type: 'brain-fallback', op: 'generate-lesson', reason: 'unavailable', at: now() });
+    }
+    return { source: 'unavailable', lesson_md: null };
+  }
+
   async function close() {
     if (_client && typeof _client.close === 'function') await _client.close();
   }
@@ -169,6 +206,8 @@ export function createBrainClient({
     assert,
     neighbors,
     get,
+    generateSkill,
+    generateLesson,
     health,
     ensureAvailable,
     subscribe,

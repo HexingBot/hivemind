@@ -184,3 +184,24 @@ describe('brain-client — canonical-graph reads', () => {
     expect(await brain2.get({ name: 'Voyage' })).toEqual({ source: 'unavailable', entity: null });
   });
 });
+
+describe('brain-client — wisdom generation', () => {
+  it('generateSkill/generateLesson return the brain result when available', async () => {
+    const client = fakeClient({
+      kb_health: { ok: true },
+      kb_generate_skill: { name: 'X', skill_md: '# X' },
+      kb_generate_lesson: { name: 'X', lesson_md: '# lesson' },
+    });
+    const { brain } = makeClient({ client });
+    expect(await brain.generateSkill({ name: 'X' })).toMatchObject({ source: 'brain', skill_md: '# X' });
+    expect(await brain.generateLesson({ name: 'X', mission: 'm' })).toMatchObject({ source: 'brain', lesson_md: '# lesson' });
+  });
+
+  it('report unavailable when the brain is down (no grep fallback for generation)', async () => {
+    const client = fakeClient({ kb_health: { ok: false } });
+    const { brain, knowledge } = makeClient({ client });
+    expect(await brain.generateSkill({ name: 'X' })).toEqual({ source: 'unavailable', skill_md: null });
+    expect(await brain.generateLesson({ name: 'X', mission: 'm' })).toEqual({ source: 'unavailable', lesson_md: null });
+    expect(knowledge.lookupKnowledge).not.toHaveBeenCalled();
+  });
+});
