@@ -199,6 +199,23 @@ coverage independently of the reviewer. Unit + CLI verified (test:all 1196).
   developer + reviewer prompts.
 - **Done when:** generated code emits spans/logs; the reviewer flags gold-plating.
 
+#### Phase 4 — build breakdown
+- **P4.1 — vendor the standards**: copy `.claude/shared/OBSERVABILITY.md` (OTel→SigNoz; span +
+  correlated structured log on every functionality, metric on key paths only) and `MINIMALISM.md`
+  (Ponytail 6-rung ladder + "no invented detail") from implementation-engine into hivemind
+  `.claude/shared/`. Doc-existence + content locks.
+- **P4.2 — inject into the agents**: `agents/developer.md` (both mirrors) gains an "Observability &
+  minimalism" step — instrument each functionality with a span + correlated structured log (metric
+  on key paths), and walk the minimalism ladder before adding anything. `agents/reviewer.md` (both
+  mirrors) flags a **missing span/log as a BLOCKER** and **gold-plating / unsourced complexity as a
+  HIGH** (minimalism "what can be removed?"). Prose locks.
+- **Done when:** the developer prompt requires spans/logs; the reviewer flags gold-plating.
+
+**Phase 4 status: complete.** `.claude/shared/OBSERVABILITY.md` + `MINIMALISM.md` vendored; the
+developer prompt (both mirrors) requires a span + correlated structured log per functionality
+(metric on key paths) and walks the Ponytail ladder; the reviewer (both mirrors) blocks missing
+observability and flags gold-plating as HIGH. Prose-locked (test:all 1200).
+
 ### Phase 5 — Brain: wisdom output
 - Wire wisearcher's skill generation + teaching layer: knowledge clusters → loadable `SKILL.md`
   for agents, and grounded human lessons (spaced retrieval).

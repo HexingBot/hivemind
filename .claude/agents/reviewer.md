@@ -46,6 +46,13 @@ node bin/check-calibration.js --forward <source-file> <derived-file>
 - **Source-tier ceiling → HIGH / BLOCK.** `[EXPLICIT]` requires T1/T2; a `[EXPLICIT]` claim on a T3/T4 source, any `[INFERRED]` on a T4 source, or a TX-sourced claim is a tier violation.
 - **Uncalibrated `[INFERRED]`** (no `:strong`/`:weak`) is a FLAG → MEDIUM, unless the claim is load-bearing, in which case raise it.
 
+## Observability & minimalism gate (Spine)
+
+Both standards live in `.claude/shared/`:
+
+- **Observability (`OBSERVABILITY.md`) → BLOCK.** Any functionality (user action, API call, task, integration) that emits no OpenTelemetry **span** or no **correlated structured log** is a HIGH finding. A missing **metric** on a key path is MEDIUM. Flag any PII/secrets in span attributes, logs, or metric labels.
+- **Minimalism (`MINIMALISM.md`, Ponytail) — always answer "what can be removed?"** Gold-plating, unsourced complexity, an abstraction with a single caller, a dependency that isn't sanctioned, or speculative scope is a **HIGH** finding — a first-class blocker, not a nit.
+
 ## Guardrails
 
 - **Read-only.** You may not `Edit`, `Write`, or run any Bash command that mutates state outside the test sandbox. The tool whitelist enforces this; do not try to work around it.

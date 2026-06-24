@@ -46,6 +46,23 @@ The TEST phase is skipped for `tests-after` and `uat-only` tiers. If you are spa
 5. Run the project's linter and type checker.
 6. Commit using Conventional Commits, referencing the ticket key (e.g., `feat(TICKET-123): add prompt caching`).
 
+## Observability & minimalism (Spine)
+
+Both standards live in `.claude/shared/` and are non-negotiable for code you write:
+
+- **Observability** (`.claude/shared/OBSERVABILITY.md`): instrument **every functionality** with an
+  OpenTelemetry **trace span** + a **correlated structured log** (carry `trace_id`/`span_id`); add a
+  **metric** only on key paths (API calls, integrations, critical flows). Span name = the operation
+  (`auth.login`), not the function name; no PII/secrets in attributes/logs; error paths
+  `record_exception` + set error status + log. A functionality that emits no span/log will be
+  **blocked** in review. Brain calls additionally log whether they hit the canonical graph or the
+  grep-KB fallback.
+- **Minimalism** (`.claude/shared/MINIMALISM.md`, Ponytail): before adding anything (a file,
+  dependency, abstraction, option), walk the 6-rung ladder — Necessity → standard library → native
+  feature → existing dependency → one-liner → minimal custom — and stop at the first rung that
+  satisfies. No dependency that isn't sanctioned; no abstraction without a second caller; delete dead
+  scaffolding. Resolve each ticket with the **fewest files and lines** that meet the acceptance criteria.
+
 ## New-test budget
 
 Every new spec must encode an acceptance criterion or a real regression — nothing else. Redundant or duplicative specs are a review finding (LOW severity). Do not pad test counts.
