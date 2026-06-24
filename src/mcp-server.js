@@ -46,6 +46,15 @@ import {
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
 const VERIFICATION_TIER = z.enum(['tdd', 'tests-after', 'uat-only']);
+// Spine calibration (Phase 2) — mirror of tasks/schema.json calibration fields.
+const MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]']);
+const SOURCE_TIER = z.enum(['T1', 'T2', 'T3', 'T4', 'TX']);
+const CONFIDENCE = z.object({
+  source_credibility: z.number().min(0).max(1).optional(),
+  assertion_strength: z.number().min(0).max(1).optional(),
+  corroboration: z.number().min(0).max(1).optional(),
+  verification_status: z.number().min(0).max(1).optional(),
+});
 
 // Schema key shape (tasks/schema.json). Used as a path-injection guard on
 // get_task: a crafted key like `../../etc/passwd` must be rejected before any
@@ -131,9 +140,12 @@ export function createServer({ repoRoot }) {
         labels: z.array(z.string()).optional(),
         depends_on: z.array(z.string()).optional(),
         verification_tier: VERIFICATION_TIER.optional(),
+        marker: MARKER.optional(),
+        source_tier: SOURCE_TIER.optional(),
+        confidence: CONFIDENCE.optional(),
       },
     },
-    async ({ title, description, acceptance_criteria, priority, labels, depends_on, verification_tier }) =>
+    async ({ title, description, acceptance_criteria, priority, labels, depends_on, verification_tier, marker, source_tier, confidence }) =>
       ok(
         await createTask({
           repoRoot,
@@ -144,6 +156,9 @@ export function createServer({ repoRoot }) {
           ...(labels !== undefined ? { labels } : {}),
           ...(depends_on !== undefined ? { depends_on } : {}),
           ...(verification_tier !== undefined ? { verification_tier } : {}),
+          ...(marker !== undefined ? { marker } : {}),
+          ...(source_tier !== undefined ? { source_tier } : {}),
+          ...(confidence !== undefined ? { confidence } : {}),
         }),
       ),
   );

@@ -413,6 +413,9 @@ export async function createTask({
   labels = [],
   depends_on = [],
   verification_tier,
+  marker,
+  source_tier,
+  confidence,
   now = () => new Date().toISOString(),
 }) {
   // Validate enums + required-array shape before touching disk.
@@ -452,6 +455,11 @@ export async function createTask({
     updated_at: stamp,
     jira_key: null,
     ...(verification_tier !== undefined ? { verification_tier } : {}),
+    // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
+    // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
+    ...(marker !== undefined ? { marker } : {}),
+    ...(source_tier !== undefined ? { source_tier } : {}),
+    ...(confidence !== undefined ? { confidence } : {}),
   };
 
   // AC5 — schema validate BEFORE any disk I/O so a bad payload (e.g. a `now`

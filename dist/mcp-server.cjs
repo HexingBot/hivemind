@@ -21978,6 +21978,27 @@ var schema_default = {
       enum: ["tdd", "tests-after", "uat-only"],
       description: "Governs how the ticket is verified. Absent means tdd (backward-compatible default). tdd = tests-first; tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT."
     },
+    marker: {
+      type: "string",
+      enum: ["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"],
+      description: "Epistemic calibration of the ticket's load-bearing claims (Spine). Optional; ACs may also carry inline markers, which the reviewer validates. Must respect source_tier's ceiling (T3/T4 cannot be [EXPLICIT])."
+    },
+    source_tier: {
+      type: "string",
+      enum: ["T1", "T2", "T3", "T4", "TX"],
+      description: "Authority of the evidence behind the ticket's claims. Caps how strong marker may be: [EXPLICIT] requires T1/T2; T4 is orientation-only; TX is rejected. See .knowledge/meta/SOURCE_TIERS.md."
+    },
+    confidence: {
+      type: "object",
+      additionalProperties: false,
+      description: "Decomposed confidence (components, NOT a scalar), populated from the brain's confidence model. Each component is in [0,1].",
+      properties: {
+        source_credibility: { type: "number", minimum: 0, maximum: 1 },
+        assertion_strength: { type: "number", minimum: 0, maximum: 1 },
+        corroboration: { type: "number", minimum: 0, maximum: 1 },
+        verification_status: { type: "number", minimum: 0, maximum: 1 }
+      }
+    },
     status: {
       type: "string",
       enum: ["todo", "in_progress", "in_review", "blocked", "done"],
@@ -22321,6 +22342,9 @@ async function createTask({
   labels = [],
   depends_on = [],
   verification_tier,
+  marker,
+  source_tier,
+  confidence,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
   if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
@@ -22356,7 +22380,12 @@ async function createTask({
     created_at: stamp,
     updated_at: stamp,
     jira_key: null,
-    ...verification_tier !== void 0 ? { verification_tier } : {}
+    ...verification_tier !== void 0 ? { verification_tier } : {},
+    // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
+    // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
+    ...marker !== void 0 ? { marker } : {},
+    ...source_tier !== void 0 ? { source_tier } : {},
+    ...confidence !== void 0 ? { confidence } : {}
   };
   validateTaskOrThrow(task);
   const existing = await readAllTasks(repoRoot);
@@ -22375,6 +22404,14 @@ var import_meta = {};
 var PRIORITY = external_exports.enum(["low", "medium", "high", "critical"]);
 var STATUS = external_exports.enum(["todo", "in_progress", "in_review", "blocked", "done"]);
 var VERIFICATION_TIER = external_exports.enum(["tdd", "tests-after", "uat-only"]);
+var MARKER = external_exports.enum(["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"]);
+var SOURCE_TIER = external_exports.enum(["T1", "T2", "T3", "T4", "TX"]);
+var CONFIDENCE = external_exports.object({
+  source_credibility: external_exports.number().min(0).max(1).optional(),
+  assertion_strength: external_exports.number().min(0).max(1).optional(),
+  corroboration: external_exports.number().min(0).max(1).optional(),
+  verification_status: external_exports.number().min(0).max(1).optional()
+});
 var KEY_RE = /^TASK-\d{3,}$/;
 function ok(value) {
   return { content: [{ type: "text", text: JSON.stringify(value) }] };
@@ -22433,10 +22470,13 @@ function createServer({ repoRoot }) {
         priority: PRIORITY,
         labels: external_exports.array(external_exports.string()).optional(),
         depends_on: external_exports.array(external_exports.string()).optional(),
-        verification_tier: VERIFICATION_TIER.optional()
+        verification_tier: VERIFICATION_TIER.optional(),
+        marker: MARKER.optional(),
+        source_tier: SOURCE_TIER.optional(),
+        confidence: CONFIDENCE.optional()
       }
     },
-    async ({ title, description, acceptance_criteria, priority, labels, depends_on, verification_tier }) => ok(
+    async ({ title, description, acceptance_criteria, priority, labels, depends_on, verification_tier, marker, source_tier, confidence }) => ok(
       await createTask({
         repoRoot,
         title,
@@ -22445,7 +22485,10 @@ function createServer({ repoRoot }) {
         priority,
         ...labels !== void 0 ? { labels } : {},
         ...depends_on !== void 0 ? { depends_on } : {},
-        ...verification_tier !== void 0 ? { verification_tier } : {}
+        ...verification_tier !== void 0 ? { verification_tier } : {},
+        ...marker !== void 0 ? { marker } : {},
+        ...source_tier !== void 0 ? { source_tier } : {},
+        ...confidence !== void 0 ? { confidence } : {}
       })
     )
   );

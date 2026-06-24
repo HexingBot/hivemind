@@ -141,6 +141,28 @@ populating the cited graph + a ticket consuming it, with offline degradation —
   reviewer **blocks assumption laundering**.
 - **Done when:** a ticket AC carries calibration and the reviewer blocks a laundered claim.
 
+#### Phase 2 — build breakdown
+Calibration is carried the way the rest of the system does it — **inline markers in prose**
+(AC text), not a breaking `string[]`→`object[]` schema change. Sub-slices:
+
+- **P2.1 — port the validators**: `src/calibration.js` ports `validate_markers`,
+  `validate_marker_forwarding` (the assumption-laundering BLOCKER: an `[ASSUMED]`/`[INFERRED:weak]`
+  claim in the source that loses its marker downstream), and `validate_tiers` (tier→marker ceiling:
+  T3/T4 can't be `[EXPLICIT]`, T4 can't be `[INFERRED]`, TX rejected) from `engine-tools-mcp` —
+  pure text functions, no deps. Unit-tested.
+- **P2.2 — calibration on tasks**: extend `tasks/schema.json` with OPTIONAL task-level `marker`,
+  `source_tier` (T1–T4/TX), and `confidence` (the decomposed components from the brain model, not a
+  scalar) — additive, existing tickets stay valid. ACs may carry inline markers; `create_task`
+  (task-store + mcp-server) accepts/validates them.
+- **P2.3 — reviewer gate**: update `agents/reviewer.md` (both mirrors) to run the calibration
+  validators and **BLOCK assumption laundering** + tier-ceiling violations as HIGH findings.
+- **Done when:** a ticket AC carries calibration and the reviewer blocks a laundered claim.
+
+**Phase 2 status: complete.** `src/calibration.js` + `bin/check-calibration.js` (`npm run
+check:calibration`) port the validators; `tasks/schema.json` carries optional `marker` +
+`source_tier` + decomposed `confidence` (threaded through `createTask`/MCP `create_task`); the
+reviewer runs the gate and blocks laundering + tier-ceiling. Unit + e2e verified (test:all 1160).
+
 ### Phase 3 — Spine: tier-gated spec layer
 - Vendor implementation-engine's language-agnostic manifest skills (SCREEN_SPECS, API_CONTRACTS,
   STATE_SCHEMAS, COMPONENT_CATALOG, PROJECT_STRUCTURE, BLOCK_TASKS) as hivemind skills.
