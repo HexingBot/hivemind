@@ -270,6 +270,20 @@ loop-until-dry exist yet.
 - **Done when:** an autonomous run respects the hard-stops (incl. consolidation) and the plugin
   installs clean.
 
+**Phase 6 status: complete.** P6.1 `consolidationGate` + `loopUntilDry` (autonomy hard-stops); P6.2
+ships `dist/brain-launch.cjs` as a bundled entrypoint (`npm run bootstrap:brain`; dist-parity +
+`claude plugin validate` green) and adds `src/upstream-classify.js` + `bin/upstream-pr.js` (engine
+vs hivemind classifier + dry-run contribution plan to `lordiwa/agent-framework`). test:all 1221.
+
+---
+
+## Build complete — Phases 0–6 all shipped
+Identity (0) · brain seam (1) · calibration (2) · spec layer (3) · observable/lean (4) · wisdom
+output (5) · autonomy & distribution (6). hivemind on `feat/agentic`; wisearcher MCP + wisdom on
+`feat/mcp-brain-seam`. Live end-to-end (the brain path) still needs Docker + Voyage + the `claude`
+CLI; everything is unit/CLI-verified with fakes. Remaining: live E2E validation, then merge the
+feature branches.
+
 ## Cross-cutting
 - **Auth:** subscription CLI everywhere; never set `ANTHROPIC_API_KEY` in spawned envs.
 - **Testing:** keep vitest two-tier + the dist-parity gate; add brain-fallback tests with fakes.
