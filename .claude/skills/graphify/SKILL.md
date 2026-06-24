@@ -58,6 +58,22 @@ Each edge has three required fields: `from`, `to`, `relation`.
 | `produced-by` | Knowledge entry X was produced by task Y             |
 | `relates-to`  | Generic bidirectional association                    |
 
+## Canonical graph (the brain) — this local graph is a PROJECTION
+
+`knowledge/graph/graph.json` is a read-through **projection/cache**. The source of truth is the
+wisearcher **brain** graph (Neo4j+Qdrant), written over MCP. Keep them in sync by doing node
+writes through `src/graph-sync.js` rather than calling `addNode` directly:
+
+- **`recordNode({ brain, repoRoot, node, topic })`** — writes the local projection AND mirrors the
+  node to the canonical graph via `kb_assert` (best-effort; queued when the brain is offline, never
+  lost). `task`/`decision`/`skill` map to `[EXPLICIT]`/T2 canonical entities, `knowledge_entry` to
+  `[INFERRED:strong]`; `node.ref` becomes the claim's provenance.
+- **`neighborsCanonicalFirst({ brain, repoRoot, id, canonicalId })`** — reads the canonical graph
+  when the brain is up, else falls back to this local projection.
+
+When no brain is wired (the graceful-fallback case) `recordNode` still writes the local graph, so
+the API below remains the offline source of truth. Bring the brain up with `/hivemind:brain`.
+
 ## Public API — `src/knowledge-graph.js`
 
 All functions accept a named-parameter object and return a `Promise`.

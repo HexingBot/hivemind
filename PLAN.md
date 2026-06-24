@@ -85,6 +85,55 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
 - **Done when:** a research question populates the cited graph and a ticket consumes it
   end-to-end; pulling the brain offline degrades gracefully.
 
+#### Phase 1 — build breakdown (active)
+Architecture is settled in `.knowledge/derived/brain-contract.md`: **one** wisearcher MCP server
+(single backend), consumed two ways — the `researcher` subagent calls its tools directly (via
+`.mcp.json`); hivemind's own Node code calls it through a JS client that wraps every call with
+graceful grep-fallback. Sub-slices, in dependency order (each lands behind tests):
+
+- **P1.1 — wisearcher MCP server** (in `wisearcher/`, Python). `wisearcher/mcp_server.py`: a
+  `build_engine(cfg)` helper (extracted from the cli wiring) + tool functions `kb_search`,
+  `kb_answer`, `kb_neighbors`, `kb_get`, `kb_ingest`, `research`, `kb_assert`, `kb_health`
+  wrapping the library; a thin stdio MCP shell over the `mcp` SDK; a `wisearcher-mcp` entrypoint.
+  Tool logic lives in plain injectable functions → unit-tested with `tests/fakes.py` (no
+  Docker/Voyage). Adds the `mcp` dependency.
+- **P1.2 — hivemind brain-client** (`src/brain-client.js`): connects to the wisearcher MCP via
+  `@modelcontextprotocol/sdk` Client + a stdio transport (injectable for tests); probes
+  `kb_health`; wraps every call so a brain error/absence **falls back to the grep KB**
+  (`lookupKnowledge`/`recordKbReuse` in `src/knowledge.js`); emits `brain-query|brain-hit|
+  brain-fallback` events (the preview-process subscriber pattern) and a `warn` log on fallback.
+  Vitest with a fake transport — the non-negotiable safety property, fully verifiable in-repo.
+- **P1.3 — lifecycle/launcher** ✓: `bin/brain-launch.js` (zero-dep) resolves the wisearcher repo
+  at runtime (`WISEARCHER_PATH` or sibling discovery), `docker compose up -d`s the brain stack
+  (best-effort), then execs `wisearcher-mcp` over stdio — or prints `kb_health` JSON with
+  `--health`. `ANTHROPIC_API_KEY` is stripped from the child env. `/hivemind:brain` command
+  brings it up + reports brain-on vs grep-fallback. **Deferred to P1.4:** whether to *also*
+  register the brain as a second managed server in committed `.mcp.json` — the wisearcher path
+  can't be a committed `${CLAUDE_PLUGIN_ROOT}` constant and it would break the deliberate
+  single-server invariant, so the choice (subagent calls via brain-client launcher vs static
+  registration) is made when the researcher is rewired.
+- **P1.4 — rewire researcher** ✓: `agents/researcher.md` (+ the byte-identical `.claude/agents/`
+  copy) now does brain-first lookup (`kb_answer`/`kb_search`/`kb_neighbors`/`kb_get`, tools
+  `mcp__wisearcher-brain__*`) with the grep three-pass as the guaranteed offline fallback;
+  `proposed_kb_entry` is committed by the Orchestrator into the canonical graph
+  (`kb_ingest`/`kb_assert`) when the brain is up, else flat markdown. **Registration decision
+  (resolved):** the brain is NOT statically registered in committed `.mcp.json` — it is optional,
+  heavy (Docker + Voyage), and degrades gracefully, so an always-on second server would spawn and
+  noisily fail on every session. It stays opt-in (`/hivemind:brain` + brain-client launcher); the
+  researcher uses brain tools only when a human has registered them. Revisit for Phase 6
+  distribution if a packaged always-on brain is wanted.
+- **P1.5 — nodes into the graph** ✓: `src/graph-sync.js` is the seam — `recordNode()` writes the
+  local projection (`knowledge-graph.js`) AND mirrors the node to the canonical graph via
+  `kb_assert` (best-effort, queued offline), and `neighborsCanonicalFirst()` reads canonical-first
+  with local fallback. brain-client gained `neighbors`/`get`. `src/knowledge-graph.js` is now
+  documented (graphify skill, both mirrors) as a read-through **projection/cache**. Call-site
+  wiring is prompt-driven via the graphify skill (no single code call-site exists today).
+
+**Phase 1 status: all five sub-slices complete and unit-verified with fakes** (wisearcher suite
+83 passed; hivemind 539 default / 1132 full). The Done-when end-to-end check — a research question
+populating the cited graph + a ticket consuming it, with offline degradation — needs a live run
+(Docker Neo4j+Qdrant + `VOYAGE_API_KEY`); the graceful-fallback half is already proven in unit tests.
+
 ### Phase 2 — Spine: truth on tasks
 - Extend `tasks/schema.json` with `marker` + `source_tier` + `confidence` (components, not a
   scalar), populated from the brain's confidence model.
