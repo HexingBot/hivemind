@@ -12,7 +12,8 @@
     "test:e2e": "vitest run --config vitest.config.all.js tests/e2e",
     "test:use-cases": "vitest run --config vitest.config.all.js tests/use-cases tests/use-case-policy.spec.js --passWithNoTests",
     "build:plugin": "node scripts/build-plugin.mjs",
-    "check:calibration": "node bin/check-calibration.js"
+    "check:calibration": "node bin/check-calibration.js",
+    "check:manifests": "node scripts/verify-manifests.mjs"
   },
   "engines": {
     "node": ">=20"

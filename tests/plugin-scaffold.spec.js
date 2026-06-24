@@ -70,9 +70,11 @@ const MANIFEST_SKILLS = [
   'impl-screen-specs', 'impl-api-contracts', 'impl-state-schemas',
   'impl-component-catalog', 'impl-project-structure', 'impl-block-tasks',
 ];
+// P3.3 — the independent manifest-verifier role (objective spec gate) ships as a skill too.
+const VERIFIER_SKILL = 'manifest-verifier';
 const REPO_LOCAL_SKILLS = [
   BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
-  ...MANIFEST_SKILLS,
+  ...MANIFEST_SKILLS, VERIFIER_SKILL,
 ].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */

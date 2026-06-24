@@ -188,6 +188,12 @@ invariants → coverage matrix). impl-engine gates by Category(A/B/C); hivemind 
   matrix. Independent of the (judgement-based) reviewer.
 - **Done when:** a `tdd` ticket is gated to emit a manifest before code; a `uat-only` ticket skips.
 
+**Phase 3 status: complete.** P3.1 `src/manifest-policy.js` (tier gate) + P3.2 the six vendored
+manifest skills (both mirrors) + P3.3 `src/manifest-verify.js` + `scripts/verify-manifests.mjs`
+(`npm run check:manifests`, writes `reviews/VERIFY.md`) + the `manifest-verifier` skill. The gate
+decides required-vs-skip by `verification_tier`; the skills emit manifests; the verifier checks
+coverage independently of the reviewer. Unit + CLI verified (test:all 1196).
+
 ### Phase 4 — Spine: observable & lean builds
 - Inject the OTel→SigNoz span/log requirement and the Ponytail minimalism ladder into the
   developer + reviewer prompts.
