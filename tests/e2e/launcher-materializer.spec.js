@@ -11,7 +11,7 @@
 //   AC4 — byte-consistency / shipped-from-plugin: materialized bytes equal the
 //          plugin-source launcher bytes (proves copy, not hand-duplication).
 //   AC5 — discoverability: init stdout tells the user they can double-click
-//          console.cmd / run `sh console.sh` or use /agentic-framework:console.
+//          console.cmd / run `sh console.sh` or use /hivemind:console.
 //
 // These tests FAIL before TASK-057 is implemented — the materializer does not
 // exist yet. Each spec fails for the right reason (assertion fails / file absent),
@@ -372,7 +372,7 @@ describe('AC3 — already_initialized branch does not add launchers to a project
 // Asserts that a fresh init run emits a message mentioning:
 //   - console.cmd (Windows double-click)
 //   - console.sh (macOS/Linux)
-//   - /agentic-framework:console (Claude Code slash command)
+//   - /hivemind:console (Claude Code slash command)
 //
 // This test captures stdout via a console.log spy over the runInit call.
 // It will FAIL until the materializer implementation emits the discovery line.
@@ -415,8 +415,8 @@ describe('AC5 — init stdout tells the user how to launch the console', () => {
     ).toBe(true);
 
     expect(
-      combinedOutput.includes('/agentic-framework:console') || combinedOutput.includes(':console'),
-      'init stdout must mention the /agentic-framework:console slash command\n' +
+      combinedOutput.includes('/hivemind:console') || combinedOutput.includes(':console'),
+      'init stdout must mention the /hivemind:console slash command\n' +
       `Captured stdout:\n${combinedOutput}`,
     ).toBe(true);
   });

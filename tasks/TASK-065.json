@@ -1,7 +1,7 @@
 {
   "key": "TASK-065",
   "title": "App-preview config resolver (PROJECT.md preview block + package.json inference)",
-  "description": "BETA-TEST GOAL (goal-app-preview), part 1 of 5. A resolver that determines HOW to start/locate the project app for the console preview. Reads an optional preview block from PROJECT.md (preview_command, preview_url or preview_port, optional preview_mode web|process); if absent, infers from package.json scripts (precedence dev > start > serve) plus a port heuristic. Returns a normalized config. Backward-compatible: no config AND no inferable script => mode none (console shows a configure hint). Built on beta; first ticket of the app-preview goal to dogfood-drive via /agentic-framework-beta:loop.",
+  "description": "BETA-TEST GOAL (goal-app-preview), part 1 of 5. A resolver that determines HOW to start/locate the project app for the console preview. Reads an optional preview block from PROJECT.md (preview_command, preview_url or preview_port, optional preview_mode web|process); if absent, infers from package.json scripts (precedence dev > start > serve) plus a port heuristic. Returns a normalized config. Backward-compatible: no config AND no inferable script => mode none (console shows a configure hint). Built on beta; first ticket of the app-preview goal to dogfood-drive via /hivemind-beta:loop.",
   "acceptance_criteria": [
     "New module src/preview-resolver.js exports resolvePreviewConfig({repoRoot}) returning { mode (enum web|process|none), command (string|null), cwd, url (string|null), source (configured|inferred|none) }.",
     "Configured path: an optional preview block in PROJECT.md frontmatter (preview_command + preview_url or preview_port + optional preview_mode) is parsed and TAKES PRECEDENCE over inference; preview_mode defaults to web when a url/port is present, else process.",
@@ -31,7 +31,7 @@
     {
       "author": "orchestrator",
       "at": "2026-06-17T03:40:59.112Z",
-      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tdd: source logic + parsing + precedence + PROJECT.md schema change. Release-tier gate (schema). Deps: none. To be dogfood-driven via /agentic-framework-beta:loop after context clear."
+      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tdd: source logic + parsing + precedence + PROJECT.md schema change. Release-tier gate (schema). Deps: none. To be dogfood-driven via /hivemind-beta:loop after context clear."
     },
     {
       "author": "orchestrator",

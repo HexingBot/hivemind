@@ -7,7 +7,7 @@ symptoms:
 solution: >
   Add the id field; it must match the filename slug and the kebab-case pattern.
 tags: [schema, validation]
-projects: [agentic-framework]
+projects: [hivemind]
 created_at: "2026-05-24T00:00:00Z"
 last_seen_at: "2026-05-24T00:00:00Z"
 ---

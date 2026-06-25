@@ -15,11 +15,11 @@
 // must remain green — this file touches no production code.
 //
 // AC map (TASK-021):
-//   AC1 — .claude-plugin/plugin.json: name `agentic-framework` (stable identity;
-//         beta was `agentic-framework-beta` for side-by-side install; now promoted).
+//   AC1 — .claude-plugin/plugin.json: name `hivemind` (stable identity;
+//         beta was `hivemind-beta` for side-by-side install; now promoted).
 //         (mcpServers and version: see the in-body notes — both flipped by TASK-027 P7.)
 //   AC2 — .claude-plugin/marketplace.json: source `./`, valid owner.name,
-//         lists the `agentic-framework` stable plugin (plugins[0]).
+//         lists the `hivemind` stable plugin (plugins[0]).
 //   AC3 — plugin-root agents/ (exactly the 4) + plugin-root skills/ with the
 //         repo-local tech-training-template skill.
 //   AC4 — shipped-bin allowlist: make-template.js EXCLUDED; init.js +
@@ -64,7 +64,18 @@ const GRAPHIFY_SKILL = 'graphify';
 // under context-monitor/). Lives in skills/ only (no .claude/skills/ parity
 // copy required — it is the plugin's own skill, not a dogfood copy).
 const CONTEXT_MONITOR_SKILL = 'claude-code-context-monitor';
-const REPO_LOCAL_SKILLS = [BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL].sort();
+// Phase 3 (P3.2) — the six vendored language-agnostic manifest skills (Spine spec layer).
+// Each ships in BOTH skills/ and .claude/skills/ byte-identical (see manifest-skills.spec.js).
+const MANIFEST_SKILLS = [
+  'impl-screen-specs', 'impl-api-contracts', 'impl-state-schemas',
+  'impl-component-catalog', 'impl-project-structure', 'impl-block-tasks',
+];
+// P3.3 — the independent manifest-verifier role (objective spec gate) ships as a skill too.
+const VERIFIER_SKILL = 'manifest-verifier';
+const REPO_LOCAL_SKILLS = [
+  BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
+  ...MANIFEST_SKILLS, VERIFIER_SKILL,
+].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
 function readJson(path) {
@@ -83,10 +94,10 @@ describe('AC1 — .claude-plugin/plugin.json declares the plugin', () => {
     expect(manifest).not.toBeNull();
   });
 
-  it('plugin_name_is_agentic_framework', () => {
-    // Stable identity: name is agentic-framework (the public install handle).
+  it('plugin_name_is_hivemind', () => {
+    // Stable identity: name is hivemind (the public install handle).
     const manifest = readJson(PLUGIN_MANIFEST);
-    expect(manifest.name).toBe('agentic-framework');
+    expect(manifest.name).toBe('hivemind');
   });
 
   it('plugin_mcpServers_points_at_the_dot_mcp_json_now_that_P6_ships_it', () => {
@@ -131,12 +142,12 @@ describe('AC2 — .claude-plugin/marketplace.json catalogs the plugin', () => {
     expect(m.owner.name.length).toBeGreaterThan(0);
   });
 
-  it('marketplace_lists_the_agentic_framework_plugin_with_same_repo_source', () => {
-    // Stable identity: primary marketplace entry is agentic-framework at source './'.
+  it('marketplace_lists_the_hivemind_plugin_with_same_repo_source', () => {
+    // Stable identity: primary marketplace entry is hivemind at source './'.
     const m = readJson(MARKETPLACE_MANIFEST);
     expect(Array.isArray(m.plugins), 'marketplace.plugins must be an array').toBe(true);
-    const entry = m.plugins.find((p) => p && p.name === 'agentic-framework');
-    expect(entry, 'marketplace must list the agentic-framework plugin').toBeTruthy();
+    const entry = m.plugins.find((p) => p && p.name === 'hivemind');
+    expect(entry, 'marketplace must list the hivemind plugin').toBeTruthy();
     // Same-repo layout: source is the relative repo root.
     expect(entry.source).toBe('./');
   });
@@ -246,12 +257,12 @@ describe('AC4 — shipped-bin allowlist points at the committed dist bundles', (
 // the observed inventory into the ticket close, mirroring the §D.5 proof.
 //
 //   # AC1/AC2 — manifests validate (warnings OK, zero errors):
-//   claude plugin validate C:\Users\srpar\OneDrive\Documents\agentic-framework
+//   claude plugin validate C:\Users\srpar\OneDrive\Documents\hivemind
 //
 //   # AC2/AC3 — install from the same-repo local marketplace, list components:
-//   claude plugin marketplace add C:\Users\srpar\OneDrive\Documents\agentic-framework
-//   claude plugin install agentic-framework@agentic-framework-marketplace
-//   claude plugin details agentic-framework
+//   claude plugin marketplace add C:\Users\srpar\OneDrive\Documents\hivemind
+//   claude plugin install hivemind@hivemind-marketplace
+//   claude plugin details hivemind
 //     # EXPECT (per §D.5 inventory buckets): Agents (3) =
 //     #   developer / researcher / reviewer (orchestrator removed in TASK-032),
 //     #   and the tech-training-template skill. NOTE §D.5: commands/ files may
@@ -259,10 +270,10 @@ describe('AC4 — shipped-bin allowlist points at the committed dist bundles', (
 //     #   agents (must be 3) and confirm the skill appears; zero manifest errors.
 //
 //   # AC6 — leave NO residue in the user's plugin config:
-//   claude plugin uninstall agentic-framework
-//   claude plugin marketplace remove agentic-framework-marketplace
-//   claude plugin list           # must show no agentic-framework
-//   claude plugin marketplace list  # must show no agentic-framework-marketplace
+//   claude plugin uninstall hivemind
+//   claude plugin marketplace remove hivemind-marketplace
+//   claude plugin list           # must show no hivemind
+//   claude plugin marketplace list  # must show no hivemind-marketplace
 describe('AC1/AC2/AC3/AC6 — claude CLI load proof (MANUAL sensor)', () => {
   it.skip('validate_install_details_uninstall_is_run_by_hand_see_comment_above', () => {
     // Deliberately not automated. See the command manifesto in the comment

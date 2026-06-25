@@ -10,8 +10,8 @@
 // PINNED MECHANISM (testable, no disk I/O for the unit layer):
 //   src/claude-md.js exports
 //     • BEGIN_MARKER / END_MARKER — the EXACT delimiter lines:
-//         <!-- BEGIN agentic-framework routing -->
-//         <!-- END agentic-framework routing -->
+//         <!-- BEGIN hivemind routing -->
+//         <!-- END hivemind routing -->
 //     • mergeRoutingBlock(existingContent | null, routingBlockContent) -> string
 //         a PURE function: given the current file text (or null when absent) and
 //         the inner routing content, return the new full file text. Exactly ONE
@@ -30,8 +30,8 @@ import { describe, it, expect } from 'vitest';
 
 import { PROD } from './helpers/fixtures.js';
 
-const BEGIN = '<!-- BEGIN agentic-framework routing -->';
-const END = '<!-- END agentic-framework routing -->';
+const BEGIN = '<!-- BEGIN hivemind routing -->';
+const END = '<!-- END hivemind routing -->';
 
 // A stand-in inner routing content for the pure-function cases. The merge logic
 // must be agnostic to the exact body; routingBlockContent()'s wording is

@@ -5,7 +5,7 @@
       "id": "2026-06-16T23:08:38.712Z",
       "type": "decision",
       "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
-      "label": "BETA-TEST GOAL goal-mode-switch minted (operating-mode harness|loop, dogfood-driven via /agentic-framework-beta:loop)"
+      "label": "BETA-TEST GOAL goal-mode-switch minted (operating-mode harness|loop, dogfood-driven via /hivemind-beta:loop)"
     },
     {
       "id": "2026-06-17T03:40:00Z",
@@ -53,7 +53,7 @@
       "id": "TASK-069",
       "type": "task",
       "ref": "tasks/TASK-069.json",
-      "label": "/agentic-framework-beta:preview command + orchestrator-routing preview docs"
+      "label": "/hivemind-beta:preview command + orchestrator-routing preview docs"
     },
     {
       "id": "decision-20260612-deep-workflows",
@@ -221,13 +221,13 @@
       "id": "task-058",
       "type": "task",
       "ref": "tasks/TASK-058.json",
-      "label": "/agentic-framework:update command"
+      "label": "/hivemind:update command"
     },
     {
       "id": "task-059",
       "type": "task",
       "ref": "tasks/TASK-059.json",
-      "label": "graphify skill + /agentic-framework:graph command"
+      "label": "graphify skill + /hivemind:graph command"
     }
   ],
   "edges": [

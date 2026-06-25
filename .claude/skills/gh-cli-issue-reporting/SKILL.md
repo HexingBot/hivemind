@@ -13,7 +13,7 @@ description: >
 
 ## When to Use This Skill
 
-Use when implementing the `/agentic-framework:report-framework-bug` command or any
+Use when implementing the `/hivemind:report-framework-bug` command or any
 future feature that files GitHub issues from within a Claude Code plugin. Core topics:
 auth detection, non-interactive issue creation, secret scrubbing before upload,
 and the local-file durable fallback.

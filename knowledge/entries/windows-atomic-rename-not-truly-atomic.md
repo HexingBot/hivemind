@@ -33,7 +33,7 @@ solution: >
   what users expect.
 
 tags: [windows, atomic-write, filesystem, node]
-projects: [agentic-framework]
+projects: [hivemind]
 created_at: "2026-05-25T00:00:00Z"
 last_seen_at: "2026-05-25T00:00:00Z"
 source_urls:

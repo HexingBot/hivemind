@@ -1,12 +1,12 @@
 ---
-description: Goal-driven autonomous drive loop for the agentic framework. Use this when you want the orchestrator to self-drive the per-ticket workflow toward a stated goal (label or key set) without repeating manual step-by-step instructions. Requires explicit goal confirmation from the human before starting.
+description: Goal-driven autonomous drive loop for hivemind. Use this when you want the orchestrator to self-drive the per-ticket workflow toward a stated goal (label or key set) without repeating manual step-by-step instructions. Requires explicit goal confirmation from the human before starting.
 ---
 
-# /agentic-framework:loop
+# /hivemind:loop
 
-Run the goal-driven autonomous drive loop. The loop self-drives the framework's existing per-ticket workflow — read ticket, tier, developer, reviewer, checkpoint — toward a human-stated goal, obeying all four hard-stop gates and surfacing to the human whenever it cannot proceed unilaterally.
+Run the goal-driven autonomous drive loop. The loop self-drives the framework's existing per-ticket workflow — read ticket, tier, developer, reviewer, checkpoint — toward a human-stated goal, obeying all five hard-stop gates and surfacing to the human whenever it cannot proceed unilaterally.
 
-> **Distinction from the harness built-in `/loop`:** The built-in `/loop` is a Claude Code harness primitive that keeps a single agent turn running. `/agentic-framework:loop` is this framework's orchestrator-level control loop: it is goal-driven, ticket-driven, and namespaced to the `agentic-framework` plugin. The two operate at different abstraction levels and must not be confused.
+> **Distinction from the harness built-in `/loop`:** The built-in `/loop` is a Claude Code harness primitive that keeps a single agent turn running. `/hivemind:loop` is this framework's orchestrator-level control loop: it is goal-driven, ticket-driven, and namespaced to the `hivemind` plugin. The two operate at different abstraction levels and must not be confused.
 
 ## OPT-IN requirement
 
@@ -80,7 +80,7 @@ On exit, pause, or any unhandled error — in this order:
 
 Both steps are mandatory — a held lock blocks other sessions, and a stale `mode: 'loop'` in the bundle misleads the console.
 
-## The four hard-stop gates
+## The five hard-stop gates
 
 The loop MUST pause and surface to the human at each gate. It may only proceed autonomously if an explicit **standing-authorization switch** (see below) covers that gate.
 
@@ -114,6 +114,14 @@ Any ticket that would trigger a version bump (`package.json`, `CHANGELOG`, relea
 
 **Authorization switch:** `auto_version_bump_on_milestone` — the human pre-authorizes a specific version bump strategy (e.g. "bump patch on every milestone close").
 
+### Gate 5 — Phase / consolidation checkpoint
+
+An autonomous run must never barrel past a consolidation boundary. After every `consolidateEvery` tickets completed this run (default 5), call `consolidationGate({ completedThisRun, consolidateEvery, autoConsolidate })` from `src/drive-loop.js`; on `stop: true`, pause so the human can consolidate the batch (review what shipped, update the knowledge base / brain graph) before the next phase.
+
+**Authorization switch:** `auto_consolidate` — the human pre-authorizes skipping the consolidation pause.
+
+> Research tickets run their inner round loop via `loopUntilDry({ runRound, maxDryRounds, maxRounds })` — keep searching until K consecutive rounds find nothing new, then stop. The outer drive-loop wraps this.
+
 ## Standing-authorization switches
 
 Authorization switches are recorded in the session bundle under `loop_auth` (an object). Absent fields default to `false` (most conservative — all gates ON).
@@ -124,7 +132,8 @@ Authorization switches are recorded in the session bundle under `loop_auth` (an 
     "auto_close_on_green_review": false,
     "auto_push_after_close": false,
     "uat_delegated_to_orchestrator": false,
-    "auto_version_bump_on_milestone": false
+    "auto_version_bump_on_milestone": false,
+    "auto_consolidate": false
   }
 }
 ```

@@ -128,7 +128,7 @@ export async function listSkills({ repoRoot } = {}) {
 
       const id = basename(filename, '.md');
       const description = fm.description || `Run /${id}`;
-      const invocation = `/agentic-framework:${id}`;
+      const invocation = `/hivemind:${id}`;
       const label = deriveLabel(id);
 
       commandSkills.push({ id, label, description, invocation });

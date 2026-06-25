@@ -88,13 +88,13 @@ describe('TASK-053 — command with panel_safe: true appears in catalog', () => 
     // Opt-in command: has panel_safe: true
     writeFileSync(
       join(commandsDir, 'safe-cmd.md'),
-      '---\ndescription: A safe panel command\npanel_safe: true\n---\n\n# /agentic-framework:safe-cmd\n',
+      '---\ndescription: A safe panel command\npanel_safe: true\n---\n\n# /hivemind:safe-cmd\n',
       'utf8',
     );
     // Non-opt-in command: no panel_safe → must be excluded
     writeFileSync(
       join(commandsDir, 'unsafe-cmd.md'),
-      '---\ndescription: Not panel safe\n---\n\n# /agentic-framework:unsafe-cmd\n',
+      '---\ndescription: Not panel safe\n---\n\n# /hivemind:unsafe-cmd\n',
       'utf8',
     );
   });
@@ -108,7 +108,7 @@ describe('TASK-053 — command with panel_safe: true appears in catalog', () => 
     const entry = skills.find((s) => s.id === 'safe-cmd');
     expect(entry, 'safe-cmd must appear (panel_safe: true)').toBeTruthy();
     expect(entry.description).toBe('A safe panel command');
-    expect(entry.invocation).toBe('/agentic-framework:safe-cmd');
+    expect(entry.invocation).toBe('/hivemind:safe-cmd');
     expect(entry.label).toBe('Safe Cmd');
   });
 
@@ -185,8 +185,8 @@ describe('TASK-053 — de-dup: curated id wins over commands/-derived id', () =>
     const skills = await listSkills({ repoRoot: tmpDir });
     const helpEntry = skills.find((s) => s.id === 'help');
     // The curated invocation is a plain-English prompt; the command's would be
-    // /agentic-framework:help. Curated wins → invocation must NOT be /agentic-framework:help.
-    expect(helpEntry.invocation).not.toBe('/agentic-framework:help');
+    // /hivemind:help. Curated wins → invocation must NOT be /hivemind:help.
+    expect(helpEntry.invocation).not.toBe('/hivemind:help');
   });
 });
 

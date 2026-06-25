@@ -70,7 +70,7 @@ import { atomicWriteFile } from './atomic-write.js';
 // ---------------------------------------------------------------------------
 export const GRAPH_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://agentic-framework/knowledge/graph/schema.json',
+  $id: 'https://hivemind/knowledge/graph/schema.json',
   title: 'Knowledge Graph',
   description: 'Typed graph over knowledge entries, tasks, decisions and skills under knowledge/graph/graph.json.',
   type: 'object',

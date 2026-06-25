@@ -1,10 +1,10 @@
 ---
-description: Start the Agentic OS web console focused on the Preview panel, where you can start/stop/restart your app and view its live output (iframe for web apps, log stream for process mode). Use this when you want to launch or inspect the app preview without navigating through the full console.
+description: Start the Hivemind OS web console focused on the Preview panel, where you can start/stop/restart your app and view its live output (iframe for web apps, log stream for process mode). Use this when you want to launch or inspect the app preview without navigating through the full console.
 ---
 
-# /agentic-framework:preview
+# /hivemind:preview
 
-Start the Agentic OS web console with the Preview panel already selected. The console server is the same self-contained bundle used by `/agentic-framework:console`; this command simply deep-links the browser to the Preview tab.
+Start the Hivemind OS web console with the Preview panel already selected. The console server is the same self-contained bundle used by `/hivemind:console`; this command simply deep-links the browser to the Preview tab.
 
 ## Step 1 — Launch the console server in the background
 
@@ -24,7 +24,7 @@ Task board: http://127.0.0.1:4517
 
 Tell the human the console is running and give them the deep-link URL that opens directly on the Preview panel:
 
-> The Agentic OS console is running. Open **http://127.0.0.1:4517/?tab=preview** in your browser to go straight to the Preview panel. From there you can Start / Stop / Restart your app and watch the log or iframe live. Tell me when you are done and I will stop the server.
+> The Hivemind OS console is running. Open **http://127.0.0.1:4517/?tab=preview** in your browser to go straight to the Preview panel. From there you can Start / Stop / Restart your app and watch the log or iframe live. Tell me when you are done and I will stop the server.
 
 The `?tab=preview` query parameter is honoured on page load — the Preview tab is selected automatically, with no extra click required.
 
@@ -53,7 +53,7 @@ If none of these fields are present the resolver falls back to your `package.jso
 
 ## Notes
 
-- The server is identical to the one started by `/agentic-framework:console` — if that server is already running, just open **http://127.0.0.1:4517/?tab=preview** directly without restarting.
+- The server is identical to the one started by `/hivemind:console` — if that server is already running, just open **http://127.0.0.1:4517/?tab=preview** directly without restarting.
 - Both `?tab=preview` (query parameter) and `#preview` (hash) are honoured as deep-link forms.
 - **Trust model** — the console is local-only (`127.0.0.1`), single-user, and protected by a Host-header allowlist. It is not exposed to the network.
 - To stop the server: kill the background shell that launched it (e.g. via the KillShell tool or by terminating the background task).

@@ -8466,7 +8466,7 @@ var import_node_path5 = require("node:path");
 // state/PROJECT.schema.json
 var PROJECT_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "https://agentic-framework.local/state/PROJECT.schema.json",
+  $id: "https://hivemind.local/state/PROJECT.schema.json",
   title: "PROJECT.md frontmatter",
   description: "Machine-readable subset of the project-intake answers persisted in PROJECT.md frontmatter. The body of PROJECT.md is human prose and intentionally out of scope of this schema.",
   type: "object",
@@ -9112,7 +9112,7 @@ var import_ajv_formats = __toESM(require_dist(), 1);
 // tasks/schema.json
 var schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "https://agentic-framework.local/tasks/schema.json",
+  $id: "https://hivemind.local/tasks/schema.json",
   title: "Task",
   description: "A single unit of work for the agentic team. Field names mirror Jira issue fields so the same task can later be created in Jira without lossy translation.",
   type: "object",
@@ -9144,6 +9144,27 @@ var schema_default = {
       type: "string",
       enum: ["tdd", "tests-after", "uat-only"],
       description: "Governs how the ticket is verified. Absent means tdd (backward-compatible default). tdd = tests-first; tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT."
+    },
+    marker: {
+      type: "string",
+      enum: ["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"],
+      description: "Epistemic calibration of the ticket's load-bearing claims (Spine). Optional; ACs may also carry inline markers, which the reviewer validates. Must respect source_tier's ceiling (T3/T4 cannot be [EXPLICIT])."
+    },
+    source_tier: {
+      type: "string",
+      enum: ["T1", "T2", "T3", "T4", "TX"],
+      description: "Authority of the evidence behind the ticket's claims. Caps how strong marker may be: [EXPLICIT] requires T1/T2; T4 is orientation-only; TX is rejected. See .knowledge/meta/SOURCE_TIERS.md."
+    },
+    confidence: {
+      type: "object",
+      additionalProperties: false,
+      description: "Decomposed confidence (components, NOT a scalar), populated from the brain's confidence model. Each component is in [0,1].",
+      properties: {
+        source_credibility: { type: "number", minimum: 0, maximum: 1 },
+        assertion_strength: { type: "number", minimum: 0, maximum: 1 },
+        corroboration: { type: "number", minimum: 0, maximum: 1 },
+        verification_status: { type: "number", minimum: 0, maximum: 1 }
+      }
     },
     status: {
       type: "string",
@@ -9315,6 +9336,9 @@ async function createTask({
   labels = [],
   depends_on = [],
   verification_tier,
+  marker,
+  source_tier,
+  confidence,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
   if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
@@ -9350,7 +9374,12 @@ async function createTask({
     created_at: stamp,
     updated_at: stamp,
     jira_key: null,
-    ...verification_tier !== void 0 ? { verification_tier } : {}
+    ...verification_tier !== void 0 ? { verification_tier } : {},
+    // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
+    // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
+    ...marker !== void 0 ? { marker } : {},
+    ...source_tier !== void 0 ? { source_tier } : {},
+    ...confidence !== void 0 ? { confidence } : {}
   };
   validateTaskOrThrow(task);
   const existing = await readAllTasks(repoRoot);
@@ -9780,11 +9809,11 @@ function resolveRepoRoot(env, cwd) {
 // src/claude-md.js
 var import_node_fs13 = require("node:fs");
 var import_node_path11 = require("node:path");
-var BEGIN_MARKER = "<!-- BEGIN agentic-framework routing -->";
-var END_MARKER = "<!-- END agentic-framework routing -->";
+var BEGIN_MARKER = "<!-- BEGIN hivemind routing -->";
+var END_MARKER = "<!-- END hivemind routing -->";
 function routingBlockContent() {
   return [
-    "## Orchestrator activation (agentic-framework)",
+    "## Orchestrator activation (hivemind)",
     "",
     "This project is operated by a multi-agent team. The main thread is the",
     "**Orchestrator**: it plans and delegates to the `researcher`, `developer`, and",
@@ -10303,7 +10332,7 @@ async function runWizardAndWriteProjectMd({
     throw err;
   }
   console.log(
-    "Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), or use the /agentic-framework:console slash command in Claude Code."
+    "Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), or use the /hivemind:console slash command in Claude Code."
   );
   try {
     writeClaudeSettings({ repoRoot });
@@ -10329,7 +10358,7 @@ async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConse
   let answer;
   try {
     answer = await prompter({
-      prompt: "Add the agentic-framework orchestrator routing block to this project's CLAUDE.md? It activates the RESUME-FIRST session contract. [y/N]",
+      prompt: "Add the hivemind orchestrator routing block to this project's CLAUDE.md? It activates the RESUME-FIRST session contract. [y/N]",
       type: "string"
     });
   } catch {

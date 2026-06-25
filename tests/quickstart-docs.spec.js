@@ -9,7 +9,7 @@
 // The TASK-015 README already documents the CLONE workflow (`git clone` +
 // `node bin/init.js`). AC2 wants the CLONE-FREE PLUGIN-INSTALL workflow:
 //   install:     `claude plugin marketplace add ...` + `... install ...`
-//   init:        `/agentic-framework:init-project`
+//   init:        `/hivemind:init-project`
 //   first chat:  start/resume work in a fresh chat.
 //
 // LIGHTLY AUTOMATABLE: we assert PRESENCE of the key steps (substrings / the
@@ -23,7 +23,7 @@
 //
 // TESTS-FIRST: FAILS NOW because no doc yet covers the plugin-INSTALL path. The
 // current README targets `node bin/init.js` (clone workflow); the
-// `claude plugin marketplace add` / `/agentic-framework:init-project` install
+// `claude plugin marketplace add` / `/hivemind:init-project` install
 // quickstart does not exist. Confirm THAT is the failure reason (the install
 // command + the slash-command name are absent), not a typo here.
 
@@ -69,8 +69,8 @@ describe('AC2 — quickstart documents the plugin-install path', () => {
     // The install step — either `plugin install` or the install verb against the
     // namespaced plugin handle.
     expect(
-      /plugin install/.test(text) || /install\s+agentic-framework@/.test(text),
-      'quickstart must document installing `agentic-framework@agentic-framework-marketplace`',
+      /plugin install/.test(text) || /install\s+hivemind@/.test(text),
+      'quickstart must document installing `hivemind@hivemind-marketplace`',
     ).toBe(true);
   });
 });
@@ -83,8 +83,8 @@ describe('AC2 — quickstart documents the /init-project bootstrap command', () 
   it('mentions_the_init_project_slash_command', () => {
     const text = allQuickstartText();
     expect(
-      text.includes('/agentic-framework:init-project'),
-      'quickstart must tell the reader to run `/agentic-framework:init-project`',
+      text.includes('/hivemind:init-project'),
+      'quickstart must tell the reader to run `/hivemind:init-project`',
     ).toBe(true);
   });
 });

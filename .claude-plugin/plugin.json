@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "agentic-framework",
-  "displayName": "Agentic Software Development Framework",
+  "name": "hivemind",
+  "displayName": "Hivemind",
   "description": "Multi-agent orchestrated dev loop: intake wizard, seeded backlog, orchestrator + developer/reviewer/researcher subagents, portable session state.",
   "author": { "name": "Rafael Matovelle" },
   "license": "MIT",

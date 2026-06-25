@@ -34,7 +34,7 @@
     {
       "author": "orchestrator",
       "at": "2026-06-17T03:40:59.436Z",
-      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tests-after with mandatory UAT (human-observable payoff: see the web app + phaser game render live). Exercises the UAT verdict gate when looped. Bundled => release-tier gate. Deps: TASK-067. To be dogfood-driven via /agentic-framework-beta:loop after context clear."
+      "body": "GOAL goal-app-preview minted (human-directed, 2026-06-17). Tier=tests-after with mandatory UAT (human-observable payoff: see the web app + phaser game render live). Exercises the UAT verdict gate when looped. Bundled => release-tier gate. Deps: TASK-067. To be dogfood-driven via /hivemind-beta:loop after context clear."
     },
     {
       "author": "uat",

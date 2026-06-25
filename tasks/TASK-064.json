@@ -8,7 +8,7 @@
     "A manual toggle control (button) in the console flips the mode: a new hardened POST route (e.g. POST /api/session/mode behind the existing Host allowlist + Content-Type/body-cap guards) calls setMode (TASK-063); the badge reflects the change live.",
     "Graceful when `mode` is absent (older bundle) — badge defaults to HARNESS, no crash.",
     "tests-after: implement, prove by running (badge renders + toggle endpoint flips mode + projection reflects it), then add minimal regression locks (route behavior + projection field + render presence). New e2e (server/route) under tests/e2e/.",
-    "UAT (human-observable, dogfood payoff): launch the console, see the mode badge; click the toggle and watch it flip; start /agentic-framework-beta:loop and watch the badge auto-flip to LOOP, then back to HARNESS when the loop halts/exits.",
+    "UAT (human-observable, dogfood payoff): launch the console, see the mode badge; click the toggle and watch it flip; start /hivemind-beta:loop and watch the badge auto-flip to LOOP, then back to HARNESS when the loop halts/exits.",
     "Rebuild dist (task-board bundle) via npm run build:plugin and commit; npm run test:all green."
   ],
   "status": "done",
@@ -43,7 +43,7 @@
     {
       "author": "orchestrator",
       "at": "2026-06-17T03:23:14.328Z",
-      "body": "CLOSED on green review + passing UAT (dogfood drive of goal-mode-switch via /agentic-framework-beta:loop). auto_close_on_green_review granted by human; UAT human-confirmed PASS (gate 2 satisfied by human verdict). Reviewer: fix re-review APPROVE (0H/0M/1L); npm run test:all 815 passed / 5 skipped at release tier. Delivered: console status-bar mode badge (HARNESS/LOOP, distinct styling, XSS-safe createElement/textContent) + manual toggle button -> hardened POST /api/session/mode (Host allowlist + CT-415 + body-413, calls toggleMode->setMode) + LIVE updates via a 4s /api/session polling interval (double-registration guarded) so out-of-band loop auto-flips surface without reload. toggleMode helper added to src/operating-mode.js (closed the TASK-063 review follow-up). Commits 9bb95e2 (impl) + 8d06a57 (dist) + 0b1888b (poll fix). Review history: APPROVE-WITH-FOLLOWUPS -> UAT step-4 FAIL -> REQUEST-CHANGES -> poll fix -> APPROVE -> UAT all PASS. NOT pushed (no auto_push switch)."
+      "body": "CLOSED on green review + passing UAT (dogfood drive of goal-mode-switch via /hivemind-beta:loop). auto_close_on_green_review granted by human; UAT human-confirmed PASS (gate 2 satisfied by human verdict). Reviewer: fix re-review APPROVE (0H/0M/1L); npm run test:all 815 passed / 5 skipped at release tier. Delivered: console status-bar mode badge (HARNESS/LOOP, distinct styling, XSS-safe createElement/textContent) + manual toggle button -> hardened POST /api/session/mode (Host allowlist + CT-415 + body-413, calls toggleMode->setMode) + LIVE updates via a 4s /api/session polling interval (double-registration guarded) so out-of-band loop auto-flips surface without reload. toggleMode helper added to src/operating-mode.js (closed the TASK-063 review follow-up). Commits 9bb95e2 (impl) + 8d06a57 (dist) + 0b1888b (poll fix). Review history: APPROVE-WITH-FOLLOWUPS -> UAT step-4 FAIL -> REQUEST-CHANGES -> poll fix -> APPROVE -> UAT all PASS. NOT pushed (no auto_push switch)."
     }
   ],
   "created_at": "2026-06-16T23:07:38.673Z",

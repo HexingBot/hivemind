@@ -13,7 +13,7 @@ NO CDN, NO Phaser SDK, NO network — fully offline.
 
 ## Start command
 
-Run from the agentic-framework repo root:
+Run from the hivemind repo root:
 
 ```
 node tests/fixtures/preview-canvas/server.js

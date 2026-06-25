@@ -8,7 +8,7 @@ symptoms:
 solution: >
   Use lowercase kebab-case for tags; no uppercase, no spaces, no underscores.
 tags: ["Bad_Tag", "Another Bad"]
-projects: [agentic-framework]
+projects: [hivemind]
 created_at: "2026-05-24T00:00:00Z"
 last_seen_at: "2026-05-24T00:00:00Z"
 ---

@@ -2,11 +2,11 @@
 description: Retrofit workflow files into an already-initialized project after a plugin update — adds any missing .claude/workflows/ files without touching PROJECT.md or existing workflows.
 ---
 
-# /agentic-framework:apply-workflows
+# /hivemind:apply-workflows
 
 Retrofit workflow files from this plugin into the current project's `.claude/workflows/` directory. Use this command after updating the plugin to pick up newly-shipped workflow scripts (such as `deep-review.js` or `deep-research.js`) in a project that was initialized with an older version.
 
-> **Distinction from init-project:** `/agentic-framework:init-project` bootstraps a fresh project (creates `PROJECT.md`, seeds the backlog, mints a session bundle); `/agentic-framework:apply-workflows` retrofits workflow files into an already-initialized project after plugin updates — it touches nothing except `.claude/workflows/`.
+> **Distinction from init-project:** `/hivemind:init-project` bootstraps a fresh project (creates `PROJECT.md`, seeds the backlog, mints a session bundle); `/hivemind:apply-workflows` retrofits workflow files into an already-initialized project after plugin updates — it touches nothing except `.claude/workflows/`.
 
 ## Step 1 — Run the bundled init entry with --apply-workflows
 

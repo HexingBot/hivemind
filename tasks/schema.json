@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-framework.local/tasks/schema.json",
+  "$id": "https://hivemind.local/tasks/schema.json",
   "title": "Task",
   "description": "A single unit of work for the agentic team. Field names mirror Jira issue fields so the same task can later be created in Jira without lossy translation.",
   "type": "object",
@@ -32,6 +32,27 @@
       "type": "string",
       "enum": ["tdd", "tests-after", "uat-only"],
       "description": "Governs how the ticket is verified. Absent means tdd (backward-compatible default). tdd = tests-first; tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT."
+    },
+    "marker": {
+      "type": "string",
+      "enum": ["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"],
+      "description": "Epistemic calibration of the ticket's load-bearing claims (Spine). Optional; ACs may also carry inline markers, which the reviewer validates. Must respect source_tier's ceiling (T3/T4 cannot be [EXPLICIT])."
+    },
+    "source_tier": {
+      "type": "string",
+      "enum": ["T1", "T2", "T3", "T4", "TX"],
+      "description": "Authority of the evidence behind the ticket's claims. Caps how strong marker may be: [EXPLICIT] requires T1/T2; T4 is orientation-only; TX is rejected. See .knowledge/meta/SOURCE_TIERS.md."
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Decomposed confidence (components, NOT a scalar), populated from the brain's confidence model. Each component is in [0,1].",
+      "properties": {
+        "source_credibility": { "type": "number", "minimum": 0, "maximum": 1 },
+        "assertion_strength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "corroboration": { "type": "number", "minimum": 0, "maximum": 1 },
+        "verification_status": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
     },
     "status": {
       "type": "string",

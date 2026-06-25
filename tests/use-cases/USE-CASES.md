@@ -1,11 +1,11 @@
 # Use-Case Suite
 
-**Project:** agentic-framework
+**Project:** hivemind
 **Generated:** 2026-06-11T00:00:00Z
 
 ## Primary Use Cases
 
-This manifest designates the primary use cases for the agentic-framework.
+This manifest designates the primary use cases for the hivemind.
 Each use case is covered by one or more existing e2e spec files listed below.
 Tickets must only modify this suite when a primary use case changes
 (new, changed, or removed use case) — never one spec per ticket.

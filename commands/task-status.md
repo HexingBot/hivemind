@@ -2,7 +2,7 @@
 description: Start a local kanban task board server and open the URL in the browser. Serves all tasks from the local task store with drag-and-drop status transitions.
 ---
 
-# /agentic-framework:task-status
+# /hivemind:task-status
 
 Start the kanban task board server for the local task store. The board renders all tasks grouped into five status columns (todo, in_progress, in_review, blocked, done). Dragging a card between columns POSTs a status transition that routes through the task store's atomic-write + index-regeneration path.
 

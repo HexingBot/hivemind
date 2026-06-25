@@ -1,5 +1,5 @@
 {
-  "name": "agentic-framework",
+  "name": "hivemind",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,11 @@
     "test:changed": "vitest run --changed --config vitest.config.all.js",
     "test:e2e": "vitest run --config vitest.config.all.js tests/e2e",
     "test:use-cases": "vitest run --config vitest.config.all.js tests/use-cases tests/use-case-policy.spec.js --passWithNoTests",
-    "build:plugin": "node scripts/build-plugin.mjs"
+    "build:plugin": "node scripts/build-plugin.mjs",
+    "check:calibration": "node bin/check-calibration.js",
+    "check:manifests": "node scripts/verify-manifests.mjs",
+    "bootstrap:brain": "node dist/brain-launch.cjs --health",
+    "e2e:brain": "bash scripts/brain-smoke.sh"
   },
   "engines": {
     "node": ">=20"

@@ -1,5 +1,5 @@
 {
-  "$id": "https://agentic-framework.local/knowledge/schema.json",
+  "$id": "https://hivemind.local/knowledge/schema.json",
   "title": "KnowledgeEntryFrontmatter",
   "description": "Machine-checkable schema for the YAML frontmatter of a knowledge/entries/<id>.md file. See schema.md for the human-readable version.",
   "type": "object",

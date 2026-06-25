@@ -1,5 +1,5 @@
 {
-  "$id": "https://agentic-framework.local/state/session.schema.json",
+  "$id": "https://hivemind.local/state/session.schema.json",
   "title": "SessionPointer",
   "description": "Pointer file. Names the currently-active session bundle under state/sessions/. Read first on every new chat. See tasks/TASK-004.research.md §B for the migration rule. The substantive per-session state lives at state/sessions/<active_session_id>/session.json.",
   "type": "object",

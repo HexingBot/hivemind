@@ -16,7 +16,7 @@ description: >
 ## When to Use This Skill
 
 Use when building or extending the context-autoflush feature shipped by the
-agentic-framework plugin (`context-monitor/` scripts), or any feature that reads
+hivemind plugin (`context-monitor/` scripts), or any feature that reads
 live context-window usage, detects a threshold, or orchestrates a
 snapshot-clear-resume cycle inside Claude Code.
 

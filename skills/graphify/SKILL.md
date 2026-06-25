@@ -1,6 +1,6 @@
 ---
 name: graphify
-description: How to build, query, and inspect the project knowledge graph stored under knowledge/graph/graph.json using src/knowledge-graph.js. Load this skill when the user or orchestrator wants to add nodes or edges to the graph, query neighbors or type-filtered nodes, inspect the current graph state, or open the /graph visualization in the board. Triggers on knowledge/graph/, addNode, addEdge, neighbors, nodesByType, loadGraph, or /agentic-framework:graph.
+description: How to build, query, and inspect the project knowledge graph stored under knowledge/graph/graph.json using src/knowledge-graph.js. Load this skill when the user or orchestrator wants to add nodes or edges to the graph, query neighbors or type-filtered nodes, inspect the current graph state, or open the /graph visualization in the board. Triggers on knowledge/graph/, addNode, addEdge, neighbors, nodesByType, loadGraph, or /hivemind:graph.
 ---
 
 # Graphify — Project Knowledge Graph Skill
@@ -57,6 +57,22 @@ Each edge has three required fields: `from`, `to`, `relation`.
 | `uses`        | X uses/depends on skill or knowledge entry Y         |
 | `produced-by` | Knowledge entry X was produced by task Y             |
 | `relates-to`  | Generic bidirectional association                    |
+
+## Canonical graph (the brain) — this local graph is a PROJECTION
+
+`knowledge/graph/graph.json` is a read-through **projection/cache**. The source of truth is the
+wisearcher **brain** graph (Neo4j+Qdrant), written over MCP. Keep them in sync by doing node
+writes through `src/graph-sync.js` rather than calling `addNode` directly:
+
+- **`recordNode({ brain, repoRoot, node, topic })`** — writes the local projection AND mirrors the
+  node to the canonical graph via `kb_assert` (best-effort; queued when the brain is offline, never
+  lost). `task`/`decision`/`skill` map to `[EXPLICIT]`/T2 canonical entities, `knowledge_entry` to
+  `[INFERRED:strong]`; `node.ref` becomes the claim's provenance.
+- **`neighborsCanonicalFirst({ brain, repoRoot, id, canonicalId })`** — reads the canonical graph
+  when the brain is up, else falls back to this local projection.
+
+When no brain is wired (the graceful-fallback case) `recordNode` still writes the local graph, so
+the API below remains the offline source of truth. Bring the brain up with `/hivemind:brain`.
 
 ## Public API — `src/knowledge-graph.js`
 
@@ -222,7 +238,7 @@ console.log(JSON.stringify(graph, null, 2));
 
 ## Visualization
 
-Run the `/agentic-framework:graph` slash command to launch the board server and
+Run the `/hivemind:graph` slash command to launch the board server and
 open the graph view at `http://127.0.0.1:4517/graph`. The page renders all nodes
 and edges as an interactive force-directed diagram. The same data is available
 as JSON at `http://127.0.0.1:4517/api/graph`.

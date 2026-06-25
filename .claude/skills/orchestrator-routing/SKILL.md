@@ -1,16 +1,16 @@
 ---
 name: orchestrator-routing
-description: Always load at the start of every orchestrator chat in an agentic-framework project. Carries the non-negotiable RESUME-FIRST session-resume contract, the first-chat init routing rule, and the full operational manual for the Orchestrator role (delegation protocol, developer spawn modes, reviewer isolation, UAT procedure, ticket-update protocol, tier rubric).
+description: Always load at the start of every orchestrator chat in an hivemind project. Carries the non-negotiable RESUME-FIRST session-resume contract, the first-chat init routing rule, and the full operational manual for the Orchestrator role (delegation protocol, developer spawn modes, reviewer isolation, UAT procedure, ticket-update protocol, tier rubric).
 ---
 
-# Orchestrator Routing (agentic-framework backstop)
+# Orchestrator Routing (hivemind backstop)
 
 This skill is the always-on safety net for the **Orchestrator**. The Orchestrator IS the main
 session thread (not a subagent) — it plans and delegates, while `developer`, `reviewer`, and
 `researcher` are the spawned subagents. A plugin-root `CLAUDE.md` is not loaded as orchestrator
 context, and `/init-project` may not have run yet, so without this skill the RESUME-FIRST
 contract could be invisible in a fresh chat. Whenever you are operating as the orchestrator of an
-agentic-framework project, follow the sequence below before doing anything else.
+hivemind project, follow the sequence below before doing anything else.
 
 ## RESUME-FIRST (do this before anything else in every new chat)
 
@@ -194,7 +194,7 @@ behavior.
 
 ## Autonomous loop
 
-The `/agentic-framework:loop` command runs a goal-driven drive loop that
+The `/hivemind:loop` command runs a goal-driven drive loop that
 self-drives the per-ticket workflow toward a stated goal (label or explicit key
 set). Full protocol is in `commands/loop.md`; the durable contract lives here.
 
@@ -219,7 +219,7 @@ The session bundle carries a `mode` field (`'harness'` | `'loop'`, default
   ensures the mode is reset even if an unhandled error cut the loop short.
 
 The mode can also be set manually outside the loop via
-`/agentic-framework:mode` (see `commands/mode.md`) — useful for crash
+`/hivemind:mode` (see `commands/mode.md`) — useful for crash
 recovery if the loop exited without resetting the mode.
 
 `setMode` is idempotent and validates the value against the `OPERATING_MODES`
@@ -287,7 +287,7 @@ log the blocking conditions, surface a summary, and stop — do not spin.
 
 ## App-preview panel (TASK-069)
 
-The console (`/agentic-framework:preview` or `?tab=preview` on the board URL)
+The console (`/hivemind:preview` or `?tab=preview` on the board URL)
 includes a Preview panel that starts, stops, and restarts the project's dev server
 and shows its output in real time.
 
@@ -364,7 +364,7 @@ panel on page load — no manual click required:
 http://127.0.0.1:4517/?tab=preview
 ```
 
-The `/agentic-framework:preview` command uses this seam (see
+The `/hivemind:preview` command uses this seam (see
 `commands/preview.md`).
 
 ## Guardrails

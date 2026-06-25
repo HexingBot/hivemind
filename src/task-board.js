@@ -213,7 +213,7 @@ function buildHtmlTemplate() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agentic OS</title>
+<title>Hivemind OS</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1227,8 +1227,8 @@ function buildHtmlTemplate() {
   Header bar
   ======================================================================== -->
 <header class="app-header">
-  <h1>Agentic OS</h1>
-  <span class="tagline">agentic software development framework</span>
+  <h1>Hivemind OS</h1>
+  <span class="tagline">hivemind · agentic development framework</span>
   <div id="session-status-bar" aria-label="Session status"></div>
   <span id="mode-badge" class="mode-badge harness" aria-label="Operating mode">HARNESS</span>
   <button id="mode-toggle-btn" aria-label="Toggle operating mode">flip</button>
@@ -2002,7 +2002,7 @@ preview_port: 3000</pre>
 
   // ---------------------------------------------------------------------------
   // Deep-link: ?tab=preview (or #preview) pre-selects the Preview tab on load.
-  // TASK-069: /agentic-framework:preview command uses this seam.
+  // TASK-069: /hivemind:preview command uses this seam.
   // ---------------------------------------------------------------------------
   (function () {
     var params = new URLSearchParams(window.location.search);

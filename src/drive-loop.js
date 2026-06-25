@@ -3,7 +3,7 @@
 //
 // DESIGN: All functions are PURE — they operate on plain task objects passed in
 // as arguments and never perform I/O, spawn processes, or call Date.now(). The
-// drive loop orchestrator (implemented in the /agentic-framework:loop command)
+// drive loop orchestrator (implemented in the /hivemind:loop command)
 // handles all I/O and agentic dispatch; these helpers encode only the non-agentic
 // decision logic.
 //
@@ -178,4 +178,54 @@ export function shouldStop({
     };
   }
   return { stop: false, reason: '' };
+}
+
+/**
+ * Phase/consolidation hard-stop (Phase 6). An autonomous run must never barrel past a
+ * consolidation checkpoint: every `consolidateEvery` completed tickets the loop pauses so the
+ * human can consolidate (review the batch, update the knowledge base) before the next phase.
+ * Conservative by default — lifted only when the human has granted `autoConsolidate`, mirroring
+ * the loop_auth gates. Returns { stop, reason }; reason is the empty string when not stopping.
+ *
+ * @param {{ completedThisRun: number, consolidateEvery?: number, autoConsolidate?: boolean }} opts
+ * @returns {{ stop: boolean, reason: string }}
+ */
+export function consolidationGate({
+  completedThisRun,
+  consolidateEvery = 5,
+  autoConsolidate = false,
+}) {
+  if (autoConsolidate) return { stop: false, reason: '' };
+  if (consolidateEvery > 0 && completedThisRun > 0 && completedThisRun % consolidateEvery === 0) {
+    return {
+      stop: true,
+      reason: `Consolidation checkpoint: ${completedThisRun} tickets completed this run (every ${consolidateEvery}). Pausing for human consolidation — review the batch and update the knowledge base, then resume. Grant auto_consolidate to lift this gate.`,
+    };
+  }
+  return { stop: false, reason: '' };
+}
+
+/**
+ * Loop-until-dry (Phase 6): run research rounds until `maxDryRounds` CONSECUTIVE rounds find
+ * nothing new, bounded by `maxRounds`. This is the inner research loop the outer drive-loop wraps
+ * — a simple round counter misses the tail; dry-streak counting is what makes research "deep".
+ * `runRound(roundIndex)` returns the count of new facts admitted that round.
+ *
+ * @param {{ runRound: (i: number) => Promise<number>, maxDryRounds?: number, maxRounds?: number }} opts
+ * @returns {Promise<{ rounds: number, dryStreak: number, totalNew: number, reason: string }>}
+ */
+export async function loopUntilDry({ runRound, maxDryRounds = 2, maxRounds = 10 }) {
+  let rounds = 0;
+  let dryStreak = 0;
+  let totalNew = 0;
+  while (rounds < maxRounds && dryStreak < maxDryRounds) {
+    const newFacts = await runRound(rounds);
+    rounds += 1;
+    totalNew += newFacts;
+    dryStreak = newFacts > 0 ? 0 : dryStreak + 1;
+  }
+  const reason = dryStreak >= maxDryRounds
+    ? `dry: ${maxDryRounds} consecutive round(s) found nothing new`
+    : `round cap reached (${rounds}/${maxRounds})`;
+  return { rounds, dryStreak, totalNew, reason };
 }

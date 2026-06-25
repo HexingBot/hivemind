@@ -1,4 +1,4 @@
-# Agentic Software Development Framework
+# Hivemind
 
 A multi-agent software development team that lives inside your repository. You
 clone it, answer a short intake, and from then on you describe what you want
@@ -56,17 +56,17 @@ repository's web address (e.g.
 claude plugin marketplace add <this-repo-url>
 
 # 2. Install the team — orchestrator + helpers, available in every chat
-claude plugin install agentic-framework@agentic-framework-marketplace
+claude plugin install hivemind@hivemind-marketplace
 
 # 3. Confirm it registered (command, skills, agents, MCP server)
-claude plugin details agentic-framework
+claude plugin details hivemind
 ```
 
 Then go to the folder where you want to build something (an empty folder is
 perfect), start Claude Code there, and run the bootstrap command in the chat:
 
 ```text
-/agentic-framework:init-project
+/hivemind:init-project
 ```
 
 It asks a few questions — name, kind of project, who it is for, the main things
@@ -86,7 +86,7 @@ It proposes a ticket and — once you confirm — runs the full workflow: resear
 tests or validation per the tiered policy, implementation, review, then closing
 the ticket. Every later chat works the same way. To update or remove the plugin later, use
 `claude plugin update`, `claude plugin uninstall`, or `claude plugin marketplace
-remove agentic-framework-marketplace`.
+remove hivemind-marketplace`.
 
 ---
 
@@ -133,7 +133,7 @@ scratch, and `node bin/init.js --no-archive` skips the history-archive question
 
 ## What the wizard produces
 
-Whether you ran `/agentic-framework:init-project` or `node bin/init.js`, the
+Whether you ran `/hivemind:init-project` or `node bin/init.js`, the
 wizard writes the same things into your project:
 
 1. **`PROJECT.md`** — a short summary of the project (name, type, use cases,
@@ -183,7 +183,7 @@ Whoever clones the result must run `npm install` once before `node bin/init.js`
 — the intake wizard depends on packages (such as the JSON schema validator) not
 vendored into the repository.
 
-The framework also ships a **web console** — a browser tab with chat, skill buttons, kanban board, and a new-ticket form, no commands to type. Windows: double-click `console.cmd`. macOS/Linux: `sh console.sh`. From Claude Code: `/agentic-framework:console`. No new API key or bill — it reuses your Claude login (chat draws from your plan's Agent-SDK credit allowance, not a new purchase). Local-only (`127.0.0.1`); skill buttons run immediately, so only use it on a machine you trust.
+The framework also ships a **web console** — a browser tab with chat, skill buttons, kanban board, and a new-ticket form, no commands to type. Windows: double-click `console.cmd`. macOS/Linux: `sh console.sh`. From Claude Code: `/hivemind:console`. No new API key or bill — it reuses your Claude login (chat draws from your plan's Agent-SDK credit allowance, not a new purchase). Local-only (`127.0.0.1`); skill buttons run immediately, so only use it on a machine you trust.
 
 ---
 

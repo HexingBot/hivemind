@@ -53,6 +53,6 @@
     ]
   },
   "env": {
-    "CLAUDE_PROJECT_NAME": "agentic-framework"
+    "CLAUDE_PROJECT_NAME": "hivemind"
   }
 }

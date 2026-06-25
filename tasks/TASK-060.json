@@ -1,11 +1,11 @@
 {
   "key": "TASK-060",
-  "title": "Beta channel scaffold — agentic-framework-beta plugin identity",
+  "title": "Beta channel scaffold — hivemind-beta plugin identity",
   "description": "Stand up the side-by-side BETA plugin on the `beta` branch so users can install it alongside stable v0.6.0 and try experimental loop-engineering features with zero risk to their stable install. Claude Code namespaces commands/skills by plugin NAME, so the beta needs a distinct plugin identity. This ticket ONLY does the identity/packaging scaffold (no loop features yet — those are TASK-061/062). Scope is the `beta` branch; `main` stays untouched.",
   "acceptance_criteria": [
-    ".claude-plugin/plugin.json on beta: name = 'agentic-framework-beta', version = '0.7.0-beta.1' (prerelease). mcpServers ref unchanged.",
-    "publish-config.spec.js (and any other name/version pin) updated for the beta: EXPECTED_PLUGIN_NAME = 'agentic-framework-beta', EXPECTED_VERSION = '0.7.0-beta.1'; SEMVER_RE relaxed to accept an optional prerelease suffix (e.g. /^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$/) so the prerelease version validates. EXPECTED_MARKETPLACE_NAME stays 'agentic-framework-marketplace'.",
-    ".claude-plugin/marketplace.json on beta lists the agentic-framework-beta plugin (source './') so `claude plugin validate .` passes ON the beta branch. (The opt-in entry on MAIN's marketplace that points at ref:beta is a separate main-branch change, NOT part of this beta-branch ticket.)",
+    ".claude-plugin/plugin.json on beta: name = 'hivemind-beta', version = '0.7.0-beta.1' (prerelease). mcpServers ref unchanged.",
+    "publish-config.spec.js (and any other name/version pin) updated for the beta: EXPECTED_PLUGIN_NAME = 'hivemind-beta', EXPECTED_VERSION = '0.7.0-beta.1'; SEMVER_RE relaxed to accept an optional prerelease suffix (e.g. /^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$/) so the prerelease version validates. EXPECTED_MARKETPLACE_NAME stays 'hivemind-marketplace'.",
+    ".claude-plugin/marketplace.json on beta lists the hivemind-beta plugin (source './') so `claude plugin validate .` passes ON the beta branch. (The opt-in entry on MAIN's marketplace that points at ref:beta is a separate main-branch change, NOT part of this beta-branch ticket.)",
     "Any plugin-scaffold/parity test that hard-codes the plugin name is updated minimally for the beta identity; the full suite passes on beta (npm run test:all — this touches packaging/config + test constants, so the release-tier gate applies).",
     "`claude plugin validate .` PASSES on the beta branch.",
     "dist/ is rebuilt if any bundled source changed (likely none here, but run npm run build:plugin if plugin name leaks into a bundle) and committed; dist-parity green."
@@ -32,7 +32,7 @@
     {
       "author": "orchestrator",
       "at": "2026-06-16T22:27:00.123Z",
-      "body": "CLOSED APPROVE-WITH-FOLLOWUPS. Beta plugin identity scaffold on the `beta` branch: plugin.json name=agentic-framework-beta, version=0.7.0-beta.1; marketplace.json entry renamed (marketplace name + source ./ unchanged); publish-config/plugin-scaffold/console-launch identity pins updated, SEMVER_RE relaxed to accept the prerelease suffix (still rejects garbage — reviewer confirmed). Distinct plugin name = no command-namespace collision when installed alongside stable agentic-framework. Reviewer: APPROVE-w-followups (0H/0M/1L). The LOW (stale header comment in plugin-scaffold.spec.js) fixed in-band. claude plugin validate PASS; npm run test:all 749 passed/5 skipped. No shared/cross-branch artifact touched — stable main identity unaffected. linked_commits: e674ee1 (scaffold), + the in-band comment fix. NOTE: the live install-alongside-stable UAT is deferred to the end-of-epic test (needs the main-side opt-in marketplace entry + a real `claude plugin install`)."
+      "body": "CLOSED APPROVE-WITH-FOLLOWUPS. Beta plugin identity scaffold on the `beta` branch: plugin.json name=hivemind-beta, version=0.7.0-beta.1; marketplace.json entry renamed (marketplace name + source ./ unchanged); publish-config/plugin-scaffold/console-launch identity pins updated, SEMVER_RE relaxed to accept the prerelease suffix (still rejects garbage — reviewer confirmed). Distinct plugin name = no command-namespace collision when installed alongside stable hivemind. Reviewer: APPROVE-w-followups (0H/0M/1L). The LOW (stale header comment in plugin-scaffold.spec.js) fixed in-band. claude plugin validate PASS; npm run test:all 749 passed/5 skipped. No shared/cross-branch artifact touched — stable main identity unaffected. linked_commits: e674ee1 (scaffold), + the in-band comment fix. NOTE: the live install-alongside-stable UAT is deferred to the end-of-epic test (needs the main-side opt-in marketplace entry + a real `claude plugin install`)."
     }
   ],
   "created_at": "2026-06-16T22:18:31.724Z",

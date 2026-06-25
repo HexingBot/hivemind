@@ -1,5 +1,5 @@
 // tests/init-command.spec.js
-// TASK-024 — Plugin chain P4: the /agentic-framework:init-project bootstrap
+// TASK-024 — Plugin chain P4: the /hivemind:init-project bootstrap
 // slash command + the non-interactive answers path that makes it work.
 //
 // Authoritative design: tasks/TASK-020.research.md §C (orchestrator activation)
@@ -88,7 +88,7 @@ describe('AC2 — commands/init-project.md exists and registers the command', ()
   it('command_file_exists', () => {
     expect(
       existsSync(COMMAND_FILE),
-      'commands/init-project.md must exist (the /agentic-framework:init-project entrypoint)',
+      'commands/init-project.md must exist (the /hivemind:init-project entrypoint)',
     ).toBe(true);
   });
 
@@ -267,20 +267,20 @@ describe('AC3 — re-run is idempotent (no clobber)', () => {
 // and a live `/command` invocation is not vitest-automatable. The impl phase /
 // reviewer runs the sequence below by hand and pastes the observed inventory.
 //
-//   claude plugin marketplace add C:\Users\srpar\OneDrive\Documents\agentic-framework
-//   claude plugin install agentic-framework@agentic-framework-marketplace
-//   claude plugin details agentic-framework
+//   claude plugin marketplace add C:\Users\srpar\OneDrive\Documents\hivemind
+//   claude plugin install hivemind@hivemind-marketplace
+//   claude plugin details hivemind
 //     # EXPECT: an init-project entry appears (per §D.5 it may surface under the
 //     #         "Skills" bucket rather than a separate "Commands" bucket — that
 //     #         is the documented cosmetic nuance; what matters is it registers).
-//   # then, inside `claude`, run:  /agentic-framework:init-project
+//   # then, inside `claude`, run:  /hivemind:init-project
 //     # EXPECT: Claude asks the intake questions, writes an answers JSON, and
 //     #         runs node ${CLAUDE_PLUGIN_ROOT}/dist/init.cjs --answers-file <tmp>
 //     #         against ${CLAUDE_PROJECT_DIR}; PROJECT.md + project-context.md +
 //     #         seeded backlog + session bundle appear in the PROJECT dir, and
 //     #         the plugin cache dir is NOT mutated.
-//   claude plugin uninstall agentic-framework
-//   claude plugin marketplace remove agentic-framework-marketplace
+//   claude plugin uninstall hivemind
+//   claude plugin marketplace remove hivemind-marketplace
 describe('AC1/AC2 — claude CLI command registration (MANUAL sensor)', () => {
   it.skip('init_project_registers_and_runs_see_comment_above', () => {
     // Deliberately not automated — see the command manifesto above. The reviewer

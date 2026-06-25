@@ -10,7 +10,7 @@ Minimal web app fixture for TASK-068 UAT.
 
 ## Start command
 
-Run from the agentic-framework repo root:
+Run from the hivemind repo root:
 
 ```
 node tests/fixtures/preview-web/server.js

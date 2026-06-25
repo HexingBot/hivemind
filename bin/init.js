@@ -636,7 +636,7 @@ async function runWizardAndWriteProjectMd({
   // eslint-disable-next-line no-console
   console.log(
     'Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), ' +
-    'or use the /agentic-framework:console slash command in Claude Code.',
+    'or use the /hivemind:console slash command in Claude Code.',
   );
 
   // TASK-008 — write/merge .claude/settings.json with context-monitor hooks
@@ -703,7 +703,7 @@ async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConse
   try {
     answer = await prompter({
       prompt:
-        'Add the agentic-framework orchestrator routing block to this project\'s ' +
+        'Add the hivemind orchestrator routing block to this project\'s ' +
         'CLAUDE.md? It activates the RESUME-FIRST session contract. [y/N]',
       type: 'string',
     });
