@@ -14,7 +14,8 @@
     "build:plugin": "node scripts/build-plugin.mjs",
     "check:calibration": "node bin/check-calibration.js",
     "check:manifests": "node scripts/verify-manifests.mjs",
-    "bootstrap:brain": "node dist/brain-launch.cjs --health"
+    "bootstrap:brain": "node dist/brain-launch.cjs --health",
+    "e2e:brain": "bash scripts/brain-smoke.sh"
   },
   "engines": {
     "node": ">=20"
