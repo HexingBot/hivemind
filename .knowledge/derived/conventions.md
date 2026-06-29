@@ -36,17 +36,17 @@ hivemind with the Spine** (Phase 4). [INFERRED:strong]
 2. **Generated projects' observability** — governed by the same `OBSERVABILITY.md`, **injected into
    the developer + reviewer prompts and manifests** (BLOCK_TASKS ACs name the span); the config
    lives in the **generated project**, not in hivemind. Phase 4. [INFERRED:strong]
-3. **The Brain (wisearcher)** — owns its own observability: `wisearcher/obs.py` uses `structlog`
+3. **The Brain (wisearch)** — owns its own observability: `wisearch/obs.py` uses `structlog`
    JSON + metric-as-event helpers (`counter/histogram/gauge`); OTel **tracing is deliberately
    deferred** there ("not required at current scale"). [INFERRED:strong] (signal:
-   `wisearcher/wisearcher/obs.py:9`) hivemind consumes its structured logs over the seam; it does
+   `wisearch/wisearch/obs.py:9`) hivemind consumes its structured logs over the seam; it does
    **not** impose OTel tracing on the brain.
 
 **Metrics** hivemind emits: tickets-by-tier, brain-hit vs fallback, gate blocks (assumption
 laundering), research rounds-until-dry. [INFERRED:weak]
 **Deployment**: no SigNoz / OTel collector is in any `docker-compose` yet (greenfield); when added,
 extend the brain stack's compose file (Phase 6 packaging). [INFERRED:strong] (signal:
-`wisearcher/docker-compose.yml` has only qdrant + neo4j)
+`wisearch/docker-compose.yml` has only qdrant + neo4j)
 
 ## Patterns
 - **Marker discipline**: every claim carries a calibrated marker; markers must survive downstream
@@ -67,7 +67,7 @@ extend the brain stack's compose file (Phase 6 packaging). [INFERRED:strong] (si
 ## Decisions
 - **Subscription CLI auth, never API keys**: spawn `claude -p` with `ANTHROPIC_API_KEY` stripped. [INFERRED:strong]
 - **Vendored Spine, called Brain**: Spine code in-tree; Brain only over MCP. [INFERRED:strong]
-- **Canonical graph over local cache**: write nodes to wisearcher's graph; `knowledge-graph.js` is
+- **Canonical graph over local cache**: write nodes to wisearch's graph; `knowledge-graph.js` is
   a projection. [INFERRED:strong]
 - **Import, don't vendor, proposal KBs**: see [[proposal-import]]. [INFERRED:strong]
 

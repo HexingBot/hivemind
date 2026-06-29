@@ -68,7 +68,7 @@ export async function buildTo(outDir) {
     { entry: join(REPO_ROOT, 'bin', 'task-board.js'), outfile: join(outDir, 'task-board.cjs') },
     // TASK-010 — framework bug reporter CLI.
     { entry: join(REPO_ROOT, 'bin', 'report-framework-bug.js'), outfile: join(outDir, 'report-framework-bug.cjs') },
-    // Phase 6 — the brain launcher (zero-dep): brings up the wisearcher stack + execs its MCP.
+    // Phase 6 — the brain launcher (zero-dep): brings up the wisearch stack + execs its MCP.
     // Shipped so an installed plugin can bootstrap the brain without a build step.
     { entry: join(REPO_ROOT, 'bin', 'brain-launch.js'), outfile: join(outDir, 'brain-launch.cjs') },
   ];

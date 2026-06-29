@@ -1,9 +1,9 @@
-// brain-client — hivemind's seam to the wisearcher MCP "brain". Every call is wrapped so a
+// brain-client — hivemind's seam to the wisearch MCP "brain". Every call is wrapped so a
 // brain error/absence degrades GRACEFULLY to the local grep KB (src/knowledge.js): reads fall
 // back to lookupKnowledge; writes (assert) queue and no-op. The degradation is logged ONCE at
 // warn and surfaced as events, never silent. See .knowledge/derived/brain-contract.md.
 //
-// The wisearcher MCP server has NO internal fallback (Voyage/Neo4j/Qdrant are hard deps that
+// The wisearch MCP server has NO internal fallback (Voyage/Neo4j/Qdrant are hard deps that
 // raise) — so the fallback lives here, at the client boundary. The transport/client is
 // injectable so the logic is unit-testable without a running brain.
 
@@ -61,7 +61,7 @@ export function createBrainClient({
   }
 
   // Call a brain tool; throw on transport error or tool-reported error. Parses the first
-  // TextContent block as JSON (the wisearcher server returns json.dumps(result)).
+  // TextContent block as JSON (the wisearch server returns json.dumps(result)).
   async function callRaw(name, args) {
     const c = await getClient();
     const res = await c.callTool({ name, arguments: args || {} });
@@ -218,7 +218,7 @@ export function createBrainClient({
 }
 
 /**
- * Build a lazy `connect` that spawns the wisearcher MCP over stdio. Not unit-tested (it spawns
+ * Build a lazy `connect` that spawns the wisearch MCP over stdio. Not unit-tested (it spawns
  * a real process); used by the launcher wiring in P1.3. Credentials are inherited from the
  * environment; ANTHROPIC_API_KEY is intentionally NOT injected (subscription CLI auth).
  */

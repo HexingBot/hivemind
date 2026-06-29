@@ -13,7 +13,7 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
   subagents, portable sessions, Jira-shaped tasks + kanban, drive-loop, plugin packaging.
 - **Spine** — `wisengine`: calibrated markers + source tiering, language-agnostic manifests,
   observability (OTel→SigNoz) and minimalism standards, marker/tier validators. *Vendored in.*
-- **Brain** — `wisearcher`: deep web/doc research → a cited Neo4j + Qdrant knowledge graph →
+- **Brain** — `wisearch`: deep web/doc research → a cited Neo4j + Qdrant knowledge graph →
   generated skills + human lessons. *Called as an out-of-process MCP service.*
 
 `proposal-engine` stays a **separate standalone app** (optional upstream producer of proposal KBs).
@@ -29,14 +29,14 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
 └───────────────┬──────────────────────────────────────────────────────┘
                 │ MCP (managed · graceful fallback)
                 ▼
-   wisearcher (BRAIN): research → CANONICAL Neo4j+Qdrant graph
+   wisearch (BRAIN): research → CANONICAL Neo4j+Qdrant graph
    (hivemind reads AND writes via MCP, from session start) → skills + lessons
 ```
 
 ## Locked decisions
 
 1. **Brain seam** = MCP service (out-of-process Python).
-2. **Source of truth** = wisearcher's Neo4j+Qdrant graph; wired into hivemind via MCP from
+2. **Source of truth** = wisearch's Neo4j+Qdrant graph; wired into hivemind via MCP from
    session start. hivemind's task/decision/skill nodes are written into that same graph;
    agent-framework's local `knowledge-graph.js` demotes to a thin cache/projection.
 3. **Rigor** = tier-gated (scale to risk), reusing the `tdd`/`tests-after`/`uat-only` tiers.
@@ -44,8 +44,8 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
    and brain already do this — they converge for free.
 5. **Spine** = vendored into hivemind (implementation-engine logic, engine-tools validators,
    wisengine standards). **`proposal-engine` excepted — stays standalone.**
-6. **Brain runtime** = hivemind manages wisearcher (`docker compose up` + spawn MCP) with
-   **graceful fallback** to a lightweight grep KB when Docker/Voyage/wisearcher are absent.
+6. **Brain runtime** = hivemind manages wisearch (`docker compose up` + spawn MCP) with
+   **graceful fallback** to a lightweight grep KB when Docker/Voyage/wisearch are absent.
 7. **Repo strategy** = hivemind plugin is the front door; the rest are vendored libraries or
    called services.
 8. **Name** = `hivemind`; repo `wisemancer/hivemind` (private), derived from MIT base.
@@ -74,7 +74,7 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
 - **Done when:** plugin installs as `hivemind`; existing tests pass; no behavior change yet.
 
 ### Phase 1 — Brain seam (the headline) ▶ first build slice
-- Give wisearcher an **MCP server** exposing query + ingest tools (e.g. `kb_search`,
+- Give wisearch an **MCP server** exposing query + ingest tools (e.g. `kb_search`,
   `kb_neighbors`, `kb_get`, `kb_ingest`, `research`).
 - hivemind **manages lifecycle** (`docker compose up`, spawn the MCP) with **graceful
   fallback** to the existing grep KB when the brain is unavailable (clear, logged message).
@@ -86,35 +86,35 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
   end-to-end; pulling the brain offline degrades gracefully.
 
 #### Phase 1 — build breakdown (active)
-Architecture is settled in `.knowledge/derived/brain-contract.md`: **one** wisearcher MCP server
+Architecture is settled in `.knowledge/derived/brain-contract.md`: **one** wisearch MCP server
 (single backend), consumed two ways — the `researcher` subagent calls its tools directly (via
 `.mcp.json`); hivemind's own Node code calls it through a JS client that wraps every call with
 graceful grep-fallback. Sub-slices, in dependency order (each lands behind tests):
 
-- **P1.1 — wisearcher MCP server** (in `wisearcher/`, Python). `wisearcher/mcp_server.py`: a
+- **P1.1 — wisearch MCP server** (in `wisearch/`, Python). `wisearch/mcp_server.py`: a
   `build_engine(cfg)` helper (extracted from the cli wiring) + tool functions `kb_search`,
   `kb_answer`, `kb_neighbors`, `kb_get`, `kb_ingest`, `research`, `kb_assert`, `kb_health`
-  wrapping the library; a thin stdio MCP shell over the `mcp` SDK; a `wisearcher-mcp` entrypoint.
+  wrapping the library; a thin stdio MCP shell over the `mcp` SDK; a `wisearch-mcp` entrypoint.
   Tool logic lives in plain injectable functions → unit-tested with `tests/fakes.py` (no
   Docker/Voyage). Adds the `mcp` dependency.
-- **P1.2 — hivemind brain-client** (`src/brain-client.js`): connects to the wisearcher MCP via
+- **P1.2 — hivemind brain-client** (`src/brain-client.js`): connects to the wisearch MCP via
   `@modelcontextprotocol/sdk` Client + a stdio transport (injectable for tests); probes
   `kb_health`; wraps every call so a brain error/absence **falls back to the grep KB**
   (`lookupKnowledge`/`recordKbReuse` in `src/knowledge.js`); emits `brain-query|brain-hit|
   brain-fallback` events (the preview-process subscriber pattern) and a `warn` log on fallback.
   Vitest with a fake transport — the non-negotiable safety property, fully verifiable in-repo.
-- **P1.3 — lifecycle/launcher** ✓: `bin/brain-launch.js` (zero-dep) resolves the wisearcher repo
-  at runtime (`WISEARCHER_PATH` or sibling discovery), `docker compose up -d`s the brain stack
-  (best-effort), then execs `wisearcher-mcp` over stdio — or prints `kb_health` JSON with
+- **P1.3 — lifecycle/launcher** ✓: `bin/brain-launch.js` (zero-dep) resolves the wisearch repo
+  at runtime (`WISEARCH_PATH` or sibling discovery), `docker compose up -d`s the brain stack
+  (best-effort), then execs `wisearch-mcp` over stdio — or prints `kb_health` JSON with
   `--health`. `ANTHROPIC_API_KEY` is stripped from the child env. `/hivemind:brain` command
   brings it up + reports brain-on vs grep-fallback. **Deferred to P1.4:** whether to *also*
-  register the brain as a second managed server in committed `.mcp.json` — the wisearcher path
+  register the brain as a second managed server in committed `.mcp.json` — the wisearch path
   can't be a committed `${CLAUDE_PLUGIN_ROOT}` constant and it would break the deliberate
   single-server invariant, so the choice (subagent calls via brain-client launcher vs static
   registration) is made when the researcher is rewired.
 - **P1.4 — rewire researcher** ✓: `agents/researcher.md` (+ the byte-identical `.claude/agents/`
   copy) now does brain-first lookup (`kb_answer`/`kb_search`/`kb_neighbors`/`kb_get`, tools
-  `mcp__wisearcher-brain__*`) with the grep three-pass as the guaranteed offline fallback;
+  `mcp__wisearch-brain__*`) with the grep three-pass as the guaranteed offline fallback;
   `proposed_kb_entry` is committed by the Orchestrator into the canonical graph
   (`kb_ingest`/`kb_assert`) when the brain is up, else flat markdown. **Registration decision
   (resolved):** the brain is NOT statically registered in committed `.mcp.json` — it is optional,
@@ -129,7 +129,7 @@ graceful grep-fallback. Sub-slices, in dependency order (each lands behind tests
   documented (graphify skill, both mirrors) as a read-through **projection/cache**. Call-site
   wiring is prompt-driven via the graphify skill (no single code call-site exists today).
 
-**Phase 1 status: all five sub-slices complete and unit-verified with fakes** (wisearcher suite
+**Phase 1 status: all five sub-slices complete and unit-verified with fakes** (wisearch suite
 83 passed; hivemind 539 default / 1132 full). The Done-when end-to-end check — a research question
 populating the cited graph + a ticket consuming it, with offline degradation — needs a live run
 (Docker Neo4j+Qdrant + `VOYAGE_API_KEY`); the graceful-fallback half is already proven in unit tests.
@@ -217,33 +217,33 @@ developer prompt (both mirrors) requires a span + correlated structured log per 
 observability and flags gold-plating as HIGH. Prose-locked (test:all 1200).
 
 ### Phase 5 — Brain: wisdom output
-- Wire wisearcher's skill generation + teaching layer: knowledge clusters → loadable `SKILL.md`
+- Wire wisearch's skill generation + teaching layer: knowledge clusters → loadable `SKILL.md`
   for agents, and grounded human lessons (spaced retrieval).
 - **Done when:** a knowledge cluster yields a `SKILL.md` and a lesson.
 
 #### Phase 5 — build breakdown
-**Scope reality (verified):** wisearcher's skill/teach layers are `[ASSUMED]` design docs only —
+**Scope reality (verified):** wisearch's skill/teach layers are `[ASSUMED]` design docs only —
 no code exists. Phase 5 **builds** them (minimal-viable), it does not wire existing features. Full
-community-detection clustering is wisearcher's Phase 3 (deferred) — a "cluster" here is an entity's
+community-detection clustering is wisearch's Phase 3 (deferred) — a "cluster" here is an entity's
 neighbourhood (its claims + neighbours), which is enough for the Done-when.
 
-- **P5.1 — the generator** (in `wisearcher/`, Python) ▶ *first slice*: `wisearcher/wisdom.py` —
+- **P5.1 — the generator** (in `wisearch/`, Python) ▶ *first slice*: `wisearch/wisdom.py` —
   `build_cluster(graph, name)` (entity + neighbours + claims, split into AFFIRMS / `ANTI_PATTERN`+
   `EXCLUDES` / `CONTRASTS_WITH`+`MISCONCEPTION` + source ids); `generate_skill(cluster, complete)`
   (LLM prose for how-to + a **deterministic, cited** "When NOT to use" section + Sources — so the
   provenance/anti-pattern rule is testable without a live LLM); `generate_lesson(cluster, complete,
   mission)` (mission-grounded body + deterministic discriminating quiz + Sources). `complete` and
   `graph` injectable → unit-tested with fakes.
-- **P5.2 — expose + consume**: add `kb_generate_skill` / `kb_generate_lesson` to the wisearcher MCP;
+- **P5.2 — expose + consume**: add `kb_generate_skill` / `kb_generate_lesson` to the wisearch MCP;
   hivemind writes the generated `SKILL.md` into `.claude/skills/<name>/` and the lesson into a
   lessons dir, via the brain-client (with graceful fallback).
 - **Done when:** a cluster yields a `SKILL.md` (with a cited "when NOT to use") and a lesson.
 
-**Phase 5 status: complete (built from scratch).** wisearcher gained `wisdom.py` (build_cluster +
+**Phase 5 status: complete (built from scratch).** wisearch gained `wisdom.py` (build_cluster +
 generate_skill/lesson) + MCP tools `kb_generate_skill`/`kb_generate_lesson`; hivemind's brain-client
 gained `generateSkill`/`generateLesson` and `src/wisdom-sink.js` `persistWisdom` writes the
 generated `SKILL.md` into `.claude/skills/<slug>/` and the lesson into `knowledge/lessons/`, skipping
-gracefully when the brain is down. Unit-verified both sides (wisearcher 91; hivemind test:all 1208).
+gracefully when the brain is down. Unit-verified both sides (wisearch 91; hivemind test:all 1208).
 Live end-to-end needs Docker + Voyage + `claude` CLI.
 
 ### Phase 6 — Autonomy & distribution polish
@@ -279,7 +279,7 @@ vs hivemind classifier + dry-run contribution plan to `lordiwa/agent-framework`)
 
 ## Build complete — Phases 0–6 all shipped
 Identity (0) · brain seam (1) · calibration (2) · spec layer (3) · observable/lean (4) · wisdom
-output (5) · autonomy & distribution (6). hivemind on `feat/agentic`; wisearcher MCP + wisdom on
+output (5) · autonomy & distribution (6). hivemind on `feat/agentic`; wisearch MCP + wisdom on
 `feat/mcp-brain-seam`. Live end-to-end (the brain path) still needs Docker + Voyage + the `claude`
 CLI; everything is unit/CLI-verified with fakes. Remaining: live E2E validation, then merge the
 feature branches.
@@ -292,14 +292,14 @@ feature branches.
 
 ## Resolved pre-build (design pinned in `.knowledge/`)
 - **Brain MCP tool surface** — pinned in `.knowledge/derived/brain-contract.md`: a Python MCP
-  server *inside wisearcher* exposing `kb_search`, `kb_answer`, `kb_neighbors`, `kb_get`,
-  `kb_ingest`, `research`, `kb_assert`, `kb_health`, each wrapping a real wisearcher function.
-  wisearcher has no MCP server and no internal fallback today — Phase 1 builds the server;
+  server *inside wisearch* exposing `kb_search`, `kb_answer`, `kb_neighbors`, `kb_get`,
+  `kb_ingest`, `research`, `kb_assert`, `kb_health`, each wrapping a real wisearch function.
+  wisearch has no MCP server and no internal fallback today — Phase 1 builds the server;
   hivemind owns the grep fallback at the client boundary (probe `kb_health` at session start).
 - **proposal-engine KB import** — pinned in `.knowledge/derived/proposal-import.md`: a
   *deterministic* markdown→graph importer (NOT LLM re-extraction, to preserve markers) takes the
   `project_knowledge_base/` directory and maps files→Source, marked statements→Claim, embedded
-  IDs→Entity, traceability rows→RELATION; marker×tier → wisearcher's decomposed confidence.
+  IDs→Entity, traceability rows→RELATION; marker×tier → wisearch's decomposed confidence.
 - **OTel/SigNoz config location** — pinned in `.knowledge/derived/conventions.md` § Observability:
   three places — (1) hivemind's own obs in the plugin, (2) generated-project obs injected into
   developer/reviewer prompts + manifests (lives in the generated project), (3) the brain owns its
@@ -307,7 +307,7 @@ feature branches.
   `implementation-engine/.claude/shared/OBSERVABILITY.md`. No SigNoz in any compose yet (Phase 6).
 
 ## Open questions (resolve as we go)
-- Empirical tuning still pending in wisearcher (entity-resolution thresholds, load-bearing
+- Empirical tuning still pending in wisearch (entity-resolution thresholds, load-bearing
   trigger) — inherited, not introduced here; needs runtime data, not a design call.
 - Streaming vs request/response for the long-running `research` brain tool (decide at build).
 

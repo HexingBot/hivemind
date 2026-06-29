@@ -18,7 +18,7 @@ Instructions for the coding agent (the Body's `developer` role) using this knowl
 4. **Define observability before code**: confirm the feature's logging/tracing/metrics are specified
    in [[conventions]] § Observability. Generated code must emit OTel spans/logs; brain calls must log
    whether they hit the canonical graph or the grep-KB fallback. No code for an unobserved feature.
-5. **Respect the brain seam**: reach wisearcher only over MCP, and always provide the offline
+5. **Respect the brain seam**: reach wisearch only over MCP, and always provide the offline
    fallback path. Never set `ANTHROPIC_API_KEY`; spawn via the subscription CLI.
 6. **Keep it minimal**: build the smallest thing that satisfies the AC (Ponytail minimalism); leave
    gold-plating for the reviewer to never have to flag.

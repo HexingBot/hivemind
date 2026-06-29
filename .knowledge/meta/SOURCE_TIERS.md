@@ -43,4 +43,4 @@ While in this state:
   workspace: unrelated histories cause duplicates + template-only leakage. Not a basis for any
   hivemind claim.
 - **Local `knowledge-graph.js` as source of truth** — demoted, not deleted: it becomes a thin
-  cache/projection over wisearcher's canonical Neo4j+Qdrant graph. (PLAN.md decision 2)
+  cache/projection over wisearch's canonical Neo4j+Qdrant graph. (PLAN.md decision 2)

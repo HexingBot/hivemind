@@ -13,25 +13,25 @@ Voyage + a logged-in `claude`. Run it before merging the brain branches, or afte
 | Need | Why | Check |
 |------|-----|-------|
 | **Docker + compose** | runs Neo4j + Qdrant (the canonical graph) | `docker compose version` |
-| **wisearcher repo + a venv** | the brain MCP server + its deps | `<wisearcher>/.venv/bin/python -c "import mcp, wisearcher.mcp_server"` |
+| **wisearch repo + a venv** | the brain MCP server + its deps | `<wisearch>/.venv/bin/python -c "import mcp, wisearch.mcp_server"` |
 | **`VOYAGE_API_KEY`** | embeddings (ingest + search) | `echo $VOYAGE_API_KEY` |
 | **`claude` CLI, logged in** | grounded synthesis (`ask`, skill/lesson gen) — subscription auth, no API key | `claude --version` (run `claude login` once) |
 
 ## One-time setup — the venv (the common gotcha)
 
-`bin/brain-launch.js` resolves the wisearcher repo as a sibling (`../wisearcher`), which is the
-**git repo** `wisengine/wisearcher`. That repo needs its **own** `.venv` (there is a second, non-git
-`code/wisearcher` copy that holds a separate venv but lacks the newer code — do not rely on it):
+`bin/brain-launch.js` resolves the wisearch repo as a sibling (`../wisearch`), which is the
+**git repo** `wisengine/wisearch`. That repo needs its **own** `.venv` (there is a second, non-git
+`code/wisearch` copy that holds a separate venv but lacks the newer code — do not rely on it):
 
 ```bash
-cd <path>/wisengine/wisearcher
+cd <path>/wisengine/wisearch
 uv venv
 uv pip install -e ".[dev]" "mcp>=1.0"
 # sanity:
-.venv/bin/python -c "import mcp, wisearcher.mcp_server; print('ok')"
+.venv/bin/python -c "import mcp, wisearch.mcp_server; print('ok')"
 ```
 
-If you skip this, the smoke shows `spawn wisearcher-mcp ENOENT` and the brain falls back to grep.
+If you skip this, the smoke shows `spawn wisearch-mcp ENOENT` and the brain falls back to grep.
 
 ## Run
 
@@ -40,7 +40,7 @@ cd <path>/wisengine/hivemind
 npm run e2e:brain            # = bash scripts/brain-smoke.sh
 #   --skip-docker            # DBs already up
 #   --teardown               # docker compose down at the end
-#   WISEARCHER_PATH=/abs/path # override sibling resolution
+#   WISEARCH_PATH=/abs/path # override sibling resolution
 ```
 
 Steps whose prerequisites are missing are **SKIPPED** (reported), not failed — the graceful-fallback
@@ -74,19 +74,19 @@ hit over MCP, *and* an offline read degrades to `source=grep`.
 
 ## Troubleshooting
 
-- **`spawn wisearcher-mcp ENOENT`** → the resolved wisearcher repo has no `.venv`. Do the one-time
-  setup above, or set `WISEARCHER_PATH` to a copy that has one.
+- **`spawn wisearch-mcp ENOENT`** → the resolved wisearch repo has no `.venv`. Do the one-time
+  setup above, or set `WISEARCH_PATH` to a copy that has one.
 - **`kb_health` times out / `Voyage API error … reduced rate limits of 3 RPM`** → the Voyage *free
   tier* is 3 requests/min, so the health-probe embed can time out when it competes with search
   embeds. It is transient (the search itself still returns `source=brain`); add a payment method on
   the Voyage dashboard or just re-run. Not a failure of the seam.
 - **`ask` skipped / fails** → `claude` not installed or not logged in (`claude login`).
-- **DBs not reachable** → `docker compose -f <wisearcher>/docker-compose.yml up -d`, wait a few
+- **DBs not reachable** → `docker compose -f <wisearch>/docker-compose.yml up -d`, wait a few
   seconds, retry.
 
 ## Teardown
 
 ```bash
 npm run e2e:brain -- --teardown      # stops Neo4j + Qdrant
-# the throwaway smoke-<pid> topic remains under wisearcher-data/topics/ — delete if you like
+# the throwaway smoke-<pid> topic remains under wisearch-data/topics/ — delete if you like
 ```

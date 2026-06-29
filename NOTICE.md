@@ -11,7 +11,7 @@ development framework by integrating two more tools:
 - **wisengine** — the *spine*: epistemic discipline (calibrated markers + source
   tiering), language-agnostic specs/manifests, observability and minimalism standards.
   Vendored in as skills + validators. `proposal-engine` remains a **standalone** app.
-- **wisearcher** — the *brain*: a deep-research knowledge engine (Neo4j + Qdrant,
+- **wisearch** — the *brain*: a deep-research knowledge engine (Neo4j + Qdrant,
   provenance-mandatory) that produces a cited knowledge graph and generates skills +
   lessons. Called as an out-of-process MCP service (managed, with graceful fallback).
 

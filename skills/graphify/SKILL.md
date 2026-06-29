@@ -61,7 +61,7 @@ Each edge has three required fields: `from`, `to`, `relation`.
 ## Canonical graph (the brain) — this local graph is a PROJECTION
 
 `knowledge/graph/graph.json` is a read-through **projection/cache**. The source of truth is the
-wisearcher **brain** graph (Neo4j+Qdrant), written over MCP. Keep them in sync by doing node
+wisearch **brain** graph (Neo4j+Qdrant), written over MCP. Keep them in sync by doing node
 writes through `src/graph-sync.js` rather than calling `addNode` directly:
 
 - **`recordNode({ brain, repoRoot, node, topic })`** — writes the local projection AND mirrors the
