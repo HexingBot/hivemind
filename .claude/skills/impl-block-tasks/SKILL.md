@@ -6,7 +6,7 @@ description: Generate the BLOCK_TASKS manifest — every work block broken into 
 ## Sources & gate (hivemind)
 
 Vendored from implementation-engine. In hivemind the "context" this skill reads is the project's
-knowledge surface — `PROJECT.md`, the wisearcher brain graph (`kb_search`/`kb_answer`, or the local
+knowledge surface — `PROJECT.md`, the wisearch brain graph (`kb_search`/`kb_answer`, or the local
 `knowledge/` KB when the brain is offline), and the ticket's scope + acceptance criteria. Where the
 body below refers to `context/<file>.md`, read the equivalent from that surface. Output goes to
 `implementation/BLOCK_TASKS.md`.

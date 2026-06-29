@@ -22,7 +22,7 @@ var brain_launch_exports = {};
 __export(brain_launch_exports, {
   buildLaunchPlan: () => buildLaunchPlan,
   childEnv: () => childEnv,
-  resolveWisearcherPath: () => resolveWisearcherPath
+  resolveWisearchPath: () => resolveWisearchPath
 });
 module.exports = __toCommonJS(brain_launch_exports);
 var import_node_fs = require("node:fs");
@@ -30,36 +30,36 @@ var import_node_path = require("node:path");
 var import_node_url = require("node:url");
 var import_node_child_process = require("node:child_process");
 var import_meta = {};
-function resolveWisearcherPath({ env = process.env, exists = import_node_fs.existsSync } = {}) {
-  if (env.WISEARCHER_PATH) {
-    const p = (0, import_node_path.resolve)(env.WISEARCHER_PATH);
-    if (!exists((0, import_node_path.join)(p, "wisearcher", "mcp_server.py"))) {
-      throw new Error(`WISEARCHER_PATH has no wisearcher/mcp_server.py: ${p}`);
+function resolveWisearchPath({ env = process.env, exists = import_node_fs.existsSync } = {}) {
+  if (env.WISEARCH_PATH) {
+    const p = (0, import_node_path.resolve)(env.WISEARCH_PATH);
+    if (!exists((0, import_node_path.join)(p, "wisearch", "mcp_server.py"))) {
+      throw new Error(`WISEARCH_PATH has no wisearch/mcp_server.py: ${p}`);
     }
     return p;
   }
   const roots = [env.CLAUDE_PLUGIN_ROOT, env.CLAUDE_PROJECT_DIR, process.cwd()].filter(Boolean);
   for (const r of roots) {
-    for (const cand of [(0, import_node_path.join)(r, "..", "wisearcher"), (0, import_node_path.join)(r, "..", "..", "wisearcher")]) {
-      if (exists((0, import_node_path.join)(cand, "wisearcher", "mcp_server.py"))) return (0, import_node_path.resolve)(cand);
+    for (const cand of [(0, import_node_path.join)(r, "..", "wisearch"), (0, import_node_path.join)(r, "..", "..", "wisearch")]) {
+      if (exists((0, import_node_path.join)(cand, "wisearch", "mcp_server.py"))) return (0, import_node_path.resolve)(cand);
     }
   }
-  throw new Error("could not resolve the wisearcher repo; set WISEARCHER_PATH");
+  throw new Error("could not resolve the wisearch repo; set WISEARCH_PATH");
 }
-function buildLaunchPlan({ wisearcherPath, exists = import_node_fs.existsSync } = {}) {
-  const compose = (0, import_node_path.join)(wisearcherPath, "docker-compose.yml");
-  const venvBin = (0, import_node_path.join)(wisearcherPath, ".venv", "bin");
-  const venvScript = (0, import_node_path.join)(venvBin, "wisearcher-mcp");
+function buildLaunchPlan({ wisearchPath, exists = import_node_fs.existsSync } = {}) {
+  const compose = (0, import_node_path.join)(wisearchPath, "docker-compose.yml");
+  const venvBin = (0, import_node_path.join)(wisearchPath, ".venv", "bin");
+  const venvScript = (0, import_node_path.join)(venvBin, "wisearch-mcp");
   const venvPython = (0, import_node_path.join)(venvBin, "python");
   const python = exists(venvPython) ? venvPython : "python3";
   let mcp;
   if (exists(venvScript)) mcp = { command: venvScript, args: [] };
-  else if (exists(venvPython)) mcp = { command: venvPython, args: ["-m", "wisearcher.mcp_server"] };
-  else mcp = { command: "wisearcher-mcp", args: [] };
+  else if (exists(venvPython)) mcp = { command: venvPython, args: ["-m", "wisearch.mcp_server"] };
+  else mcp = { command: "wisearch-mcp", args: [] };
   return {
     docker: exists(compose) ? { command: "docker", args: ["compose", "-f", compose, "up", "-d"] } : null,
-    mcp: { ...mcp, cwd: wisearcherPath },
-    python: { command: python, args: [], cwd: wisearcherPath }
+    mcp: { ...mcp, cwd: wisearchPath },
+    python: { command: python, args: [], cwd: wisearchPath }
   };
 }
 function childEnv(env = process.env) {
@@ -79,7 +79,7 @@ function bringUpDocker(plan) {
 }
 function runHealth(plan) {
   bringUpDocker(plan);
-  const code = "from wisearcher.mcp_server import kb_health, build_engine; import json; print(json.dumps(kb_health(build_engine())))";
+  const code = "from wisearch.mcp_server import kb_health, build_engine; import json; print(json.dumps(kb_health(build_engine())))";
   const r = (0, import_node_child_process.spawnSync)(plan.python.command, ["-c", code], {
     cwd: plan.python.cwd,
     env: childEnv(),
@@ -104,7 +104,7 @@ function execMcp(plan) {
 function main(argv = process.argv.slice(2)) {
   let plan;
   try {
-    plan = buildLaunchPlan({ wisearcherPath: resolveWisearcherPath() });
+    plan = buildLaunchPlan({ wisearchPath: resolveWisearchPath() });
   } catch (err) {
     process.stderr.write(`[brain-launch] ${err.message}
 `);
@@ -118,5 +118,5 @@ if (import_meta.url === (0, import_node_url.pathToFileURL)(process.argv[1] || ""
 0 && (module.exports = {
   buildLaunchPlan,
   childEnv,
-  resolveWisearcherPath
+  resolveWisearchPath
 });

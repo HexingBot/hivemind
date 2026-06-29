@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createBrainClient } from '../src/brain-client.js';
 
-// Wrap a value the way the wisearcher MCP server does: one TextContent block of JSON.
+// Wrap a value the way the wisearch MCP server does: one TextContent block of JSON.
 const txt = (v) => ({ content: [{ type: 'text', text: JSON.stringify(v) }] });
 const toolError = (msg) => ({ isError: true, content: [{ type: 'text', text: msg }] });
 

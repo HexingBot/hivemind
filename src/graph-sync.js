@@ -1,4 +1,4 @@
-// graph-sync — the seam that makes the canonical wisearcher graph the source of truth and
+// graph-sync — the seam that makes the canonical wisearch graph the source of truth and
 // src/knowledge-graph.js a read-through PROJECTION/cache. A node write goes to BOTH: the local
 // graph (always, cheap, offline-safe) AND the canonical brain graph via kb_assert (best-effort;
 // queued when the brain is down — never lost). Reads can prefer the canonical graph and fall

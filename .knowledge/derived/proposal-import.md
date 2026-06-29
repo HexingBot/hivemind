@@ -27,12 +27,12 @@ than vendoring the engine. Grounded in the real proposal KB at
 - **No machine-readable manifest, no content hashes** — versioning is git + `.logs/`.
 
 ## Import = deterministic markdown→graph, NOT re-extraction
-The proposal KB is **already structured and marked**. Re-running wisearcher's LLM claim-extraction
+The proposal KB is **already structured and marked**. Re-running wisearch's LLM claim-extraction
 on it would risk **dropping markers** (assumption laundering, PG3/[[meta/guardrails]] KG2) and cost
 tokens. Decision: a **deterministic importer** parses frontmatter + inline markers and writes
 graph nodes directly via the `kb_assert` brain tool, **preserving each marker verbatim**. [INFERRED:strong]
 
-## Mapping into the wisearcher graph schema
+## Mapping into the wisearch graph schema
 | Proposal KB element | → Graph |
 |---------------------|---------|
 | Each KB file | a **Source** node (`origin`=repo-relative path, `kind`="file", `title`=H1, `credibility` from file tier) |
@@ -43,8 +43,8 @@ graph nodes directly via the `kb_assert` brain tool, **preserving each marker ve
 | `rejected.md` items | recorded as **TX** provenance, not asserted as fact (mirror [[meta/source-tiers]] § TX) |
 
 ## Marker × tier → ConfidenceComponents
-Maps proposal markers/tiers onto wisearcher's decomposed confidence (signal:
-`wisearcher/wisearcher/extract/models.py:80`):
+Maps proposal markers/tiers onto wisearch's decomposed confidence (signal:
+`wisearch/wisearch/extract/models.py:80`):
 - `[EXPLICIT]` → `assertion_strength`=ASSERTED; `source_credibility` from tier (T1≈1.0, T2≈0.8).
 - `[INFERRED:strong]` → ASSERTED, lower credibility / needs corroboration.
 - `[INFERRED:weak]` → HEDGED.
@@ -58,7 +58,7 @@ Maps proposal markers/tiers onto wisearcher's decomposed confidence (signal:
   `project_knowledge_base/` **directory path** as input and records the batch under a topic =
   the client/proposal name; `Source KB:` provenance is preserved on every node. [INFERRED:strong]
 - Idempotent: re-import updates by deterministic `claim_id` (`make_claim_id`, signal:
-  `wisearcher/wisearcher/extract/models.py:73`),
+  `wisearch/wisearch/extract/models.py:73`),
   so re-running after a proposal revision reconciles rather than duplicates. [INFERRED:strong]
 
 ## Open (deferred to build)
