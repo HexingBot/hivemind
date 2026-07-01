@@ -404,6 +404,216 @@ describe('AC7 — atomic write: no .lock.tmp residue after successful acquire', 
 // AC8 — staleness window is configurable
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// TASK-070 — stable caller-supplied holder identity (session_id) instead of
+// process.pid.
+//
+// Problem: the orchestrator-as-driver runs every acquire/renew/release in a
+// FRESH subprocess, so each call has a different pid. renew() and release()
+// currently key off pid+hostname, so they always treat the caller as a
+// foreign holder once the pid changes — renew() silently no-ops and never
+// keeps the lock fresh, and release() silently no-ops and leaves state/.lock
+// behind for manual cleanup.
+//
+// Seam contract assumed by these tests (for the IMPL phase):
+//   acquire/renew/release all accept an additional optional `holder: string`
+//   option. When `holder` is supplied by the caller, holder-match is decided
+//   by comparing it against a `holder_id` field persisted in the lock record
+//   (not by pid+hostname), across acquire → renew → release calls, even when
+//   pid/hostname differ from call to call (fresh subprocess each time).
+//   `holder_pid`/`hostname` continue to be recorded (from whatever pid/
+//   hostname the caller passes, or process.pid/os.hostname() defaults) for
+//   diagnostics/back-compat with `inspect()`, but are NOT used for matching
+//   once a `holder_id` is present. When `holder` is omitted, behavior is
+//   fully unchanged (pid+hostname identity, no `holder_id` field written).
+// ---------------------------------------------------------------------------
+
+const HOLDER_A = 'sess-holder-aaaa';
+const HOLDER_B = 'sess-holder-bbbb';
+const PID_B = 99003;
+const HOST_B = 'test-host-gamma';
+
+describe('TASK-070 AC1 — holder id overrides pid+hostname for identity match', () => {
+  it('acquire_with_matching_holder_id_succeeds_despite_different_pid_and_hostname', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-holder-acquire'));
+
+    // Seed a FRESH lock created by holder A under one pid/hostname.
+    seedLock(repoDir, {
+      holder_pid: MY_PID,
+      hostname: MY_HOST,
+      holder_id: HOLDER_A,
+      heartbeat_at: TWO_MIN_AGO,
+    });
+
+    // Re-acquire as the SAME holder, but from a different pid/hostname
+    // (simulating a fresh driver subprocess). Must be treated as an
+    // idempotent re-acquire, not a foreign fresh lock.
+    const result = await acquire({
+      repoRoot: repoDir,
+      now: () => BASE_TIME,
+      holder: HOLDER_A,
+      pid: PID_B,
+      hostname: HOST_B,
+    });
+
+    expect(result).toBeDefined();
+    expect(result.acquired).toBe(true);
+
+    const lock = JSON.parse(readFileSync(lockFilePath(repoDir), 'utf8'));
+    expect(lock.holder_id).toBe(HOLDER_A);
+    expect(lock.heartbeat_at).toBe(BASE_TIME);
+  });
+});
+
+describe('TASK-070 AC2 — renew() and release() work across distinct pids via holder id', () => {
+  it('renew_bumps_heartbeat_across_distinct_pids_when_holder_id_matches', async () => {
+    const { acquire, renew } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-holder-renew'));
+
+    // Acquire from "process 1" of the driver.
+    await acquire({
+      repoRoot: repoDir,
+      now: () => TWO_MIN_AGO,
+      holder: HOLDER_A,
+      pid: MY_PID,
+      hostname: MY_HOST,
+    });
+
+    // Renew from "process 2" — different pid/hostname, same holder id.
+    const renewed = await renew({
+      repoRoot: repoDir,
+      now: () => BASE_TIME,
+      holder: HOLDER_A,
+      pid: PID_B,
+      hostname: HOST_B,
+    });
+
+    expect(renewed, 'renew() must report success for a same-holder cross-pid call').toBe(true);
+
+    const lock = JSON.parse(readFileSync(lockFilePath(repoDir), 'utf8'));
+    expect(lock.heartbeat_at).toBe(BASE_TIME);
+    expect(lock.holder_id).toBe(HOLDER_A);
+  });
+
+  it('release_deletes_lock_created_by_same_holder_across_distinct_pids', async () => {
+    const { acquire, release } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-holder-release'));
+
+    // Acquire from "process 1" of the driver.
+    await acquire({
+      repoRoot: repoDir,
+      now: () => BASE_TIME,
+      holder: HOLDER_A,
+      pid: MY_PID,
+      hostname: MY_HOST,
+    });
+
+    expect(existsSync(lockFilePath(repoDir))).toBe(true);
+
+    // Release from "process 2" — different pid/hostname, same holder id.
+    await release({
+      repoRoot: repoDir,
+      holder: HOLDER_A,
+      pid: PID_B,
+      hostname: HOST_B,
+    });
+
+    expect(
+      existsSync(lockFilePath(repoDir)),
+      'release() must delete a lock created by the same holder id from a different pid',
+    ).toBe(false);
+  });
+});
+
+describe('TASK-070 AC3 — backward compatible when no holder id is supplied', () => {
+  it('no_holder_supplied_falls_back_to_pid_hostname_identity_and_omits_holder_id_field', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-holder-backcompat'));
+
+    const result = await acquire({
+      repoRoot: repoDir,
+      now: () => BASE_TIME,
+      pid: MY_PID,
+      hostname: MY_HOST,
+    });
+
+    expect(result.acquired).toBe(true);
+
+    const lock = JSON.parse(readFileSync(lockFilePath(repoDir), 'utf8'));
+    expect(lock.holder_pid).toBe(MY_PID);
+    expect(lock.hostname).toBe(MY_HOST);
+    // No holder_id field must be introduced when the caller never opted in.
+    expect(
+      Object.prototype.hasOwnProperty.call(lock, 'holder_id'),
+      'lock record must not gain a holder_id field when holder was never supplied',
+    ).toBe(false);
+  });
+});
+
+describe('TASK-070 AC4 — staleness semantics preserved under the holder-id scheme', () => {
+  it('acquire_refuses_fresh_foreign_lock_identified_by_a_different_holder_id', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-holder-fresh-foreign'));
+
+    // Fresh lock held by a DIFFERENT holder id.
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      holder_id: HOLDER_A,
+      heartbeat_at: TWO_MIN_AGO,
+    });
+
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        holder: HOLDER_B,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught, 'acquire must still refuse a fresh foreign lock under the holder-id scheme').toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+  });
+
+  it('acquire_steals_stale_foreign_lock_identified_by_a_holder_id', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-holder-stale-foreign'));
+
+    // Stale lock (beyond default 5-min window) held by a different holder id.
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      holder_id: HOLDER_A,
+      heartbeat_at: SIX_MIN_AGO,
+    });
+
+    const result = await acquire({
+      repoRoot: repoDir,
+      now: () => BASE_TIME,
+      holder: HOLDER_B,
+      pid: MY_PID,
+      hostname: MY_HOST,
+    });
+
+    expect(result.acquired, 'a stale lock must still be re-takeable under the holder-id scheme').toBe(true);
+
+    const lock = JSON.parse(readFileSync(lockFilePath(repoDir), 'utf8'));
+    expect(lock.holder_id).toBe(HOLDER_B);
+  });
+});
+
 describe('AC8 — staleness window is configurable', () => {
   it('custom_staleness_window_changes_fresh_stale_boundary', async () => {
     const { acquire } = await import(SESSION_LOCK_URL);
