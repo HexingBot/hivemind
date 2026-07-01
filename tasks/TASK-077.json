@@ -1,0 +1,28 @@
+{
+  "key": "TASK-077",
+  "title": "agility R2: risk-scaled review depth (light vs full) with objective rubric and one-way escalation",
+  "description": "Agility review 2026-07-01, recommendation R2. Today every diff receives the full review treatment on the strongest model. Introduce a review_depth rubric so review cost scales with diff risk: LIGHT when the diff is under roughly 150 changed lines AND touches none of schema / security surface / shared state / packaging(dist) / test infrastructure; FULL otherwise, and always FULL for core tdd logic and at release gates. A light review = AC-compliance check + scaled-gate re-run + a sweep of the five recurring HIGH classes (unspecced path, vacuous sensor, stale dist, parity drift, calibration laundering). Escalation is one-way: the reviewer may upgrade light to full at any point on suspicion, never downgrade full to light. The orchestrator computes the depth from the rubric, states it (with the rubric inputs) in the reviewer spawn prompt, and records it in the ticket close comment.",
+  "acceptance_criteria": [
+    "orchestrator-routing SKILL.md (both copies byte-identical) documents the objective review_depth rubric: inputs (changed-line count, touched surfaces), the LIGHT threshold, and the mandatory-FULL list (schema, security, shared state, packaging/dist, test infra, core tdd logic, release gates).",
+    "agents/reviewer.md and parity copy define the LIGHT protocol (AC-compliance + scaled gate + five recurring HIGH-class sweep) and the one-way escalation rule (light to full on any suspicion; never full to light).",
+    "The reviewer spawn briefing and the ticket close comment record the chosen depth and the rubric inputs that produced it.",
+    "All existing specs green; skill parity gate green."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "agility",
+    "process"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-076"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-01T21:32:44.680Z",
+  "updated_at": "2026-07-01T21:32:44.680Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

@@ -1,0 +1,27 @@
+{
+  "key": "TASK-078",
+  "title": "agility R3: mandatory pre-hand-off prevention checklist in developer.md (5 recurring HIGH classes)",
+  "description": "Agility review 2026-07-01, recommendation R3. REQUEST-CHANGES loops are the most expensive path in the workflow (cold developer fix + cold re-review), and every historical RC HIGH falls into five known classes. Add a mandatory pre-hand-off checklist to the developer agent so these are caught BEFORE the reviewer sees the diff: (1) exercised the nearest UNSPECCED path adjacent to the change; (2) every new sensor/lock is red-green planted (proven able to fail); (3) dist/ rebuilt if bundled src/ or bin/ was touched; (4) skill/agent parity copies byte-identical if any copy was touched; (5) calibration markers preserved downstream (no laundering). The developer hand-off must state the outcome of each item; the reviewer treats a missing checklist statement as a MEDIUM finding.",
+  "acceptance_criteria": [
+    "agents/developer.md and its .claude/agents parity copy carry the 5-item pre-hand-off checklist, and the Output section requires stating each item outcome in the return.",
+    "agents/reviewer.md and parity copy: a hand-off missing the checklist outcomes is a MEDIUM finding.",
+    "All existing specs green (update any spec locking the old prose with the feature)."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "agility",
+    "process"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-077"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-01T21:34:33.280Z",
+  "updated_at": "2026-07-01T21:34:33.280Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

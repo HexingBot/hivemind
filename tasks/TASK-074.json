@@ -1,0 +1,29 @@
+{
+  "key": "TASK-074",
+  "title": "Remove the Agentic OS web console (chat bridge, skill buttons, status bar, preview panel, launchers)",
+  "description": "Human-directed (2026-07-01): retire the web console shipped in v0.5.0-v0.7.0. Remove the orchestrator chat bridge (src/orchestrator-bridge.js), skill-button catalog (src/skill-catalog.js), console shell UI, session status bar + mode badge/toggle UI, the app-preview panel (resolver/controller/routes/UI, TASK-065..069), the console.cmd/console.sh launchers, and the /hivemind:console and /hivemind:preview commands. KEEP: the kanban task board (/task-status) with drag-and-drop and the /graph view; the loop/mode/session-lock core (src/drive-loop.js, src/operating-mode.js, src/session-lock.js) which are console-independent. Update packaging (build entrypoints, plugin commands), the use-case manifest (console use cases removed - this IS a primary-surface change), docs and the orchestrator-routing skill (drop console/preview sections, keep loop/mode), and init materialization (no console launchers). NOTE: closing this makes TASK-072 (preview panel test coverage) obsolete.",
+  "acceptance_criteria": [
+    "No console/preview surface remains: no /console or /preview plugin commands, no console.cmd/console.sh (source or init-materialized), no bridge/chat/skill/preview routes on the board server, no preview resolver/controller modules.",
+    "The kanban board (/task-status) and /graph view still work: board serves, drag-and-drop transitions persist, existing board specs green.",
+    "Loop, operating-mode, and session-lock modules are untouched and their specs green (mode toggle survives as API/CLI even though the console badge UI is gone).",
+    "Use-case manifest updated: console/preview use cases removed; tests/use-case-policy.spec.js green.",
+    "Packaging clean: build:plugin entrypoints updated, stale dist bundles removed, dist-parity green, claude plugin validate PASS, orchestrator-routing skill parity copies byte-identical with console/preview sections removed.",
+    "npm run test:all green after removal (obsolete console/preview specs deleted with their feature)."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "console",
+    "removal",
+    "packaging"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-01T21:16:28.179Z",
+  "updated_at": "2026-07-01T21:16:28.179Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

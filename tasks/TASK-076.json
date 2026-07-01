@@ -1,0 +1,27 @@
+{
+  "key": "TASK-076",
+  "title": "agility R1: single developer spawn for tdd tier with two-commit discipline",
+  "description": "Agility review 2026-07-01 (see state/sessions/20260524T000000Z-65fa92c6/artifacts/agility-review-2026-07-01.md), recommendation R1. Today tdd tickets spawn the developer TWICE (TEST mode then IMPL mode); each spawn pays full cold-context acquisition, roughly doubling developer cost per ticket. Replace with a SINGLE spawn that: (a) writes the failing tests encoding every AC, (b) runs them and CAPTURES the red output as evidence they fail for the right reason, (c) commits them as a test: commit, (d) implements, (e) runs the per-ticket gate, (f) commits the implementation. Tests-first stays provable: the test: commit strictly precedes the impl commit in git log, the captured red run is included in the hand-off, and the fresh-context reviewer may re-run the tests against the impl-commit parent when suspicious. The reviewer remains the independent quality sensor - historical RC HIGHs were caught by fresh-context review, not by the TEST/IMPL context separation. Estimated saving: 40-50 percent of developer cost/time per tdd ticket.",
+  "acceptance_criteria": [
+    "agents/developer.md and its .claude/agents parity copy: the tdd workflow is a single spawn with the two-commit discipline (write failing tests, capture red run, test: commit, implement, gate, impl commit); the dual TEST/IMPL spawn protocol for tdd is removed.",
+    "orchestrator-routing SKILL.md (both copies byte-identical): the Two-phase developer spawn section is replaced by the single-spawn two-commit protocol, including what the reviewer verifies (test: commit precedes impl commit; red-run evidence present in hand-off; reviewer may re-run tests against the impl-commit parent).",
+    "agents/reviewer.md and parity copy: for tdd tickets the reviewer checks commit order and red-run evidence as part of verification.",
+    "CLAUDE.md workflow (step 4, tdd bullet) updated consistently with the new protocol.",
+    "All existing specs green (any spec asserting the old two-spawn prose is updated with the feature); skill parity gate green."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "agility",
+    "process"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-01T21:32:14.497Z",
+  "updated_at": "2026-07-01T21:32:14.497Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

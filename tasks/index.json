@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-17T15:25:31.671Z",
+  "generated_at": "2026-07-01T21:44:00.862Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -420,6 +420,48 @@
       "title": "Preview panel: behavioral test coverage for client mode-switch + deep-link (beyond static-markup locks)",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-073",
+      "title": "brain-launch: Windows portability (tests hard-code POSIX separators; venv layout)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-074",
+      "title": "Remove the Agentic OS web console (chat bridge, skill buttons, status bar, preview panel, launchers)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-075",
+      "title": "loop: unattended mode - single up-front grant so the loop runs without supervision",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-076",
+      "title": "agility R1: single developer spawn for tdd tier with two-commit discipline",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-077",
+      "title": "agility R2: risk-scaled review depth (light vs full) with objective rubric and one-way escalation",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-078",
+      "title": "agility R3: mandatory pre-hand-off prevention checklist in developer.md (5 recurring HIGH classes)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-079",
+      "title": "brain-launch: Windows-aware python interpreter fallback when no venv exists",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }

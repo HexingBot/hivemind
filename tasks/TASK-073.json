@@ -1,0 +1,35 @@
+{
+  "key": "TASK-073",
+  "title": "brain-launch: Windows portability (tests hard-code POSIX separators; venv layout)",
+  "description": "Fresh clone on win32 fails 4 specs in tests/brain-launch.spec.js: the specs hard-code POSIX paths (/w/.venv/bin/wisearcher-mcp) while bin/brain-launch.js builds candidates with path.join, which yields backslashes on Windows, so the injected exists() never matches. Additionally .venv/bin does not exist on Windows venvs (.venv/Scripts, with .exe suffixes). This breaks npm test on any Windows machine and therefore blocks every per-ticket and release gate. Fix the specs to be platform-agnostic (build expectations with the same join/resolve semantics as the code) and make buildLaunchPlan resolve the Windows venv layout, POSIX behavior unchanged.",
+  "acceptance_criteria": [
+    "tests/brain-launch.spec.js passes on win32 AND POSIX: path expectations are built with the same join()/resolve() semantics as the implementation, never hard-coded separators.",
+    "buildLaunchPlan also resolves the Windows venv layout (.venv/Scripts/wisearcher-mcp.exe, .venv/Scripts/python.exe) when present; POSIX .venv/bin behavior unchanged.",
+    "npm test is green on a fresh Windows clone (fast tier, no red baseline).",
+    "If bin/brain-launch.js changes, dist/brain-launch.cjs is rebuilt and dist-parity stays green."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "portability",
+    "windows",
+    "brain"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "5ee473e"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-01T21:43:34.730Z",
+      "body": "Closed on green review (auto_close_on_green_review grant, session 2026-07-01). Commit 5ee473e: buildLaunchPlan probes both venv layouts (.venv/bin POSIX-first, then .venv/Scripts with .exe) via injected exists(); specs rebuilt with join()/resolve() semantics matching the impl (no hard-coded separators); one new non-vacuous spec for the Scripts layout; dist/brain-launch.cjs rebuilt. Reviewer verdict PASS, 0 HIGH / 0 MEDIUM / 1 LOW on the affected win32 machine: npm test 620 passed/2 skipped (green baseline restored), --changed HEAD~1 green, dist-parity 2/2. Affected-e2e list (dist-parity only) independently confirmed sufficient. LOW follow-up minted separately: python3 fallback interpreter is not on PATH on typical Windows installs."
+    }
+  ],
+  "created_at": "2026-07-01T21:04:51.520Z",
+  "updated_at": "2026-07-01T21:43:35.434Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
