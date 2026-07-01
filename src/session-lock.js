@@ -89,6 +89,39 @@ function isFresh(heartbeatAt, nowIso, stalenessMs) {
   return ageMs < stalenessMs;
 }
 
+/**
+ * Decide whether `existing` (a lock record, possibly null) belongs to the
+ * caller identified by (myHolder, myPid, myHost).
+ *
+ * When either side carries a `holder_id` (the caller passed `holder`, or the
+ * persisted record has one), identity is decided purely by holder_id
+ * equality — pid/hostname are ignored, since a caller-supplied holder id is
+ * meant to survive across fresh subprocesses with different pids. Otherwise,
+ * identity falls back to the original pid+hostname comparison so behavior
+ * is byte-for-byte unchanged when no caller ever opts into holder ids.
+ */
+function isSameHolder(existing, myHolder, myPid, myHost) {
+  if (existing === null) return false;
+  if (myHolder !== undefined || existing.holder_id !== undefined) {
+    return existing.holder_id === myHolder;
+  }
+  return existing.holder_pid === myPid && existing.hostname === myHost;
+}
+
+/**
+ * Build a lock record, including `holder_id` only when `holder` is defined
+ * so that omitting it never introduces the field (back-compat, AC3).
+ */
+function makeLockRecord(myPid, myHost, nowIso, holder) {
+  const record = {
+    holder_pid: myPid,
+    hostname: myHost,
+    heartbeat_at: nowIso,
+  };
+  if (holder !== undefined) record.holder_id = holder;
+  return record;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -101,6 +134,7 @@ function isFresh(heartbeatAt, nowIso, stalenessMs) {
  *   now?: string | (() => string),
  *   pid?: number,
  *   hostname?: string,
+ *   holder?: string,
  *   stalenessMs?: number,
  * }} opts
  * @returns {Promise<{ acquired: true }>}
@@ -111,6 +145,7 @@ export async function acquire({
   now,
   pid,
   hostname,
+  holder,
   stalenessMs = DEFAULT_STALENESS_MS,
 } = {}) {
   if (!repoRoot) throw makeErr('E_LOCK_ARGS', 'acquire: repoRoot is required');
@@ -122,15 +157,9 @@ export async function acquire({
   const existing = readLock(repoRoot);
 
   if (existing !== null) {
-    const sameHolder = existing.holder_pid === myPid && existing.hostname === myHost;
-
-    if (sameHolder) {
+    if (isSameHolder(existing, holder, myPid, myHost)) {
       // Idempotent re-acquire: bump heartbeat and succeed.
-      await writeLock(repoRoot, {
-        holder_pid: myPid,
-        hostname: myHost,
-        heartbeat_at: nowIso,
-      });
+      await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
       return { acquired: true };
     }
 
@@ -150,11 +179,7 @@ export async function acquire({
   }
 
   // No lock or stale lock: write our record.
-  await writeLock(repoRoot, {
-    holder_pid: myPid,
-    hostname: myHost,
-    heartbeat_at: nowIso,
-  });
+  await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
 
   return { acquired: true };
 }
@@ -174,6 +199,7 @@ export async function acquire({
  *   now?: string | (() => string),
  *   pid?: number,
  *   hostname?: string,
+ *   holder?: string,
  * }} opts
  * @returns {Promise<boolean>} true if the heartbeat was bumped, false if no-op.
  */
@@ -182,6 +208,7 @@ export async function renew({
   now,
   pid,
   hostname,
+  holder,
 } = {}) {
   if (!repoRoot) throw makeErr('E_LOCK_ARGS', 'renew: repoRoot is required');
 
@@ -195,15 +222,10 @@ export async function renew({
   if (existing === null) return false;
 
   // Foreign lock — no-op: do not keep someone else's lock alive.
-  const sameHolder = existing.holder_pid === myPid && existing.hostname === myHost;
-  if (!sameHolder) return false;
+  if (!isSameHolder(existing, holder, myPid, myHost)) return false;
 
   // We are the holder — bump heartbeat.
-  await writeLock(repoRoot, {
-    holder_pid: myPid,
-    hostname: myHost,
-    heartbeat_at: nowIso,
-  });
+  await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
   return true;
 }
 
@@ -216,10 +238,10 @@ export async function renew({
  * Callers that crash during teardown and no longer know their identity should
  * rely on the staleness mechanism: the lock will expire automatically.
  *
- * @param {{ repoRoot: string, pid?: number, hostname?: string }} opts
+ * @param {{ repoRoot: string, pid?: number, hostname?: string, holder?: string }} opts
  * @returns {Promise<void>}
  */
-export async function release({ repoRoot, pid, hostname } = {}) {
+export async function release({ repoRoot, pid, hostname, holder } = {}) {
   if (!repoRoot) throw makeErr('E_LOCK_ARGS', 'release: repoRoot is required');
 
   const p = lockFilePath(repoRoot);
@@ -231,10 +253,9 @@ export async function release({ repoRoot, pid, hostname } = {}) {
 
   const myPid = pid ?? process.pid;
   const myHost = hostname ?? os.hostname();
-  const sameHolder = existing.holder_pid === myPid && existing.hostname === myHost;
 
   // Foreign lock — do NOT delete it.
-  if (!sameHolder) return;
+  if (!isSameHolder(existing, holder, myPid, myHost)) return;
 
   try {
     unlinkSync(p);
@@ -252,7 +273,7 @@ export async function release({ repoRoot, pid, hostname } = {}) {
  * Inspect the current lock record (read-only).
  *
  * @param {{ repoRoot: string }} opts
- * @returns {Promise<{ holder_pid: number, hostname: string, heartbeat_at: string } | null>}
+ * @returns {Promise<{ holder_pid: number, hostname: string, heartbeat_at: string, holder_id?: string } | null>}
  */
 export async function inspect({ repoRoot } = {}) {
   if (!repoRoot) throw makeErr('E_LOCK_ARGS', 'inspect: repoRoot is required');
