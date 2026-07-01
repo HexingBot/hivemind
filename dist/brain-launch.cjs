@@ -48,13 +48,18 @@ function resolveWisearcherPath({ env = process.env, exists = import_node_fs.exis
 }
 function buildLaunchPlan({ wisearcherPath, exists = import_node_fs.existsSync } = {}) {
   const compose = (0, import_node_path.join)(wisearcherPath, "docker-compose.yml");
-  const venvBin = (0, import_node_path.join)(wisearcherPath, ".venv", "bin");
-  const venvScript = (0, import_node_path.join)(venvBin, "wisearcher-mcp");
-  const venvPython = (0, import_node_path.join)(venvBin, "python");
-  const python = exists(venvPython) ? venvPython : "python3";
+  const venvScript = [
+    (0, import_node_path.join)(wisearcherPath, ".venv", "bin", "wisearcher-mcp"),
+    (0, import_node_path.join)(wisearcherPath, ".venv", "Scripts", "wisearcher-mcp.exe")
+  ].find(exists);
+  const venvPython = [
+    (0, import_node_path.join)(wisearcherPath, ".venv", "bin", "python"),
+    (0, import_node_path.join)(wisearcherPath, ".venv", "Scripts", "python.exe")
+  ].find(exists);
+  const python = venvPython ?? "python3";
   let mcp;
-  if (exists(venvScript)) mcp = { command: venvScript, args: [] };
-  else if (exists(venvPython)) mcp = { command: venvPython, args: ["-m", "wisearcher.mcp_server"] };
+  if (venvScript) mcp = { command: venvScript, args: [] };
+  else if (venvPython) mcp = { command: venvPython, args: ["-m", "wisearcher.mcp_server"] };
   else mcp = { command: "wisearcher-mcp", args: [] };
   return {
     docker: exists(compose) ? { command: "docker", args: ["compose", "-f", compose, "up", "-d"] } : null,
