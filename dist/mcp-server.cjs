@@ -22225,6 +22225,7 @@ async function verifyAndRepairIndex(repoRoot, tasks, now = () => (/* @__PURE__ *
   ]);
   return true;
 }
+var TMP_SWEEP_MIN_AGE_MS = 6e4;
 async function sweepTasksTmpFiles({ repoRoot }) {
   const dir = tasksDir(repoRoot);
   let entries;
@@ -22235,10 +22236,14 @@ async function sweepTasksTmpFiles({ repoRoot }) {
     throw err;
   }
   const removed = [];
+  const now = Date.now();
   for (const name of entries) {
     if (TMP_FILE_RE.test(name)) {
+      const p = (0, import_node_path2.join)(dir, name);
       try {
-        await (0, import_promises.unlink)((0, import_node_path2.join)(dir, name));
+        const { mtimeMs } = (0, import_node_fs2.statSync)(p);
+        if (now - mtimeMs < TMP_SWEEP_MIN_AGE_MS) continue;
+        await (0, import_promises.unlink)(p);
         removed.push(name);
       } catch {
       }
@@ -22453,6 +22458,11 @@ async function createTask({
   const allTasks = [...existing, task];
   (0, import_node_fs2.mkdirSync)(tasksDir(repoRoot), { recursive: true });
   const target = taskFilePath(repoRoot, key);
+  if ((0, import_node_fs2.existsSync)(target)) {
+    throw new Error(
+      `createTask: key collision \u2014 ${target} already exists (a concurrent writer won the race for ${key})`
+    );
+  }
   await atomicWriteFiles([
     { target, bytes: JSON.stringify(task, null, 2) + "\n" },
     { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }

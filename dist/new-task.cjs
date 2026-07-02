@@ -8073,6 +8073,11 @@ async function createTask({
   const allTasks = [...existing, task];
   (0, import_node_fs2.mkdirSync)(tasksDir(repoRoot), { recursive: true });
   const target = taskFilePath(repoRoot, key);
+  if ((0, import_node_fs2.existsSync)(target)) {
+    throw new Error(
+      `createTask: key collision \u2014 ${target} already exists (a concurrent writer won the race for ${key})`
+    );
+  }
   await atomicWriteFiles([
     { target, bytes: JSON.stringify(task, null, 2) + "\n" },
     { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
