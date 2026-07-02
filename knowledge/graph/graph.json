@@ -248,10 +248,22 @@
       "label": "session-lock stable caller-supplied holder identity (holder_id)"
     },
     {
+      "id": "task-072",
+      "type": "task",
+      "ref": "tasks/TASK-072.json",
+      "label": "Preview panel behavioral coverage (closed obsolete)"
+    },
+    {
       "id": "task-073",
       "type": "task",
       "ref": "tasks/TASK-073.json",
       "label": "brain-launch Windows portability (venv layout + path-agnostic tests)"
+    },
+    {
+      "id": "task-074",
+      "type": "task",
+      "ref": "tasks/TASK-074.json",
+      "label": "Remove the Agentic OS web console"
     }
   ],
   "edges": [
@@ -406,7 +418,17 @@
       "relation": "relates-to"
     },
     {
+      "from": "task-072",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
+    },
+    {
       "from": "task-073",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-074",
       "to": "2026-07-01T21:20:37.785Z",
       "relation": "produced-by"
     }

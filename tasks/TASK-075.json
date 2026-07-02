@@ -11,7 +11,7 @@
     "auto_consolidate is added to the loop_auth schema in BOTH copies (src/schemas.js and state/bundle.schema.json) with a parity spec asserting the two loop_auth definitions stay structurally identical; tests/live-state.spec.js stays green with the preset persisted.",
     "The gate contract is reconciled: orchestrator-routing SKILL.md (both parity copies) lists all FIVE gates including Gate 5 (consolidation) and the auto_consolidate switch row; commands/loop.md defers to SKILL.md as the canonical gate list."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "high",
   "labels": [
     "loop-engineering",
@@ -23,7 +23,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-07-01T21:16:55.681Z",
-  "updated_at": "2026-07-02T15:00:59.014Z",
+  "updated_at": "2026-07-02T16:51:48.878Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

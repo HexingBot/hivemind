@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-02T16:41:08.669Z",
+  "generated_at": "2026-07-02T16:51:48.878Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -418,7 +418,7 @@
     {
       "key": "TASK-072",
       "title": "Preview panel: behavioral test coverage for client mode-switch + deep-link (beyond static-markup locks)",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -430,13 +430,13 @@
     {
       "key": "TASK-074",
       "title": "Remove the Agentic OS web console (chat bridge, skill buttons, status bar, preview panel, launchers)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-075",
       "title": "loop: unattended mode - single up-front grant so the loop runs without supervision",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -504,6 +504,12 @@
       "title": "deep-review S6: data-fencing for ticket-derived text in developer/reviewer briefings",
       "status": "todo",
       "priority": "high"
+    },
+    {
+      "key": "TASK-087",
+      "title": "task-board: regression lock for the 64KiB body-cap (413) + traversal spec + stale mode.md line",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }
