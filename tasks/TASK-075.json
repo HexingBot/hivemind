@@ -11,7 +11,7 @@
     "auto_consolidate is added to the loop_auth schema in BOTH copies (src/schemas.js and state/bundle.schema.json) with a parity spec asserting the two loop_auth definitions stay structurally identical; tests/live-state.spec.js stays green with the preset persisted.",
     "The gate contract is reconciled: orchestrator-routing SKILL.md (both parity copies) lists all FIVE gates including Gate 5 (consolidation) and the auto_consolidate switch row; commands/loop.md defers to SKILL.md as the canonical gate list."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "high",
   "labels": [
     "loop-engineering",
@@ -19,11 +19,22 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "80b7413",
+    "fd0fe1e",
+    "d1f9b53",
+    "1311ef3"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-02T17:10:34.402Z",
+      "body": "Closed on green review (auto_close_on_green_review grant, 2026-07-02). tdd: test commit 80b7413 (32 specs, 29 failing-first verified against pre-impl tree) -> impl fd0fe1e (src/loop-auth.js: LOOP_AUTH_SWITCHES five names with NO gate-3 name, UNATTENDED_PRESET 3-true/2-false, setLoopAuth validate-before-IO + atomic merge touching only loop_auth+updated_at, grantUnattended composing preset+optIns; auto_consolidate added to BOTH schema copies with non-vacuous fingerprint parity spec) -> docs d1f9b53 (both SKILL.md copies byte-identical: FIVE hard-stop gates incl. Gate 5 consolidation + auto_consolidate switch row + unattended-preset subsection; loop.md defers to SKILL.md as authoritative) -> fixture fix 1311ef3 (one line, testbeef->deadbeef). Reviewer verdict PASS 0 HIGH / 0 MEDIUM / 3 LOW: 32/32 targeted + fast tier 489/2 green incl. live-state against updated schema; validation-before-IO ordering genuinely proven; gate-3 non-liftability by non-representability (deterministic transitionStatus enforcement deliberately deferred to TASK-082); no dist bundle affected. LOWs -> TASK-088: freeze exported preset/switches; tailor+lock the missing-bundle-dir error path; fix the testbeef fixture twin in operating-mode.spec.js. OPERATIONAL NOTE from review: re-running grantUnattended RESETS prior push/version-bump opt-ins to false (fails safe)."
+    }
+  ],
   "created_at": "2026-07-01T21:16:55.681Z",
-  "updated_at": "2026-07-02T16:51:48.878Z",
+  "updated_at": "2026-07-02T17:10:34.460Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

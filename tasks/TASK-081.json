@@ -9,7 +9,7 @@
     "A doc-lock spec pins the gate prose (test:since + fast-tier requirement in the three docs) so the contract cannot rot silently; red-green proven.",
     "Full npm run test:all green (this ticket touches test infrastructure)."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "high",
   "labels": [
     "deep-review",
@@ -22,7 +22,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-07-02T16:39:53.788Z",
-  "updated_at": "2026-07-02T16:39:53.788Z",
+  "updated_at": "2026-07-02T17:10:51.630Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

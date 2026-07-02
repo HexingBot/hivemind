@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-02T16:51:48.878Z",
+  "generated_at": "2026-07-02T17:10:51.630Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -436,7 +436,7 @@
     {
       "key": "TASK-075",
       "title": "loop: unattended mode - single up-front grant so the loop runs without supervision",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -472,7 +472,7 @@
     {
       "key": "TASK-081",
       "title": "deep-review Q1: repair the reviewer re-verification gate (test:since base-ref, fast tier per-ticket, calibration allowlisted)",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -510,6 +510,12 @@
       "title": "task-board: regression lock for the 64KiB body-cap (413) + traversal spec + stale mode.md line",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-088",
+      "title": "loop-auth polish: freeze exported constants, tailor missing-bundle-dir error, fix fixture twin",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }

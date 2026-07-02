@@ -26,6 +26,12 @@
       "label": "2026-07-01 direction: remove web console, unsupervised loop, agility program, win32 baseline fix"
     },
     {
+      "id": "2026-07-02T16:41:33.605Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "2026-07-02 deep-review complete: 37 confirmed findings, E1/E2 amendments, TASK-081..086 cut"
+    },
+    {
       "id": "TASK-063",
       "type": "task",
       "ref": "tasks/TASK-063.json",
@@ -264,6 +270,12 @@
       "type": "task",
       "ref": "tasks/TASK-074.json",
       "label": "Remove the Agentic OS web console"
+    },
+    {
+      "id": "task-075",
+      "type": "task",
+      "ref": "tasks/TASK-075.json",
+      "label": "loop unattended mode: single up-front loop_auth grant"
     }
   ],
   "edges": [
@@ -431,6 +443,16 @@
       "from": "task-074",
       "to": "2026-07-01T21:20:37.785Z",
       "relation": "produced-by"
+    },
+    {
+      "from": "task-075",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-075",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "relates-to"
     }
   ]
 }
