@@ -7973,11 +7973,29 @@ function buildIndexBytes(tasks, generatedAt) {
   })).sort(numericKeyOrder);
   return JSON.stringify({ generated_at: generatedAt, tasks: summary }, null, 2) + "\n";
 }
+var UatGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UatGuardError";
+    this.code = "UAT_GUARD_REQUIRED";
+  }
+};
+function checkUatGuard(task) {
+  if (task.verification_tier !== "uat-only") return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const hasUatComment = comments.some((c) => c && c.author === "uat");
+  if (!hasUatComment) {
+    throw new UatGuardError(
+      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without a "uat" comment recording the UAT verdict`
+    );
+  }
+}
 async function transitionStatus({
   repoRoot,
   key,
   status,
-  now = () => (/* @__PURE__ */ new Date()).toISOString()
+  now = () => (/* @__PURE__ */ new Date()).toISOString(),
+  closeGuard
 }) {
   if (!STATUSES.includes(status)) {
     throw new Error(
@@ -7987,6 +8005,12 @@ async function transitionStatus({
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
+  if (status === "done") {
+    checkUatGuard(task);
+    if (typeof closeGuard === "function") {
+      await closeGuard({ repoRoot, task, key });
+    }
+  }
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;

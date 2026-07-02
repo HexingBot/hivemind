@@ -7717,7 +7717,7 @@ __export(mcp_server_exports, {
 });
 module.exports = __toCommonJS(mcp_server_exports);
 var import_promises2 = require("node:fs/promises");
-var import_node_path3 = require("node:path");
+var import_node_path5 = require("node:path");
 var import_node_url = require("node:url");
 
 // node_modules/zod/v3/external.js
@@ -22269,11 +22269,29 @@ async function listReady({ repoRoot }) {
   });
   return ready.sort(numericKeyOrder);
 }
+var UatGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UatGuardError";
+    this.code = "UAT_GUARD_REQUIRED";
+  }
+};
+function checkUatGuard(task) {
+  if (task.verification_tier !== "uat-only") return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const hasUatComment = comments.some((c) => c && c.author === "uat");
+  if (!hasUatComment) {
+    throw new UatGuardError(
+      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without a "uat" comment recording the UAT verdict`
+    );
+  }
+}
 async function transitionStatus({
   repoRoot,
   key,
   status,
-  now = () => (/* @__PURE__ */ new Date()).toISOString()
+  now = () => (/* @__PURE__ */ new Date()).toISOString(),
+  closeGuard
 }) {
   if (!STATUSES.includes(status)) {
     throw new Error(
@@ -22283,6 +22301,12 @@ async function transitionStatus({
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
+  if (status === "done") {
+    checkUatGuard(task);
+    if (typeof closeGuard === "function") {
+      await closeGuard({ repoRoot, task, key });
+    }
+  }
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;
@@ -22305,6 +22329,43 @@ async function appendComment({
   const stamp = now();
   const comment = { author, at: stamp, body };
   task.comments = Array.isArray(task.comments) ? [...task.comments, comment] : [comment];
+  task.updated_at = stamp;
+  validateTaskOrThrow(task);
+  await atomicWriteFiles([
+    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
+    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+  ]);
+}
+var COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/i;
+async function closeTask({
+  repoRoot,
+  key,
+  comment,
+  linked_commits = [],
+  linked_prs = [],
+  now = () => (/* @__PURE__ */ new Date()).toISOString(),
+  closeGuard
+}) {
+  const allTasks = await readAllTasks(repoRoot);
+  const task = allTasks.find((t) => t.key === key);
+  if (!task) throw new Error(`unknown task key: ${key}`);
+  checkUatGuard(task);
+  if (typeof closeGuard === "function") {
+    await closeGuard({ repoRoot, task, key });
+  }
+  for (const sha of linked_commits) {
+    if (typeof sha !== "string" || !COMMIT_SHA_RE.test(sha)) {
+      throw new Error(
+        `invalid commit sha ${JSON.stringify(sha)} \u2014 must match ${COMMIT_SHA_RE}`
+      );
+    }
+  }
+  const stamp = now();
+  const newComment = { author: comment.author, at: stamp, body: comment.body };
+  task.status = "done";
+  task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
+  task.linked_commits = Array.isArray(task.linked_commits) ? [...task.linked_commits, ...linked_commits] : [...linked_commits];
+  task.linked_prs = Array.isArray(task.linked_prs) ? [...task.linked_prs, ...linked_prs] : [...linked_prs];
   task.updated_at = stamp;
   validateTaskOrThrow(task);
   await atomicWriteFiles([
@@ -22399,6 +22460,73 @@ async function createTask({
   return { key, path: target };
 }
 
+// src/pointer.js
+var import_node_fs3 = require("node:fs");
+var import_node_path3 = require("node:path");
+function pointerFilePath(repoRoot) {
+  return (0, import_node_path3.join)(repoRoot, "state", "session.json");
+}
+function readPointer(repoRoot) {
+  const p = pointerFilePath(repoRoot);
+  if (!(0, import_node_fs3.existsSync)(p)) return null;
+  return JSON.parse((0, import_node_fs3.readFileSync)(p, "utf8"));
+}
+
+// src/bundle.js
+var import_node_fs4 = require("node:fs");
+var import_node_path4 = require("node:path");
+function bundleDirFor(repoRoot, sessionId) {
+  return (0, import_node_path4.join)(repoRoot, "state", "sessions", sessionId);
+}
+function bundleSessionPath(repoRoot, sessionId) {
+  return (0, import_node_path4.join)(bundleDirFor(repoRoot, sessionId), "session.json");
+}
+function readBundleSession(repoRoot, sessionId) {
+  const p = bundleSessionPath(repoRoot, sessionId);
+  return JSON.parse((0, import_node_fs4.readFileSync)(p, "utf8"));
+}
+
+// src/operating-mode.js
+var OPERATING_MODES = ["harness", "loop"];
+async function getMode({ repoRoot }) {
+  try {
+    const pointer = readPointer(repoRoot);
+    if (!pointer || pointer.active_session_id == null) return "harness";
+    const bundle = readBundleSession(repoRoot, pointer.active_session_id);
+    return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
+  } catch (_err) {
+    return "harness";
+  }
+}
+
+// src/close-guard.js
+var LoopCloseGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "LoopCloseGuardError";
+    this.code = "LOOP_CLOSE_GUARD_DENIED";
+  }
+};
+async function loopModeCloseGuard({ repoRoot }) {
+  const mode = await getMode({ repoRoot });
+  if (mode !== "loop") return;
+  let loopAuth = {};
+  try {
+    const pointer = readPointer(repoRoot);
+    if (pointer && pointer.active_session_id != null) {
+      const bundle = readBundleSession(repoRoot, pointer.active_session_id);
+      loopAuth = bundle && bundle.loop_auth || {};
+    }
+  } catch (_err) {
+    loopAuth = {};
+  }
+  if (loopAuth.auto_close_on_green_review !== true) {
+    throw new LoopCloseGuardError(
+      "loop mode is active but auto_close_on_green_review has not been granted \u2014 cannot close this task automatically"
+    );
+  }
+}
+
 // src/mcp-server.js
 var import_meta = {};
 var PRIORITY = external_exports.enum(["low", "medium", "high", "critical"]);
@@ -22421,7 +22549,7 @@ async function readTask(repoRoot, key) {
     throw new Error(`invalid task key: ${key} (must match ${KEY_RE})`);
   }
   try {
-    const raw = await (0, import_promises2.readFile)((0, import_node_path3.join)(repoRoot, "tasks", `${key}.json`), "utf8");
+    const raw = await (0, import_promises2.readFile)((0, import_node_path5.join)(repoRoot, "tasks", `${key}.json`), "utf8");
     return JSON.parse(raw);
   } catch (err) {
     if (err && err.code === "ENOENT") return null;
@@ -22502,7 +22630,7 @@ function createServer({ repoRoot }) {
       }
     },
     async ({ key, status }) => {
-      await transitionStatus({ repoRoot, key, status });
+      await transitionStatus({ repoRoot, key, status, closeGuard: loopModeCloseGuard });
       return ok({ ok: true });
     }
   );
@@ -22518,6 +22646,34 @@ function createServer({ repoRoot }) {
     },
     async ({ key, author, body }) => {
       await appendComment({ repoRoot, key, author, body });
+      return ok({ ok: true });
+    }
+  );
+  server.registerTool(
+    "close_task",
+    {
+      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard and the loop-mode close guard.",
+      inputSchema: {
+        key: external_exports.string().describe("Task key, e.g. TASK-026"),
+        comment: external_exports.object({ author: external_exports.string(), body: external_exports.string() }),
+        linked_commits: external_exports.array(external_exports.string()).optional(),
+        linked_prs: external_exports.array(external_exports.string()).optional()
+      }
+    },
+    async ({
+      key,
+      comment,
+      linked_commits,
+      linked_prs
+    }) => {
+      await closeTask({
+        repoRoot,
+        key,
+        comment,
+        linked_commits: linked_commits ?? [],
+        linked_prs: linked_prs ?? [],
+        closeGuard: loopModeCloseGuard
+      });
       return ok({ ok: true });
     }
   );
