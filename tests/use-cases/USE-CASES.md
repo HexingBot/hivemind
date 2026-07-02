@@ -34,3 +34,8 @@ Suite size tracks product surface, not ticket count.
 
 - tests/e2e/e2e-install.spec.js
 - tests/e2e/plugin-deps.spec.js
+
+### Drive a goal autonomously (crash-resume)
+
+- tests/e2e/autonomous-drive.spec.js
+- tests/e2e/loop-checkpoint.spec.js
