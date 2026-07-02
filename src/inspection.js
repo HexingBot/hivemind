@@ -10,6 +10,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
+import { sweepAndRecover } from './recovery.js';
+
 /**
  * List all bundle directories under state/sessions/, newest-first.
  *
@@ -94,10 +96,14 @@ export async function showSession({ repoRoot, id }) {
     throw makeErr('E_BUNDLE_NOT_FOUND', `showSession: bundle ${id} not found`);
   }
 
+  // AC1 (TASK-083) — sweep orphan tmps / recover a corrupt target before
+  // reading. See src/recovery.js's header for the case table.
+  sweepAndRecover({ bundleDir });
+
   const sessionPath = join(bundleDir, 'session.json');
   if (!existsSync(sessionPath)) {
     throw makeErr('E_BUNDLE_MALFORMED',
-      `showSession: ${sessionPath} missing — run the recovery sweep`);
+      `showSession: ${sessionPath} missing even after the recovery sweep — no tmp was available to recover from`);
   }
   const session_json = JSON.parse(readFileSync(sessionPath, 'utf8'));
 

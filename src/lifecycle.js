@@ -15,6 +15,7 @@ import {
 import { captureTranscriptRefs, snapshotTranscripts } from './transcript.js';
 import { generateSummary } from './summary.js';
 import { atomicWriteFile } from './atomic-write.js';
+import { sweepAndRecover } from './recovery.js';
 
 /* -------------------------------------------------------------------------- */
 /*                                   start                                    */
@@ -287,6 +288,11 @@ export async function resumeFromPointer({ repoRoot }) {
     throw makeErr('E_NO_ACTIVE_SESSION',
       'resumeFromPointer: pointer.active_session_id is null (idle)');
   }
+
+  // AC1 (TASK-083) — sweep orphan tmps / recover a corrupt target BEFORE any
+  // read of the bundle. See src/recovery.js's header for the case table.
+  sweepAndRecover({ bundleDir: bundleDirFor(repoRoot, ptr.active_session_id) });
+
   const sessionPath = bundleSessionPath(repoRoot, ptr.active_session_id);
   if (!existsSync(sessionPath)) {
     throw makeErr('E_BUNDLE_MISSING',
@@ -322,6 +328,10 @@ async function loadActiveBundle(repoRoot) {
       'pointer.active_session_id is null (no active session)');
   }
   const sessionId = ptr.active_session_id;
+
+  // AC1 (TASK-083) — sweep before reading, same as resumeFromPointer.
+  sweepAndRecover({ bundleDir: bundleDirFor(repoRoot, sessionId) });
+
   const sp = bundleSessionPath(repoRoot, sessionId);
   if (!existsSync(sp)) {
     throw makeErr('E_BUNDLE_MISSING', `bundle session.json missing at ${sp}`);
