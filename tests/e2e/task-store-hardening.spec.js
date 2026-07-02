@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterAll } from 'vitest';
 import {
-  readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync,
+  readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync, utimesSync,
 } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -216,8 +216,15 @@ describe('AC3 — sweepTasksTmpFiles', () => {
       'TASK-101.json.tmp.99999-bad000',
       'index.json.tmp.77777-cafe11',
     ];
+    // TASK-083 AC3 backdates these past the sweep's mtime age-gate (~60s) —
+    // otherwise a freshly-written tmp is indistinguishable from a genuine
+    // in-flight write and the sweep must not touch it (see
+    // tests/e2e/task-store-resilience.spec.js AC3 for the fresh-tmp-survives case).
+    const staleAt = new Date(Date.now() - 5 * 60 * 1000);
     for (const name of orphans) {
-      writeFileSync(join(tasksDir, name), 'partial-write-bytes', 'utf8');
+      const p = join(tasksDir, name);
+      writeFileSync(p, 'partial-write-bytes', 'utf8');
+      utimesSync(p, staleAt, staleAt);
     }
 
     // Pre-sweep sanity: orphans + canonicals present.
@@ -266,6 +273,10 @@ describe('AC3 — sweepTasksTmpFiles', () => {
     const tasksDir = join(repoDir, 'tasks');
     const orphan = join(tasksDir, 'TASK-101.json.tmp.55555-deadcafe');
     writeFileSync(orphan, 'half-written-bytes', 'utf8');
+    // TASK-083 AC3 — backdate past the age-gate so the sweep treats this as a
+    // genuine crash orphan rather than a possibly in-flight write.
+    const staleAt = new Date(Date.now() - 5 * 60 * 1000);
+    utimesSync(orphan, staleAt, staleAt);
     expect(existsSync(orphan)).toBe(true);
 
     await listTodos({ repoRoot: repoDir });

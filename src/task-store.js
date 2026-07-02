@@ -25,7 +25,9 @@
 import {
   readFile, readdir, unlink,
 } from 'node:fs/promises';
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import {
+  mkdirSync, readFileSync, existsSync, statSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import Ajv from 'ajv/dist/2020.js';
@@ -210,11 +212,21 @@ async function verifyAndRepairIndex(repoRoot, tasks, now = () => new Date().toIS
   return true;
 }
 
+// TASK-083 AC3 — only reap tmps older than this. atomicWriteFiles's phase-1/
+// phase-2 window (tmp durable on disk, not yet renamed) is real but narrow
+// (tens of ms, wider under the Windows EBUSY retry path); 60s comfortably
+// clears that window so a sweep never deletes an in-flight write.
+const TMP_SWEEP_MIN_AGE_MS = 60000;
+
 /**
  * AC3 — best-effort removal of orphan tasks/*.tmp.* files left behind by an
  * interrupted atomic write. No-op when tasks/ does not exist (a wiped or
  * never-initialized repo is legal). Always resolves; per-file unlink errors
  * are swallowed because this is housekeeping, not a write path.
+ *
+ * Age-gated (TASK-083): a tmp younger than TMP_SWEEP_MIN_AGE_MS is skipped —
+ * it may be a concurrent writer's in-flight atomicWriteFiles() call, not a
+ * crash orphan. Only tmps old enough to be safely assumed abandoned are reaped.
  */
 export async function sweepTasksTmpFiles({ repoRoot }) {
   const dir = tasksDir(repoRoot);
@@ -226,13 +238,18 @@ export async function sweepTasksTmpFiles({ repoRoot }) {
     throw err;
   }
   const removed = [];
+  const now = Date.now();
   for (const name of entries) {
     if (TMP_FILE_RE.test(name)) {
+      const p = join(dir, name);
       try {
-        await unlink(join(dir, name));
+        const { mtimeMs } = statSync(p);
+        if (now - mtimeMs < TMP_SWEEP_MIN_AGE_MS) continue;
+        await unlink(p);
         removed.push(name);
       } catch {
-        // Best-effort — another writer may have already promoted/removed it.
+        // Best-effort — another writer may have already promoted/removed it,
+        // or the stat/unlink raced with it in some other way.
       }
     }
   }
@@ -588,6 +605,18 @@ export async function createTask({
   mkdirSync(tasksDir(repoRoot), { recursive: true });
 
   const target = taskFilePath(repoRoot, key);
+
+  // AC4 (TASK-083) — collision guard: derivedNextKey() and this write are not
+  // atomic, so a concurrent createTask call can win the race for the same key
+  // in between. Checked immediately before the write to keep the TOCTOU window
+  // as narrow as possible; atomicWriteFiles's renameSync would otherwise
+  // silently clobber whatever the other writer just created.
+  if (existsSync(target)) {
+    throw new Error(
+      `createTask: key collision — ${target} already exists (a concurrent writer won the race for ${key})`,
+    );
+  }
+
   await atomicWriteFiles([
     { target, bytes: JSON.stringify(task, null, 2) + '\n' },
     { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
