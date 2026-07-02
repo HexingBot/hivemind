@@ -44,7 +44,7 @@ const LOOP_AUTH_URL = pathToFileURL(join(__srcDir, 'loop-auth.js')).href;
  * carrying backstop ceilings, mirroring the live bundle shape) under a fresh
  * temp dir. */
 function makeRepo({ sessionId, bundleExtra = {}, noPointer = false, nullActiveSession = false } = {}) {
-  const id = sessionId || '20260616T120000Z-testbeef';
+  const id = sessionId || '20260616T120000Z-deadbeef';
   const root = makeTmpDir('af-la');
 
   mkdirSync(join(root, 'state'), { recursive: true });
