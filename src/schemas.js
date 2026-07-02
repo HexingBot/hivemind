@@ -158,6 +158,13 @@ export const bundleStateSchema = {
         auto_push_after_close: { type: 'boolean', default: false },
         uat_delegated_to_orchestrator: { type: 'boolean', default: false },
         auto_version_bump_on_milestone: { type: 'boolean', default: false },
+        auto_consolidate: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Standing authorization to run Gate 5 phase/milestone consolidation ' +
+            'without a per-step human check-in. Part of the unattended preset. TASK-075.',
+        },
       },
     },
     loop_state: {
