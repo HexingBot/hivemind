@@ -39,3 +39,10 @@ build/
 
 # Local-only Claude Code settings overrides (per-machine)
 .claude/settings.local.json
+
+# Runtime-only artifacts (TASK-083) — the advisory session lock and orphan
+# atomic-write tmp siblings (src/atomic-write.js's `${base}.tmp.${pid}-${hex}`
+# naming). Scoped globs so tracked bundle/task files alongside them are unaffected.
+state/.lock
+state/**/*.tmp.*
+tasks/*.tmp.*
