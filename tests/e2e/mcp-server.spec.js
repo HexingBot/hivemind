@@ -83,18 +83,21 @@ describe('TASK-026 — MCP task-store server (in-memory round-trip)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // AC1 — the surface is complete: exactly the six named tools register.
+  // AC1 — the surface is complete: exactly the named tools register.
+  // TASK-082 added a seventh tool, close_task — see
+  // tests/e2e/mcp-close-task.spec.js for its dedicated coverage.
   // ---------------------------------------------------------------------------
   it('createServer_returns_an_McpServer_instance', () => {
     expect(server).toBeInstanceOf(McpServer);
   });
 
-  it('registers_exactly_the_six_named_tools', async () => {
+  it('registers_exactly_the_seven_named_tools', async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
         'append_comment',
+        'close_task',
         'create_task',
         'get_task',
         'list_ready',
