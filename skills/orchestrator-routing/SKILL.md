@@ -328,17 +328,50 @@ log the blocking conditions, surface a summary, and stop — do not spin.
 
 ## Ticket-update protocol
 
-On a clean review, apply all of the following in a single atomic pass:
+**Route every ticket write through the MCP task-store tools** (`mcp__plugin_hivemind_hivemind-tasks__*`,
+backed by `src/task-store.js` / `src/mcp-server.js`), not direct `Edit` on
+`tasks/<KEY>.json`. The MCP tools are the only path that runs the two
+deterministic mutation-seam guards (TASK-082) — a hand edit bypasses both:
 
-1. Edit `tasks/<KEY>.json`: set `status: done`.
-2. Append a summary comment to the `comments` array (author `orchestrator`).
-3. Append commit SHAs to `linked_commits`.
-4. Append any PR URL to `linked_prs`.
-5. Refresh `updated_at` to the current UTC ISO-8601 timestamp.
-6. Regenerate `tasks/index.json` from all per-task files.
+- **The uat-only done-guard** — a ticket with `verification_tier: "uat-only"`
+  cannot transition to `done` without a `comments` entry authored `uat`
+  (the recorded UAT verdict). Enforced inside `transitionStatus`/`closeTask`
+  before any disk write; surfaces as a typed `UatGuardError`
+  (`code: 'UAT_GUARD_REQUIRED'`).
+- **The loop-mode auto-close guard** — while the session's operating mode is
+  `loop`, closing a ticket to `done` requires
+  `loop_auth.auto_close_on_green_review === true`; otherwise it's blocked
+  with a typed `LoopCloseGuardError` (`code: 'LOOP_CLOSE_GUARD_DENIED'`).
+  In `harness` mode (the default) this guard is a no-op.
 
-The same write pattern applies for intermediate status transitions (`todo →
-in_progress → in_review`, or `→ blocked`).
+**On a clean review (closing a ticket)**, call the `close_task` tool once —
+it performs the transition, the closing comment, the `linked_commits`/
+`linked_prs` append, and the `tasks/index.json` regen as a single
+validate-then-atomic pass (all-or-nothing: a guard failure or a malformed
+commit sha leaves the ticket file and the index byte-unchanged):
+
+```
+mcp__plugin_hivemind_hivemind-tasks__close_task({
+  key: "<KEY>",
+  comment: { author: "orchestrator", body: "<summary>" },
+  linked_commits: [...],
+  linked_prs: [...],
+})
+```
+
+**For intermediate status transitions** (`todo → in_progress → in_review`, or
+`→ blocked`) and for standalone comments, use `transition_status` and
+`append_comment` respectively — both also run the uat-only and loop-mode
+guards whenever the target status is `done` (e.g. a direct
+`transition_status` call to `done` outside `close_task`), and are no-ops for
+any other status.
+
+**Fallback (documented, not preferred):** if the MCP server is unavailable,
+a direct `Edit` of `tasks/<KEY>.json` following the old six-step pattern
+(set `status`, append the comment, append `linked_commits`/`linked_prs`,
+refresh `updated_at`, regenerate `tasks/index.json`) is acceptable — but it
+bypasses both guards above, so the orchestrator must manually verify the
+uat-only and loop-mode preconditions before hand-editing a ticket to `done`.
 
 ## Recording decision→task edges at ticket close (TASK-035)
 

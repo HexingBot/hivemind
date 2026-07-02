@@ -98,6 +98,52 @@ Includes: transitioning a ticket to `done` (close-to-done), pushing commits to a
 
 **Authorization switch:** `auto_close_on_green_review` (close-to-done only); `auto_push_after_close` (push after close).
 
+#### Push guard recipe (TASK-082, AC4)
+
+The close-to-done half of Gate 1 is enforced deterministically inside `close_task`/
+`transition_status` via `src/close-guard.js`'s `loopModeCloseGuard` (see the
+orchestrator-routing SKILL.md "Ticket-update protocol" section). The **push** half has
+no equivalent code seam — `git push` runs as a plain `Bash` tool call, outside the
+task-store's write path — so it is enforced instead via a Claude Code `PreToolUse` hook
+on the `Bash` tool. This is a **documented recipe**, not shipped code: copy the JSON
+below into `.claude/settings.json` (project or user scope) to activate it. It reads the
+same pointer/bundle files `loopModeCloseGuard` reads (`state/session.json` →
+`state/sessions/<id>/session.json`), but checks `loop_auth.auto_push_after_close`
+instead of `auto_close_on_green_review`, and only fires when the Bash command matches
+`git push`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('fs'),path=require('path');let input='';process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{let payload;try{payload=JSON.parse(input);}catch{process.exit(0);}const cmd=(payload.tool_input&&payload.tool_input.command)||'';if(!/\\\\bgit\\\\s+push\\\\b/.test(cmd)){process.exit(0);}try{const root=process.cwd();const ptr=JSON.parse(fs.readFileSync(path.join(root,'state','session.json'),'utf8'));const sid=ptr.active_session_id;if(!sid){process.exit(0);}const bundle=JSON.parse(fs.readFileSync(path.join(root,'state','sessions',sid,'session.json'),'utf8'));if(bundle.mode!=='loop'){process.exit(0);}const authed=bundle.loop_auth&&bundle.loop_auth.auto_push_after_close===true;if(authed){process.exit(0);}console.error('Gate 1 (push): loop mode is active and auto_push_after_close is not granted — push blocked. Ask the human to authorize auto_push_after_close, or push manually in harness mode.');process.exit(2);}catch(_err){process.exit(0);}});\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Notes on the recipe:
+- Exit code `2` is Claude Code's "block the tool call" signal; the `stderr` text
+  (the `console.error` line) is surfaced back to the model as the block reason.
+- Any read failure (no active session, corrupt pointer/bundle, malformed JSON) falls
+  through to `process.exit(0)` — **allow** — mirroring `loopModeCloseGuard`'s
+  fail-open-to-harness default rather than fail-closed, so a missing/corrupt session
+  never wedges an otherwise-legitimate push.
+- The matcher fires on every `Bash` call and filters internally to commands matching
+  `git push`; non-push Bash calls pass through untouched (`process.exit(0)` before any
+  file read).
+- This hook is **additive** to, not a replacement for, the human confirmation Gate 1
+  otherwise requires — it is the mechanical backstop for the case where the loop tries
+  to push without the standing authorization the human actually granted.
+
 ### Gate 2 — UAT verdicts
 
 Tickets with `verification_tier: uat-only` require human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict because acceptance criteria in the `uat-only` tier are human-observable by definition.
