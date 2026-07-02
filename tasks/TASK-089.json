@@ -1,0 +1,26 @@
+{
+  "key": "TASK-089",
+  "title": "docs: mcp-server skill references still say six tools (stale after close_task)",
+  "description": "Doc-drift follow-up from TASK-082: skills/mcp-server/references/tool-contract.md and in-memory-test-harness.md (both skills/ and .claude/skills/ copies) still describe the six tools - the MCP server now registers seven (close_task added by TASK-082). Update the count and add close_task to the tool table/contract, keeping skill parity copies byte-identical.",
+  "acceptance_criteria": [
+    "Both reference docs describe seven tools including close_task (input schema + guard behavior noted).",
+    "skills/ and .claude/skills/ copies byte-identical; skill-parity gate green."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "docs",
+    "followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-082"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-02T21:46:59.033Z",
+  "updated_at": "2026-07-02T21:46:59.033Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}

@@ -282,6 +282,12 @@
       "type": "task",
       "ref": "tasks/TASK-081.json",
       "label": "repair reviewer re-verification gate (test:since + fast tier + calibration)"
+    },
+    {
+      "id": "task-082",
+      "type": "task",
+      "ref": "tasks/TASK-082.json",
+      "label": "deterministic gate enforcement + atomic close_task tool"
     }
   ],
   "edges": [
@@ -462,6 +468,11 @@
     },
     {
       "from": "task-081",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-082",
       "to": "2026-07-02T16:41:33.605Z",
       "relation": "produced-by"
     }

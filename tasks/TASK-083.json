@@ -9,7 +9,7 @@
     "createTask cannot silently overwrite an existing task file: exclusive create or verify-after-write on the derived key, throwing a typed error on collision; spec simulates the TOCTOU.",
     "Any dist bundle embedding the touched modules is rebuilt; dist-parity green; tdd - failing tests first for each guard."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "high",
   "labels": [
     "deep-review",
@@ -22,7 +22,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-07-02T16:40:25.339Z",
-  "updated_at": "2026-07-02T16:40:25.339Z",
+  "updated_at": "2026-07-02T21:47:15.966Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

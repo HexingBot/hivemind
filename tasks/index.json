@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-02T17:50:36.103Z",
+  "generated_at": "2026-07-02T21:47:15.966Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -478,13 +478,13 @@
     {
       "key": "TASK-082",
       "title": "deep-review S1: deterministic gate enforcement at mutation seams + atomic close_task tool",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-083",
       "title": "deep-review Q2: state resilience - wire sweepAndRecover, gitignore runtime artifacts, age-gate the tmp sweep, exclusive task create",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -514,6 +514,12 @@
     {
       "key": "TASK-088",
       "title": "loop-auth polish: freeze exported constants, tailor missing-bundle-dir error, fix fixture twin",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-089",
+      "title": "docs: mcp-server skill references still say six tools (stale after close_task)",
       "status": "todo",
       "priority": "low"
     }

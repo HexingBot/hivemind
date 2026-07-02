@@ -323,6 +323,18 @@
   "subagent_results": [
     {
       "agent": "reviewer",
+      "task": "TASK-082",
+      "at": "2026-07-02T21:47:15.448Z",
+      "summary": "TASK-082 review PASS 0H/2M/3L; both MEDIUMs (missing locks for guard self-satisfaction + close_task-under-loop composition) landed in-band 88222a3 with plant-proven locks, cold re-verify PASS. CLOSED via the NEW closeTask export itself (first production dogfood, loopModeCloseGuard composed, harness no-op). Commits f59ade1/ae5a385/6513dbe/373e2f5/a597838/88222a3. TASK-089 minted (stale six-tools skill refs). Gates: test:all 1018/4. Next: TASK-083 (state resilience) TEST phase."
+    },
+    {
+      "agent": "developer",
+      "task": "TASK-082",
+      "at": "2026-07-02T17:58:45.754Z",
+      "summary": "TEST commit f59ade1: 23 specs across task-store-close-guards (fast, 4 fail), e2e/close-guard (7 fail module-not-found), e2e/mcp-close-task (4 fail via InMemoryTransport). Seam contract: UatGuardError (code UAT_GUARD_REQUIRED) thrown in transitionStatus on uat-only->done without author-uat comment; optional injectable closeGuard param (task-store stays bundle-free); new src/close-guard.js loopModeCloseGuard reading mode+loop_auth (LoopCloseGuardError, LOOP_CLOSE_GUARD_DENIED); closeTask single validate-then-atomic export (COMMIT_SHA_RE, all-or-nothing); MCP layer composes the guard into transition_status + registers close_task as 7th tool."
+    },
+    {
+      "agent": "reviewer",
       "task": "TASK-081",
       "at": "2026-07-02T17:50:35.681Z",
       "summary": "TASK-081 re-review PASS 0H/0M/1L after one RC loop. HIGH (test:since dropped all-digit refs silently) fixed via validating wrapper scripts/test-since.mjs + regression locks; MEDIUM (vacuous doc-lock anchors) fixed via section scoping + precise plant. Flag-smuggling probe safe. test:all 995/4. CLOSED with commits e84d658/c7e908e/5924895/8dcb532. LOW advisory (shell:true on vitest leg) comment-only. Next: TASK-082 TEST phase."
@@ -674,8 +686,8 @@
     }
   ],
   "pending_human_confirmation": "🟢 READY TO /CLEAR (2026-06-17). goal-mode-switch drive COMPLETE; goal-app-preview (TASK-065..069) PLANNED + MINTED and ready to dogfood-drive in a fresh chat. The human's plan: /clear now, then in the new chat RESUME-FIRST reloads this bundle and we drive goal-app-preview via /hivemind-beta:loop (starts at TASK-065). On resume, RE-CONFIRM the goal + any loop_auth switches (reset to all-false). Still DEFERRED (not blocking the clear): push the 6 local goal-mode-switch commits to origin/beta? mint follow-up tickets for the beta findings (lock pid-identity / enum-mapping / poll-test-seam)? cut a beta release? | PRIOR: ✅ BETA-TEST DRIVE COMPLETE (goal-mode-switch, 2026-06-17). Both tickets done via /hivemind-beta:loop control flow. TASK-063 (tdd): operating-mode state harness|loop + getMode/setMode/toggleMode + auto-flip + projection — closed at the close-to-done gate after HUMAN CONFIRMATION (063 commits 77c5d65/96c2fa9/72d6c35). TASK-064 (tests-after): console mode badge + toggle + POST /api/session/mode + 4s live poll — UAT FAILED on step 4 (out-of-band auto-flip not live) → REQUEST-CHANGES → poll fix 0b1888b → re-UAT all PASS (064 commits 9bb95e2/8d06a57/0b1888b). All commits LOCAL on `beta`, NOT pushed (no auto_push). AWAITING HUMAN DECISION: (1) push beta to origin/beta? (2) mint follow-up tickets for the beta findings (lock pid-identity TASK-061; loop checkpoint enum-mapping; optional poll-test-seam hardening)? (3) cut a beta release (0.7.0-beta.2)? See loop_state.beta_findings. PRIOR GATE-1 NOTE (resolved): | PRIOR: NONE PENDING — The loop ran select→developer-TEST(77c5d65)→developer-IMPL(96c2fa9+dist 72d6c35)→reviewer autonomously and STOPPED here because no auto_close_on_green_review switch is set (all gates ON per human's choice). Review = APPROVE-WITH-FOLLOWUPS (0H/0M/1L/1N), test:all 803/5 green at release tier, all 7 ACs met. AWAITING human 'yes' to close TASK-063 to done (then the loop continues to TASK-064 and halts at the UAT gate). If approved, close updates: status=done, orchestrator summary comment, linked_commits [77c5d65,96c2fa9,72d6c35], updated_at, regen index, + knowledge-graph decision→task edge per TASK-035 protocol. NOT pushed (no auto_push). | PRIOR: NONE PENDING — web-console epic v0.5.0 released + pushed with human approval; live UAT passed. Workflow idle. Only TASK-003 (Jira migration, Atlassian-creds-blocked) remains open. PREVIOUSLY: ⏸️ PAUSED by human (will return with comments). Plugin chain (epic TASK-020) 100% complete, all 7 tickets closed & pushed. Human informally confirmed the live plugin install is WORKING (\"va funcionando\") — partial informal discharge of TASK-027 AC1 (not yet formally recorded). Post-close polish this session: added a copy-paste install command block to README.md (consolidated the verbose plugin-install section; suite still 339/4, README under 200 lines). On resume: nothing mid-flight; only TASK-003 (Jira mig, MCP-blocked) open. If the human reports an E2E issue, diagnose against the live install (likely suspect: ${CLAUDE_PROJECT_DIR} resolution in the Bash-tool env, flagged in the spike).",
-  "updated_at": "2026-07-02T17:50:35.682Z",
-  "active_task": "TASK-082",
+  "updated_at": "2026-07-02T21:47:15.450Z",
+  "active_task": "TASK-083",
   "workflow_step": "test",
   "loop_auth": {
     "auto_close_on_green_review": true,

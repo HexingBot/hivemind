@@ -9,7 +9,7 @@
     "Push guard: a documented PreToolUse/pre-push hook recipe blocks git push while mode is loop unless loop_auth.auto_push_after_close is true; recipe shipped in loop.md or settings docs.",
     "tdd: failing tests first for the uat-only done-guard, the loop-mode close guard, and close_task atomicity (all-or-nothing on failure)."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "high",
   "labels": [
     "deep-review",
@@ -20,11 +20,24 @@
   "depends_on": [
     "TASK-075"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "f59ade1",
+    "ae5a385",
+    "6513dbe",
+    "373e2f5",
+    "a597838",
+    "88222a3"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-02T21:46:58.553Z",
+      "body": "Closed on green review + cold-re-verified in-band fix (auto_close grant, 2026-07-02). tdd: test f59ade1 (23 specs: store guards, close-guard module, MCP surface via InMemoryTransport) -> feat ae5a385 (UatGuardError UAT_GUARD_REQUIRED in transitionStatus + closeTask; injectable closeGuard seam keeping task-store bundle-free; src/close-guard.js loopModeCloseGuard LOOP_CLOSE_GUARD_DENIED default-deny in loop mode; closeTask single validate-then-atomic export; MCP transition_status composes the guard + close_task registered as 7th tool) -> docs 6513dbe (SKILL.md MCP-routing both copies; push-guard PreToolUse hook recipe in loop.md Gate 1, empirically verified across 5 scenarios) -> test 373e2f5 (tool-count lock 6->7, mandated by AC5) -> build a597838 (dist mcp-server.cjs + task-board.cjs; init/new-task unchanged via DCE, parity green). Review PASS 0H/2M/3L; the 2 MEDIUMs (missing locks for guard self-satisfaction and close_task-under-loop composition) + 2 LOW doc fixes landed in-band as 88222a3 with plant-proven locks, cold re-verified PASS. Gates: test:all 1018/4 green, fast tier 510/2, test:since non-zero. THIS CLOSE ITSELF ran through the new closeTask export with loopModeCloseGuard composed (harness mode, guard no-op) - first production dogfood. Follow-up minted: stale six-tools wording in skills/mcp-server references."
+    }
+  ],
   "created_at": "2026-07-02T16:40:08.968Z",
-  "updated_at": "2026-07-02T17:50:36.103Z",
+  "updated_at": "2026-07-02T21:46:58.553Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
