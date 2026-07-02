@@ -162,3 +162,23 @@ describe('M2 — board HTML pins the textContent/createElement XSS discipline', 
     ).toBe(true);
   });
 });
+
+// ===========================================================================
+// TASK-074 — removal lock: the console (chat/skills/status-bar/preview) must
+// never resurrect inside src/task-board.js. Guards against a future edit
+// silently re-adding the removed surface.
+// ===========================================================================
+describe('TASK-074 — no console/preview surface remains in src/task-board.js', () => {
+  it('src_task_board_js_has_no_chat_skill_preview_or_bridge_markers', () => {
+    const src = readFileSync(TASK_BOARD_SRC, 'utf8');
+    const forbidden = [
+      'chat-panel', 'chat-messages', 'skills-panel', 'skills-list',
+      'preview-panel', 'preview-iframe', 'session-status-bar', 'mode-badge',
+      '/api/chat', '/api/preview', '/api/session', '/api/skills',
+      'orchestrator-bridge.js', 'skill-catalog.js', 'preview-resolver.js',
+      'preview-process.js', 'session-projection.js',
+    ];
+    const found = forbidden.filter((marker) => src.includes(marker));
+    expect(found, `forbidden console/preview markers found: ${found.join(', ')}`).toEqual([]);
+  });
+});

@@ -1,18 +1,14 @@
 // tests/e2e/operating-mode.spec.js
-// TASK-063 — e2e/bundle-touching tests for src/operating-mode.js and
-// src/session-projection.js (slow tier — real tmpdir + pointer + bundle on disk).
+// TASK-063 — e2e/bundle-touching tests for src/operating-mode.js
+// (slow tier — real tmpdir + pointer + bundle on disk).
 //
 // ACs covered:
 //   AC1 — default mode is 'harness'; absent-bundle / absent-`mode` backward-compat.
 //   AC2 — getMode reads bundle and returns current mode; setMode writes mode atomically;
 //          setMode is idempotent (calling with same value succeeds without error).
 //   AC3/AC4 — setMode supports flip outside the loop (harness→loop, loop→harness).
-//   AC5 — projectSessionState() includes `mode` in its bounded projection;
-//          defaults to 'harness' when bundle has no `mode` field;
-//          idle projection (no active session) also includes mode: 'harness'.
 //
-// All tests MUST FAIL until src/operating-mode.js is created AND
-// src/session-projection.js is updated to include `mode`.
+// All tests MUST FAIL until src/operating-mode.js is created.
 //
 // Disk I/O / tmpdir → slow tier: tests/e2e/.
 
@@ -24,7 +20,6 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
-import { projectSessionState } from '../../src/session-projection.js';
 
 afterAll(cleanupAll);
 
@@ -176,59 +171,5 @@ describe('AC2 — setMode idempotency', () => {
     const { root } = makeRepo({ bundleExtra: { mode: 'harness' } });
 
     await expect(setMode({ repoRoot: root, mode: 'harness' })).resolves.not.toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// AC5 — projectSessionState includes `mode` in bounded projection
-// ---------------------------------------------------------------------------
-
-describe('AC5 — projectSessionState includes mode field (active bundle without mode)', () => {
-  it('projection_includes_mode_defaulting_to_harness_when_absent_from_bundle', () => {
-    const { root } = makeRepo(); // no mode field in bundle
-    const projection = projectSessionState({ repoRoot: root });
-    expect(projection).toHaveProperty('mode');
-    expect(projection.mode).toBe('harness');
-  });
-});
-
-describe('AC5 — projectSessionState surfaces mode from bundle', () => {
-  it('projection_includes_mode_loop_when_bundle_has_loop', () => {
-    const { root } = makeRepo({ bundleExtra: { mode: 'loop' } });
-    const projection = projectSessionState({ repoRoot: root });
-    expect(projection).toHaveProperty('mode');
-    expect(projection.mode).toBe('loop');
-  });
-
-  it('projection_includes_mode_harness_when_bundle_has_harness', () => {
-    const { root } = makeRepo({ bundleExtra: { mode: 'harness' } });
-    const projection = projectSessionState({ repoRoot: root });
-    expect(projection).toHaveProperty('mode');
-    expect(projection.mode).toBe('harness');
-  });
-});
-
-describe('AC5 — idle projection includes mode: harness (no active session)', () => {
-  it('idle_projection_has_mode_harness', () => {
-    // No pointer file at all → idle projection.
-    const root = makeTmpDir('af-om-idle');
-    const projection = projectSessionState({ repoRoot: root });
-    expect(projection.idle).toBe(true);
-    expect(projection).toHaveProperty('mode');
-    expect(projection.mode).toBe('harness');
-  });
-
-  it('idle_projection_with_null_active_session_id_has_mode_harness', () => {
-    const root = makeTmpDir('af-om-idle-null');
-    mkdirSync(join(root, 'state'), { recursive: true });
-    writeFileSync(
-      join(root, 'state', 'session.json'),
-      JSON.stringify({ schema_version: 2, active_session_id: null, updated_at: '2026-06-16T12:00:00Z' }),
-      'utf8',
-    );
-    const projection = projectSessionState({ repoRoot: root });
-    expect(projection.idle).toBe(true);
-    expect(projection).toHaveProperty('mode');
-    expect(projection.mode).toBe('harness');
   });
 });
