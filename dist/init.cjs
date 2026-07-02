@@ -10011,8 +10011,6 @@ function writeClaudeSettings({ repoRoot, pluginRoot }) {
 var import_meta2 = {};
 var __initDir = import_meta2.url ? (0, import_node_path14.dirname)((0, import_node_url2.fileURLToPath)(import_meta2.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
 var PLUGIN_WORKFLOWS_SRC = (0, import_node_path14.join)(__initDir, "..", "workflows");
-var PLUGIN_LAUNCHER_CMD_SRC = (0, import_node_path14.join)(__initDir, "..", "console.cmd");
-var PLUGIN_LAUNCHER_SH_SRC = (0, import_node_path14.join)(__initDir, "..", "console.sh");
 function materializeWorkflows(repoRoot) {
   const srcDir = PLUGIN_WORKFLOWS_SRC;
   if (!(0, import_node_fs15.existsSync)(srcDir)) return { added: [], skipped: [] };
@@ -10030,28 +10028,6 @@ function materializeWorkflows(repoRoot) {
       added.push(entry.name);
     } else {
       skipped.push(entry.name);
-    }
-  }
-  return { added, skipped };
-}
-function materializeLaunchers(repoRoot) {
-  const launchers = [
-    { src: PLUGIN_LAUNCHER_CMD_SRC, name: "console.cmd" },
-    { src: PLUGIN_LAUNCHER_SH_SRC, name: "console.sh" }
-  ];
-  const added = [];
-  const skipped = [];
-  for (const { src, name } of launchers) {
-    if (!(0, import_node_fs15.existsSync)(src)) {
-      skipped.push(name);
-      continue;
-    }
-    const dest = (0, import_node_path14.join)(repoRoot, name);
-    if ((0, import_node_fs15.existsSync)(dest)) {
-      skipped.push(name);
-    } else {
-      (0, import_node_fs15.copyFileSync)(src, dest);
-      added.push(name);
     }
   }
   return { added, skipped };
@@ -10323,16 +10299,8 @@ async function runWizardAndWriteProjectMd({
     );
     throw err;
   }
-  try {
-    materializeLaunchers(repoRoot);
-  } catch (err) {
-    console.warn(
-      `launcher materializer failed: ${err && err.message ? err.message : err}`
-    );
-    throw err;
-  }
   console.log(
-    "Console launcher: double-click console.cmd (Windows) or run `sh console.sh` (macOS/Linux), or use the /hivemind:console slash command in Claude Code."
+    "Task board: use the /hivemind:task-status slash command in Claude Code to open the kanban board."
   );
   try {
     writeClaudeSettings({ repoRoot });
