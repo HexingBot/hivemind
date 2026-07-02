@@ -9,7 +9,7 @@
     "Push guard: a documented PreToolUse/pre-push hook recipe blocks git push while mode is loop unless loop_auth.auto_push_after_close is true; recipe shipped in loop.md or settings docs.",
     "tdd: failing tests first for the uat-only done-guard, the loop-mode close guard, and close_task atomicity (all-or-nothing on failure)."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "high",
   "labels": [
     "deep-review",
@@ -24,7 +24,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-07-02T16:40:08.968Z",
-  "updated_at": "2026-07-02T16:40:08.968Z",
+  "updated_at": "2026-07-02T17:50:36.103Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

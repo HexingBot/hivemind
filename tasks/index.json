@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-02T17:10:51.630Z",
+  "generated_at": "2026-07-02T17:50:36.103Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -472,13 +472,13 @@
     {
       "key": "TASK-081",
       "title": "deep-review Q1: repair the reviewer re-verification gate (test:since base-ref, fast tier per-ticket, calibration allowlisted)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-082",
       "title": "deep-review S1: deterministic gate enforcement at mutation seams + atomic close_task tool",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {

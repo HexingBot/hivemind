@@ -276,6 +276,12 @@
       "type": "task",
       "ref": "tasks/TASK-075.json",
       "label": "loop unattended mode: single up-front loop_auth grant"
+    },
+    {
+      "id": "task-081",
+      "type": "task",
+      "ref": "tasks/TASK-081.json",
+      "label": "repair reviewer re-verification gate (test:since + fast tier + calibration)"
     }
   ],
   "edges": [
@@ -453,6 +459,11 @@
       "from": "task-075",
       "to": "2026-07-02T16:41:33.605Z",
       "relation": "relates-to"
+    },
+    {
+      "from": "task-081",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "produced-by"
     }
   ]
 }
