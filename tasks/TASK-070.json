@@ -9,7 +9,7 @@
     "Staleness re-acquire semantics preserved (a stale lock is still re-takeable); E_LOCK_HELD still thrown for a FRESH foreign lock under either identity scheme.",
     "tdd: failing tests first encoding cross-pid renew/release under a stable holder id + the backward-compat path."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "beta",
@@ -19,11 +19,20 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "850b9f7",
+    "e2c34ff"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-02T02:20:29.034Z",
+      "body": "Closed on green review (auto_close_on_green_review grant, 2026-07-01 session). tdd two-phase: test commit 850b9f7 (6 new specs in tests/e2e/session-lock.spec.js, 4 failing for the right reason, 2 non-vacuous back-compat locks) then impl commit e2c34ff (src/session-lock.js only: optional holder option on acquire/renew/release; holder_id persisted only when supplied; isSameHolder gates on holder_id when either side carries one, else pid+hostname; makeLockRecord never serializes an absent holder_id; staleness math untouched). Reviewer verdict PASS 0 HIGH / 1 MEDIUM / 3 LOW: session-lock e2e 18/18, fast tier 620/2 green, TDD discipline verified against pre-impl source, affected-e2e list confirmed sufficient, module confirmed not dist-bundled. CARRIED CONSTRAINTS -> TASK-080: MEDIUM-1 E_LOCK_HELD message omits holder_id (dead-pid message useless in the exact scenario this ticket fixes); LOW-1 asymmetric identity cases (lock-with-holder_id vs caller-without, and legacy-lock vs holder-carrying caller) correct in code but unpinned by specs; LOW-3 renew() docstring still says pid/hostname. LOW-2 (hand-off claimed 8 specs, diff adds 6) corrected here: 6 new specs is the actual count."
+    }
+  ],
   "created_at": "2026-06-17T15:25:31.555Z",
-  "updated_at": "2026-06-17T15:25:31.555Z",
+  "updated_at": "2026-07-02T02:20:29.117Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

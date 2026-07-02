@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-01T21:44:00.862Z",
+  "generated_at": "2026-07-02T02:20:57.804Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -406,7 +406,7 @@
     {
       "key": "TASK-070",
       "title": "session-lock: stable caller-supplied holder identity (session_id) instead of process.pid",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -462,6 +462,12 @@
       "title": "brain-launch: Windows-aware python interpreter fallback when no venv exists",
       "status": "todo",
       "priority": "low"
+    },
+    {
+      "key": "TASK-080",
+      "title": "session-lock: loop-grade heartbeat (renew cadence + staleness override) and holder_id surfacing",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

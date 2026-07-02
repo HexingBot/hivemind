@@ -1,0 +1,30 @@
+{
+  "key": "TASK-080",
+  "title": "session-lock: loop-grade heartbeat (renew cadence + staleness override) and holder_id surfacing",
+  "description": "Deep-review confirmed finding (2026-07-01) + carried constraints from the TASK-070 review. (1) HEARTBEAT: commands/loop.md renews the lock once per ticket (step 6) but DEFAULT_STALENESS_MS is 5 minutes and a ticket iteration (developer + reviewer spawns) routinely exceeds that, so the lock is expired for most of every ticket and a second orchestrator can legitimately steal it and double-drive the task store - the exact corruption the lock exists to prevent, aggravated by unattended runs (TASK-075). Fix: renew at every sub-ticket phase boundary (after in_progress transition, after developer returns, after reviewer returns) AND support a loop-mode staleness override on acquire (e.g. stalenessMs 30-60 min when mode is loop), building on the TASK-070 stable holder identity. (2) CARRIED from TASK-070 review: MEDIUM - E_LOCK_HELD message omits holder_id (the recorded pid is a dead subprocess pid in exactly the cross-pid scenario TASK-070 fixed; commands/loop.md step 1 tells the orchestrator to surface pid+hostname from the message) - append holder_id to the message when present and adjust loop.md wording; LOW - the two asymmetric identity cases (existing lock has holder_id + caller passes none; legacy lock without holder_id + caller passes holder) are correct in code but unpinned by specs; LOW - renew() docstring still says different pid/hostname instead of different holder.",
+  "acceptance_criteria": [
+    "E_LOCK_HELD message includes holder_id when the lock record carries one (pid/hostname retained for diagnostics); commands/loop.md step 1 wording updated to surface it.",
+    "acquire() accepts a caller-supplied stalenessMs override documented for loop mode; default unchanged (5 min); commands/loop.md documents renew-at-phase-boundary cadence (after in_progress, after developer return, after reviewer return) and the loop-mode staleness override.",
+    "Regression locks pin the two asymmetric identity cases: fresh lock with holder_id refuses a caller without holder (E_LOCK_HELD) and remains stealable when stale; legacy record without holder_id treats a holder-carrying caller as foreign.",
+    "renew() docstring corrected (holder identity, not pid/hostname); all existing session-lock specs still green (18+ in tests/e2e/session-lock.spec.js).",
+    "tdd: failing tests first for the message content, the stalenessMs override, and the two asymmetric cases."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "loop-engineering",
+    "session-lock",
+    "deep-review"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-070"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-02T02:20:57.804Z",
+  "updated_at": "2026-07-02T02:20:57.804Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
