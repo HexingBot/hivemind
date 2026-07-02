@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-02T21:47:15.966Z",
+  "generated_at": "2026-07-02T22:08:07.500Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -484,13 +484,13 @@
     {
       "key": "TASK-083",
       "title": "deep-review Q2: state resilience - wire sweepAndRecover, gitignore runtime artifacts, age-gate the tmp sweep, exclusive task create",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-084",
       "title": "deep-review S2: mid-ticket crash-resume for the loop + autonomous-drive use case e2e",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {

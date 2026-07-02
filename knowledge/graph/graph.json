@@ -288,6 +288,12 @@
       "type": "task",
       "ref": "tasks/TASK-082.json",
       "label": "deterministic gate enforcement + atomic close_task tool"
+    },
+    {
+      "id": "task-083",
+      "type": "task",
+      "ref": "tasks/TASK-083.json",
+      "label": "state resilience: recovery wiring, gitignore, tmp age-gate, create collision guard"
     }
   ],
   "edges": [
@@ -473,6 +479,11 @@
     },
     {
       "from": "task-082",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-083",
       "to": "2026-07-02T16:41:33.605Z",
       "relation": "produced-by"
     }

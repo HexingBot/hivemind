@@ -1,12 +1,14 @@
 {
   "key": "TASK-085",
   "title": "deep-review S4: session-lock exclusive acquire + verify-after-write + contention spec",
-  "description": "Deep-review confirmed finding (2026-07-02): acquire() is read-check-write - two near-simultaneous acquires both pass the freshness check and both win, the second unconditional rename silently overwriting the first record; the spec suite is 100 percent sequential with zero contention coverage for the ONLY guarantee the module exists to provide (mutual exclusion). Composes dangerously with the staleness window until TASK-080 lands - sequence this with/after TASK-080 (same module and spec file).",
+  "description": "Deep-review confirmed finding (2026-07-02): acquire() is read-check-write - two near-simultaneous acquires both pass the freshness check and both win, the second unconditional rename silently overwriting the first record; the spec suite is 100 percent sequential with zero contention coverage for the ONLY guarantee the module exists to provide (mutual exclusion). Composes dangerously with the staleness window until TASK-080 lands - sequence this with/after TASK-080 (same module and spec file). SCOPE EXTENDED 2026-07-02 per TASK-083 review findings M1 (createTask collision guard is check-before-write with an untyped Error - two simultaneous writers can still clobber; verify-after-write + typed error needed for the AC4-letter) and L1 (recovery sweep lacks the tmp age-gate, same class AC3 fixed for tasks/).",
   "acceptance_criteria": [
     "First acquisition uses exclusive create (fs open wx or equivalent) so two racing first-acquires cannot both succeed.",
     "Verify-after-write: after writing the lock record (including the stale-steal path), re-read and throw E_LOCK_HELD if the persisted record is not ours - closes the stale-steal race deterministically.",
     "A contention e2e spec races two concurrent node child processes on acquire in a loop; exactly one wins each round; deterministic (no sleeps as synchronization).",
-    "All existing session-lock specs stay green; holder-id (TASK-070) and heartbeat/staleness (TASK-080) semantics preserved; tdd - failing tests first."
+    "All existing session-lock specs stay green; holder-id (TASK-070) and heartbeat/staleness (TASK-080) semantics preserved; tdd - failing tests first.",
+    "createTask gains verify-after-write on the derived-key target (re-read after rename, compare to intended payload, throw a TYPED error e.g. E_KEY_COLLISION on mismatch) - closing the microsecond TOCTOU window the TASK-083 existsSync guard left (review M1); contention spec with two concurrent creators.",
+    "Symmetry check (TASK-083 review L1): sweepAndRecover bundle-tmp reaping gains the same ~60s age-gate the tasks/ sweep has, so a concurrent reader cannot delete a fresh in-flight bundle tmp; regression spec."
   ],
   "status": "todo",
   "priority": "high",
@@ -23,7 +25,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-07-02T16:40:55.408Z",
-  "updated_at": "2026-07-02T16:40:55.408Z",
+  "updated_at": "2026-07-02T22:07:29.119Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

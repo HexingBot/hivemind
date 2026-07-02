@@ -323,6 +323,18 @@
   "subagent_results": [
     {
       "agent": "reviewer",
+      "task": "TASK-083",
+      "at": "2026-07-02T22:08:07.151Z",
+      "summary": "TASK-083 review PASS 0H/1M/3L (test:all 1024/4; recovery wired at all 3 seams; gitignore clean vs full tracked set; age-gate skew-safe; hardening-spec edit judged additive-safe). M1 (untyped check-before-write collision guard, microsecond window) + L1 (recovery sweep lacks age-gate) recorded as TASK-085 scope extensions. CLOSED via closeTask with commits 142c3f7/f40f693/1768f64/fd80170/ea52876. Next: TASK-084 (loop crash-resume) TEST phase."
+    },
+    {
+      "agent": "developer",
+      "task": "TASK-083",
+      "at": "2026-07-02T21:54:06.127Z",
+      "summary": "TEST commit 142c3f7: 4 failing-first specs across recovery-wiring (resumeFromPointer must sweepAndRecover before read), gitignore-runtime-artifacts (3 patterns: state/.lock, state/**/*.tmp.*, tasks/*.tmp.*), task-store-resilience (age-gate ~60s fresh-tmp-survives; createTask collision rejection /exists|collision/i with pre-existing bytes untouched). Seam: sweepAndRecover({bundleDir}) in resumeFromPointer (lifecycle.js ~278) minimum, plus loadActiveBundle + inspection showSession to close the full finding. Fast tier 510/2 untouched."
+    },
+    {
+      "agent": "reviewer",
       "task": "TASK-082",
       "at": "2026-07-02T21:47:15.448Z",
       "summary": "TASK-082 review PASS 0H/2M/3L; both MEDIUMs (missing locks for guard self-satisfaction + close_task-under-loop composition) landed in-band 88222a3 with plant-proven locks, cold re-verify PASS. CLOSED via the NEW closeTask export itself (first production dogfood, loopModeCloseGuard composed, harness no-op). Commits f59ade1/ae5a385/6513dbe/373e2f5/a597838/88222a3. TASK-089 minted (stale six-tools skill refs). Gates: test:all 1018/4. Next: TASK-083 (state resilience) TEST phase."
@@ -686,8 +698,8 @@
     }
   ],
   "pending_human_confirmation": "🟢 READY TO /CLEAR (2026-06-17). goal-mode-switch drive COMPLETE; goal-app-preview (TASK-065..069) PLANNED + MINTED and ready to dogfood-drive in a fresh chat. The human's plan: /clear now, then in the new chat RESUME-FIRST reloads this bundle and we drive goal-app-preview via /hivemind-beta:loop (starts at TASK-065). On resume, RE-CONFIRM the goal + any loop_auth switches (reset to all-false). Still DEFERRED (not blocking the clear): push the 6 local goal-mode-switch commits to origin/beta? mint follow-up tickets for the beta findings (lock pid-identity / enum-mapping / poll-test-seam)? cut a beta release? | PRIOR: ✅ BETA-TEST DRIVE COMPLETE (goal-mode-switch, 2026-06-17). Both tickets done via /hivemind-beta:loop control flow. TASK-063 (tdd): operating-mode state harness|loop + getMode/setMode/toggleMode + auto-flip + projection — closed at the close-to-done gate after HUMAN CONFIRMATION (063 commits 77c5d65/96c2fa9/72d6c35). TASK-064 (tests-after): console mode badge + toggle + POST /api/session/mode + 4s live poll — UAT FAILED on step 4 (out-of-band auto-flip not live) → REQUEST-CHANGES → poll fix 0b1888b → re-UAT all PASS (064 commits 9bb95e2/8d06a57/0b1888b). All commits LOCAL on `beta`, NOT pushed (no auto_push). AWAITING HUMAN DECISION: (1) push beta to origin/beta? (2) mint follow-up tickets for the beta findings (lock pid-identity TASK-061; loop checkpoint enum-mapping; optional poll-test-seam hardening)? (3) cut a beta release (0.7.0-beta.2)? See loop_state.beta_findings. PRIOR GATE-1 NOTE (resolved): | PRIOR: NONE PENDING — The loop ran select→developer-TEST(77c5d65)→developer-IMPL(96c2fa9+dist 72d6c35)→reviewer autonomously and STOPPED here because no auto_close_on_green_review switch is set (all gates ON per human's choice). Review = APPROVE-WITH-FOLLOWUPS (0H/0M/1L/1N), test:all 803/5 green at release tier, all 7 ACs met. AWAITING human 'yes' to close TASK-063 to done (then the loop continues to TASK-064 and halts at the UAT gate). If approved, close updates: status=done, orchestrator summary comment, linked_commits [77c5d65,96c2fa9,72d6c35], updated_at, regen index, + knowledge-graph decision→task edge per TASK-035 protocol. NOT pushed (no auto_push). | PRIOR: NONE PENDING — web-console epic v0.5.0 released + pushed with human approval; live UAT passed. Workflow idle. Only TASK-003 (Jira migration, Atlassian-creds-blocked) remains open. PREVIOUSLY: ⏸️ PAUSED by human (will return with comments). Plugin chain (epic TASK-020) 100% complete, all 7 tickets closed & pushed. Human informally confirmed the live plugin install is WORKING (\"va funcionando\") — partial informal discharge of TASK-027 AC1 (not yet formally recorded). Post-close polish this session: added a copy-paste install command block to README.md (consolidated the verbose plugin-install section; suite still 339/4, README under 200 lines). On resume: nothing mid-flight; only TASK-003 (Jira mig, MCP-blocked) open. If the human reports an E2E issue, diagnose against the live install (likely suspect: ${CLAUDE_PROJECT_DIR} resolution in the Bash-tool env, flagged in the spike).",
-  "updated_at": "2026-07-02T21:47:15.450Z",
-  "active_task": "TASK-083",
+  "updated_at": "2026-07-02T22:08:07.153Z",
+  "active_task": "TASK-084",
   "workflow_step": "test",
   "loop_auth": {
     "auto_close_on_green_review": true,

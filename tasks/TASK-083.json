@@ -9,7 +9,7 @@
     "createTask cannot silently overwrite an existing task file: exclusive create or verify-after-write on the derived key, throwing a typed error on collision; spec simulates the TOCTOU.",
     "Any dist bundle embedding the touched modules is rebuilt; dist-parity green; tdd - failing tests first for each guard."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "high",
   "labels": [
     "deep-review",
@@ -18,11 +18,23 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "142c3f7",
+    "f40f693",
+    "1768f64",
+    "fd80170",
+    "ea52876"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-02T22:08:06.985Z",
+      "body": "Closed on green review (auto_close grant, 2026-07-02). tdd: test 142c3f7 (4 failing-first specs) -> feat f40f693 (sweepAndRecover wired at ALL THREE bundle-load seams: resumeFromPointer lifecycle.js:294, loadActiveBundle :333 covering pause/resume/end, inspection showSession :101; E_BUNDLE_MALFORMED message updated) -> feat 1768f64 (TMP_SWEEP_MIN_AGE_MS=60000 age-gate in sweepTasksTmpFiles; createTask existsSync collision guard /exists|collision/i; TASK-009 hardening fixtures backdated - pure additive edit preserving the original crash-orphans-get-reaped intent) -> chore fd80170 (.gitignore: state/.lock, state/**/*.tmp.*, tasks/*.tmp.*; full tracked-set check-ignore sweep clean) -> build ea52876 (all four dist bundles rebuilt, parity green). Reviewer verdict PASS 0 HIGH / 1 MEDIUM / 3 LOW: test:all 1024/4 green, test:since 102 non-zero, sweep-on-load failure modes traced safe, age-gate skew degrades safely, gitignore swallows no tracked file. M1 (collision guard is check-before-write with untyped Error - microsecond window remains for truly simultaneous writers) + L1 (recovery sweep lacks the tmp age-gate) recorded as SCOPE EXTENSIONS on TASK-085 (verify-after-write family). L2 (spec consults global gitignore - environmental fragility) and L3 (promote-failure mislabeled tmp_unparseable in the action log) noted, comment-only. The three silent-corruption classes for unattended runs are now sealed: crash recovery runs automatically on every bundle load, runtime artifacts cannot be committed, in-flight tmps survive sweeps, and task-key collisions reject instead of clobbering."
+    }
+  ],
   "created_at": "2026-07-02T16:40:25.339Z",
-  "updated_at": "2026-07-02T21:47:15.966Z",
+  "updated_at": "2026-07-02T22:08:06.985Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
