@@ -94,10 +94,11 @@ The Orchestrator and the Developer/Reviewer subagents **must pick the command by
 | One-shot check of code you just edited | `npm run test:changed` | only specs related to your **uncommitted** changes |
 | Fast confidence / pre-deploy smoke | `npm test` | the whole fast tier (~2s) |
 | Iterating on one slow spec | `vitest run --config vitest.config.all.js tests/e2e/<file>` | that single e2e spec |
-| **Per-ticket hand-off gate** | `npm run test:changed` + named affected e2e specs | changed + targeted slow specs |
+| Re-verifying a committed diff (Reviewer) | `npm run test:since -- <base-ref>` | specs affected since `<base-ref>`, including committed changes |
+| **Per-ticket hand-off gate** | `npm run test:changed` (or `test:since` post-commit) + `npm test` + named affected e2e specs | changed + fast tier + targeted slow specs |
 | **Release / milestone / publish gate** | `npm run test:all` | everything (fast + slow) |
 
-(`test:changed` compares against `HEAD`. To diff against the last commit instead: `npx vitest run --changed HEAD~1 --config vitest.config.all.js`.)
+(`test:changed` compares against `HEAD`, which means **uncommitted** changes only — it selects zero specs once the diff is committed. `test:since` is the committed-range equivalent: `npm run test:since -- <base-ref>` runs `vitest run --config vitest.config.all.js --changed <base-ref>`, which correctly picks up specs affected by everything since `<base-ref>`, committed or not. Use `test:changed` while iterating locally; use `test:since` to reproduce that selection against a base ref — this is what the Reviewer runs at hand-off, since by the time it re-verifies, the Developer's diff is already committed.)
 
 ### Use-case suite
 
@@ -111,7 +112,7 @@ Rules:
 
 ### Rules
 
-- **The scaled gate applies per ticket:** run `npm run test:changed` plus any affected e2e specs explicitly named at hand-off. The Developer proposes the affected-e2e list; the Reviewer independently assesses its sufficiency and may expand it or escalate to the Orchestrator if under-scoped. This keeps per-ticket verification time roughly constant regardless of project age.
+- **The scaled gate applies per ticket:** the Developer runs `npm run test:changed` plus `npm test` (fast tier, ~2s) plus any affected e2e specs explicitly named at hand-off. The Reviewer re-runs the equivalent selection against the committed diff with `npm run test:since -- <base-ref>` plus `npm test` plus the named e2e specs — a green Developer hand-off must reproduce as green here. The Developer proposes the affected-e2e list; the Reviewer independently assesses its sufficiency and may expand it or escalate to the Orchestrator if under-scoped. `npm test` is mandatory at both steps because the `--changed`/`--since` import graph is blind to files read via `fs` rather than imported (agent/skill parity sensors, doc-lock specs) — an md-only ticket would otherwise run zero sensors. This keeps per-ticket verification time roughly constant regardless of project age.
 - **`npm run test:all` is reserved for release, milestone, and publish points**, and for any ticket that touches test infrastructure or `tasks/schema.json`. `test:changed` and `test:watch` are inner-loop accelerators — the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs, which is why full `test:all` still runs at those checkpoints.
 - New slow specs (anything calling `makeTmpDir` or spawning a process) go under `tests/e2e/`; pure-logic specs stay at the top level of `tests/`. The folder *is* the tier — keep the boundary clean so the fast tier stays fast.
 
