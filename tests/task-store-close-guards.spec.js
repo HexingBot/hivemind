@@ -282,4 +282,47 @@ describe('AC3 — closeTask applies transition + comment + commits + prs + index
     expect(readTaskFileBytes(repoDir, 'TASK-207')).toBe(beforeTask);
     expect(readIndexBytes(repoDir)).toBe(beforeIndex);
   });
+
+  // deep-review MEDIUM-1 — the uat-only guard must evaluate ON-DISK comments
+  // only, never the incoming `comment` param. Without this lock, closeTask
+  // could be made to self-satisfy its own uat-only requirement by simply
+  // passing { author: 'uat', ... } as the closing comment — the exact bypass
+  // this ticket's guard exists to prevent.
+  it('close_task_cannot_self_satisfy_the_uat_guard_via_its_own_comment_param', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-closetask-uatguard-selfsatisfy');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-208': makeTask({ key: 'TASK-208', verification_tier: 'uat-only', comments: [] }),
+      },
+    });
+    writeFileSync(
+      join(repoDir, 'tasks', 'index.json'),
+      JSON.stringify({ generated_at: '2000-01-01T00:00:00Z', tasks: [] }, null, 2),
+      'utf8',
+    );
+    const beforeTask = readTaskFileBytes(repoDir, 'TASK-208');
+    const beforeIndex = readIndexBytes(repoDir);
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-208',
+        // The comment being APPENDED claims author 'uat', but no such comment
+        // exists on disk yet — the guard must not treat the incoming comment
+        // as satisfying its own precondition.
+        comment: { author: 'uat', body: 'All steps PASS.' },
+        linked_commits: [],
+        linked_prs: [],
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatGuardError);
+
+    expect(readTaskFileBytes(repoDir, 'TASK-208')).toBe(beforeTask);
+    expect(readIndexBytes(repoDir)).toBe(beforeIndex);
+  });
 });

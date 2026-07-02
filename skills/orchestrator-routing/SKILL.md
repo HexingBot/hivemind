@@ -360,11 +360,12 @@ mcp__plugin_hivemind_hivemind-tasks__close_task({
 ```
 
 **For intermediate status transitions** (`todo → in_progress → in_review`, or
-`→ blocked`) and for standalone comments, use `transition_status` and
-`append_comment` respectively — both also run the uat-only and loop-mode
-guards whenever the target status is `done` (e.g. a direct
-`transition_status` call to `done` outside `close_task`), and are no-ops for
-any other status.
+`→ blocked`), use `transition_status`; for standalone comments, use
+`append_comment`. `transition_status` runs the same uat-only and loop-mode
+guards as `close_task` whenever its target status is `done` (e.g. a direct
+`transition_status` call to `done` outside `close_task`), and is a no-op for
+any other status. `append_comment` has no `status` argument and never runs
+either guard — it is purely additive and cannot close a ticket by itself.
 
 **Fallback (documented, not preferred):** if the MCP server is unavailable,
 a direct `Edit` of `tasks/<KEY>.json` following the old six-step pattern

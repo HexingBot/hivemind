@@ -143,6 +143,12 @@ Notes on the recipe:
 - This hook is **additive** to, not a replacement for, the human confirmation Gate 1
   otherwise requires — it is the mechanical backstop for the case where the loop tries
   to push without the standing authorization the human actually granted.
+- **Coverage caveat:** the `/\bgit\s+push\b/` matcher is a plain-text pattern match on
+  the literal `Bash` command string — it does not catch `git -C <dir> push`, shell
+  aliases/functions that wrap `push`, or a push issued from inside a script the Bash
+  call merely invokes (e.g. `./deploy.sh`). It is a mechanical backstop additive to the
+  human gate, not a security boundary — treat it as a convenience net for the common
+  case, not a guarantee against every way a push can be issued.
 
 ### Gate 2 — UAT verdicts
 

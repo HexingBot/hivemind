@@ -362,4 +362,49 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     expect(readFileSync(taskPath, 'utf8')).toBe(beforeTask);
     expect(readFileSync(indexPath, 'utf8')).toBe(beforeIndex);
   });
+
+  // deep-review MEDIUM-2 — close_task IS the close path for unattended loop
+  // runs, but until now no spec exercised it under loop mode: if the
+  // close_task handler dropped `closeGuard: loopModeCloseGuard` (the only
+  // thing wiring loop-mode policy into this tool), no test would fail.
+  it('close_task_surfaces_the_loop_mode_guard_as_an_error_when_unauthorized', async () => {
+    seedBundleMode(repoRoot, { mode: 'loop', loopAuth: {} });
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'close_task in unauthorized loop mode',
+        description: 'blocked by the loop-mode close guard',
+        acceptance_criteria: ['blocked'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+      },
+    }));
+    const key = created.key;
+
+    const taskPath = join(repoRoot, 'tasks', `${key}.json`);
+    const indexPath = join(repoRoot, 'tasks', 'index.json');
+    const beforeTask = readFileSync(taskPath, 'utf8');
+    const beforeIndex = readFileSync(indexPath, 'utf8');
+
+    let surfaced = false;
+    try {
+      const res = await client.callTool({
+        name: 'close_task',
+        arguments: {
+          key,
+          comment: { author: 'developer', body: 'Shipped.' },
+        },
+      });
+      if (res && res.isError) surfaced = true;
+    } catch {
+      surfaced = true;
+    }
+    expect(surfaced, 'close_task in unauthorized loop mode must not succeed silently').toBe(true);
+
+    const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+    expect(task.status).toBe('todo');
+    expect(readFileSync(taskPath, 'utf8')).toBe(beforeTask);
+    expect(readFileSync(indexPath, 'utf8')).toBe(beforeIndex);
+  });
 });
