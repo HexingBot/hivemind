@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-02T02:20:57.804Z",
+  "generated_at": "2026-07-02T16:41:08.669Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -430,7 +430,7 @@
     {
       "key": "TASK-074",
       "title": "Remove the Agentic OS web console (chat bridge, skill buttons, status bar, preview panel, launchers)",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -466,6 +466,42 @@
     {
       "key": "TASK-080",
       "title": "session-lock: loop-grade heartbeat (renew cadence + staleness override) and holder_id surfacing",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-081",
+      "title": "deep-review Q1: repair the reviewer re-verification gate (test:since base-ref, fast tier per-ticket, calibration allowlisted)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-082",
+      "title": "deep-review S1: deterministic gate enforcement at mutation seams + atomic close_task tool",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-083",
+      "title": "deep-review Q2: state resilience - wire sweepAndRecover, gitignore runtime artifacts, age-gate the tmp sweep, exclusive task create",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-084",
+      "title": "deep-review S2: mid-ticket crash-resume for the loop + autonomous-drive use case e2e",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-085",
+      "title": "deep-review S4: session-lock exclusive acquire + verify-after-write + contention spec",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-086",
+      "title": "deep-review S6: data-fencing for ticket-derived text in developer/reviewer briefings",
       "status": "todo",
       "priority": "high"
     }

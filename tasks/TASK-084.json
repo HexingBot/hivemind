@@ -1,0 +1,27 @@
+{
+  "key": "TASK-084",
+  "title": "deep-review S2: mid-ticket crash-resume for the loop + autonomous-drive use case e2e",
+  "description": "Deep-review confirmed finding (2026-07-02), the single most fatal defect for unattended operation: the checkpoint is per-completed-ticket only, so a crash between the in_progress transition and close leaves the ticket PERMANENTLY invisible to selectNextTicket (filters status===todo) - the loop hits goalStuck and stops, requiring a human after every mid-ticket crash. iteration/completedThisRun counters are not durable, so maxIterations and the every-5-tickets consolidation gate silently reset after restart. The flagship post-pivot flow has no USE-CASES.md entry and no e2e of the checkpoint-crash-resume round trip. NOTE: coordinate with TASK-071 (workflow_step enum mapping) - fold its enum assertions into the e2e if 071 has not landed yet, respecting the new-test budget.",
+  "acceptance_criteria": [
+    "A documented loop_state contract ({current_ticket, phase, iteration, completed_this_run, run_started_at}) written at every phase boundary; shape documented in the bundle schema description (loop_state stays additionalProperties true).",
+    "A pure helper (e.g. resumePoint(bundle, tasks)) decides where to resume after a crash: resume the recorded ticket at its recorded phase, or reset it to todo with an explanatory comment - never leave it invisible; tdd with failing tests first.",
+    "commands/loop.md + orchestrator-routing SKILL.md (parity copies byte-identical) document the recovery rule at loop start using the helper; counters restored on resume so maxIterations and the consolidation gate survive restarts.",
+    "USE-CASES.md gains a Drive-a-goal-autonomously entry with an e2e spec covering the deterministic seams: checkpoint write, fresh-process read, selectNextTicket over the restored state."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "deep-review",
+    "loop-engineering",
+    "state"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-02T16:40:42.003Z",
+  "updated_at": "2026-07-02T16:40:42.003Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

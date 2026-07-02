@@ -1,0 +1,30 @@
+{
+  "key": "TASK-082",
+  "title": "deep-review S1: deterministic gate enforcement at mutation seams + atomic close_task tool",
+  "description": "Deep-review confirmed finding (2026-07-02), the central bet of the unattended pivot: all five loop gates and the uat-only done-gate are 100 percent prose - transitionStatus and the MCP transition_status tool check nothing, and the per-ticket close-out (the most frequent write of the workflow: status + comment + linked_commits + linked_prs + index) is done with ~6 manual Edits bypassing the validation/atomicity the store already provides. In a long unattended run the only thing between the loop and an unauthorized close/push is model memory of loop.md prose - exactly what context compaction erodes. Coordinate with TASK-075 (its grant mechanism is the un-enforced half of this).",
+  "acceptance_criteria": [
+    "transitionStatus (and the MCP transition_status tool) throws a clear typed error when a task with verification_tier uat-only transitions to done without a comments[] entry whose author is uat; spec covers both the store function and the MCP surface.",
+    "Loop-mode close guard: when the active bundle mode is loop, close-to-done additionally requires loop_auth.auto_close_on_green_review - implemented at the MCP/command layer or as an injectable policy hook so task-store does not hard-couple to bundle internals; placement documented.",
+    "A close_task MCP tool applies transition + summary comment + linked_commits + linked_prs + index regen in ONE validate-then-atomic pass; orchestrator-routing SKILL.md (both copies) routes all ticket writes through the MCP tools with Edit as a documented fallback only.",
+    "Push guard: a documented PreToolUse/pre-push hook recipe blocks git push while mode is loop unless loop_auth.auto_push_after_close is true; recipe shipped in loop.md or settings docs.",
+    "tdd: failing tests first for the uat-only done-guard, the loop-mode close guard, and close_task atomicity (all-or-nothing on failure)."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "deep-review",
+    "loop-engineering",
+    "process"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-075"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-02T16:40:08.968Z",
+  "updated_at": "2026-07-02T16:40:08.968Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

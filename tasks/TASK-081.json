@@ -1,0 +1,28 @@
+{
+  "key": "TASK-081",
+  "title": "deep-review Q1: repair the reviewer re-verification gate (test:since base-ref, fast tier per-ticket, calibration allowlisted)",
+  "description": "Deep-review confirmed finding (2026-07-02), the most urgent item of the roadmap: the review gate reports green having run ZERO tests on every ticket. (a) npm run test:changed diffs against HEAD, but at review time the developer diff is already committed, so vitest selects zero specs and exits 0 (No test files found + passWithNoTests) - the green-must-reproduce-as-green check is a silent false positive, and the reviewer cannot use the correct form because npx is not in its Bash allowlist. (b) The --changed import graph is blind to markdown (agents/skills/commands/CLAUDE.md) - parity sensors read files via readFileSync with no import edge, so an md-only ticket (the exact shape of TASK-076/077/078) runs zero sensors. (c) reviewer.md declares the calibration check HIGH/BLOCK but invokes it as node bin/check-calibration.js, outside the allowlist - hard denial exactly on the mandatory blocker.",
+  "acceptance_criteria": [
+    "A test:since npm script exists (vitest run --changed=<base-ref> --config vitest.config.all.js) accepting a base ref and runnable via the allowlisted npm run form; agents/reviewer.md (+ parity copy) instructs running it with the ticket diff range base it already receives.",
+    "The per-ticket gate adds npm test (fast tier, ~2s, contains all fs-read sensors) in CLAUDE.md, developer.md, and reviewer.md - NOT via forceRerunTriggers (would drag the slow e2e tier).",
+    "Calibration is runnable by the reviewer: documented as npm run check:calibration -- <args> (allowlisted form) and reviewer.md requires its output in the Verification block.",
+    "A doc-lock spec pins the gate prose (test:since + fast-tier requirement in the three docs) so the contract cannot rot silently; red-green proven.",
+    "Full npm run test:all green (this ticket touches test infrastructure)."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "deep-review",
+    "testing",
+    "process"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-02T16:39:53.788Z",
+  "updated_at": "2026-07-02T16:39:53.788Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

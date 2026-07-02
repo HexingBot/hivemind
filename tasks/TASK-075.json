@@ -1,13 +1,15 @@
 {
   "key": "TASK-075",
   "title": "loop: unattended mode - single up-front grant so the loop runs without supervision",
-  "description": "Human-directed (2026-07-01): the autonomous loop must be able to run without per-gate supervision. Add an unattended preset to the loop protocol: starting the loop with unattended intent records the standing-authorization switches (auto_close_on_green_review, uat_delegated_to_orchestrator, and optionally auto_push_after_close / auto_version_bump_on_milestone) in the session bundle loop_auth in ONE up-front human grant, instead of pausing at each gate. Gate 3 (genuinely ambiguous scope) is NEVER lifted - the loop still stops there. Backstops (maxIterations, maxNoProgress, maxReviewerRetries) remain in force. Any exported helper for writing loop_auth must validate switch names and use the atomic write recipe.",
+  "description": "Human-directed (2026-07-01): the autonomous loop must be able to run without per-gate supervision. Add an unattended preset to the loop protocol: starting the loop with unattended intent records the standing-authorization switches (auto_close_on_green_review, uat_delegated_to_orchestrator, and optionally auto_push_after_close / auto_version_bump_on_milestone) in the session bundle loop_auth in ONE up-front human grant, instead of pausing at each gate. Gate 3 (genuinely ambiguous scope) is NEVER lifted - the loop still stops there. Backstops (maxIterations, maxNoProgress, maxReviewerRetries) remain in force. Any exported helper for writing loop_auth must validate switch names and use the atomic write recipe. AMENDED 2026-07-02 per deep-review finding E1: the loop_auth schema (additionalProperties:false, 4 switches) rejects auto_consolidate today, so the unattended preset would fail live-state validation; and SKILL.md (the self-declared durable contract) says four gates while loop.md says five - an orchestrator following SKILL.md alone never calls consolidationGate.",
   "acceptance_criteria": [
     "An exported helper (e.g. setLoopAuth / grantUnattended in src/) writes the loop_auth switches to the active session bundle atomically; unknown switch names are rejected before any I/O; absent bundle surfaces a clear error.",
     "The unattended preset sets auto_close_on_green_review, uat_delegated_to_orchestrator, and auto_consolidate true; auto_push_after_close and auto_version_bump_on_milestone are opt-in flags, default false even under unattended.",
     "Gate 3 (ambiguous scope) is documented and enforced as never liftable: no preset or switch combination bypasses it.",
     "Backstop ceilings are unchanged by unattended mode; commands/loop.md and the orchestrator-routing skill document the preset and the single up-front grant; skill parity copies byte-identical.",
-    "tdd: failing tests first for the loop_auth writer (validation, atomicity, preset composition, gate-3 non-liftability at the policy seam)."
+    "tdd: failing tests first for the loop_auth writer (validation, atomicity, preset composition, gate-3 non-liftability at the policy seam).",
+    "auto_consolidate is added to the loop_auth schema in BOTH copies (src/schemas.js and state/bundle.schema.json) with a parity spec asserting the two loop_auth definitions stay structurally identical; tests/live-state.spec.js stays green with the preset persisted.",
+    "The gate contract is reconciled: orchestrator-routing SKILL.md (both parity copies) lists all FIVE gates including Gate 5 (consolidation) and the auto_consolidate switch row; commands/loop.md defers to SKILL.md as the canonical gate list."
   ],
   "status": "todo",
   "priority": "high",
@@ -21,7 +23,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-07-01T21:16:55.681Z",
-  "updated_at": "2026-07-01T21:28:07.977Z",
+  "updated_at": "2026-07-02T15:00:59.014Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

@@ -1,0 +1,28 @@
+{
+  "key": "TASK-083",
+  "title": "deep-review Q2: state resilience - wire sweepAndRecover, gitignore runtime artifacts, age-gate the tmp sweep, exclusive task create",
+  "description": "Deep-review confirmed finding (2026-07-02): three silent-corruption classes an unattended loop cannot notice. (a) src/recovery.js sweepAndRecover is written and tested but has ZERO call sites - the state/README.md recovery contract is false; after a mid-write crash orphan tmp files accumulate and a corrupt bundle is not resumable by any new chat. (b) state/.lock and *.tmp.* files are not gitignored while state/ is fully tracked - a broad git add during a run commits the lock, which on machine B blocks acquire(). (c) sweepTasksTmpFiles deletes ANY tasks/*.tmp.* with no age threshold while multiple writer processes exist - it can delete an in-flight tmp between phase 1 and 2 of an atomic write (~250ms window on the Windows retry path) causing partial mutation; and deriveNextKey is TOCTOU - two concurrent createTask calls can silently overwrite each other via unconditional rename.",
+  "acceptance_criteria": [
+    "sweepAndRecover({bundleDir}) is invoked at the bundle-load seams (loadActiveBundle / resumeFromPointer / inspection paths) mirroring the existing task-store sweep pattern; a spec proves an orphan tmp is recovered on load.",
+    "Scoped gitignore patterns added (state/.lock, state/**/*.tmp.*, tasks/*.tmp.*) with a git check-ignore spec locking them.",
+    "sweepTasksTmpFiles gains an mtime age-gate (~60s) so in-flight tmp files are never deleted; regression spec red-green proven.",
+    "createTask cannot silently overwrite an existing task file: exclusive create or verify-after-write on the derived key, throwing a typed error on collision; spec simulates the TOCTOU.",
+    "Any dist bundle embedding the touched modules is rebuilt; dist-parity green; tdd - failing tests first for each guard."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "deep-review",
+    "state",
+    "robustness"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-02T16:40:25.339Z",
+  "updated_at": "2026-07-02T16:40:25.339Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

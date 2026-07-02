@@ -10,7 +10,7 @@
     "Packaging clean: build:plugin entrypoints updated, stale dist bundles removed, dist-parity green, claude plugin validate PASS, orchestrator-routing skill parity copies byte-identical with console/preview sections removed.",
     "npm run test:all green after removal (obsolete console/preview specs deleted with their feature)."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "high",
   "labels": [
     "console",
@@ -23,7 +23,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-07-01T21:16:28.179Z",
-  "updated_at": "2026-07-01T21:16:28.179Z",
+  "updated_at": "2026-07-02T02:21:47.082Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

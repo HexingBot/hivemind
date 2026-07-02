@@ -1,0 +1,29 @@
+{
+  "key": "TASK-085",
+  "title": "deep-review S4: session-lock exclusive acquire + verify-after-write + contention spec",
+  "description": "Deep-review confirmed finding (2026-07-02): acquire() is read-check-write - two near-simultaneous acquires both pass the freshness check and both win, the second unconditional rename silently overwriting the first record; the spec suite is 100 percent sequential with zero contention coverage for the ONLY guarantee the module exists to provide (mutual exclusion). Composes dangerously with the staleness window until TASK-080 lands - sequence this with/after TASK-080 (same module and spec file).",
+  "acceptance_criteria": [
+    "First acquisition uses exclusive create (fs open wx or equivalent) so two racing first-acquires cannot both succeed.",
+    "Verify-after-write: after writing the lock record (including the stale-steal path), re-read and throw E_LOCK_HELD if the persisted record is not ours - closes the stale-steal race deterministically.",
+    "A contention e2e spec races two concurrent node child processes on acquire in a loop; exactly one wins each round; deterministic (no sleeps as synchronization).",
+    "All existing session-lock specs stay green; holder-id (TASK-070) and heartbeat/staleness (TASK-080) semantics preserved; tdd - failing tests first."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "deep-review",
+    "session-lock",
+    "loop-engineering"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-080"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-02T16:40:55.408Z",
+  "updated_at": "2026-07-02T16:40:55.408Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
