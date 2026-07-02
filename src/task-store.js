@@ -291,17 +291,60 @@ export async function listReady({ repoRoot }) {
 }
 
 /**
+ * TASK-082 — thrown by the uat-only done-guard (see checkUatGuard below).
+ * Deliberately self-contained (no bundle/operating-mode/loop-auth imports) —
+ * task-store.js must not hard-couple to bundle internals. `.code` lets
+ * callers (and tests) distinguish this from an incidental /uat/i message
+ * match on some other error.
+ */
+export class UatGuardError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'UatGuardError';
+    this.code = 'UAT_GUARD_REQUIRED';
+  }
+}
+
+/**
+ * TASK-082 — a task whose verification_tier is 'uat-only' may only reach
+ * 'done' once a comment authored 'uat' is present (the recorded UAT
+ * verdict). Self-contained: reads only task.verification_tier + task.comments,
+ * no bundle/session access. Throws UatGuardError; callers run this BEFORE any
+ * mutation/write so a thrown guard leaves the task file untouched.
+ */
+function checkUatGuard(task) {
+  if (task.verification_tier !== 'uat-only') return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const hasUatComment = comments.some((c) => c && c.author === 'uat');
+  if (!hasUatComment) {
+    throw new UatGuardError(
+      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without a "uat" comment recording the UAT verdict`,
+    );
+  }
+}
+
+/**
  * AC2 (single-writer) — set a task's status, bump updated_at, regenerate the
  * index. Validates the status enum before touching disk; throws on unknown
  * key with the key string in the message. The constructed payload is run
  * through ajv against tasks/schema.json BEFORE the atomic write so a bad
  * timestamp (or any other schema violation) leaves on-disk bytes unchanged.
+ *
+ * TASK-082 — when status === 'done': the uat-only done-guard runs
+ * unconditionally first, then (if provided) `closeGuard({ repoRoot, task,
+ * key })` runs and may throw to block the transition. Both checks run BEFORE
+ * any disk I/O. Transitions to any other status never run either guard.
+ * task-store.js imports NOTHING from bundle/operating-mode/loop-auth/
+ * close-guard — `closeGuard` is an injected seam so this module stays
+ * decoupled from session/bundle internals (the MCP layer supplies
+ * loopModeCloseGuard).
  */
 export async function transitionStatus({
   repoRoot,
   key,
   status,
   now = () => new Date().toISOString(),
+  closeGuard,
 }) {
   if (!STATUSES.includes(status)) {
     throw new Error(
@@ -313,6 +356,13 @@ export async function transitionStatus({
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
+
+  if (status === 'done') {
+    checkUatGuard(task);
+    if (typeof closeGuard === 'function') {
+      await closeGuard({ repoRoot, task, key });
+    }
+  }
 
   const stamp = now();
   task.status = status;
@@ -351,6 +401,69 @@ export async function appendComment({
   task.updated_at = stamp;
 
   // AC5 — validate before any disk I/O.
+  validateTaskOrThrow(task);
+
+  await atomicWriteFiles([
+    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + '\n' },
+    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
+  ]);
+}
+
+// Commit sha shape check for closeTask's linked_commits — 7 to 40 lowercase
+// or uppercase hex chars (short or full sha).
+const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/i;
+
+/**
+ * TASK-082 (AC3) — close out a task in a single validate-then-atomic pass:
+ * status -> 'done', append the closing comment, append linked_commits/
+ * linked_prs, bump updated_at, regenerate index.json. ALL validation (unknown
+ * key, the uat-only done-guard, the optional closeGuard, and the commit-sha
+ * shape check on every linked_commits entry) happens BEFORE any disk I/O, so
+ * any failure leaves both the task file and index.json byte-unchanged — this
+ * is deliberately NOT a sequence of transitionStatus/appendComment calls
+ * (each of which would be its own atomic write and could leave a partial
+ * close on a mid-sequence failure).
+ */
+export async function closeTask({
+  repoRoot,
+  key,
+  comment,
+  linked_commits = [],
+  linked_prs = [],
+  now = () => new Date().toISOString(),
+  closeGuard,
+}) {
+  // SINGLE-WRITER: see module header.
+  const allTasks = await readAllTasks(repoRoot);
+  const task = allTasks.find((t) => t.key === key);
+  if (!task) throw new Error(`unknown task key: ${key}`);
+
+  checkUatGuard(task);
+  if (typeof closeGuard === 'function') {
+    await closeGuard({ repoRoot, task, key });
+  }
+
+  for (const sha of linked_commits) {
+    if (typeof sha !== 'string' || !COMMIT_SHA_RE.test(sha)) {
+      throw new Error(
+        `invalid commit sha ${JSON.stringify(sha)} — must match ${COMMIT_SHA_RE}`,
+      );
+    }
+  }
+
+  const stamp = now();
+  const newComment = { author: comment.author, at: stamp, body: comment.body };
+  task.status = 'done';
+  task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
+  task.linked_commits = Array.isArray(task.linked_commits)
+    ? [...task.linked_commits, ...linked_commits]
+    : [...linked_commits];
+  task.linked_prs = Array.isArray(task.linked_prs)
+    ? [...task.linked_prs, ...linked_prs]
+    : [...linked_prs];
+  task.updated_at = stamp;
+
+  // AC5-style guarantee — validate before any disk I/O.
   validateTaskOrThrow(task);
 
   await atomicWriteFiles([

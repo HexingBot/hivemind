@@ -4,11 +4,12 @@
 // SCOPE BOUNDARY (AC4 — the "broaden-to-non-Code" seam, TASK-020.research §E.2):
 //
 //   A non-Claude-Code MCP client (claude.ai, Claude Desktop, or any MCP host)
-//   WILL get the six task-store tools below — full ticket/task CRUD on the local
-//   task store: list the backlog (list_todos / list_ready), read a ticket
-//   (get_task), create tickets (create_task), transition status
-//   (transition_status), and append comments (append_comment). The MCP seam turns
-//   the framework's ticket store into a cross-client API.
+//   WILL get the seven task-store tools below — full ticket/task CRUD on the
+//   local task store: list the backlog (list_todos / list_ready), read a
+//   ticket (get_task), create tickets (create_task), transition status
+//   (transition_status), append comments (append_comment), and atomically
+//   close a ticket (close_task, TASK-082). The MCP seam turns the framework's
+//   ticket store into a cross-client API.
 //
 //   Such a client WON'T get the orchestrator -> developer/reviewer/researcher
 //   subagent loop, and it does NOT get the RESUME-FIRST session-state
@@ -41,7 +42,9 @@ import {
   createTask,
   transitionStatus,
   appendComment,
+  closeTask,
 } from './task-store.js';
+import { loopModeCloseGuard } from './close-guard.js';
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
@@ -86,7 +89,7 @@ async function readTask(repoRoot, key) {
 }
 
 /**
- * Build and return a configured McpServer with all six task-store tools
+ * Build and return a configured McpServer with all seven task-store tools
  * registered, each closing over `repoRoot`. Throwing handlers surface to the
  * client as { isError: true } (the SDK converts a thrown error), which keeps
  * state uncorrupted on bad input rather than silently succeeding.
@@ -174,7 +177,12 @@ export function createServer({ repoRoot }) {
       },
     },
     async ({ key, status }) => {
-      await transitionStatus({ repoRoot, key, status });
+      // TASK-082 — loopModeCloseGuard is composed unconditionally on every
+      // call: it decides for itself whether loop mode is even active
+      // (getMode defaults to 'harness', a no-op), so this is safe in
+      // harness mode / with no active session and only bites when status
+      // === 'done' AND loop mode is active AND unauthorized.
+      await transitionStatus({ repoRoot, key, status, closeGuard: loopModeCloseGuard });
       return ok({ ok: true });
     },
   );
@@ -191,6 +199,36 @@ export function createServer({ repoRoot }) {
     },
     async ({ key, author, body }) => {
       await appendComment({ repoRoot, key, author, body });
+      return ok({ ok: true });
+    },
+  );
+
+  server.registerTool(
+    'close_task',
+    {
+      description:
+        'Atomically close a task: transition to done, append the closing '
+        + 'comment, and record linked_commits/linked_prs in a single '
+        + 'validate-then-write pass (TASK-082). Enforces the uat-only '
+        + 'done-guard and the loop-mode close guard.',
+      inputSchema: {
+        key: z.string().describe('Task key, e.g. TASK-026'),
+        comment: z.object({ author: z.string(), body: z.string() }),
+        linked_commits: z.array(z.string()).optional(),
+        linked_prs: z.array(z.string()).optional(),
+      },
+    },
+    async ({
+      key, comment, linked_commits, linked_prs,
+    }) => {
+      await closeTask({
+        repoRoot,
+        key,
+        comment,
+        linked_commits: linked_commits ?? [],
+        linked_prs: linked_prs ?? [],
+        closeGuard: loopModeCloseGuard,
+      });
       return ok({ ok: true });
     },
   );
