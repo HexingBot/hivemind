@@ -183,7 +183,7 @@ Whoever clones the result must run `npm install` once before `node bin/init.js`
 — the intake wizard depends on packages (such as the JSON schema validator) not
 vendored into the repository.
 
-The framework also ships a **web console** — a browser tab with chat, skill buttons, kanban board, and a new-ticket form, no commands to type. Windows: double-click `console.cmd`. macOS/Linux: `sh console.sh`. From Claude Code: `/hivemind:console`. No new API key or bill — it reuses your Claude login (chat draws from your plan's Agent-SDK credit allowance, not a new purchase). Local-only (`127.0.0.1`); skill buttons run immediately, so only use it on a machine you trust.
+The framework also ships a **kanban task board** — a browser tab showing all tickets in five status columns with drag-and-drop transitions and a new-ticket form. From Claude Code: `/hivemind:task-status`. Local-only (`127.0.0.1`).
 
 ---
 

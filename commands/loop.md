@@ -27,7 +27,7 @@ Call `acquire()` from `src/session-lock.js` before any ticket work begins.
 
 - If `E_LOCK_HELD` is raised: read the error message for the holder's pid and hostname, surface it to the human, and STOP. Do not steal the lock.
 - If acquisition succeeds: record the lock in the session bundle so a crash-recovery path can inspect it.
-- **Immediately after a successful `acquire()`**, call `setMode({ repoRoot, mode: 'loop' })` from `src/operating-mode.js`. This records that the session is now autonomously driving, which the console (TASK-064) surfaces to the human.
+- **Immediately after a successful `acquire()`**, call `setMode({ repoRoot, mode: 'loop' })` from `src/operating-mode.js`. This records that the session is now autonomously driving, so downstream tooling reading the session bundle can observe it.
 
 ### Step 2 — Loop until done, stopped, or stuck
 
@@ -75,10 +75,10 @@ while NOT goalSatisfied(tasks, goal)
 
 On exit, pause, or any unhandled error — in this order:
 
-1. Call `setMode({ repoRoot, mode: 'harness' })` from `src/operating-mode.js` to signal that autonomous driving has ended. Do this **before** releasing the lock so the console can observe the mode change while the lock is still held.
+1. Call `setMode({ repoRoot, mode: 'harness' })` from `src/operating-mode.js` to signal that autonomous driving has ended. Do this **before** releasing the lock so the mode change is recorded while the lock is still held.
 2. Call `release()` from `src/session-lock.js` to free the advisory lock.
 
-Both steps are mandatory — a held lock blocks other sessions, and a stale `mode: 'loop'` in the bundle misleads the console.
+Both steps are mandatory — a held lock blocks other sessions, and a stale `mode: 'loop'` in the bundle misrepresents the session state.
 
 ## The five hard-stop gates
 

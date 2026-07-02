@@ -213,7 +213,7 @@ The session bundle carries a `mode` field (`'harness'` | `'loop'`, default
 
 - **After `acquire()` succeeds (Step 1):** call
   `setMode({ repoRoot, mode: 'loop' })` to signal that autonomous driving has
-  started. The console (TASK-064) reads this via `GET /api/session` → `mode`.
+  started. This is recorded on the session bundle for downstream tooling to read.
 - **Before `release()` (Step 3, finally-style):** call
   `setMode({ repoRoot, mode: 'harness' })` first, then call `release()`. This
   ensures the mode is reset even if an unhandled error cut the loop short.
@@ -284,88 +284,6 @@ The loop calls `goalStuck(tasks, goal)` (from `src/drive-loop.js`) to detect
 when the goal is not satisfied but no ticket is selectable (all remaining goal
 tickets are blocked, in_review, or have unsatisfied dependencies). On stuck:
 log the blocking conditions, surface a summary, and stop — do not spin.
-
-## App-preview panel (TASK-069)
-
-The console (`/hivemind:preview` or `?tab=preview` on the board URL)
-includes a Preview panel that starts, stops, and restarts the project's dev server
-and shows its output in real time.
-
-### PROJECT.md preview block
-
-Configure preview by adding any of these scalar fields to `PROJECT.md` frontmatter:
-
-| Field | Type | Purpose |
-|---|---|---|
-| `preview_command` | string | Command to run (e.g. `npm start`). Optional — inferred if absent. |
-| `preview_url` | string | Explicit iframe URL (e.g. `http://localhost:3000`). Takes precedence over `preview_port`. |
-| `preview_port` | integer | Port from which to derive the iframe URL. |
-| `preview_mode` | `web` or `process` | Override mode selection (see below). Optional. |
-
-Example:
-
-```yaml
-preview_command: npm start
-preview_port: 3000
-```
-
-### Resolution precedence
-
-1. **Configured** — `PROJECT.md` frontmatter carries any of the three command/URL
-   fields (`preview_command`, `preview_url`, or `preview_port`). `preview_mode` alone
-   does NOT trigger `source=configured`; it is only honoured when one of the three
-   command/URL fields is also present.
-2. **Inferred** — `package.json` scripts scanned in priority order: `dev` > `start` > `serve`.
-   A port pattern in the script string (`--port N`, `-p N`, `PORT=N`, `localhost:N`,
-   `0.0.0.0:N`) derives the iframe URL automatically.
-3. **None** — no usable configuration found; the panel shows a hint instead.
-
-Source is exposed as `source: 'configured' | 'inferred' | 'none'` from
-`src/preview-resolver.js`.
-
-### Mode: web vs process
-
-| Mode | Condition | What the panel shows |
-|---|---|---|
-| `web` | A URL or port is derivable | Live iframe pointed at the app |
-| `process` | No URL/port derivable | Streaming log view of stdout/stderr |
-| `none` | No preview configured | "No preview configured" hint with example YAML |
-
-An explicit `preview_mode: web` or `preview_mode: process` in frontmatter overrides
-the auto-detected mode. An unrecognized value is silently dropped and auto-detection
-resumes.
-
-### Start / stop / restart lifecycle
-
-The Preview panel exposes three buttons; state transitions update live via SSE:
-
-| Action | REST route | Effect |
-|---|---|---|
-| Start | `POST /api/preview/start` | Spawns the command; streams stdout/stderr via SSE |
-| Stop | `POST /api/preview/stop` | Sends SIGTERM; waits for process to exit |
-| Restart | `POST /api/preview/restart` | Stop then Start in sequence |
-| Status poll | `GET /api/preview/status` | Returns `{ state, mode, url, source, recentLogs }` |
-| Log stream | `GET /api/preview/stream` | SSE: `log`, `state`, and `status` events (see below) |
-
-SSE event shapes emitted by `/api/preview/stream`:
-
-| Event type | Shape | When emitted |
-|---|---|---|
-| `log` | `{ type:'log', line }` | Each stdout/stderr line from the child process |
-| `state` | `{ type:'state', state, mode, url, source }` | Every controller state transition |
-| `status` | `{ type:'status', state, mode, url, source, recentLogs }` | Route snapshot on new subscriber connect and inline broadcasts |
-
-### Deep-link to the Preview tab
-
-Append `?tab=preview` (or `#preview`) to the console URL to pre-select the Preview
-panel on page load — no manual click required:
-
-```
-http://127.0.0.1:4517/?tab=preview
-```
-
-The `/hivemind:preview` command uses this seam (see
-`commands/preview.md`).
 
 ## Guardrails
 

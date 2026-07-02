@@ -43,7 +43,6 @@ Any other value is rejected with an error.
 - The mode auto-flips during a normal `/hivemind:loop` run: `loop` after `acquire()` succeeds, `harness` before `release()`. Manual use of this command outside the loop is only needed for recovery or testing.
 - `setMode` is idempotent: setting the same mode twice does not throw.
 - Requires an active session (non-null `active_session_id` in `state/session.json`). If there is no active session this command will fail with an error.
-- The console button for mode toggling is TASK-064 — this command is the CLI equivalent.
 
 ## Implementation
 
