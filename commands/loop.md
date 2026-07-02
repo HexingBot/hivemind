@@ -29,6 +29,40 @@ Call `acquire()` from `src/session-lock.js` before any ticket work begins.
 - If acquisition succeeds: record the lock in the session bundle so a crash-recovery path can inspect it.
 - **Immediately after a successful `acquire()`**, call `setMode({ repoRoot, mode: 'loop' })` from `src/operating-mode.js`. This records that the session is now autonomously driving, so downstream tooling reading the session bundle can observe it.
 
+### Step 1.5 — Crash-resume check (TASK-084)
+
+After the lock is acquired and before the main loop begins, check whether a
+prior run of this session crashed mid-ticket:
+
+1. Read the active bundle (`readBundleSession` from `src/bundle.js`) and the
+   current task list.
+2. Call `resumePoint({ bundle, tasks })` from `src/loop-checkpoint.js`.
+3. Branch on `action`:
+   - **`'resume'`** — a mid-ticket checkpoint was found at a post-commit
+     phase (or the ticket was `in_review`). Continue the recorded ticket
+     (`result.ticket`) at its recorded `phase`, restoring `iteration`,
+     `completed_this_run`, and `run_started_at` from the result **verbatim**
+     — these feed `shouldStop` and `consolidationGate` directly so the
+     iteration/no-progress/consolidation ceilings survive the restart rather
+     than silently resetting to zero.
+   - **`'reset'`** — the recorded ticket crashed before any commit landed
+     (or its status is otherwise inconsistent with the checkpoint). Transition
+     the ticket back to `todo` via `transition_status`, append an explanatory
+     `append_comment` citing `result.reason`, and continue to normal ticket
+     selection.
+   - **`'none'`** — no crash evidence. Start the loop fresh.
+
+`writeLoopCheckpoint({ repoRoot, checkpoint })` from `src/loop-checkpoint.js`
+is the writer half of this contract: call it at **every** phase boundary —
+after ticket selection, after the Developer subagent returns, after the
+Reviewer subagent returns, and after ticket close — passing `phase` as one of
+the `LOOP_PHASES` keys (`idle`, `fetch`, `research`, `test`, `impl`, `review`,
+`update`). `writeLoopCheckpoint` maps `phase` onto the bundle's
+`workflow_step` enum via `LOOP_PHASES` and validates it before any I/O. This
+also documents the TASK-071 rule for any manual orchestrator checkpoint:
+`workflow_step` must always be set to an enum-valid value, never a raw phase
+name that happens not to be in the enum.
+
 ### Step 2 — Loop until done, stopped, or stuck
 
 ```

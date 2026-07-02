@@ -316,6 +316,55 @@ when the goal is not satisfied but no ticket is selectable (all remaining goal
 tickets are blocked, in_review, or have unsatisfied dependencies). On stuck:
 log the blocking conditions, surface a summary, and stop — do not spin.
 
+### Loop checkpointing (TASK-084)
+
+A crash between a ticket's `in_progress` transition and its close must never
+leave the ticket permanently invisible to `selectNextTicket` (which only
+matches `status === 'todo'`). `src/loop-checkpoint.js` closes this gap with a
+writer and a pure decision helper:
+
+- **`writeLoopCheckpoint({ repoRoot, checkpoint })`** — call at **every**
+  phase boundary: after ticket selection, after the Developer subagent
+  returns, after the Reviewer subagent returns, and after ticket close.
+  `checkpoint` carries `current_ticket`, `phase`, `iteration`,
+  `completed_this_run`, and `run_started_at`. `phase` is validated against
+  `LOOP_PHASES` **before any I/O** (an invalid phase throws and touches
+  nothing on disk); on success the fields are merged into the bundle's
+  `loop_state` (preserving existing keys like `goal`/`maxIterations`) and
+  `phase` is mapped onto `workflow_step` via `LOOP_PHASES`.
+
+- **`resumePoint({ bundle, tasks })`** — pure (no I/O). Read at loop start,
+  right after the lock is acquired (`commands/loop.md` Step 1.5):
+  - `'none'` — no checkpoint evidence, or the recorded ticket is already
+    `done`. Start fresh.
+  - `'reset'` — the recorded ticket is stranded (`in_progress` at a
+    pre-commit phase, a status inconsistent with an active checkpoint, or a
+    dangling ticket key). Transition the ticket back to `todo` with an
+    explanatory comment, then continue normal selection.
+  - `'resume'` — `in_progress` at a post-commit phase, or `in_review`
+    regardless of phase. Continue the recorded ticket at its recorded phase;
+    `iteration`, `completed_this_run`, and `run_started_at` are restored
+    **verbatim** from `loop_state` so `shouldStop` and `consolidationGate`
+    ceilings survive the restart.
+
+`LOOP_PHASES` is the canonical phase → `workflow_step` mapping (identity map
+onto the bundle enum):
+
+| Phase | `workflow_step` |
+|---|---|
+| `idle` | `idle` |
+| `fetch` | `fetch` |
+| `research` | `research` |
+| `test` | `test` |
+| `impl` | `impl` |
+| `review` | `review` |
+| `update` | `update` |
+
+This is also the canonical reference for the TASK-071 rule: any manual
+orchestrator checkpoint write (loop or otherwise) must set `workflow_step` to
+one of these enum-valid values — never a raw phase label that isn't a member
+of the bundle's `workflow_step` enum.
+
 ## Guardrails
 
 - **Confirm with the human** before: closing/transitioning tickets in non-trivial
