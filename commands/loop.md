@@ -84,6 +84,12 @@ Both steps are mandatory — a held lock blocks other sessions, and a stale `mod
 
 The loop MUST pause and surface to the human at each gate. It may only proceed autonomously if an explicit **standing-authorization switch** (see below) covers that gate.
 
+> **SKILL.md is authoritative.** The gate/switch contract (gate count, gate order, which switch
+> lifts which gate, and `LOOP_AUTH_SWITCHES`) is defined canonically in the orchestrator-routing
+> skill's "Five hard-stop gates" / "Standing-authorization switches" sections. This document
+> mirrors that contract for operational convenience and carries Gate 5's `consolidationGate` call
+> detail — if the two ever disagree, SKILL.md wins.
+
 ### Gate 1 — Destructive / irreversible operations
 
 Includes: transitioning a ticket to `done` (close-to-done), pushing commits to a remote branch, deleting branches, tagging releases, running database migrations, or any destructive Bash operation.
@@ -139,6 +145,16 @@ Authorization switches are recorded in the session bundle under `loop_auth` (an 
 ```
 
 To grant an authorization: the human must say so explicitly (e.g. "auto-close on green review"). The Orchestrator records the grant in the session bundle and reads `loop_auth` at each gate. Authorization is session-scoped — it does not persist across sessions unless the human re-states it.
+
+### Unattended-mode preset
+
+Instead of granting switches one at a time, the human can make a single up-front grant via
+`grantUnattended({ repoRoot, optIns })` (`src/loop-auth.js`) so the loop runs without per-step
+supervision. This sets `auto_close_on_green_review`, `uat_delegated_to_orchestrator`, and
+`auto_consolidate` to `true`. `auto_push_after_close` and `auto_version_bump_on_milestone` remain
+strictly opt-in — pass them via `optIns` to lift Gate 1's push or Gate 4 as well. Gate 3 has no
+switch and is never liftable, preset or not. See SKILL.md's "Unattended-mode preset" section for
+the full contract.
 
 ## Stuck handling
 

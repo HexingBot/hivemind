@@ -225,10 +225,13 @@ recovery if the loop exited without resetting the mode.
 `setMode` is idempotent and validates the value against the `OPERATING_MODES`
 enum (`['harness', 'loop']`); any other value throws immediately before any I/O.
 
-### Four hard-stop gates
+### Five hard-stop gates
 
 The loop pauses and surfaces to the human at each gate unless a standing-
-authorization switch (see below) lifts it:
+authorization switch (see below) lifts it. This is the canonical gate list —
+`commands/loop.md` carries the same five gates with Gate 5's operational
+detail (the `consolidationGate` call) but defers to this section as
+authoritative for the gate/switch contract.
 
 1. **Destructive / irreversible ops** — close-to-done (ticket → `done`),
    push to remote, branch deletion, release tagging, database migrations.
@@ -244,11 +247,17 @@ authorization switch (see below) lifts it:
 3. **Genuinely ambiguous scope** — if acceptance criteria are contradictory or
    under-specified, or the loop cannot determine which ticket to work next, it
    surfaces the ambiguity. No autonomous guess is ever made. No authorization
-   switch covers this gate.
+   switch covers this gate — it is never liftable, including under the
+   unattended preset below.
 
 4. **Release / version-bump / publish** — any action that bumps `package.json`,
    writes a CHANGELOG entry, tags a release, or publishes an artifact is a hard
    stop. Gate lifted only by `auto_version_bump_on_milestone`.
+
+5. **Phase / consolidation checkpoint** — after every `consolidateEvery`
+   tickets completed in a run (default 5), the loop must pause so the human
+   can consolidate the batch (review what shipped, update the knowledge base
+   / brain graph) before continuing. Gate lifted only by `auto_consolidate`.
 
 ### Standing-authorization switches
 
@@ -261,10 +270,32 @@ Switches are recorded in the session bundle under `loop_auth` (default all
 | `auto_push_after_close` | Gate 1 (push after close only) |
 | `uat_delegated_to_orchestrator` | Gate 2 |
 | `auto_version_bump_on_milestone` | Gate 4 |
+| `auto_consolidate` | Gate 5 |
 
 Switches are session-scoped. The human must state them explicitly; the
 Orchestrator records the grant in the session bundle and re-reads `loop_auth`
 at each gate. Switches do not persist across sessions unless re-stated.
+
+### Unattended-mode preset (TASK-075)
+
+For a human who wants the loop to run without per-step supervision, a single
+up-front grant is available via `grantUnattended({ repoRoot, optIns })` in
+`src/loop-auth.js` instead of stating each switch individually. The preset
+(`UNATTENDED_PRESET`) sets:
+
+- `auto_close_on_green_review: true`
+- `uat_delegated_to_orchestrator: true`
+- `auto_consolidate: true`
+
+`auto_push_after_close` and `auto_version_bump_on_milestone` are **strictly
+opt-in** — the preset leaves both `false`; the human must pass them explicitly
+via `optIns` (e.g. `grantUnattended({ repoRoot, optIns: { auto_push_after_close: true } })`)
+to lift Gate 1's push or Gate 4.
+
+Gate 3 (genuinely ambiguous scope) has **no switch** in `LOOP_AUTH_SWITCHES`
+and is never liftable — not even under the unattended preset. An ambiguous
+ticket always surfaces to the human, regardless of how many switches are
+granted.
 
 ### Backstops (no silent truncation)
 
