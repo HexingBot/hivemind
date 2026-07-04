@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T01:47:27.601Z",
+  "generated_at": "2026-07-04T02:14:41.060Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -466,7 +466,7 @@
     {
       "key": "TASK-080",
       "title": "session-lock: loop-grade heartbeat (renew cadence + staleness override) and holder_id surfacing",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {

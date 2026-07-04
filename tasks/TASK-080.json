@@ -9,7 +9,7 @@
     "renew() docstring corrected (holder identity, not pid/hostname); all existing session-lock specs still green (18+ in tests/e2e/session-lock.spec.js).",
     "tdd: failing tests first for the message content, the stalenessMs override, and the two asymmetric cases."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "loop-engineering",
@@ -20,11 +20,26 @@
   "depends_on": [
     "TASK-070"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "8df8913",
+    "6bd2efc",
+    "7757483"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T01:59:55.847Z",
+      "body": "PLAN (tier=tdd, ticket-carried, confirmed): lock-state mutation logic. Two-phase developer TEST->IMPL on src/session-lock.js. Loop drive iteration 1/10 under goal all-improvements (human grant 2026-07-03: auto_close_on_green_review + uat_delegated; push gated). Reviewer scrutiny will include the TASK-070-carried constraints named in the description."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T02:14:40.960Z",
+      "body": "CLOSED done (loop iteration 1, auto_close granted). tdd: TEST 8df8913 (4 specs: AC1 message RED-for-right-reason; both AC3 asymmetric cases newly pinned as regression locks; AC2 override found ALREADY implemented+covered by pre-existing AC8 spec — no duplicate spec per budget) -> IMPL 6bd2efc (E_LOCK_HELD message surfaces holder_id conditionally, legacy message byte-exact; renew() docstring holder-identity) -> docs 7757483 (loop.md 3-boundary renew cadence + loop-mode stalenessMs override + step-1 holder_id surfacing; both SKILL.md copies mirrored byte-identical). Fresh-context review APPROVE (0H/0M/3L): RED->GREEN independently verified in a throwaway worktree at the TEST commit; 22/22 + fast tier 527/2 green; not dist-bundled (verified). LOW deviations recorded: AC5 failing-first was impossible for pre-existing behaviors (conscious, documented); .md-coupled fast specs should be named at hand-off when skills/ change (process note); release() docstring staleness CARRIED to TASK-085 (same module). Commits LOCAL, not pushed."
+    }
+  ],
   "created_at": "2026-07-02T02:20:57.804Z",
-  "updated_at": "2026-07-02T02:20:57.804Z",
+  "updated_at": "2026-07-04T02:14:41.013Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

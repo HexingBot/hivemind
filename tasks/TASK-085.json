@@ -23,9 +23,15 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T02:14:41.060Z",
+      "body": "CARRIED CONSTRAINT from TASK-080 review (LOW): release() docstring in src/session-lock.js:240-241 still says same-holder = pid+hostname — fix to holder-identity semantics in this ticket (same module, one line)."
+    }
+  ],
   "created_at": "2026-07-02T16:40:55.408Z",
-  "updated_at": "2026-07-02T22:07:29.119Z",
+  "updated_at": "2026-07-04T02:14:41.060Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
