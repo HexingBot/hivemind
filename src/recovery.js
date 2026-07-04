@@ -14,6 +14,13 @@ import { join } from 'node:path';
 
 const TMP_PATTERN = /^session\.json\.tmp\./;
 
+// TASK-085 AC6 — mirror of src/task-store.js's TMP_SWEEP_MIN_AGE_MS. A tmp
+// younger than this may be a concurrent writer's in-flight atomicWriteFile()
+// call (prepare/rename window), not a crash orphan — only tmps old enough to
+// be safely assumed abandoned are reaped in the "target exists and
+// parseable" branch below.
+const TMP_SWEEP_MIN_AGE_MS = 60000;
+
 /**
  * Sweep a bundle directory for orphan session.json tmp files and reconcile.
  *
@@ -41,9 +48,14 @@ export function sweepAndRecover({ bundleDir }) {
   }
 
   if (targetExists && targetParseable) {
-    // Target is good — delete every tmp.
+    // Target is good — delete tmps old enough to be safely assumed abandoned
+    // (TASK-085 AC6 age-gate). A tmp younger than TMP_SWEEP_MIN_AGE_MS is
+    // skipped: it may be a concurrent writer's in-flight atomicWriteFile()
+    // call, not a crash orphan.
+    const nowMs = Date.now();
     for (const t of tmps) {
       const tpath = join(bundleDir, t);
+      if (nowMs - safeMtime(tpath) < TMP_SWEEP_MIN_AGE_MS) continue;
       try {
         unlinkSync(tpath);
         actions.push({ type: 'deleted_orphan_tmp', path: tpath });

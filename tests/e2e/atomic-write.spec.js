@@ -135,6 +135,19 @@ describe('AC4 — crash safety', () => {
       .filter((n) => n.startsWith('session.json.tmp.'));
     expect(tmpSurvivors.length, 'expected at least one orphaned tmp file').toBeGreaterThan(0);
 
+    // TASK-085 AC6 — sweepAndRecover now age-gates its "target parseable ->
+    // delete every tmp" branch (mirrors task-store.js's TMP_SWEEP_MIN_AGE_MS)
+    // so a concurrent writer's still-in-flight tmp is never reaped out from
+    // under it. In real usage, a crash orphan is discovered on some LATER
+    // read (a fresh chat's RESUME FIRST step, well after the crash), not in
+    // the same tick the crash happened — so backdate the survivor(s) here to
+    // simulate that realistic gap and keep this test's intent (a genuine
+    // crash orphan is reaped) accurate under the new age-gate.
+    const staleAt = new Date(Date.now() - 5 * 60 * 1000);
+    for (const name of tmpSurvivors) {
+      fs.utimesSync(join(bundleDir, name), staleAt, staleAt);
+    }
+
     // Now: run sweepAndRecover. It must produce a consistent state:
     //   - If target exists and parses, delete the tmp.
     //   - If target is missing, promote the tmp (rename tmp -> target).
