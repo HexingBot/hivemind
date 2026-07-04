@@ -127,22 +127,9 @@ describe('writeLoopCheckpoint validates the phase before touching disk', () => {
       expect(caughtErr.message).not.toMatch(/unknown.*phase|invalid.*phase/i);
     }
   });
-
-  it('absent bundle (non-existent repoRoot) surfaces an error rather than silently succeeding', async () => {
-    const { writeLoopCheckpoint } = await import(CHECKPOINT_URL);
-    await expect(
-      writeLoopCheckpoint({
-        repoRoot: FAKE_ROOT,
-        checkpoint: {
-          current_ticket: 'TASK-001',
-          phase: 'test',
-          iteration: 0,
-          completed_this_run: 0,
-          run_started_at: '2026-07-01T00:00:00Z',
-        },
-      }),
-    ).rejects.toThrow();
-  });
+  // Note: the absent-bundle (non-existent repoRoot) case is covered by
+  // tests/e2e/loop-checkpoint.spec.js's no-pointer-file spec — not duplicated
+  // here (new-test budget).
 });
 
 // ---------------------------------------------------------------------------
@@ -176,28 +163,42 @@ function task(overrides) {
 }
 
 describe('resumePoint — no crash evidence', () => {
-  it('returns { action: "none" } when loop_state has no current_ticket', async () => {
-    const { resumePoint } = await import(CHECKPOINT_URL);
-    const bundle = bundleWith({ current_ticket: null, phase: 'idle', iteration: 0, completed_this_run: 0 });
-    const result = resumePoint({ bundle, tasks: [task()] });
-    expect(result.action).toBe('none');
-  });
-
-  it('returns { action: "none" } when the recorded ticket is already done', async () => {
+  it('returns { action: "none" } when loop_state has no current_ticket, carrying counters over verbatim', async () => {
     const { resumePoint } = await import(CHECKPOINT_URL);
     const bundle = bundleWith({
-      current_ticket: 'TASK-100', phase: 'update', iteration: 3, completed_this_run: 1,
+      current_ticket: null, phase: 'idle', iteration: 7, completed_this_run: 2, run_started_at: '2026-07-01T08:00:00Z',
+    });
+    const result = resumePoint({ bundle, tasks: [task()] });
+    expect(result.action).toBe('none');
+    // Counter-restoration contract: 'none' must not silently reset the run's
+    // counters to zero just because current_ticket is absent — only the
+    // ticket pointer is stale/absent, not the run's progress.
+    expect(result.iteration).toBe(7);
+    expect(result.completed_this_run).toBe(2);
+    expect(result.run_started_at).toBe('2026-07-01T08:00:00Z');
+  });
+
+  it('returns { action: "none" } when the recorded ticket is already done, carrying counters over verbatim', async () => {
+    const { resumePoint } = await import(CHECKPOINT_URL);
+    const bundle = bundleWith({
+      current_ticket: 'TASK-100', phase: 'update', iteration: 3, completed_this_run: 1, run_started_at: '2026-07-01T09:00:00Z',
     });
     const tasks = [task({ status: 'done' })];
     const result = resumePoint({ bundle, tasks });
     expect(result.action).toBe('none');
+    expect(result.iteration).toBe(3);
+    expect(result.completed_this_run).toBe(1);
+    expect(result.run_started_at).toBe('2026-07-01T09:00:00Z');
   });
 
-  it('returns { action: "none" } when loop_state is entirely absent from the bundle', async () => {
+  it('returns { action: "none" } with no counters when loop_state is entirely absent from the bundle', async () => {
     const { resumePoint } = await import(CHECKPOINT_URL);
     const bundle = bundleWith(undefined);
     const result = resumePoint({ bundle, tasks: [task()] });
     expect(result.action).toBe('none');
+    expect(result.iteration).toBeUndefined();
+    expect(result.completed_this_run).toBeUndefined();
+    expect(result.run_started_at).toBeUndefined();
   });
 });
 
@@ -301,7 +302,8 @@ describe('resumePoint — reset: inconsistent state', () => {
     const result = resumePoint({ bundle, tasks });
     // Missing ticket is not "already done" — it is unresolvable evidence of a
     // crash with a stale/dangling pointer, which must not be silently ignored.
-    expect(['none', 'reset']).toContain(result.action);
+    // The implementation is deterministic: dangling pointers always reset.
+    expect(result.action).toBe('reset');
   });
 });
 

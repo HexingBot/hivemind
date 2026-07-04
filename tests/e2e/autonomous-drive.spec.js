@@ -26,7 +26,7 @@
 // Disk I/O / tmpdir -> slow tier: tests/e2e/.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -203,29 +203,10 @@ describe('Drive a goal autonomously — reset + reselect after a pre-commit cras
   });
 });
 
-// ---------------------------------------------------------------------------
-// TASK-071 fold-in — workflow_step written by the loop checkpoint is always
-// a legal enum value regardless of which phase triggered the crash.
-// ---------------------------------------------------------------------------
-
-describe('Drive a goal autonomously — checkpoint always writes a legal workflow_step', () => {
-  it('a checkpoint at the review phase persists workflow_step="review" (bundle enum member)', async () => {
-    const { writeLoopCheckpoint } = await import(CHECKPOINT_URL);
-    const { root } = seedRepo({ initialPhase: 'impl', taskStatus: 'in_review' });
-
-    await writeLoopCheckpoint({
-      repoRoot: root,
-      checkpoint: {
-        current_ticket: 'TASK-200',
-        phase: 'review',
-        iteration: 5,
-        completed_this_run: 2,
-        run_started_at: '2026-07-01T09:30:00Z',
-      },
-    });
-
-    const onDisk = JSON.parse(readFileSync(join(root, 'state', 'sessions', SESSION_ID, 'session.json'), 'utf8'));
-    expect(['idle', 'fetch', 'research', 'test', 'impl', 'review', 'update']).toContain(onDisk.workflow_step);
-    expect(onDisk.workflow_step).toBe('review');
-  });
-});
+// Note: a third describe block here previously re-asserted "checkpoint
+// always writes a legal workflow_step" at the review phase. That assertion
+// is already covered by tests/e2e/loop-checkpoint.spec.js's
+// every-phase-legal-workflow_step spec (which iterates ALL LOOP_PHASES,
+// review included) and by the fast-tier enum-mapping spec in
+// tests/loop-checkpoint.spec.js — removed here as redundant (new-test
+// budget).

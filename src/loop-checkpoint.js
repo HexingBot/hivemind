@@ -24,7 +24,7 @@ import { readBundleSession, writeBundleSession } from './bundle.js';
 // which loop phase writes which workflow_step value; a future workflow_step
 // addition only needs to be added here and in state/bundle.schema.json.
 // ---------------------------------------------------------------------------
-export const LOOP_PHASES = {
+export const LOOP_PHASES = Object.freeze({
   idle: 'idle',
   fetch: 'fetch',
   research: 'research',
@@ -32,7 +32,7 @@ export const LOOP_PHASES = {
   impl: 'impl',
   review: 'review',
   update: 'update',
-};
+});
 
 // Phases reached before any commit lands — a crash recorded at one of these
 // means the ticket's in_progress transition happened but nothing durable was
@@ -94,7 +94,12 @@ export async function writeLoopCheckpoint({ repoRoot, checkpoint }) {
 // PURE — no I/O, no Date.now, no mutation of bundle or tasks.
 //
 //   'none'   — no loop_state, no current_ticket recorded, or the recorded
-//              ticket is already done.
+//              ticket is already done. When loop_state IS present (just
+//              current_ticket-less, or the ticket has closed out), the run's
+//              counters (iteration/completed_this_run/run_started_at) are
+//              still carried over VERBATIM — same restore semantics as
+//              'resume' — so the next iteration does not silently reset to
+//              zero. Only absent when loop_state itself is absent.
 //   'reset'  — the recorded ticket is stranded: in_progress at a pre-commit
 //              phase (idle/fetch/research), any status other than
 //              in_progress/in_review while still recorded as current, or the
@@ -104,10 +109,23 @@ export async function writeLoopCheckpoint({ repoRoot, checkpoint }) {
 //              of phase. iteration/completed_this_run/run_started_at are
 //              copied VERBATIM from loop_state — never defaulted.
 // ---------------------------------------------------------------------------
+// Seeds a 'none' result with the run's counters (verbatim, never defaulted)
+// when loop_state is present — only the absence of loop_state itself leaves
+// the counters off the result entirely.
+function noneWithCounters(loopState) {
+  if (!loopState) {
+    return { action: 'none' };
+  }
+  const { iteration, completed_this_run, run_started_at } = loopState;
+  return {
+    action: 'none', iteration, completed_this_run, run_started_at,
+  };
+}
+
 export function resumePoint({ bundle, tasks }) {
   const loopState = bundle && bundle.loop_state;
   if (!loopState || !loopState.current_ticket) {
-    return { action: 'none' };
+    return noneWithCounters(loopState);
   }
 
   const {
@@ -126,7 +144,7 @@ export function resumePoint({ bundle, tasks }) {
   }
 
   if (found.status === 'done') {
-    return { action: 'none' };
+    return noneWithCounters(loopState);
   }
 
   if (found.status !== 'in_progress' && found.status !== 'in_review') {

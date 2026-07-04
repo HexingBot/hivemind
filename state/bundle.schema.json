@@ -98,7 +98,7 @@
     },
     "loop_state": {
       "type": "object",
-      "description": "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form — contents evolve with the loop implementation.",
+      "description": "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form — contents evolve with the loop implementation. The mid-ticket crash-resume checkpoint contract (TASK-084) is written by src/loop-checkpoint.js's writeLoopCheckpoint, which merges five fields into this object at every phase boundary: current_ticket (the ticket key being driven), phase (a LOOP_PHASES key, mapped onto the sibling workflow_step enum), iteration, completed_this_run, and run_started_at. Other keys (e.g. goal, maxIterations) may coexist and are preserved verbatim by the writer.",
       "additionalProperties": true
     }
   }
