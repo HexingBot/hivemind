@@ -46,6 +46,7 @@ Solo developers and small teams using LLM coding agents get inconsistent, unveri
 
 ## Stack
 - architecture_description: Main Claude Code thread = Orchestrator (orchestrator-routing skill); delegates to file-based developer/reviewer/researcher subagents under .claude/agents/. State is files: a state/session.json pointer + self-contained state/sessions/<id>/ bundles; tickets are per-task JSON under tasks/ with a regenerable index. Node CLIs (bin/init.js, bin/new-task.js) + an MCP task-store server are bundled via esbuild into committed dist/*.cjs and shipped as a Claude Code plugin.
+- dev_stack: [node]
 
 ## Preview
 

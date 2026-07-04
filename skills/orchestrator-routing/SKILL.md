@@ -496,6 +496,32 @@ and is never liftable — not even under the unattended preset. An ambiguous
 ticket always surfaces to the human, regardless of how many switches are
 granted.
 
+### Developer Bash allowlist — enforcement boundary (TASK-091)
+
+The TASK-086 ticket-text fencing above is a prompt-level mitigation only: it
+tells the Developer to treat ticket-derived text as data, but the Developer
+still held an unrestricted `Bash` tool — the actual sink an injected
+instruction would need to reach. `node bin/init.js --apply-permissions`
+closes that gap: it derives a scoped `Bash(...)` allowlist from the project's
+declared `dev_stack` (a `## Stack`-section entry in PROJECT.md, e.g.
+`- dev_stack: [python]`) and surgically patches `agents/developer.md`'s (and
+its `.claude/agents/` parity copy's) `tools:` frontmatter line — core
+`Bash(git:*)`, `Bash(npm:*)`, `Bash(node:*)`, `Bash(npx:*)` always included,
+plus per-stack additions (e.g. `python` → `Bash(pytest:*)`/`Bash(pip:*)`/
+`Bash(python:*)`). Unknown `dev_stack` values are rejected before any write,
+mirroring `--apply-models`. Re-apply after hand-editing PROJECT.md the same
+way: `node bin/init.js --apply-permissions` (idempotent — a second run
+reports zero changed files).
+
+**This is the enforcement boundary that complements the fencing above,
+especially under the unattended preset (no human gate before Bash executes)
+— but it is not a sandbox.** A `Bash(pattern:*)` entry is a prefix match on
+the command string, not a semantic guarantee: `Bash(node:*)` still permits
+running arbitrary JavaScript, `Bash(git:*)` still permits any git subcommand
+within that prefix. The allowlist constrains *which* binaries the Developer
+can invoke; it says nothing about what those binaries are told to do once
+invoked.
+
 ### Backstops (no silent truncation)
 
 - **Hard iteration ceiling** (`maxIterations`, default 20): the loop stops and

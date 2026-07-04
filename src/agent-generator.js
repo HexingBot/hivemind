@@ -396,3 +396,166 @@ function patchAgentModelContent(text, modelValue) {
 
   return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
 }
+
+// ---------------------------------------------------------------------------
+// TASK-091 — developer Bash allowlist: generateDeveloperToolsLine +
+// applyDeveloperPermissions. Same home as applyAgentModels above (this module
+// already owns generated agent frontmatter/guidance; folding the allowlist
+// patcher in here avoids splitting near-identical frontmatter-splice logic
+// across two files for one extra exported pair of functions).
+// ---------------------------------------------------------------------------
+
+// Non-Bash tools carried on agents/developer.md's frontmatter today — every
+// generated tools: line preserves these five exactly; only the bare `Bash`
+// entry is replaced by a scoped Bash(...) allowlist.
+const DEVELOPER_NON_BASH_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'Grep', 'Glob', 'mcp__github__*']);
+
+// Always-included Bash prefixes regardless of declared stack.
+const CORE_DEVELOPER_BASH = Object.freeze(['Bash(git:*)', 'Bash(npm:*)', 'Bash(node:*)', 'Bash(npx:*)']);
+
+// Data-driven per-stack additions, keyed by a `dev_stack` token. `dev_stack`
+// is a plain PROJECT.md ## Stack-section entry (e.g. `- dev_stack: [python]`)
+// — no schema change is needed, since the Stack section already round-trips
+// arbitrary keys and inline arrays losslessly (see project-md.js). Adding a
+// new stack means appending one entry here.
+const STACK_BASH_ADDITIONS = Object.freeze({
+  node: ['Bash(vitest:*)'],
+  vue: ['Bash(vitest:*)'],
+  react: ['Bash(vitest:*)'],
+  python: ['Bash(python:*)', 'Bash(pip:*)', 'Bash(pytest:*)'],
+  go: ['Bash(go:*)'],
+  rust: ['Bash(cargo:*)'],
+  ruby: ['Bash(ruby:*)', 'Bash(bundle:*)', 'Bash(rspec:*)'],
+  java: ['Bash(mvn:*)', 'Bash(gradle:*)'],
+});
+
+/**
+ * Normalize a `dev_stack` value (array, or a comma-separated string as free
+ * Stack-section text may supply) into a string[] of tokens, validating each
+ * against STACK_BASH_ADDITIONS. Throws BEFORE any file is touched when a
+ * token is not recognized, naming the offending value — mirrors
+ * applyAgentModels's pre-write validation above.
+ */
+function normalizeDevStack(devStack) {
+  if (devStack === undefined || devStack === null) return [];
+  const arr = Array.isArray(devStack)
+    ? devStack
+    : String(devStack).split(',').map((s) => s.trim()).filter(Boolean);
+  for (const token of arr) {
+    if (!Object.prototype.hasOwnProperty.call(STACK_BASH_ADDITIONS, token)) {
+      throw new Error(
+        `generateDeveloperToolsLine: invalid/unknown dev_stack value "${token}". ` +
+        `Known stack values: ${Object.keys(STACK_BASH_ADDITIONS).join(', ')}`,
+      );
+    }
+  }
+  return arr;
+}
+
+/**
+ * Derive the developer.md `tools:` frontmatter value from a `dev_stack` list.
+ * Core Bash prefixes (git/npm/node/npx) are always present; stack-specific
+ * additions are appended in dev_stack's declared order, de-duplicated across
+ * tokens that map to the same pattern (e.g. vue + react both want vitest).
+ * Throws on an unrecognized stack token before returning anything (the
+ * pre-write gate applyDeveloperPermissions below relies on).
+ *
+ * @param {object} opts
+ * @param {string[]|string} [opts.devStack] - stack tokens (array, or a
+ *   comma-separated string)
+ * @returns {string} the full `tools:` value
+ */
+export function generateDeveloperToolsLine({ devStack } = {}) {
+  const normalized = normalizeDevStack(devStack);
+  const bashPatterns = [...CORE_DEVELOPER_BASH];
+  for (const token of normalized) {
+    for (const pattern of STACK_BASH_ADDITIONS[token]) {
+      if (!bashPatterns.includes(pattern)) bashPatterns.push(pattern);
+    }
+  }
+  return [...DEVELOPER_NON_BASH_TOOLS, ...bashPatterns].join(', ');
+}
+
+/**
+ * Apply the generated tools: line to agents/developer.md (and the
+ * plugin-root parity copy when present), surgically patching ONLY the
+ * tools: frontmatter line. Validation (inside generateDeveloperToolsLine)
+ * runs BEFORE any file is touched.
+ *
+ * @param {object} opts
+ * @param {string} opts.repoRoot
+ * @param {string[]|string} [opts.devStack]
+ * @returns {Promise<string[]>} absolute paths of changed files
+ */
+export async function applyDeveloperPermissions({ repoRoot, devStack } = {}) {
+  const toolsLine = generateDeveloperToolsLine({ devStack });
+
+  const claudeAgentsDir = join(repoRoot, '.claude', 'agents');
+  const parityAgentsDir = join(repoRoot, 'agents');
+  const hasParityDir = existsSync(parityAgentsDir);
+
+  const targets = [join(claudeAgentsDir, 'developer.md')];
+  if (hasParityDir) targets.push(join(parityAgentsDir, 'developer.md'));
+
+  const changedFiles = [];
+  for (const targetPath of targets) {
+    if (!existsSync(targetPath)) continue;
+    const raw = readFileSync(targetPath, 'utf8');
+    const patched = patchAgentToolsContent(raw, toolsLine);
+    if (patched === null) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `applyDeveloperPermissions: skipping ${targetPath} — missing or unterminated YAML frontmatter`,
+      );
+      continue;
+    }
+    if (patched === raw) continue;
+    await atomicWriteFile(targetPath, patched);
+    changedFiles.push(targetPath);
+  }
+  return changedFiles;
+}
+
+/**
+ * Return `text` with ONLY the `tools:` line inside the YAML frontmatter block
+ * updated (or inserted — immediately after `model:` when present, else
+ * immediately after `description:`, else appended as the last frontmatter
+ * line). Mirrors patchAgentModelContent's surgical-splice guarantee: every
+ * other byte, including mixed line endings anywhere in the file, is
+ * preserved. Returns null for malformed/absent frontmatter — callers must
+ * skip such files without rewriting.
+ */
+function patchAgentToolsContent(text, toolsLine) {
+  const open = text.match(/^---(\r?\n)/);
+  if (!open) return null;
+  const fmStart = open[0].length;
+
+  const rest = text.slice(fmStart);
+  const close = rest.match(/(^|\r?\n)---(\r?\n|$)/);
+  if (!close) return null;
+
+  const innerEnd = fmStart + close.index + close[1].length;
+  const inner = text.slice(fmStart, innerEnd);
+
+  let newInner;
+  const toolsRe = /^tools:[^\r\n]*/m;
+  if (toolsRe.test(inner)) {
+    newInner = inner.replace(toolsRe, `tools: ${toolsLine}`);
+  } else {
+    const modelMatch = inner.match(/^model:[^\r\n]*(\r?\n)/m);
+    const descMatch = inner.match(/^description:[^\r\n]*(\r?\n)/m);
+    if (modelMatch) {
+      const insertAt = modelMatch.index + modelMatch[0].length;
+      const eol = modelMatch[1];
+      newInner = inner.slice(0, insertAt) + `tools: ${toolsLine}${eol}` + inner.slice(insertAt);
+    } else if (descMatch) {
+      const insertAt = descMatch.index + descMatch[0].length;
+      const eol = descMatch[1];
+      newInner = inner.slice(0, insertAt) + `tools: ${toolsLine}${eol}` + inner.slice(insertAt);
+    } else {
+      newInner = inner + `tools: ${toolsLine}${open[1]}`;
+    }
+  }
+
+  return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
+}

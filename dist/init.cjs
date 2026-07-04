@@ -9097,6 +9097,94 @@ function patchAgentModelContent(text, modelValue) {
   }
   return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
 }
+var DEVELOPER_NON_BASH_TOOLS = Object.freeze(["Read", "Write", "Edit", "Grep", "Glob", "mcp__github__*"]);
+var CORE_DEVELOPER_BASH = Object.freeze(["Bash(git:*)", "Bash(npm:*)", "Bash(node:*)", "Bash(npx:*)"]);
+var STACK_BASH_ADDITIONS = Object.freeze({
+  node: ["Bash(vitest:*)"],
+  vue: ["Bash(vitest:*)"],
+  react: ["Bash(vitest:*)"],
+  python: ["Bash(python:*)", "Bash(pip:*)", "Bash(pytest:*)"],
+  go: ["Bash(go:*)"],
+  rust: ["Bash(cargo:*)"],
+  ruby: ["Bash(ruby:*)", "Bash(bundle:*)", "Bash(rspec:*)"],
+  java: ["Bash(mvn:*)", "Bash(gradle:*)"]
+});
+function normalizeDevStack(devStack) {
+  if (devStack === void 0 || devStack === null) return [];
+  const arr = Array.isArray(devStack) ? devStack : String(devStack).split(",").map((s) => s.trim()).filter(Boolean);
+  for (const token of arr) {
+    if (!Object.prototype.hasOwnProperty.call(STACK_BASH_ADDITIONS, token)) {
+      throw new Error(
+        `generateDeveloperToolsLine: invalid/unknown dev_stack value "${token}". Known stack values: ${Object.keys(STACK_BASH_ADDITIONS).join(", ")}`
+      );
+    }
+  }
+  return arr;
+}
+function generateDeveloperToolsLine({ devStack } = {}) {
+  const normalized = normalizeDevStack(devStack);
+  const bashPatterns = [...CORE_DEVELOPER_BASH];
+  for (const token of normalized) {
+    for (const pattern of STACK_BASH_ADDITIONS[token]) {
+      if (!bashPatterns.includes(pattern)) bashPatterns.push(pattern);
+    }
+  }
+  return [...DEVELOPER_NON_BASH_TOOLS, ...bashPatterns].join(", ");
+}
+async function applyDeveloperPermissions({ repoRoot, devStack } = {}) {
+  const toolsLine = generateDeveloperToolsLine({ devStack });
+  const claudeAgentsDir = (0, import_node_path6.join)(repoRoot, ".claude", "agents");
+  const parityAgentsDir = (0, import_node_path6.join)(repoRoot, "agents");
+  const hasParityDir = (0, import_node_fs8.existsSync)(parityAgentsDir);
+  const targets = [(0, import_node_path6.join)(claudeAgentsDir, "developer.md")];
+  if (hasParityDir) targets.push((0, import_node_path6.join)(parityAgentsDir, "developer.md"));
+  const changedFiles = [];
+  for (const targetPath of targets) {
+    if (!(0, import_node_fs8.existsSync)(targetPath)) continue;
+    const raw = (0, import_node_fs8.readFileSync)(targetPath, "utf8");
+    const patched = patchAgentToolsContent(raw, toolsLine);
+    if (patched === null) {
+      console.warn(
+        `applyDeveloperPermissions: skipping ${targetPath} \u2014 missing or unterminated YAML frontmatter`
+      );
+      continue;
+    }
+    if (patched === raw) continue;
+    await atomicWriteFile(targetPath, patched);
+    changedFiles.push(targetPath);
+  }
+  return changedFiles;
+}
+function patchAgentToolsContent(text, toolsLine) {
+  const open = text.match(/^---(\r?\n)/);
+  if (!open) return null;
+  const fmStart = open[0].length;
+  const rest = text.slice(fmStart);
+  const close = rest.match(/(^|\r?\n)---(\r?\n|$)/);
+  if (!close) return null;
+  const innerEnd = fmStart + close.index + close[1].length;
+  const inner = text.slice(fmStart, innerEnd);
+  let newInner;
+  const toolsRe = /^tools:[^\r\n]*/m;
+  if (toolsRe.test(inner)) {
+    newInner = inner.replace(toolsRe, `tools: ${toolsLine}`);
+  } else {
+    const modelMatch = inner.match(/^model:[^\r\n]*(\r?\n)/m);
+    const descMatch = inner.match(/^description:[^\r\n]*(\r?\n)/m);
+    if (modelMatch) {
+      const insertAt = modelMatch.index + modelMatch[0].length;
+      const eol = modelMatch[1];
+      newInner = inner.slice(0, insertAt) + `tools: ${toolsLine}${eol}` + inner.slice(insertAt);
+    } else if (descMatch) {
+      const insertAt = descMatch.index + descMatch[0].length;
+      const eol = descMatch[1];
+      newInner = inner.slice(0, insertAt) + `tools: ${toolsLine}${eol}` + inner.slice(insertAt);
+    } else {
+      newInner = inner + `tools: ${toolsLine}${open[1]}`;
+    }
+  }
+  return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
+}
 
 // src/backlog-seeder.js
 var import_node_fs10 = require("node:fs");
@@ -10076,6 +10164,7 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--apply-models",
   "--apply-workflows",
   "--apply-settings",
+  "--apply-permissions",
   "--yes"
 ]);
 var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file"]);
@@ -10090,6 +10179,7 @@ function parseArgs(argv) {
     applyModels: false,
     applyWorkflows: false,
     applySettings: false,
+    applyPermissions: false,
     yes: false
   };
   for (let i = 0; i < argv.length; i++) {
@@ -10104,6 +10194,7 @@ function parseArgs(argv) {
     if (tok === "--apply-models") out.applyModels = true;
     if (tok === "--apply-workflows") out.applyWorkflows = true;
     if (tok === "--apply-settings") out.applySettings = true;
+    if (tok === "--apply-permissions") out.applyPermissions = true;
     if (tok === "--yes") out.yes = true;
     if (tok === "--answers-file") {
       const value = argv[i + 1];
@@ -10122,6 +10213,9 @@ function parseArgs(argv) {
   }
   if (out.applySettings && (out.force || out.answersFile !== null)) {
     throw new Error("--apply-settings cannot be combined with --force or --answers-file");
+  }
+  if (out.applyPermissions && (out.force || out.answersFile !== null)) {
+    throw new Error("--apply-permissions cannot be combined with --force or --answers-file");
   }
   return out;
 }
@@ -10416,6 +10510,19 @@ async function runInit({
     );
     return { state: "applied_settings", projectMdPath, sessionId: null };
   }
+  if (parsed.applyPermissions) {
+    if (!projectMdExists) {
+      console.log("--apply-permissions: PROJECT.md not found; nothing to apply.");
+      return { state: "no_op", projectMdPath, sessionId: null };
+    }
+    const { answers: projectAnswers } = await readProjectMd({ repoRoot });
+    const changed = await applyDeveloperPermissions({
+      repoRoot,
+      devStack: projectAnswers.dev_stack
+    });
+    console.log(`--apply-permissions: updated ${changed.length} file(s): ${changed.join(", ")}`);
+    return { state: "applied_permissions", projectMdPath, sessionId: null };
+  }
   const explicitConsent = parsed.claudeMdConsent || Boolean(answers && answers.claude_md_consent === true);
   const skipConfirm = parsed.yes || Boolean(answers);
   if (parsed.force) {
@@ -10510,6 +10617,7 @@ var SELF_SUMMARIZING_STATES = /* @__PURE__ */ new Set([
   "applied_workflows",
   "applied_models",
   "applied_settings",
+  "applied_permissions",
   "no_op",
   "cancelled"
 ]);

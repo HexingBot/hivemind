@@ -34,7 +34,7 @@ import { readPointer } from '../src/pointer.js';
 import { runQuestionnaire } from '../src/question-engine.js';
 import { buildIntakeQuestions, parseAgentModelsAnswer } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
-import { generateProjectContext, applyAgentModels } from '../src/agent-generator.js';
+import { generateProjectContext, applyAgentModels, applyDeveloperPermissions } from '../src/agent-generator.js';
 import { seedBacklog } from '../src/backlog-seeder.js';
 import { generateUseCaseSuite } from '../src/use-case-specs.js';
 import { archiveFrameworkHistory } from '../src/framework-history.js';
@@ -122,6 +122,7 @@ const KNOWN_FLAGS = new Set([
   '--apply-models',
   '--apply-workflows',
   '--apply-settings',
+  '--apply-permissions',
   '--yes',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
@@ -148,6 +149,7 @@ function parseArgs(argv) {
     applyModels: false,
     applyWorkflows: false,
     applySettings: false,
+    applyPermissions: false,
     yes: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -162,6 +164,7 @@ function parseArgs(argv) {
     if (tok === '--apply-models') out.applyModels = true;
     if (tok === '--apply-workflows') out.applyWorkflows = true;
     if (tok === '--apply-settings') out.applySettings = true;
+    if (tok === '--apply-permissions') out.applyPermissions = true;
     if (tok === '--yes') out.yes = true;
     if (tok === '--answers-file') {
       const value = argv[i + 1];
@@ -189,6 +192,13 @@ function parseArgs(argv) {
   // contradiction and must fail loudly before any filesystem write.
   if (out.applySettings && (out.force || out.answersFile !== null)) {
     throw new Error('--apply-settings cannot be combined with --force or --answers-file');
+  }
+  // TASK-091 — strict argv discipline: --apply-permissions is a standalone
+  // mode (read PROJECT.md, patch the developer.md Bash allowlist, exit);
+  // combining it with the wizard mutators is a contradiction and must fail
+  // loudly before any filesystem write.
+  if (out.applyPermissions && (out.force || out.answersFile !== null)) {
+    throw new Error('--apply-permissions cannot be combined with --force or --answers-file');
   }
   return out;
 }
@@ -753,6 +763,32 @@ export async function runInit({
     return { state: 'applied_settings', projectMdPath, sessionId: null };
   }
 
+  // ---- Branch 0d: --apply-permissions (TASK-091) ----
+  // Reads dev_stack from PROJECT.md's ## Stack section and applies the
+  // generated Bash(...) allowlist to agents/developer.md's tools: frontmatter.
+  // Never calls the prompter. Unlike --apply-models (which no-ops when the
+  // map is absent, since an absent agent_models means "keep the shipped
+  // defaults"), an absent dev_stack does NOT no-op the whole flag: the
+  // core git/npm/node/npx scoping is the actual security value this flag
+  // delivers, and it must land even when no stack-specific tokens are
+  // declared. The ONLY no-op condition is a missing PROJECT.md (nothing to
+  // read at all). Exits with state 'applied_permissions' or 'no_op'.
+  if (parsed.applyPermissions) {
+    if (!projectMdExists) {
+      // eslint-disable-next-line no-console
+      console.log('--apply-permissions: PROJECT.md not found; nothing to apply.');
+      return { state: 'no_op', projectMdPath, sessionId: null };
+    }
+    const { answers: projectAnswers } = await readProjectMd({ repoRoot });
+    const changed = await applyDeveloperPermissions({
+      repoRoot,
+      devStack: projectAnswers.dev_stack,
+    });
+    // eslint-disable-next-line no-console
+    console.log(`--apply-permissions: updated ${changed.length} file(s): ${changed.join(', ')}`);
+    return { state: 'applied_permissions', projectMdPath, sessionId: null };
+  }
+
   // The CLAUDE.md routing consent is a SEPARATE channel from the intake answers:
   // an explicit signal is either the --claude-md-consent flag or a truthy
   // claude_md_consent key in the supplied answers object.
@@ -882,6 +918,7 @@ const SELF_SUMMARIZING_STATES = new Set([
   'applied_workflows',
   'applied_models',
   'applied_settings',
+  'applied_permissions',
   'no_op',
   'cancelled',
 ]);
