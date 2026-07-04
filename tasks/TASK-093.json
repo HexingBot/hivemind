@@ -7,7 +7,7 @@
     "Parity sensor extended to cover references/ files (byte-identity assertions), red-green proven against a planted one-byte drift.",
     "Fast tier green; no six/seven count regressions (grep clean)."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "low",
   "labels": [
     "docs",
@@ -19,9 +19,15 @@
   "depends_on": [],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T21:53:09.669Z",
+      "body": "PLAN (tier=tests-after, ticket-carried, confirmed): finish the tool-contract.md table drift from ground truth (create_task optional fields, transition_status closeGuard) + extend the parity sensor to references/ (red-green proven against a planted one-byte drift). Single spawn per R1. Loop iteration 13."
+    }
+  ],
   "created_at": "2026-07-04T16:49:35.004Z",
-  "updated_at": "2026-07-04T16:49:35.004Z",
+  "updated_at": "2026-07-04T21:53:09.669Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

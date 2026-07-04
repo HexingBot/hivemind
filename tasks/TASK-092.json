@@ -9,7 +9,7 @@
     "Riders: redundant Object.isFrozen structural lock removed from tests/loop-auth.spec.js; dist-parity spec title says six (or derives the count from ENTRYPOINT_NAMES.length).",
     "Bundling check: bundle.js IS reachable via close-guard -> mcp-server -> dist; rebuild dist and commit if bundles change; dist-parity green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "polish",
@@ -18,17 +18,35 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "7f8b62e9b08884e65528adce7bcf43eaf97de497",
+    "d99825787a705e4665222145f1159731a451afb3"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-07-04T16:46:50.087Z",
       "body": "RIDER added (from the TASK-089 developer hand-off, out-of-scope flag): src/mcp-server.js:22 module-header JSDoc still says 'all six tools registered' while line 7 of the same header says seven — fix the stale comment when touching source for this ticket. Note this file IS a dist entrypoint: AC5's rebuild-and-commit-dist requirement covers whether the comment change alters dist/mcp-server.cjs (esbuild may or may not strip it — let dist-parity decide)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T18:11:51.118Z",
+      "body": "PLAN (tier=tdd, ticket-carried, confirmed — source logic in bundle/loop-checkpoint/operating-mode): additive readBundleSessionOrThrow helper + migrate the two raw-ENOENT twins + loop-auth local-wrap migration + riders (isFrozen lock removal, dist-parity title, mcp-server.js:22 stale JSDoc). R1 single spawn, two-commit discipline. bundle.js IS dist-reachable (close-guard -> mcp-server.cjs) — rebuild + commit dist per AC5. Loop iteration 12."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T21:46:47.561Z",
+      "body": "PRE-REVIEW verification (orchestrator): commit order verified (test 7f8b62e strictly precedes feat d998257). Fast tier reproduced 568/2 (569->568 = the removed redundant isFrozen lock, accounted). Diff 246+/46-. REVIEW DEPTH: FULL — mandatory (src/bundle.js = shared-state surface; src/mcp-server.js = dist entrypoint/packaging surface; core tdd logic; 292 lines)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T21:52:39.885Z",
+      "body": "CLOSED done (loop iteration 12, auto_close_on_green_review — clean APPROVE, 0H/0M/1L/1INFO). tdd tier: two-commit discipline held (test 7f8b62e strictly precedes feat d998257), red-run mechanically verified against the parent. | REVIEW DEPTH (recorded per R2 protocol): FULL — mandatory (src/bundle.js shared-state surface + src/mcp-server.js dist entrypoint + core tdd logic; 292 lines). | SHIPPED: additive readBundleSessionOrThrow(repoRoot, sessionId, callerLabel) in bundle.js (ENOENT -> typed E_BUNDLE_MISSING naming id + path + label; SyntaxError rethrown RAW — verified no swallowing; readBundleSession byte-identical to parent); writeLoopCheckpoint + setMode migrated (validate-before-IO ordering preserved; getMode untouched w/ new lock proving its swallow-default); loop-auth migrated w/ message verbatim-preserved so its 16 existing locks passed UNMODIFIED (AC3 exactly as designed). Riders: isFrozen structural lock removed (behavioral trio proven sufficient alone), dist-parity titles derive from BUNDLE_NAMES.length (single source of truth), mcp-server.js:22 six->seven. dist: all 6 bundles byte-identical post-rebuild (esbuild strips the comment), nothing owed. | GATES: targeted 47/47 + 16/16, fast tier 568/2 (569->568 = removed lock, accounted), test:all 1140/4 (dev/reviewer matched exactly), dist-parity green. | TRACKED FOLLOW-UP (LOW, optional): the helper's rethrow-raw branch (corrupt session.json SyntaxError passes through untailored) has no sensor — a catch-all regression would go undetected; one cheap spec in tests/e2e/bundle.spec.js on the next touch of that file. INFO noted: hand-off red-run narrative misattributed one failure message (undefined-not-ENOENT for the helper spec) — no integrity concern, red mechanically confirmed."
     }
   ],
   "created_at": "2026-07-04T16:38:24.056Z",
-  "updated_at": "2026-07-04T16:46:50.087Z",
+  "updated_at": "2026-07-04T21:52:39.885Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
