@@ -22,7 +22,7 @@
 //   directly and call them around their session lifecycle operations.
 
 import {
-  existsSync, readFileSync, unlinkSync, mkdirSync, statSync, renameSync,
+  existsSync, readFileSync, readdirSync, unlinkSync, mkdirSync, statSync, renameSync,
   openSync, writeSync, fsyncSync, closeSync, constants,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -57,18 +57,80 @@ function resolveNow(now) {
   return new Date().toISOString();
 }
 
+/** Matches a leftover CAS-steal claim file: state/.lock.claim.<pid>-<hex>. */
+const CLAIM_FILE_RE = /^\.lock\.claim\.\d+-[0-9a-f]+$/;
+
+/**
+ * Read the raw bytes of the lock file, or null if absent/unreadable.
+ * Kept separate from readLock() so callers that need to content-check a
+ * CAS-steal (TASK-090 AC1/AC2) can capture the exact bytes observed, not
+ * just the parsed object.
+ */
+function readLockRaw(repoRoot) {
+  const p = lockFilePath(repoRoot);
+  if (!existsSync(p)) return null;
+  try {
+    return readFileSync(p, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** Parse a lock record's raw bytes; returns null on invalid JSON. */
+function tryParseLock(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Read the current lock record from disk.
  * Returns the parsed object, or null if the file is absent or unreadable.
  */
 function readLock(repoRoot) {
-  const p = lockFilePath(repoRoot);
-  if (!existsSync(p)) return null;
+  const raw = readLockRaw(repoRoot);
+  return raw !== null ? tryParseLock(raw) : null;
+}
+
+/**
+ * TASK-090 AC4 — opportunistically reap leftover CAS-steal claim files
+ * (state/.lock.claim.*) once they age past the staleness window. A claim
+ * file is a transient artifact of an in-flight steal (see
+ * stealAwayContentChecked below); it is normally unlinked within the same
+ * acquire() call. One can be left behind only if the process crashes
+ * between the CAS rename and the finally-unlink (or, per AC1/AC2, when a
+ * content mismatch is detected and the best-effort restore itself loses to
+ * a third party) — nothing else ever sweeps it. Best-effort and
+ * non-blocking: any per-file error (including Windows EPERM/EBUSY against a
+ * file another process still has open) is swallowed, since this is a
+ * courtesy cleanup, not a correctness requirement.
+ */
+function sweepStaleClaimFiles(repoRoot, stalenessMs) {
+  const stateDir = join(repoRoot, 'state');
+  let entries;
   try {
-    return JSON.parse(readFileSync(p, 'utf8'));
+    entries = readdirSync(stateDir);
   } catch {
-    // Corrupt or empty file → treat as absent (stale/recoverable).
-    return null;
+    return; // state dir absent/unreadable — nothing to sweep
+  }
+  const nowMs = Date.now();
+  for (const name of entries) {
+    if (!CLAIM_FILE_RE.test(name)) continue;
+    const p = join(stateDir, name);
+    let st;
+    try {
+      st = statSync(p);
+    } catch {
+      continue; // vanished already — fine
+    }
+    if (nowMs - st.mtimeMs < stalenessMs) continue; // fresh — may be in-flight
+    try {
+      unlinkSync(p);
+    } catch {
+      // best-effort — swallow (Windows EPERM/EBUSY, or already gone)
+    }
   }
 }
 
@@ -125,6 +187,114 @@ function writeLockExclusive(repoRoot, record) {
   } finally {
     closeSync(fd);
   }
+}
+
+/**
+ * TASK-090 AC1/AC2 — content-checked CAS steal: rename whatever currently
+ * occupies the lock path away to a unique claim path, then verify the claim
+ * file's raw bytes byte-match `expectedRaw` — the exact content observed
+ * when the caller decided this lock was reclaimable (a stale foreign lock,
+ * or a stale corrupt/unparseable one).
+ *
+ * Honest accounting of what this does and does not close: renameSync (like
+ * unlinkSync) acts purely on the PATH, with no identity or content check of
+ * its own — POSIX offers no direct "rename only if the target still has
+ * inode X" primitive here. A reclaimer descheduled between its staleness
+ * read and this rename can still walk away with a fresh competitor's
+ * brand-new, perfectly live record if that competitor re-creates the lock
+ * at the same path in that exact gap. The content check narrows the window
+ * to precisely that gap (read-to-rename) and turns what would otherwise be
+ * a silent double-win (or, on the unlink side, silent lock destruction)
+ * into a detected, fail-closed E_LOCK_HELD — it does not, and cannot,
+ * eliminate the window outright without filesystem-level CAS support.
+ *
+ * On a content mismatch, best-effort restores the captured content to the
+ * lock path via exclusive-create (so a third party who has since reclaimed
+ * the slot is never clobbered), then throws.
+ *
+ * @returns {string} the claim path, once the content check has passed.
+ * @throws {Error} E_LOCK_HELD — either the rename lost a race (ENOENT), the
+ *   claimed file vanished before it could be verified, or its content did
+ *   not match what was observed pre-steal.
+ */
+function stealAwayContentChecked(repoRoot, myPid, expectedRaw) {
+  const lockPath = lockFilePath(repoRoot);
+  const claimPath = `${lockPath}.claim.${myPid}-${randomBytes(6).toString('hex')}`;
+
+  try {
+    renameSync(lockPath, claimPath);
+  } catch (stealErr) {
+    if (stealErr && stealErr.code === 'ENOENT') {
+      throw makeErr(
+        'E_LOCK_HELD',
+        `Lock steal race lost at ${lockPath}: a competing stealer already ` +
+        'claimed the stale lock an instant earlier. Wait for it to release or expire.',
+      );
+    }
+    throw stealErr;
+  }
+
+  let claimRaw;
+  try {
+    claimRaw = readFileSync(claimPath, 'utf8');
+  } catch {
+    throw makeErr(
+      'E_LOCK_HELD',
+      `Lock steal race at ${lockPath}: the claimed file vanished before it ` +
+      'could be content-verified. Wait for it to release or expire.',
+    );
+  }
+
+  if (claimRaw !== expectedRaw) {
+    // Content mismatch: what we renamed away is NOT the stale record we
+    // decided to reclaim — a fresh competitor re-created a live record at
+    // this path in the gap between our staleness read and this rename.
+    // Restore it (best-effort) so their lock is not lost, then fail closed
+    // ourselves rather than proceeding on borrowed/misattributed content.
+    const restored = restoreExclusive(lockPath, claimRaw);
+    if (restored) {
+      try { unlinkSync(claimPath); } catch { /* best-effort cleanup */ }
+    }
+    // else: a third party has since reclaimed the slot at lockPath — leave
+    // the claim file behind rather than clobber them. This is an accepted,
+    // narrow residual: sweepStaleClaimFiles() (AC4) reaps it once it ages
+    // past the staleness window, same as any other dead claim.
+    throw makeErr(
+      'E_LOCK_HELD',
+      `Lock steal content-check failed at ${lockPath}: the record renamed ` +
+      'away did not byte-match the record observed before stealing — a ' +
+      'fresh competitor likely re-created the lock in the narrow read-to-' +
+      'rename window. Refusing to proceed; wait for it to release or expire.',
+    );
+  }
+
+  return claimPath;
+}
+
+/**
+ * Best-effort exclusive-create restore of previously-captured raw content.
+ * Returns false (no-op) if the target path is already occupied — the
+ * caller must not clobber whoever holds it now.
+ */
+function restoreExclusive(targetPath, rawContent) {
+  const payload = Buffer.from(rawContent, 'utf8');
+  let fd;
+  try {
+    fd = openSync(targetPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+  } catch (err) {
+    if (err && err.code === 'EEXIST') return false;
+    throw err;
+  }
+  try {
+    let written = 0;
+    while (written < payload.length) {
+      written += writeSync(fd, payload, written, payload.length - written);
+    }
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  return true;
 }
 
 /**
@@ -203,7 +373,14 @@ export async function acquire({
   const myPid = pid ?? process.pid;
   const myHost = hostname ?? os.hostname();
 
-  const existing = readLock(repoRoot);
+  // TASK-090 AC4 — opportunistic sweep of leftover CAS-steal claim files.
+  // Cheap (one readdir) and safe to run unconditionally on every acquire().
+  sweepStaleClaimFiles(repoRoot, stalenessMs);
+
+  // Capture the raw bytes alongside the parsed record so a later steal (see
+  // below) can content-check exactly what was observed here (TASK-090 AC1).
+  const rawExisting = readLockRaw(repoRoot);
+  const existing = rawExisting !== null ? tryParseLock(rawExisting) : null;
 
   if (existing !== null) {
     if (isSameHolder(existing, holder, myPid, myHost)) {
@@ -252,34 +429,29 @@ export async function acquire({
     // ITS OWN later verify (success): a double-win, with no synchronization
     // forcing the two sequences to overlap.
     //
-    // Fixed via a real compare-and-swap: renameSync(lockPath, uniqueClaimPath)
-    // MOVES the stale record we just observed OUT of the lock path. This is
-    // atomic at the OS level — of two racing stealers who both read the SAME
-    // stale record, only ONE can successfully rename that SAME source path;
-    // the other gets ENOENT (the winner already moved it) and fails closed
-    // with E_LOCK_HELD, deterministically, with no timing window at all. The
-    // winner then writes the NEW record via the same exclusive-create
-    // primitive used for first acquisition (writeLockExclusive) — the lock
-    // path is now guaranteed absent, so this either succeeds outright, or
-    // (residual race: a THIRD acquirer's fresh "no lock" acquire slipped in
-    // during the moving-out gap) fails EEXIST, which is ALSO a legitimate
-    // E_LOCK_HELD outcome (won the steal, lost the freshly-vacated slot to a
-    // third party). The claim file (the dead stale record) is cleaned up
-    // best-effort either way — nobody needs it again.
-    const lockPath = lockFilePath(repoRoot);
-    const claimPath = `${lockPath}.claim.${myPid}-${randomBytes(6).toString('hex')}`;
-    try {
-      renameSync(lockPath, claimPath);
-    } catch (stealErr) {
-      if (stealErr && stealErr.code === 'ENOENT') {
-        throw makeErr(
-          'E_LOCK_HELD',
-          `Lock steal race lost at ${lockPath}: a competing stealer already ` +
-          'claimed the stale lock an instant earlier. Wait for it to release or expire.',
-        );
-      }
-      throw stealErr;
-    }
+    // Fixed via renameSync(lockPath, uniqueClaimPath), which MOVES the
+    // record we just observed OUT of the lock path. TASK-090 review — the
+    // original version of this comment overclaimed: it called this "atomic
+    // at the OS level ... deterministically, with no timing window at all".
+    // That is true only of the rename operation ITSELF (of two racing
+    // stealers renaming the SAME source path, only one succeeds — the other
+    // gets ENOENT). It is NOT true of the larger steal: renameSync has no
+    // identity or content check of what it moves, so a stealer descheduled
+    // between its staleness READ (above) and THIS rename can walk away with
+    // a fresh competitor's brand-new, perfectly live lock that happens to
+    // occupy the same path an instant later — a real residual window,
+    // bounded only by how long that deschedule can last. stealAwayContentChecked()
+    // closes it: it verifies, byte-for-byte, that what the rename actually
+    // moved matches rawExisting (the exact bytes read above), restoring and
+    // failing closed on any mismatch. The winner then writes the NEW record
+    // via the same exclusive-create primitive used for first acquisition
+    // (writeLockExclusive) — the lock path is now guaranteed absent, so this
+    // either succeeds outright, or (residual race: a THIRD acquirer's fresh
+    // "no lock" acquire slipped in during the moving-out gap) fails EEXIST,
+    // which is ALSO a legitimate E_LOCK_HELD outcome (won the content-checked
+    // steal, lost the freshly-vacated slot to a third party). The claim file
+    // is cleaned up best-effort either way — nobody needs it again.
+    const claimPath = stealAwayContentChecked(repoRoot, myPid, rawExisting);
     try {
       writeLockExclusive(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
     } finally {
@@ -287,14 +459,15 @@ export async function acquire({
     }
 
     // Verify-after-write, kept as belt-and-braces: a legitimate competitor
-    // can no longer land here (see above), but this still catches a rogue
+    // can no longer land here undetected (the content check above already
+    // rules out the read-to-rename gap), but this still catches a rogue
     // direct mutation of the just-written record.
     const afterSteal = readLock(repoRoot);
     if (!isSameHolder(afterSteal, holder, myPid, myHost)) {
       throw makeErr(
         'E_LOCK_HELD',
-        `Lock steal race detected at ${lockPath}: a competing writer's ` +
-        'record is now persisted instead of ours. Wait for it to release or expire.',
+        `Lock steal race detected at ${lockFilePath(repoRoot)}: a competing ` +
+        'writer\'s record is now persisted instead of ours. Wait for it to release or expire.',
       );
     }
     return { acquired: true };
@@ -313,18 +486,22 @@ export async function acquire({
   // would ALWAYS hit writeLockExclusive's EEXIST branch and throw
   // E_LOCK_HELD — permanently, with no staleness escape hatch. When a file
   // exists at the lock path but is unparseable, fall back to ITS MTIME: if
-  // older than stalenessMs, unlink it and fall through to the same
-  // exclusive-create attempt below (a one-shot "retry" that costs nothing
-  // extra, since control simply continues); if still fresh, fail closed with
-  // an ACCURATE message (there's no holder identity to name here, only a
-  // staleness clock to wait out).
+  // older than stalenessMs, reclaim it (TASK-090 AC2 — via the same
+  // content-checked CAS as the foreign-lock steal path, not a raw unlink;
+  // see below) and fall through to the same exclusive-create attempt below
+  // (a one-shot "retry" that costs nothing extra, since control simply
+  // continues); if still fresh, fail closed with an ACCURATE message
+  // (there's no holder identity to name here, only a staleness clock to
+  // wait out).
   const lockPath = lockFilePath(repoRoot);
-  if (existsSync(lockPath)) {
+  if (rawExisting !== null) {
+    // A file exists at the lock path but didn't parse (tryParseLock above
+    // returned null) — decide reclaimability via its own mtime.
     let corruptStat = null;
     try {
       corruptStat = statSync(lockPath);
     } catch {
-      corruptStat = null; // vanished between existsSync and statSync — treat as absent
+      corruptStat = null; // vanished between our raw read and here — treat as absent
     }
     if (corruptStat) {
       const ageMs = Date.now() - corruptStat.mtimeMs;
@@ -337,10 +514,31 @@ export async function acquire({
           'automatically once its age exceeds the staleness window.',
         );
       }
-      // Stale corrupt lock — unlink and fall through to the exclusive-create
+      // Stale corrupt lock — TASK-090 AC2 — reclaim via the SAME
+      // content-checked CAS used for stale foreign locks above. A raw
+      // unlinkSync here has no identity check of its own: a fresh
+      // competitor's lock re-created in the gap between this staleness
+      // check and the unlink would be silently destroyed, with nothing to
+      // detect it. Capture what's actually at the path right now and let
+      // stealAwayContentChecked() verify it before anything is removed —
+      // on a mismatch it restores the fresh competitor's record and throws
+      // E_LOCK_HELD, exactly like the foreign-lock steal path.
+      let corruptRaw = null;
+      try {
+        corruptRaw = readFileSync(lockPath, 'utf8');
+      } catch {
+        corruptRaw = null; // vanished between statSync and here — treat as absent
+      }
+      if (corruptRaw !== null) {
+        const claimPath = stealAwayContentChecked(repoRoot, myPid, corruptRaw);
+        // The reclaimed content was garbage (that's why we're here) — there
+        // is nothing worth preserving, just discard the claim and fall
+        // through to create our own record on the now-vacant path.
+        try { unlinkSync(claimPath); } catch { /* best-effort cleanup */ }
+      }
+      // else: file already gone — fall through to the exclusive-create
       // attempt below (a competitor may still win that attempt: EEXIST ->
       // E_LOCK_HELD, thrown by writeLockExclusive).
-      try { unlinkSync(lockPath); } catch { /* best-effort; a competitor may already have reclaimed it */ }
     }
   }
 
