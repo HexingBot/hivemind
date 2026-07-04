@@ -27,6 +27,7 @@ import {
 } from 'node:fs/promises';
 import {
   mkdirSync, readFileSync, existsSync, statSync,
+  openSync, closeSync, constants,
 } from 'node:fs';
 import { join } from 'node:path';
 
@@ -305,6 +306,20 @@ export async function listReady({ repoRoot }) {
     return true;
   });
   return ready.sort(numericKeyOrder);
+}
+
+/**
+ * TASK-085 AC5 — thrown by createTask when a concurrent writer wins the
+ * derived-key race, either caught by the pre-write existsSync guard or by the
+ * post-write verify-after-write re-read. `.code` lets callers (and tests)
+ * distinguish this from any other createTask failure programmatically.
+ */
+export class KeyCollisionError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'KeyCollisionError';
+    this.code = 'E_KEY_COLLISION';
+  }
 }
 
 /**
@@ -606,21 +621,52 @@ export async function createTask({
 
   const target = taskFilePath(repoRoot, key);
 
-  // AC4 (TASK-083) — collision guard: derivedNextKey() and this write are not
-  // atomic, so a concurrent createTask call can win the race for the same key
-  // in between. Checked immediately before the write to keep the TOCTOU window
-  // as narrow as possible; atomicWriteFiles's renameSync would otherwise
-  // silently clobber whatever the other writer just created.
-  if (existsSync(target)) {
-    throw new Error(
-      `createTask: key collision — ${target} already exists (a concurrent writer won the race for ${key})`,
-    );
+  // AC4 (TASK-083) + AC5(a)/(c) (TASK-085) — collision guard: derivedNextKey()
+  // and this write are not atomic, so a concurrent createTask call can win
+  // the race for the same key in between. A plain existsSync() check (the
+  // original AC4 fix) is ITSELF a check-then-write TOCTOU — a second writer
+  // can still slip in between the check and the write. Hardened to a real
+  // OS-level exclusive create directly against the derived-key path:
+  // O_CREAT|O_EXCL either reserves the slot — deterministically, even against
+  // a genuinely concurrent second OS process (see
+  // tests/e2e/task-store-resilience.spec.js AC5(c)) — or fails with EEXIST
+  // when a competitor already claimed it, exactly like the existsSync check
+  // used to, just race-free. The atomicWriteFiles() rename below simply
+  // overwrites our own (empty) reservation with the real, validated payload.
+  let reserveFd;
+  try {
+    reserveFd = openSync(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      throw new KeyCollisionError(
+        `createTask: key collision — ${target} already exists (a concurrent writer won the race for ${key})`,
+      );
+    }
+    throw err;
   }
+  closeSync(reserveFd);
+
+  const taskBytes = JSON.stringify(task, null, 2) + '\n';
 
   await atomicWriteFiles([
-    { target, bytes: JSON.stringify(task, null, 2) + '\n' },
+    { target, bytes: taskBytes },
     { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
   ]);
+
+  // TASK-085 AC5(b) — verify-after-write: the existsSync guard above and the
+  // eventual rename are NOT atomic with each other, so a second concurrent
+  // writer can still slip in between them. Re-read the derived-key TASK FILE
+  // target (not index.json — per test design, only the task-file rename
+  // target is verified) and compare it to the exact bytes we intended to
+  // write; a mismatch means a competitor's payload landed instead of ours.
+  const onDisk = readFileSync(target, 'utf8');
+  if (onDisk !== taskBytes) {
+    throw new KeyCollisionError(
+      `createTask: verify-after-write detected a competing writer's payload ` +
+      `at ${target} (derived-key collision) — our write was overwritten ` +
+      'immediately after landing.',
+    );
+  }
 
   return { key, path: target };
 }
