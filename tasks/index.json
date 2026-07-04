@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T17:30:51.312Z",
+  "generated_at": "2026-07-04T18:10:56.765Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -532,7 +532,7 @@
     {
       "key": "TASK-091",
       "title": "developer Bash allowlist for unattended mode: PROJECT.md-derived, generated at init (--apply-permissions pattern)",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
