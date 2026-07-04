@@ -37,7 +37,9 @@ const CHECKPOINT_URL = pathToFileURL(join(__srcDir, 'loop-checkpoint.js')).href;
 // Helpers — mirrors tests/e2e/loop-auth.spec.js makeRepo pattern.
 // ---------------------------------------------------------------------------
 
-function makeRepo({ sessionId, bundleExtra = {}, noPointer = false, nullActiveSession = false } = {}) {
+function makeRepo({
+  sessionId, bundleExtra = {}, noPointer = false, nullActiveSession = false, missingBundleDir = false,
+} = {}) {
   const id = sessionId || '20260701T090000Z-c0ffee00';
   const root = makeTmpDir('af-lc');
 
@@ -55,7 +57,11 @@ function makeRepo({ sessionId, bundleExtra = {}, noPointer = false, nullActiveSe
     );
   }
 
-  if (!nullActiveSession) {
+  // missingBundleDir (TASK-092 AC2, mirrors TASK-088 AC2 in loop-auth): pointer
+  // names a real session id, but no bundle directory/session.json exists at
+  // all — distinct from nullActiveSession (pointer's active_session_id itself
+  // is null).
+  if (!nullActiveSession && !missingBundleDir) {
     const bundleDir = join(root, 'state', 'sessions', id);
     mkdirSync(bundleDir, { recursive: true });
     writeFileSync(
@@ -184,6 +190,35 @@ describe('AC1 — writeLoopCheckpoint surfaces a clear error when there is no ac
     await expect(
       writeLoopCheckpoint({ repoRoot: root, checkpoint: CHECKPOINT }),
     ).rejects.toThrow(/no active session|active session/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-092 AC2 — the pointer names a session whose bundle directory is
+// missing (deleted or moved out from under it). Before the fix this surfaced
+// a raw ENOENT from readBundleSession (via the shared bundle.js helper); the
+// tailored error must name the session id, the expected session.json path,
+// and the calling function ('writeLoopCheckpoint') for symptom attribution.
+// ---------------------------------------------------------------------------
+
+describe('TASK-092 AC2 — writeLoopCheckpoint tailors the missing-bundle-dir error', () => {
+  it('writeLoopCheckpoint_missing_bundle_dir_throws_typed_error_with_session_id_and_path', async () => {
+    const { writeLoopCheckpoint } = await import(CHECKPOINT_URL);
+    const { root, id } = makeRepo({ missingBundleDir: true });
+
+    let caughtErr;
+    try {
+      await writeLoopCheckpoint({ repoRoot: root, checkpoint: CHECKPOINT });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'writeLoopCheckpoint must reject when the bundle dir is missing').toBeDefined();
+    expect(caughtErr.code, 'must be the tailored code, not a raw ENOENT').toBe('E_BUNDLE_MISSING');
+    expect(caughtErr.code).not.toBe('ENOENT');
+    expect(caughtErr.message).toContain(id);
+    expect(caughtErr.message).toContain(join(root, 'state', 'sessions', id, 'session.json'));
+    expect(caughtErr.message).toContain('writeLoopCheckpoint');
   });
 });
 

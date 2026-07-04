@@ -95,11 +95,11 @@ describe('AC2 — UNATTENDED_PRESET composes the unattended defaults', () => {
 // ---------------------------------------------------------------------------
 
 describe('TASK-088 AC1 — exported constants are frozen against mutation', () => {
-  it('LOOP_AUTH_SWITCHES and UNATTENDED_PRESET are both frozen', async () => {
-    const { LOOP_AUTH_SWITCHES, UNATTENDED_PRESET } = await import(LOOP_AUTH_URL);
-    expect(Object.isFrozen(LOOP_AUTH_SWITCHES)).toBe(true);
-    expect(Object.isFrozen(UNATTENDED_PRESET)).toBe(true);
-  });
+  // TASK-092 rider (TASK-088 review LOW): the structural Object.isFrozen(...)
+  // check that used to live here is mechanism-redundant beside the three
+  // behavioral mutation-attempt locks below, which already prove frozen-ness
+  // (a mutation attempt only throws under strict mode if the object is
+  // actually frozen) while also proving the canonical value survives.
 
   it('flipping an existing key on UNATTENDED_PRESET throws (ESM runs in strict mode)', async () => {
     const { UNATTENDED_PRESET } = await import(LOOP_AUTH_URL);

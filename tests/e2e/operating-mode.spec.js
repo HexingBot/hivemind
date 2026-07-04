@@ -35,7 +35,7 @@ const OPERATING_MODE_URL = pathToFileURL(join(__srcDir, 'operating-mode.js')).hr
 // ---------------------------------------------------------------------------
 
 /** Write a minimal pointer + active bundle under a fresh temp dir. */
-function makeRepo({ sessionId, bundleExtra = {} } = {}) {
+function makeRepo({ sessionId, bundleExtra = {}, missingBundleDir = false } = {}) {
   const id = sessionId || '20260616T120000Z-deadbeef';
   const root = makeTmpDir('af-om');
 
@@ -50,6 +50,12 @@ function makeRepo({ sessionId, bundleExtra = {} } = {}) {
     }, null, 2),
     'utf8',
   );
+
+  // missingBundleDir (TASK-092 AC2, mirrors TASK-088 AC2 in loop-auth): pointer
+  // names a real session id, but no bundle directory/session.json exists at all.
+  if (missingBundleDir) {
+    return { root, id };
+  }
 
   // Bundle
   const bundleDir = join(root, 'state', 'sessions', id);
@@ -171,5 +177,44 @@ describe('AC2 — setMode idempotency', () => {
     const { root } = makeRepo({ bundleExtra: { mode: 'harness' } });
 
     await expect(setMode({ repoRoot: root, mode: 'harness' })).resolves.not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-092 AC2 — the pointer names a session whose bundle directory is
+// missing (deleted or moved out from under it). Before the fix this surfaced
+// a raw ENOENT from readBundleSession (via the shared bundle.js helper); the
+// tailored error must name the session id, the expected session.json path,
+// and the calling function ('setMode') for symptom attribution. getMode is
+// deliberately NOT covered here — it swallows errors and defaults to
+// 'harness' and is out of scope for this migration.
+// ---------------------------------------------------------------------------
+
+describe('TASK-092 AC2 — setMode tailors the missing-bundle-dir error', () => {
+  it('setMode_missing_bundle_dir_throws_typed_error_with_session_id_and_path', async () => {
+    const { setMode } = await import(OPERATING_MODE_URL);
+    const { root, id } = makeRepo({ missingBundleDir: true });
+
+    let caughtErr;
+    try {
+      await setMode({ repoRoot: root, mode: 'loop' });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'setMode must reject when the bundle dir is missing').toBeDefined();
+    expect(caughtErr.code, 'must be the tailored code, not a raw ENOENT').toBe('E_BUNDLE_MISSING');
+    expect(caughtErr.code).not.toBe('ENOENT');
+    expect(caughtErr.message).toContain(id);
+    expect(caughtErr.message).toContain(join(root, 'state', 'sessions', id, 'session.json'));
+    expect(caughtErr.message).toContain('setMode');
+  });
+
+  it('getMode_still_defaults_to_harness_when_bundle_dir_is_missing_unmodified_behavior', async () => {
+    const { getMode } = await import(OPERATING_MODE_URL);
+    const { root } = makeRepo({ missingBundleDir: true });
+
+    const result = await getMode({ repoRoot: root });
+    expect(result).toBe('harness');
   });
 });

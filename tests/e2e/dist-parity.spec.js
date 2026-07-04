@@ -76,7 +76,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe('dist-parity — committed bundles match a fresh build', () => {
-  it('all_four_bundles_are_committed_in_dist', () => {
+  it(`all_${BUNDLE_NAMES.length}_bundles_are_committed_in_dist`, () => {
     for (const name of BUNDLE_NAMES) {
       expect(
         existsSync(join(DIST_DIR, name)),
@@ -85,7 +85,7 @@ describe('dist-parity — committed bundles match a fresh build', () => {
     }
   });
 
-  it('fresh_build_byte_matches_committed_dist_for_all_four_bundles', () => {
+  it(`fresh_build_byte_matches_committed_dist_for_all_${BUNDLE_NAMES.length}_bundles`, () => {
     // Create a temp output dir.
     const tmpOut = makeTmp('af-dist-parity');
 
