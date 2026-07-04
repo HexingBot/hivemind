@@ -9,7 +9,7 @@
     "All existing specs green; skill parity gate green.",
     "Tier-audit step added to agents/reviewer.md (+ parity copy): when a uat-only or tests-after ticket diff touches source logic, state mutation, parsing, or schema files, the reviewer raises HIGH tier misassignment - the depth rubric never overrides this (depth is orthogonal to the tier gate)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "agility",
@@ -19,11 +19,29 @@
   "depends_on": [
     "TASK-076"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "5c3cc748703ac7ed0855220c0325061cca6597d4"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:02:30.410Z",
+      "body": "PLAN (tier=uat-only, ticket-carried, confirmed): process-doc change — review_depth rubric (LIGHT|FULL, one-way escalation) + reviewer tier-audit (E2 amendment) across SKILL.md + reviewer.md parity pairs; no source logic. Single IMPL-mode developer spawn, no new specs (existing lock specs may be updated). CARRIED from TASK-076 review (same docs): LOW — sweep stale IMPL-mode/phase vocabulary in non-tdd bullets (CLAUDE.md:46-47, SKILL.md:128-132/:298-299); NIT — align SKILL.md:288-289 abbreviated tdd-gate wording with binding developer.md step 4. UAT delegated to orchestrator (loop_auth). Loop iteration 5/11."
+    },
+    {
+      "author": "uat",
+      "at": "2026-07-04T12:11:23.930Z",
+      "body": "UAT (delegated to orchestrator via loop_auth.uat_delegated_to_orchestrator; each step verified by Orchestrator at the human's request): 1. AC1 review_depth rubric in SKILL.md (inputs, ~150-line LIGHT threshold, mandatory-FULL list: schema/security/shared state/packaging-dist/test infra/core tdd logic/release gates), both copies byte-identical — Observed: Review depth rubric section SKILL.md:305-350, sha256 identical (d88ce2e7). PASS — verified by Orchestrator. 2. AC2 reviewer.md LIGHT protocol (AC-compliance + scaled gate + five HIGH-class sweep) + one-way escalation — Observed: agents/reviewer.md:40-42, five classes named, never-downgrade rule; parity identical (33abac5e). PASS — verified by Orchestrator. 3. AC3 depth + rubric inputs in reviewer briefing and close comment — Observed: three-part obligation in SKILL.md rubric section (compute/state/record); reviewer.md:18 Inputs expects declared depth, missing = full safe default. PASS — verified by Orchestrator (and dogfooded on this very ticket: depth computed full, declared in rev-077 briefing and this close flow). 4. AC4 specs green + parity gate — Observed: targeted 3 files 34/34; fast tier 47 files 532 passed/2 skipped. PASS — verified by Orchestrator. 5. AC5 tier-audit in reviewer.md, orthogonal to depth — Observed: agents/reviewer.md:44-46, HIGH tier-misassignment on uat-only/tests-after diffs touching source/state/parsing/schema, runs at both depths. PASS — verified by Orchestrator. CARRIED ITEMS from TASK-076 review: LOW IMPL-mode vocabulary sweep — Observed CLAUDE.md:46-47 and SKILL.md now mode-free (only the historical retired reference remains). NIT tdd-gate wording — SKILL.md:288 now matches binding developer.md (test:changed + npm test + named e2e). Both DONE. OVERALL: PASS (5/5 + 2 carried items)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:16:33.175Z",
+      "body": "CLOSED done (loop iteration 5/11, auto_close_on_green_review). uat-only tier satisfied: UAT 5/5 + 2 carried items PASS (delegated, orchestrator-verified) + fresh-context review APPROVE-WITH-FOLLOWUPS (0 HIGH / 2 MEDIUM / 2 LOW). | REVIEW DEPTH (per this ticket's own AC3, dogfooded): full. Rubric inputs: 186 changed lines (154+32, over the ~150 LIGHT threshold); touched surfaces: none of the mandatory-FULL list (docs only), but line count forced full — and the diff rewrites the Reviewer's own protocol. | SHIPPED (commit 5c3cc74, 5 files +154/-32): review_depth rubric in both SKILL.md copies (inputs, LIGHT threshold table, 7-surface mandatory-FULL list, LIGHT protocol w/ all five recurring HIGH classes, one-way escalation, E2 orthogonality); orchestrator obligations in workflow steps 5-6 (state depth+inputs in briefing, record in close comment); reviewer.md: depth as expected Input (missing = full), LIGHT/FULL definitions, Tier-audit section (HIGH tier-misassignment for uat-only/tests-after diffs touching source/state/parsing/schema, runs at both depths). Carried TASK-076 items both resolved (mode-vocabulary sweep; tdd-gate wording aligned). Parity verified by git hash at HEAD (SKILL 8db0d88, reviewer 3c55868). Gates: targeted 34/34, fast tier 532/2/0. TASK-086 fencing + TASK-076 pinned prose counts identical before/after. Tier-audit dogfood: diff is pure .md — uat-only correctly assigned. | CARRIED INTO TASK-078 (same docs, last agility ticket): MEDIUM-1 rubric determinism — pin a hard line threshold and concrete definitions/paths for security surface + core tdd logic (SKILL.md:317-327); MEDIUM-2 doc-lock the load-bearing R2 rubric prose (light/full table, five HIGH classes, never-downgrade sentence, tier-audit HIGH) alongside R3's own checklist lock; LOW-3 CLAUDE.md steps 6-7 lack the depth-recording obligation SKILL.md now carries; LOW-4 reviewer.md:41 light AC-compliance wording should say verify each AC against the diff, not just restate."
+    }
+  ],
   "created_at": "2026-07-01T21:32:44.680Z",
-  "updated_at": "2026-07-02T15:00:59.031Z",
+  "updated_at": "2026-07-04T12:16:33.175Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T12:01:12.626Z",
+  "generated_at": "2026-07-04T12:16:33.175Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -448,7 +448,7 @@
     {
       "key": "TASK-077",
       "title": "agility R2: risk-scaled review depth (light vs full) with objective rubric and one-way escalation",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
