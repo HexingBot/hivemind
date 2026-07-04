@@ -161,11 +161,21 @@ describe('TASK-032 — orchestrator-routing skill carries the full operational m
     expect(/fresh context/i.test(text), 'skill must mention fresh context for subagents').toBe(true);
   });
 
-  it('documents_tdd_two_phase_developer_spawn', () => {
+  it('documents_tdd_single_spawn_two_commit_discipline', () => {
     const text = readSkill();
-    // TEST mode + IMPL mode both appear, describing the two-phase tdd spawn.
-    expect(/TEST mode/i.test(text), 'skill must document TEST mode phase').toBe(true);
-    expect(/IMPL mode/i.test(text), 'skill must document IMPL mode phase').toBe(true);
+    // TASK-076: the two-spawn TEST/IMPL protocol is retired in favor of a single
+    // spawn with a two-commit discipline (test: commit strictly before impl
+    // commit, plus captured red-run evidence in the hand-off).
+    expect(/test:.*commit/i.test(text), 'skill must document the test: commit').toBe(true);
+    expect(/impl commit/i.test(text), 'skill must document the impl commit').toBe(true);
+    expect(
+      /red.run|red output/i.test(text),
+      'skill must document captured red-run evidence',
+    ).toBe(true);
+    expect(
+      /strictly (before|precede)/i.test(text),
+      'skill must state the test: commit strictly precedes the impl commit',
+    ).toBe(true);
   });
 
   it('documents_reviewer_isolation', () => {
