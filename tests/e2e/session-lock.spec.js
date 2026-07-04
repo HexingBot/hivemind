@@ -22,12 +22,13 @@
 // All tests MUST FAIL with "Cannot find module …session-lock.js" or equivalent
 // until src/session-lock.js is created (IMPL phase).
 
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import { spawn } from 'node:child_process';
 
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
 
@@ -830,4 +831,281 @@ describe('TASK-080 AC3(b) — legacy record WITHOUT holder_id treats a holder-ca
     ).toBeDefined();
     expect(caught.code).toBe('E_LOCK_HELD');
   });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-085 — deep-review S4: exclusive acquire + verify-after-write + contention.
+//
+// Problem restated: acquire()'s "no lock" branch (readLock() returned null —
+// either the file is truly absent OR present-but-unparseable) proceeds
+// straight to writeLock(), which is atomicWriteFile()'s tmp+rename recipe.
+// renameSync unconditionally replaces whatever is at the target path with NO
+// existence/identity check — so two callers racing this branch (or one
+// caller racing a corrupt/partial file left by another actor) can each
+// believe they "won" with no error surfaced to either side. Composes badly
+// with the stale-steal branch too: two callers that both observe the same
+// stale foreign lock both write their own record; the loser's write still
+// physically succeeds (rename doesn't check what it's replacing) and today
+// nothing re-reads afterward to notice.
+//
+// AC1 — first acquisition must use an actual exclusive create (fs open
+//   O_CREAT|O_EXCL / 'wx', or equivalent) directly against the real lock
+//   file path — NOT a tmp-file-then-rename dance, since rename() is not
+//   exclusive at the OS level. Two racing FIRST acquires must not both
+//   succeed.
+// AC2 — verify-after-write: after ANY write to the lock record (including
+//   the stale-steal path), acquire() must re-read the lock file and confirm
+//   the persisted record actually identifies as ours; if not (a competitor's
+//   write landed in between), throw E_LOCK_HELD rather than reporting a
+//   false success.
+// AC3 — the observable, black-box contract of AC1+AC2 together: race two
+//   independent node CHILD PROCESSES (not just in-process interleaving)
+//   against the same repoRoot; across many synchronized rounds, exactly one
+//   wins each round.
+// ---------------------------------------------------------------------------
+
+describe('TASK-085 AC1 — first acquisition must not silently clobber a pre-existing (even unparseable) lock file', () => {
+  it('acquire_does_not_silently_clobber_an_existing_but_unparseable_lock_file', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-preexisting-corrupt'));
+
+    // A file already exists at the lock path but its content is not valid
+    // JSON — e.g. the residue of another actor's exclusive-create call that
+    // won the race but crashed before finishing the write. readLock()
+    // treats this as `existing === null` (same as truly absent), so TODAY's
+    // read-check-write acquire() falls through to the unconditional
+    // writeLock() and silently replaces it. A correct exclusive-create
+    // implementation must observe that a file ALREADY occupies the target
+    // path (O_CREAT|O_EXCL fails with EEXIST regardless of the existing
+    // file's content) and must not treat this as a clean first acquisition.
+    writeFileSync(lockFilePath(repoDir), '', 'utf8');
+
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'acquire must not treat an existing-but-unparseable lock file as "no lock" and silently overwrite it',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+  });
+});
+
+describe('TASK-085 AC2 — verify-after-write closes the stale-steal race', () => {
+  it('acquire_throws_e_lock_held_when_a_competitor_write_lands_immediately_after_our_stale_steal_rename', async () => {
+    vi.resetModules();
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-verify-after-write'));
+    const targetLockPath = lockFilePath(repoDir);
+
+    // Seed a STALE foreign lock so acquire() takes the stale-steal branch
+    // (AC1 above already covers the "no lock at all" first-acquisition case).
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      heartbeat_at: SIX_MIN_AGO,
+    });
+
+    // Mock node:fs's renameSync so that immediately after OUR write's rename
+    // lands, we simulate a COMPETITOR's write landing a moment later —
+    // exactly the race window a correct verify-after-write step must catch.
+    // This mirrors the fs-mock TOCTOU-injection technique already used in
+    // tests/e2e/task-store-resilience.spec.js (AC4's readdir mock).
+    let injected = false;
+    vi.doMock('node:fs', async (importOriginal) => {
+      const real = await importOriginal();
+      return {
+        ...real,
+        renameSync: (src, dest) => {
+          const result = real.renameSync(src, dest);
+          if (!injected && String(dest) === targetLockPath) {
+            injected = true;
+            real.writeFileSync(
+              targetLockPath,
+              JSON.stringify({
+                holder_pid: OTHER_PID,
+                hostname: OTHER_HOST,
+                heartbeat_at: BASE_TIME,
+              }, null, 2) + '\n',
+              'utf8',
+            );
+          }
+          return result;
+        },
+      };
+    });
+
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'acquire must detect (via verify-after-write) that a competitor overwrote the record it just wrote during a stale-steal, and throw instead of reporting a false success',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC3 — child-process contention race. Two independent `node` processes
+// import session-lock.js directly and race `acquire()` against the SAME
+// repoRoot, for many rounds, synchronized by a marker-file readiness barrier
+// (no sleeps as synchronization — see CLAUDE.md / ticket instructions).
+//
+// Barrier design per round:
+//   1. Each child writes `ready-<round>-<holderId>` as soon as it enters the
+//      round, then busy-polls (tight sync spin, NOT a timed sleep) for
+//      `go-<round>`.
+//   2. The PARENT (this test) busy-polls for BOTH children's ready markers,
+//      then writes `go-<round>` — releasing both children to call acquire()
+//      at essentially the same instant.
+//   3. Whichever child wins releases before moving on; the loser just waits
+//      for the lock file to disappear. This guarantees the NEXT round starts
+//      from a genuinely empty lock (a real "first acquisition" race), not a
+//      leftover fresh lock from the prior round.
+// ---------------------------------------------------------------------------
+
+const LOCK_RACE_CHILD_SRC = `
+import { writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const [, , repoRoot, holderId, resultsPath, roundsArg, syncDir, sessionLockPath] = process.argv;
+const ROUNDS = parseInt(roundsArg, 10);
+
+const { acquire, release } = await import(pathToFileURL(sessionLockPath).href);
+
+function spinUntilExists(p) {
+  while (!existsSync(p)) {
+    // tight synchronous poll — deterministic readiness barrier, no sleep
+  }
+}
+function spinUntilAbsent(p) {
+  while (existsSync(p)) {
+    // tight synchronous poll
+  }
+}
+
+const lockPath = join(repoRoot, 'state', '.lock');
+const results = [];
+
+for (let round = 0; round < ROUNDS; round++) {
+  const readyPath = join(syncDir, \`ready-\${round}-\${holderId}\`);
+  const goPath = join(syncDir, \`go-\${round}\`);
+
+  writeFileSync(readyPath, '1');
+  spinUntilExists(goPath);
+
+  let result;
+  try {
+    await acquire({ repoRoot, holder: holderId, now: () => new Date().toISOString() });
+    result = { round, acquired: true };
+  } catch (e) {
+    result = { round, acquired: false, code: e && e.code };
+  }
+  results.push(result);
+
+  if (result.acquired) {
+    await release({ repoRoot, holder: holderId });
+  }
+  // Ensure the lock is fully clear before the next round's contention
+  // begins — whichever child won must finish releasing first.
+  spinUntilAbsent(lockPath);
+}
+
+writeFileSync(resultsPath, JSON.stringify(results));
+`;
+
+describe('TASK-085 AC3 — two concurrent child processes race acquire(); exactly one wins each round', () => {
+  it('race_two_child_processes_exactly_one_winner_per_round', async () => {
+    const ROUNDS = 15;
+    const repoDir = makeStateDir(makeTmpDir('af-lock-race-repo'));
+    const syncDir = makeTmpDir('af-lock-race-sync');
+
+    const childScriptPath = join(syncDir, 'lock-race-child.mjs');
+    writeFileSync(childScriptPath, LOCK_RACE_CHILD_SRC, 'utf8');
+
+    const sessionLockPath = join(__srcDir, 'session-lock.js');
+
+    const resultsA = join(syncDir, 'results-A.json');
+    const resultsB = join(syncDir, 'results-B.json');
+
+    function spawnChild(holder, resultsPath) {
+      return spawn(process.execPath, [
+        childScriptPath, repoDir, holder, resultsPath, String(ROUNDS), syncDir, sessionLockPath,
+      ]);
+    }
+
+    const childA = spawnChild('race-holder-A', resultsA);
+    const childB = spawnChild('race-holder-B', resultsB);
+
+    let stderrA = '';
+    let stderrB = '';
+    childA.stderr.on('data', (d) => { stderrA += d.toString(); });
+    childB.stderr.on('data', (d) => { stderrB += d.toString(); });
+
+    // Dispense a "go" signal for each round only once BOTH children have
+    // marked themselves ready for that round.
+    for (let round = 0; round < ROUNDS; round++) {
+      const readyA = join(syncDir, `ready-${round}-race-holder-A`);
+      const readyB = join(syncDir, `ready-${round}-race-holder-B`);
+      while (!existsSync(readyA) || !existsSync(readyB)) {
+        // tight synchronous poll — no sleep-based coordination
+      }
+      writeFileSync(join(syncDir, `go-${round}`), '1');
+    }
+
+    const [codeA, codeB] = await Promise.all([
+      new Promise((resolve) => childA.on('exit', (code) => resolve(code))),
+      new Promise((resolve) => childB.on('exit', (code) => resolve(code))),
+    ]);
+
+    expect(codeA, `child A must exit 0. stderr:\n${stderrA}`).toBe(0);
+    expect(codeB, `child B must exit 0. stderr:\n${stderrB}`).toBe(0);
+
+    const a = JSON.parse(readFileSync(resultsA, 'utf8'));
+    const b = JSON.parse(readFileSync(resultsB, 'utf8'));
+
+    expect(a).toHaveLength(ROUNDS);
+    expect(b).toHaveLength(ROUNDS);
+
+    for (let round = 0; round < ROUNDS; round++) {
+      const aWon = a[round].acquired;
+      const bWon = b[round].acquired;
+      expect(
+        aWon !== bWon,
+        `round ${round}: exactly one child must win the race (A acquired=${aWon}, B acquired=${bWon})`,
+      ).toBe(true);
+      if (!aWon) {
+        expect(a[round].code, `round ${round}: loser A must see E_LOCK_HELD`).toBe('E_LOCK_HELD');
+      }
+      if (!bWon) {
+        expect(b[round].code, `round ${round}: loser B must see E_LOCK_HELD`).toBe('E_LOCK_HELD');
+      }
+    }
+  }, 15000);
 });
