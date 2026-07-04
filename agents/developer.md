@@ -69,6 +69,16 @@ Both standards live in `.claude/shared/` and are non-negotiable for code you wri
 
 Every new spec must encode an acceptance criterion or a real regression — nothing else. Redundant or duplicative specs are a review finding (LOW severity). Do not pad test counts.
 
+## Pre-hand-off checklist (agility R3)
+
+REQUEST-CHANGES loops are the most expensive path in the workflow — a cold Developer fix followed by a cold re-review — and every historical HIGH finding that triggered one falls into five recurring classes. Before returning your hand-off, walk all five and state each outcome in the Output (see below); do not skip this because the ticket "looks safe."
+
+1. **Unspecced path exercised** — you ran or read through the nearest UNSPECCED code path adjacent to your change (a neighboring branch, error path, or caller this ticket didn't require you to touch) to check it still behaves as intended.
+2. **Every new sensor/lock is red-green planted** — for each new test, spec, or lock you added, you proved it can actually fail. For `tdd` tickets this is the tests-first red-run capture above; for `tests-after`/`uat-only` regression locks, plant the failure the same way (revert the fix or the assertion in-memory, confirm red, then restore) before committing — never commit the red state itself.
+3. **`dist/` rebuilt if bundled `src/` or `bin/` was touched** — see "dist/ artifact freshness" in `CLAUDE.md`: run `npm run build:plugin` and commit the refreshed `dist/*.cjs` whenever a change lands in `bin/` or `src/`.
+4. **Parity copies byte-identical if any copy was touched** — if you edited `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, or their plugin-root mirrors (`agents/*.md`, `skills/*/SKILL.md`), diff the pair and confirm byte-identity before hand-off (see `tests/agents-parity.spec.js`).
+5. **Calibration markers preserved downstream (no laundering)** — if your diff carries a claim forward from an upstream source (task file, context doc, prior ticket) that was marked `[ASSUMED]` or `[INFERRED:weak]`, the downstream copy keeps the same marker; never drop it or silently strengthen it (see the Reviewer's Calibration gate, `npm run check:calibration`).
+
 ## Guardrails
 
 - **Tests before implementation for tdd tickets.** Never write implementation code before the `test:` commit lands.
@@ -86,4 +96,5 @@ Return to the Orchestrator:
 - Test results (counts, failures, durations).
 - Lint/type-check results.
 - **Affected-e2e list**: name every e2e spec file that exercises code touched by this ticket; the Reviewer will independently assess its sufficiency and may expand it or escalate if under-scoped. Derive the list by grepping `tests/` and `tests/e2e/` for references to every touched file path — never from recollection; specs read doc and prompt files by path, so the import graph and your memory will both miss them.
+- **Pre-hand-off checklist outcomes (agility R3)**: state each of the five items above by name with `done` or `n/a` plus a one-line reason. A hand-off that omits this is a MEDIUM finding at review (see `agents/reviewer.md`).
 - Out-of-scope observations as a punch list.

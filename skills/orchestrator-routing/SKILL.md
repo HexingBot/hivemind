@@ -318,14 +318,25 @@ briefing, and (c) record the depth and its inputs in the close comment.
 
 | Depth | When |
 |---|---|
-| `light` | Changed lines are roughly under 150 (approximate, not a hard cutoff) AND the diff touches none of the mandatory-FULL surfaces below. |
-| `full` | Changed lines are roughly 150 or more, OR the diff touches any mandatory-FULL surface, OR core `tdd`-tier logic, OR the ticket is a release/milestone/publish gate. |
+| `light` | Changed lines are under 150 (added + removed, from `git diff --shortstat`) AND the diff touches none of the mandatory-FULL surfaces below. |
+| `full` | Changed lines are 150 or more, OR the diff touches any mandatory-FULL surface, OR core `tdd`-tier logic, OR the ticket is a release/milestone/publish gate. |
 
 **Mandatory-FULL surfaces** (any one forces `full` regardless of line count):
 schema (`tasks/schema.json`, state/bundle schemas), security surface, shared
 state (`state/`, the session bundle, locks), packaging/dist (`dist/*.cjs`,
 build config), test infrastructure (`vitest.config*.js`, `tests/helpers/`),
 core `tdd`-tier logic, and release/milestone/publish gates.
+
+**Concrete surface definitions (MEDIUM-1, TASK-078):** two of the surfaces
+above are otherwise fuzzy enough that two sessions could compute different
+depths from the same diff.
+
+- **Security surface** — auth/credential handling, input validation at trust
+  boundaries, any path matching `/auth|security|lock|permission/`, the
+  board-server route handlers (`src/task-board.js`), and the session-lock /
+  close-guard modules (`src/session-lock.js`, `src/close-guard.js`).
+- **Core `tdd`-tier logic** — any diff touching a `src/` file that a
+  `tdd`-tier ticket created or last modified. When in doubt, choose `full`.
 
 **`light` protocol:** an AC-compliance check, a re-run of the scaled
 per-ticket gate (the same `test:changed`/`test:since` plus `npm test` plus

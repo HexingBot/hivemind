@@ -52,8 +52,8 @@ The Orchestrator must follow this loop for every unit of work:
    - Record the outcome as a ticket comment: author `uat`, body listing each step with its expected result, observed result, and per-step verdict, plus an overall result.
    - A `uat-only` ticket **cannot** transition to `done` without a `uat` comment whose steps cover every AC with all steps PASS. A failed step sends the ticket back to the Developer.
 5. **Implement.** The `developer` subagent writes code until the acceptance criteria are satisfied and existing tests still pass.
-6. **Review.** Spawn the `reviewer` subagent in a fresh context. It must use only read-only tools and verification scripts. Block the workflow on any HIGH-severity finding.
-7. **Update the ticket.** On a green review, transition the task's `status` to `done`, append a summary comment, append the commit SHAs to `linked_commits` and PR URL to `linked_prs`, refresh `updated_at`, and regenerate `tasks/index.json`. (After Jira migration, mirror the same updates via the Atlassian MCP server.)
+6. **Review.** Spawn the `reviewer` subagent in a fresh context, stating the computed `review_depth` (`light` or `full`) and the rubric inputs (changed-line count, touched surfaces) that produced it — see the orchestrator-routing skill's "Review depth rubric" section. It must use only read-only tools and verification scripts. Block the workflow on any HIGH-severity finding.
+7. **Update the ticket.** On a green review, transition the task's `status` to `done`, append a summary comment that also records the review depth and its rubric inputs, append the commit SHAs to `linked_commits` and PR URL to `linked_prs`, refresh `updated_at`, and regenerate `tasks/index.json`. (After Jira migration, mirror the same updates via the Atlassian MCP server.)
 
 ## Repository Etiquette
 
