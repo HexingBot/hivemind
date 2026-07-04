@@ -116,6 +116,12 @@
       "label": "agility R2: risk-scaled review depth (light|full) rubric + one-way escalation + E2 reviewer tier-audit"
     },
     {
+      "id": "TASK-078",
+      "type": "task",
+      "ref": "tasks/TASK-078.json",
+      "label": "agility R3: mandatory pre-hand-off prevention checklist (5 recurring HIGH classes) + carried R2 sharpening"
+    },
+    {
       "id": "TASK-080",
       "type": "task",
       "ref": "tasks/TASK-080.json",
@@ -417,6 +423,11 @@
       "from": "TASK-077",
       "to": "2026-07-02T16:41:33.605Z",
       "relation": "relates-to"
+    },
+    {
+      "from": "TASK-078",
+      "to": "2026-07-01T21:36:25.900Z",
+      "relation": "produced-by"
     },
     {
       "from": "TASK-080",

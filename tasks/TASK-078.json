@@ -7,7 +7,7 @@
     "agents/reviewer.md and parity copy: a hand-off missing the checklist outcomes is a MEDIUM finding.",
     "All existing specs green (update any spec locking the old prose with the feature)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "agility",
@@ -17,11 +17,30 @@
   "depends_on": [
     "TASK-077"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "b04f197f049270de6cd09370f6c0ffa8e136f5f3",
+    "6f267afc820ede57ea6080a980b605029e34750a"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:17:46.926Z",
+      "body": "PLAN (tier=uat-only, ticket-carried, confirmed): process-doc change — 5-item pre-hand-off prevention checklist in developer.md + reviewer MEDIUM for missing checklist outcomes. Single IMPL-mode developer spawn. CARRIED from TASK-077 review (same docs): MEDIUM-1 rubric determinism (pin hard line threshold + concrete security-surface/core-tdd-logic definitions in SKILL.md rubric); MEDIUM-2 doc-lock the load-bearing R2 rubric prose alongside the new R3 checklist prose — a new doc-lock spec is SANCTIONED for this uat-only ticket (orchestrator ruling: the lock is the carried MEDIUM's remedy, not spec accretion); LOW-3 CLAUDE.md steps 6-7 add the depth-recording obligation; LOW-4 reviewer.md light AC-compliance wording (verify each AC against the diff, not just restate). UAT delegated to orchestrator (loop_auth). Loop iteration 6/11."
+    },
+    {
+      "author": "uat",
+      "at": "2026-07-04T12:28:19.442Z",
+      "body": "UAT (delegated to orchestrator via loop_auth.uat_delegated_to_orchestrator; each step verified by Orchestrator at the human's request): 1. AC1 developer.md 5-item checklist + Output outcome requirement, parity identical — Observed: agents/developer.md:72 (Pre-hand-off checklist, 5 items) + :99 (Output requires per-item done/n-a + reason); sha256 identical with .claude copy. PASS — verified by Orchestrator. 2. AC2 reviewer.md missing-checklist-outcomes MEDIUM, parity identical — Observed: agents/reviewer.md:38-40 (omitted or incomplete = MEDIUM; contradicted-by-diff = existing HIGH, no double-count); sha256 identical. PASS — verified by Orchestrator. 3. AC3 specs green + parity gate — Observed: targeted 4 files 49/49; fast tier 48 files 547 passed/2 skipped (+15 = exactly the new lock spec). PASS — verified by Orchestrator. CARRIED ITEMS from TASK-077 review: M1 hard threshold (SKILL.md:321-322 'under 150 (added + removed, from git diff --shortstat)') + concrete security-surface/core-tdd definitions — DONE. M2 doc-lock tests/agility-doc-locks.spec.js 15 tests, red-green proven (4-mutation plant, exactly 4 targeted failures) — DONE. L3 CLAUDE.md steps 6-7 depth obligations — DONE. L4 light AC-compliance wording (verify each AC against the diff) — DONE. OVERALL: PASS (3/3 ACs + 4 carried items). Developer hand-off was the first checklist-compliant hand-off (all five outcomes stated)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:33:28.628Z",
+      "body": "CLOSED done (loop iteration 6/11, auto_close_on_green_review). uat-only tier satisfied: UAT 3/3 ACs + 4 carried items PASS (delegated, orchestrator-verified) + fresh-context review APPROVE (0 HIGH / 0 MEDIUM / 1 LOW). AGILITY TRIO (R1+R2+R3) COMPLETE. | REVIEW DEPTH (recorded per R2 protocol): full. Rubric inputs: 270 changed lines (262+8, >= hard 150 threshold); touched surfaces: none mandatory-FULL — line count forced full; diff also modifies the Reviewer's own protocol. | SHIPPED (commits b04f197 docs + 6f267af lock): 5-item pre-hand-off checklist in developer.md:72-81 (unspecced path, red-green plant, dist rebuild, parity, calibration laundering) w/ Output per-item outcome requirement (:99); reviewer.md:38-40 missing/incomplete checklist outcomes = MEDIUM, contradicted-by-diff routed to existing HIGH classes w/ explicit no-double-count; CARRIED M1: hard 150-line threshold (git diff --shortstat) + concrete security-surface anchors (src/task-board.js, src/session-lock.js, src/close-guard.js — reviewer verified all exist) + computable core-tdd definition w/ when-in-doubt-full backstop; M2: tests/agility-doc-locks.spec.js 15 tests (sanctioned; new file since prose spans 3 docs) — developer ran an honest 4-mutation plant (exactly 4 targeted failures), reviewer independently proved >=7 assertions flip on revert via git-blob counterfactuals; L3: CLAUDE.md steps 6-7 depth obligations; L4: reviewer.md light AC wording. Developer hand-off was the FIRST checklist-compliant hand-off (all 5 outcomes dogfooded). | GATES: targeted 49/49 (4 files), fast tier 48 files 547 passed/2 skipped (532+15 exact). Affected-e2e: none. Parity blob-identical all 3 pairs (fc20ed1/cfe0767/939c77e). TASK-086/076/077 protected content confirmed by count. Tier-audit: uat-only sound (md + one spec at tests/ root; not test infra per the rubric's own definition). | FOLLOW-UP (tracked, non-blocking): LOW-1 — SKILL.md:343 light-protocol summary lacks the verify-each-AC-against-the-diff clause that reviewer.md:44 now carries; fold into the next doc-touching ticket."
+    }
+  ],
   "created_at": "2026-07-01T21:34:33.280Z",
-  "updated_at": "2026-07-01T21:34:33.280Z",
+  "updated_at": "2026-07-04T12:33:28.628Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }

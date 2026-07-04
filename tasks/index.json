@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T12:16:33.175Z",
+  "generated_at": "2026-07-04T12:33:28.628Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -454,7 +454,7 @@
     {
       "key": "TASK-078",
       "title": "agility R3: mandatory pre-hand-off prevention checklist in developer.md (5 recurring HIGH classes)",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
