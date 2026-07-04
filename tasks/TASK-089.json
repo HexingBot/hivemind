@@ -6,7 +6,7 @@
     "Both reference docs describe seven tools including close_task (input schema + guard behavior noted).",
     "skills/ and .claude/skills/ copies byte-identical; skill-parity gate green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "docs",
@@ -16,11 +16,29 @@
   "depends_on": [
     "TASK-082"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "dcf8c669d5674e50a5d6fb5a58b99d148de3ef48"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T16:39:29.475Z",
+      "body": "PLAN (tier=uat-only, ticket-carried, confirmed): pure doc-drift fix in the mcp-server skill reference files (six->seven tools, add close_task w/ schema + guard notes), parity pairs byte-identical. No source, no specs. Single IMPL spawn. UAT delegated to orchestrator (loop_auth). Loop iteration 9/11."
+    },
+    {
+      "author": "uat",
+      "at": "2026-07-04T16:45:50.299Z",
+      "body": "UAT (delegated to orchestrator via loop_auth.uat_delegated_to_orchestrator; each step verified by Orchestrator at the human's request): 1. AC1 both reference docs describe seven tools incl. close_task w/ schema + guard notes — Observed: tool-contract.md 'The seven tools (§E.1 + TASK-082 close_task)' w/ 5 close_task mentions; in-memory-test-harness.md updated; GROUND TRUTH verified by orchestrator: exactly 7 registerTool calls in src/mcp-server.js (:103,:112,:122,:133,:169,:190,:206). PASS — verified by Orchestrator. 2. AC2 parity + gate — Observed: all three pairs sha256-identical (tool-contract 9766dcf4, harness f08eb6f7, SKILL e8705b19 — SKILL.md carried the same drift and was fixed as in-scope one-file-over, 2-line change); zero six-tool references remain (grep clean); fast tier 48 files 551 passed/2 skipped. PASS — verified by Orchestrator. OVERALL: PASS (2/2)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T16:49:35.214Z",
+      "body": "CLOSED done (loop iteration 9/11, auto_close_on_green_review). uat-only tier satisfied: UAT 2/2 PASS (delegated, orchestrator-verified) + fresh-context review APPROVE-WITH-FOLLOWUPS (0 HIGH / 0 MEDIUM / 3 LOW — all pre-existing drift adjacent to, not introduced by, this diff). | REVIEW DEPTH (recorded per R2 protocol): LIGHT — 114 changed lines (94+20 < hard 150), zero mandatory-FULL surfaces (pure .md). Reviewer stayed light, no escalation. | SHIPPED (commit dcf8c66, 6 files = 3 parity pairs): seven-tools ground truth throughout — reviewer verified the close_task doc against source FIELD-FOR-FIELD (zod schema :214-219 incl. optionality; uat done-guard error text matches task-store.js:380 VERBATIM; guard ordering :500-503; loopModeCloseGuard semantics close-guard.js:39-58; sha regex :473; single-pass-close rationale :476-531). SKILL.md carried the same drift (1 line) — fixed as in-scope. All pairs cmp-identical; zero six-tool mentions remain. | GATES: mcp-server-skill.spec.js 4/4, fast tier 551/2/0. Affected-e2e: none. Tier-audit: uat-only sound (pure docs). | FOLLOW-UP MINTED: see the new tool-contract-drift ticket (create_task optional fields + transition_status closeGuard row + extend the parity sensor to references/ — reviewer findings 1-3 bundled). Also already rolled forward: src/mcp-server.js:22 stale JSDoc -> TASK-092 rider (dev-flagged)."
+    }
+  ],
   "created_at": "2026-07-02T21:46:59.033Z",
-  "updated_at": "2026-07-02T21:46:59.033Z",
+  "updated_at": "2026-07-04T16:49:35.214Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }

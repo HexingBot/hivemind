@@ -20,9 +20,15 @@
   "depends_on": [],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T16:46:50.087Z",
+      "body": "RIDER added (from the TASK-089 developer hand-off, out-of-scope flag): src/mcp-server.js:22 module-header JSDoc still says 'all six tools registered' while line 7 of the same header says seven — fix the stale comment when touching source for this ticket. Note this file IS a dist entrypoint: AC5's rebuild-and-commit-dist requirement covers whether the comment change alters dist/mcp-server.cjs (esbuild may or may not strip it — let dist-parity decide)."
+    }
+  ],
   "created_at": "2026-07-04T16:38:24.056Z",
-  "updated_at": "2026-07-04T16:38:24.056Z",
+  "updated_at": "2026-07-04T16:46:50.087Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

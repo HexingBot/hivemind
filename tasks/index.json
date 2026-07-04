@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T16:38:24.141Z",
+  "generated_at": "2026-07-04T16:49:35.214Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -520,7 +520,7 @@
     {
       "key": "TASK-089",
       "title": "docs: mcp-server skill references still say six tools (stale after close_task)",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
@@ -538,6 +538,12 @@
     {
       "key": "TASK-092",
       "title": "bundle: shared readBundleSessionOrThrow helper — fix raw-ENOENT twins in writeLoopCheckpoint + setMode",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-093",
+      "title": "mcp-server skill: finish tool-contract.md table drift (create_task optional fields, transition_status closeGuard) + extend parity sensor to references/",
       "status": "todo",
       "priority": "low"
     }

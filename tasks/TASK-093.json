@@ -1,0 +1,27 @@
+{
+  "key": "TASK-093",
+  "title": "mcp-server skill: finish tool-contract.md table drift (create_task optional fields, transition_status closeGuard) + extend parity sensor to references/",
+  "description": "FOLLOW-UP advised by the TASK-089 reviewer (3 pre-existing LOWs, same TASK-082 drift class one row over). (1) tool-contract.md create_task row omits the optional fields the real registration accepts: verification_tier, marker, source_tier, confidence (src/mcp-server.js:138-149). (2) transition_status row still shows transitionStatus({repoRoot,key,status}) with no mention of the closeGuard now wired through it (src/mcp-server.js:185, task-store.js:392-422). (3) OPTIONAL scope: tests/mcp-server-skill.spec.js locks only SKILL.md byte-parity — extend the sensor to the three references/ files so references drift becomes sensed (currently verified only manually). Docs from ground truth (source), not from this ticket text. Parity pairs stay byte-identical.",
+  "acceptance_criteria": [
+    "tool-contract.md create_task row lists all optional fields matching the real zod registration field-for-field; transition_status row documents the closeGuard seam; both copies byte-identical.",
+    "Parity sensor extended to cover references/ files (byte-identity assertions), red-green proven against a planted one-byte drift.",
+    "Fast tier green; no six/seven count regressions (grep clean)."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "docs",
+    "mcp",
+    "drift",
+    "deep-review-follow-up"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-04T16:49:35.004Z",
+  "updated_at": "2026-07-04T16:49:35.004Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
