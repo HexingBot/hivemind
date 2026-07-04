@@ -21,7 +21,7 @@ Or with no argument to **toggle** the current mode:
 
 ## What it does
 
-Calls `setMode({ repoRoot, mode })` from `src/operating-mode.js` to write the requested mode into the active bundle's `session.json` via the existing atomic-write helper. The change is immediately visible via `getMode` and through `GET /api/session` (the `mode` field in the bounded projection — AC5, TASK-063).
+Calls `setMode({ repoRoot, mode })` from `src/operating-mode.js` to write the requested mode into the active bundle's `session.json` via the existing atomic-write helper. The change is immediately visible via `getMode` and through the `mode` field on the session bundle (read via `readBundleSession` — see the `/hivemind:mode` command and `src/operating-mode.js`).
 
 ## Valid modes
 

@@ -338,13 +338,13 @@ depths from the same diff.
 - **Core `tdd`-tier logic** — any diff touching a `src/` file that a
   `tdd`-tier ticket created or last modified. When in doubt, choose `full`.
 
-**`light` protocol:** an AC-compliance check, a re-run of the scaled
-per-ticket gate (the same `test:changed`/`test:since` plus `npm test` plus
-named e2e specs the Developer ran), and a sweep of the five recurring
-HIGH-severity classes: unspecced path, vacuous sensor, stale dist, parity
-drift, calibration laundering. `full` runs the complete Reviewer process —
-every Process step, the calibration gate, and the observability/minimalism
-gate.
+**`light` protocol:** an AC-compliance check (restate the ACs and verify each
+against the diff), a re-run of the scaled per-ticket gate (the same
+`test:changed`/`test:since` plus `npm test` plus named e2e specs the
+Developer ran), and a sweep of the five recurring HIGH-severity classes:
+unspecced path, vacuous sensor, stale dist, parity drift, calibration
+laundering. `full` runs the complete Reviewer process — every Process step,
+the calibration gate, and the observability/minimalism gate.
 
 **One-way escalation.** The Reviewer may upgrade `light` to `full` at any
 point on suspicion — a surprising diff, a sensor that looks vacuous, anything
