@@ -103,6 +103,38 @@ describe('AC1 — generateDeveloperToolsLine: stack-specific additions', () => {
   });
 });
 
+// Review MEDIUM (test adequacy — over-grant direction): every assertion above
+// checks PRESENCE only (core present, declared-stack present, bare Bash
+// absent) — none of them catches a generator that unconditionally appends
+// EVERY stack's additions regardless of what was declared. That counterfactual
+// passes the whole suite above, including the vue/react dedupe count and the
+// string-vs-array equality check. For a least-privilege allowlist, over-
+// granting is the security-relevant regression, so pin the FULL output
+// string exactly: an exact match proves both that everything expected is
+// present AND that nothing else (e.g. go/cargo/mvn/gradle) snuck in.
+describe('AC1 — generateDeveloperToolsLine: exact output pins against over-granting', () => {
+  it('empty_dev_stack_is_exactly_the_non_bash_tools_plus_core_bash_no_more', () => {
+    const line = generateDeveloperToolsLine({ devStack: [] });
+    expect(line).toBe(
+      'Read, Write, Edit, Grep, Glob, mcp__github__*, ' +
+      'Bash(git:*), Bash(npm:*), Bash(node:*), Bash(npx:*)',
+    );
+  });
+
+  it('python_dev_stack_is_exactly_core_plus_python_additions_no_more', () => {
+    // Exact match — an over-granting generator that appends every stack's
+    // patterns regardless of dev_stack (e.g. also Bash(go:*), Bash(cargo:*),
+    // Bash(mvn:*), Bash(gradle:*)) would fail this, unlike the substring
+    // assertions above which only prove python's own patterns are present.
+    const line = generateDeveloperToolsLine({ devStack: ['python'] });
+    expect(line).toBe(
+      'Read, Write, Edit, Grep, Glob, mcp__github__*, ' +
+      'Bash(git:*), Bash(npm:*), Bash(node:*), Bash(npx:*), ' +
+      'Bash(python:*), Bash(pip:*), Bash(pytest:*)',
+    );
+  });
+});
+
 describe('AC1 — generateDeveloperToolsLine: unknown stack value rejected before any write', () => {
   it('unknown_token_throws_naming_the_offending_value', () => {
     expect(() => generateDeveloperToolsLine({ devStack: ['cobol'] })).toThrow(/cobol/);

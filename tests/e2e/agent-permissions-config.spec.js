@@ -15,7 +15,7 @@
 //     invalid/unknown stack values rejected before any write; strict argv
 //     discipline (cannot combine with --force / --answers-file).
 
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import {
   readFileSync, writeFileSync, existsSync, mkdirSync,
 } from 'node:fs';
@@ -243,6 +243,85 @@ describe('AC1 — applyDeveloperPermissions patches only the tools: line', () =>
 });
 
 // ===========================================================================
+// Review rider (LOW-1) — patchAgentToolsContent's malformed/unterminated-
+// frontmatter skip branch has no dedicated spec of its own: the sibling
+// coverage at tests/e2e/agent-models-config.spec.js ("review 3iii — applier
+// skips malformed agent files untouched") locks applyAgentModels' separate
+// implementation, not this one. Mirrors that pattern one-for-one.
+// ===========================================================================
+describe('review rider LOW-1 — applyDeveloperPermissions skips malformed agent files untouched', () => {
+  it('apply_skips_file_with_unterminated_frontmatter_and_warns', async () => {
+    const { applyDeveloperPermissions } = await import(PROD.agentGenerator);
+
+    const repoDir = makeTmpDir('af-perm-nofence');
+    const agentsDir = join(repoDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+
+    // Opening fence but NO closing fence.
+    const content = '---\nname: developer\ndescription: developer agent for testing.\nmodel: sonnet\n';
+    const agentPath = join(agentsDir, 'developer.md');
+    writeFileSync(agentPath, content, 'utf8');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await applyDeveloperPermissions({ repoRoot: repoDir, devStack: [] });
+
+    // Not rewritten, not reported as changed — same "updated 0 file(s)" shape
+    // an idempotent no-op would report on stdout, which is exactly why the
+    // stderr warning below is the only observable signal distinguishing
+    // "skipped, malformed" from "already up to date". Assert on the spy
+    // BEFORE mockRestore() — restoring also clears .mock.calls.
+    expect(result).toEqual([]);
+    expect(readFileSync(agentPath, 'utf8')).toBe(content);
+    expect(
+      warnSpy.mock.calls.some(([msg]) => typeof msg === 'string' && msg.includes(agentPath)),
+      'a malformed-frontmatter skip must warn (distinguishing it from an idempotent no-op)',
+    ).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('apply_skips_file_without_frontmatter_and_warns', async () => {
+    const { applyDeveloperPermissions } = await import(PROD.agentGenerator);
+
+    const repoDir = makeTmpDir('af-perm-nofm');
+    const agentsDir = join(repoDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+
+    // No frontmatter at all — must NOT have one prepended.
+    const content = '# developer\n\nNo frontmatter here.\n';
+    const agentPath = join(agentsDir, 'developer.md');
+    writeFileSync(agentPath, content, 'utf8');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await applyDeveloperPermissions({ repoRoot: repoDir, devStack: [] });
+
+    expect(result).toEqual([]);
+    expect(readFileSync(agentPath, 'utf8')).toBe(content);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('an_idempotent_noop_does_not_warn_unlike_a_malformed_skip', async () => {
+    // The distinguishing signal: a real no-op (file already at the target
+    // tools: value) reports the same "0 changed" result WITHOUT warning.
+    const { applyDeveloperPermissions } = await import(PROD.agentGenerator);
+
+    const repoDir = makeTmpDir('af-perm-noop-nowarn');
+    const agentsDir = join(repoDir, '.claude', 'agents');
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, 'developer.md'), makeAgentMd('developer'), 'utf8');
+
+    await applyDeveloperPermissions({ repoRoot: repoDir, devStack: [] });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const second = await applyDeveloperPermissions({ repoRoot: repoDir, devStack: [] });
+
+    expect(second).toEqual([]);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+// ===========================================================================
 // AC2 — bin/init.js --apply-permissions CLI flag.
 // ===========================================================================
 describe('AC2 — bin/init.js --apply-permissions reads PROJECT.md and applies', () => {
@@ -384,6 +463,9 @@ describe('AC2 — bin/init.js --apply-permissions reads PROJECT.md and applies',
     expect(r1.state).toBe('applied_permissions');
     const afterFirst = readFileSync(join(agentsDir, 'developer.md'), 'utf8');
 
+    // Review rider (LOW-2): the zero-changed stdout must not carry a dangling
+    // ": " separator with nothing after it. Assert BEFORE mockRestore().
+    const logSpy = vi.spyOn(console, 'log');
     const r2 = await runInit({
       argv: ['--apply-permissions'],
       prompter: throwIfCalled(),
@@ -394,6 +476,11 @@ describe('AC2 — bin/init.js --apply-permissions reads PROJECT.md and applies',
     const afterSecond = readFileSync(join(agentsDir, 'developer.md'), 'utf8');
 
     expect(afterSecond).toBe(afterFirst);
+    expect(
+      logSpy.mock.calls.some(([msg]) => msg === '--apply-permissions: updated 0 file(s).'),
+      `expected the clean zero-changed summary line, got: ${JSON.stringify(logSpy.mock.calls)}`,
+    ).toBe(true);
+    logSpy.mockRestore();
   });
 
   it('apply_permissions_combined_with_unknown_flag_still_throws', async () => {
