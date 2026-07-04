@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T12:47:25.102Z",
+  "generated_at": "2026-07-04T16:38:24.141Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -514,7 +514,7 @@
     {
       "key": "TASK-088",
       "title": "loop-auth polish: freeze exported constants, tailor missing-bundle-dir error, fix fixture twin",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
@@ -534,6 +534,12 @@
       "title": "developer Bash allowlist for unattended mode: PROJECT.md-derived, generated at init (--apply-permissions pattern)",
       "status": "todo",
       "priority": "high"
+    },
+    {
+      "key": "TASK-092",
+      "title": "bundle: shared readBundleSessionOrThrow helper — fix raw-ENOENT twins in writeLoopCheckpoint + setMode",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }

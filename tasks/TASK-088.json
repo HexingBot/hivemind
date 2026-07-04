@@ -7,7 +7,7 @@
     "Missing-bundle-dir path throws a clear error (session id + expected path) instead of raw ENOENT; regression spec red-green proven.",
     "operating-mode e2e fixture uses a schema-valid session id; suite green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "loop-engineering",
@@ -17,11 +17,35 @@
   "depends_on": [
     "TASK-075"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "207bf91f750c209812bcc42c819766575f8c0ad9",
+    "df5c1ecaaf62324306cc19d176fc77acd6d29c9f"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:49:08.605Z",
+      "body": "PLAN (tier=tests-after, ticket-carried, confirmed): small source polish (freeze two exported constants, tailor one error path) + fixture hygiene — behavior provable by running the code, low edge-risk; regression locks required for AC1 (mutation-immunity) and AC2 (typed missing-bundle error, red-green proven). NOTE: touches src/loop-auth.js which is bundled? — developer must check build-plugin entrypoints and rebuild dist if applicable (checklist item 3). Single spawn per R1. Loop iteration 8/11. (TASK-079 skipped this pass — Gate 3, S5 brain decision pending with the human.)"
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T13:00:22.662Z",
+      "body": "PRE-REVIEW verification (orchestrator): touched specs 3 files 40/40; fast tier 551/2 (+4 = the new fast-tier freeze locks); dist-parity 2/2 GREEN — authoritative proof no rebuild owed (loop-auth.js unreachable from the six entrypoints; the loop-auth mentions in close-guard/task-store are decoupling comments). freeze + E_BUNDLE_MISSING confirmed in source. UAT: not required, ACs code-provable. REVIEW DEPTH: FULL — 173 changed lines (164+9 >= 150) AND src/loop-auth.js is shared-state surface (reads/writes the session bundle loop_auth field), either alone forces full. TIER-AUDIT NOTE surfaced honestly: this tests-after diff touches source logic in a state-mutation module — under the E2 bright line the reviewer must rule on tier misassignment. Mitigating context for the ruling: the mint (2026-07-02) predates E2 landing (TASK-077); the ACs themselves mandated red-green-proven locks for both changes, so the tier-audit's underlying concern (logic shipping without required tests) is materially addressed. The reviewer's ruling stands whatever it is."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T16:37:48.046Z",
+      "body": "TIER RECLASSIFIED tests-after -> tdd (retroactive, per the rev-088 E2 tier-audit HIGH ruling — the bright line in reviewer.md:48-50 is categorical: the diff touches source logic in a state-mutation module. Remedy as prescribed: record-level reclassification with the existing red-green-proven locks ACCEPTED as the test evidence; no re-do — a re-do would produce byte-identical tests. Known deviation from tdd discipline, on the record: commit order was fix 207bf91 BEFORE test df5c1ec (the mint predated E2 and R1's two-commit protocol applied to tests-after shape). This is the first live firing of the E2 tier-audit; the orchestrator self-flagged the seam in the briefing rather than reasoning it away, and the ruling stands."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T16:38:24.141Z",
+      "body": "CLOSED done (loop iteration 8/11, auto_close_on_green_review — the single HIGH was the E2 tier-audit ruling whose record-level remedy landed in the prior comment; reviewer: code approve-quality, zero code changes required). Tier now tdd (retroactive); existing red-green-proven locks accepted as test evidence per the ruling. | REVIEW DEPTH (recorded per R2 protocol): FULL. Rubric inputs: 173 changed lines (164+9 >= hard 150) AND src/loop-auth.js = shared-state surface — either alone forces full. | SHIPPED (commits 207bf91 fix + df5c1ec test): Object.freeze on LOOP_AUTH_SWITCHES (:22) + UNATTENDED_PRESET (:35) w/ 4 behavioral mutation locks + on-disk poison-immunity e2e; typed E_BUNDLE_MISSING (:98-102) naming session id + bundleSessionPath (provably the same path readBundleSession reads), correctly scoped (null-pointer handled pre-try; SyntaxError rethrown raw); operating-mode fixture id hex-valid. Call-site wrap (not bundle.js) — reviewer verified the caller analysis line-by-line (close-guard swallows :44-52; lifecycle existsSync-guards; findMostRecentBundle mtime-selected ids cannot ENOENT). Developer plants reproduced the ACTUAL poisoning bug (7 downstream failures), not synthetic flips; reviewer independently confirmed all locks non-vacuous via static blob analysis at 207bf91^. | GATES: touched specs 40/40, fast tier 551/2/0 (48 files), dist-parity 2/2 — loop-auth unreachable from all six entrypoints (reviewer traced the mcp-server->close-guard hop: comment mentions only), no rebuild owed. Affected-e2e run BY NAME incl. both unwrapped-caller suites (close-guard 8, loop-checkpoint 8). | FOLLOW-UP MINTED: see the new bundle-helper ticket (readBundleSessionOrThrow + raw-ENOENT twins in writeLoopCheckpoint/setMode + isFrozen-lock and dist-parity-title riders). PROCESS NOTE: first live E2 tier-audit firing — orchestrator self-flagged, reviewer ruled HIGH-categorical with proportionate remedy; the seam works."
+    }
+  ],
   "created_at": "2026-07-02T17:10:34.922Z",
-  "updated_at": "2026-07-02T17:10:34.922Z",
+  "updated_at": "2026-07-04T16:38:24.141Z",
   "jira_key": null,
-  "verification_tier": "tests-after"
+  "verification_tier": "tdd"
 }

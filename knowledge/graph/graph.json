@@ -152,6 +152,12 @@
       "label": "task-board: 413 body-cap regression lock + KEY_RE traversal spec + stale mode.md fix"
     },
     {
+      "id": "TASK-088",
+      "type": "task",
+      "ref": "tasks/TASK-088.json",
+      "label": "loop-auth polish: frozen exports + typed E_BUNDLE_MISSING (tier-audit reclassified tdd)"
+    },
+    {
       "id": "decision-20260612-deep-workflows",
       "type": "decision",
       "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T17:15:00Z",
@@ -457,6 +463,11 @@
     },
     {
       "from": "TASK-087",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-088",
       "to": "2026-07-01T21:20:37.785Z",
       "relation": "relates-to"
     },

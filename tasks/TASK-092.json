@@ -1,0 +1,28 @@
+{
+  "key": "TASK-092",
+  "title": "bundle: shared readBundleSessionOrThrow helper — fix raw-ENOENT twins in writeLoopCheckpoint + setMode",
+  "description": "FOLLOW-UP advised by the TASK-088 reviewer (LOW, FOLLOWUP-2): writeLoopCheckpoint (src/loop-checkpoint.js:72) and setMode (src/operating-mode.js:57) still surface a raw ENOENT for the identical missing-bundle-dir case TASK-088 fixed one seam over in loop-auth.js — same user-facing symptom. Reviewer-suggested shape: an ADDITIVE readBundleSessionOrThrow(repoRoot, sessionId, callerLabel) export in src/bundle.js (does not change readBundleSession's throw shape, preserving TASK-088's blast-radius argument), then migrate the three call sites (loop-auth.js can drop its local wrap). RIDERS folded in: (a) TASK-088 review LOW — the structural Object.isFrozen lock in tests/loop-auth.spec.js is mechanism-redundant beside the behavioral mutation locks; drop it when touching the file. (b) TASK-088 review ASIDE — tests/e2e/dist-parity.spec.js test title still says four bundles while ENTRYPOINT_NAMES has six; fix the title (coverage itself is correct, it iterates the list). Tier tdd per the E2 bright line: touches source logic in state-adjacent modules.",
+  "acceptance_criteria": [
+    "src/bundle.js exports readBundleSessionOrThrow(repoRoot, sessionId, callerLabel) throwing typed E_BUNDLE_MISSING naming session id + expected path; readBundleSession itself unchanged (existing callers unaffected — locked by existing suites staying green).",
+    "writeLoopCheckpoint and setMode use it; both surface the typed error for the missing-bundle-dir case (red-green-proven specs, tests-first per tdd).",
+    "loop-auth.js migrates to the shared helper, dropping its local wrap; its existing E_BUNDLE_MISSING locks stay green unmodified.",
+    "Riders: redundant Object.isFrozen structural lock removed from tests/loop-auth.spec.js; dist-parity spec title says six (or derives the count from ENTRYPOINT_NAMES.length).",
+    "Bundling check: bundle.js IS reachable via close-guard -> mcp-server -> dist; rebuild dist and commit if bundles change; dist-parity green."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "polish",
+    "loop",
+    "deep-review-follow-up"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-04T16:38:24.056Z",
+  "updated_at": "2026-07-04T16:38:24.056Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

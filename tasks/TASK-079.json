@@ -18,9 +18,15 @@
   "depends_on": [],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:48:28.405Z",
+      "body": "LOOP SKIP (iteration 8, 2026-07-04): NOT driven this pass — the 2026-07-02 deep-review decision records S5 (brain wire-or-demote) as a human decision to take BEFORE TASK-079 advances; driving a brain-launch fix ahead of that decision risks wasted work if the brain is demoted. Gate 3 (ambiguous scope — no authorization switch lifts it). Surfaced to the human in the drive report; ticket stays todo and re-enters the queue once S5 is decided."
+    }
+  ],
   "created_at": "2026-07-01T21:44:00.862Z",
-  "updated_at": "2026-07-01T21:44:00.862Z",
+  "updated_at": "2026-07-04T12:48:28.405Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
