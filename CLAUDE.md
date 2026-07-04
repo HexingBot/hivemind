@@ -42,7 +42,7 @@ The Orchestrator must follow this loop for every unit of work:
 2. **Plan.** Decompose the ticket into research, implementation, and verification tasks. Record the plan as TODOs.
 3. **Research (if needed).** Spawn the `researcher` subagent for any unfamiliar library, API, or pattern. If the researcher discovers a new tech stack, it must produce an Agent Skill under `.claude/skills/<stack-name>/`.
 4. **Verify per tier.**
-   - `tdd` — Spawn the `developer` subagent in TEST mode first: write failing tests that encode each acceptance criterion **before** any implementation code. No implementation lands without a preceding test commit. Then spawn IMPL mode to make the tests pass.
+   - `tdd` — Spawn the `developer` subagent **once**. Within that single spawn: write failing tests that encode each acceptance criterion, run them and capture the red output as evidence they fail for the right reason, commit them as a `test:` commit, then implement until the tests (and all existing tests) pass, run the per-ticket gate, and commit the implementation separately. No implementation lands without a preceding test commit — the Reviewer checks that the `test:` commit strictly precedes the impl commit and that the red-run evidence is present, and may re-run the tests against the impl commit's parent to independently reproduce the red state.
    - `tests-after` — Spawn the `developer` subagent in a single IMPL phase: implement first, prove the behavior by running the code, then add a **minimal** set of regression locks before hand-off. No TEST-mode phase. When ACs describe human-observable behavior, also run the UAT step below after the regression locks land.
    - `uat-only` — Spawn the `developer` subagent in IMPL mode only; no new specs are written. After implementation, run the UAT step below.
 
@@ -125,7 +125,7 @@ Rules:
 Each subagent declares its model in the `model:` frontmatter field of its agent definition file:
 
 - **reviewer** → `inherit` — the independent quality gate runs on the session's main model (currently Opus 4.8); `inherit` tracks whatever model the session runs on so the gate stays on the strongest available model without re-pinning every time the default moves. (TASK-042: retired the `fable` pin — Fable 5 is no longer available to this account.)
-- **developer** → `sonnet` — high-volume role (spawned twice per ticket); Sonnet delivers strong coding capability at a lower cost tier.
+- **developer** → `sonnet` — high-volume role (spawned once per ticket, with a two-commit discipline for `tdd`-tier work); Sonnet delivers strong coding capability at a lower cost tier.
 - **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
 - **orchestrator** — no agent file; it runs as the main session thread and inherits whatever model the session is started with (Opus 4.8 in production). TASK-032 removed the orchestrator agent file — the role is the session itself, equipped with the orchestrator-routing skill.
 

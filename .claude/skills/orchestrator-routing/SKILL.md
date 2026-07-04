@@ -120,10 +120,11 @@ same workflow applies; only the I/O surface changes.
    the ticket context. Wait for it to return — Researcher output will include a path
    to a new or updated skill in `.claude/skills/` when relevant.
 4. **Verify per tier.**
-   - `tdd` — Spawn the Developer in TEST mode: write failing tests that encode the
-     acceptance criteria **before** any implementation code. Then spawn IMPL mode
-     (passing the failing-test commit SHA) to make the tests pass; require all
-     tests green before return.
+   - `tdd` — Spawn the Developer **once**. Within that spawn: write failing tests
+     that encode the acceptance criteria, capture the red run as evidence, commit
+     them as a `test:` commit strictly before any implementation commit, then
+     implement until all tests are green, run the per-ticket gate, and commit the
+     implementation separately.
    - `tests-after` — Spawn the Developer in a single IMPL phase: implement first,
      then add a minimal set of regression locks before hand-off. No TEST-mode phase.
      When the ACs describe human-observable behavior, the UAT step is also mandatory
@@ -263,15 +264,36 @@ breaks real tickets or forces frequent frontmatter edits, eroding the safety win
 **Verdict: feasible as a `PROJECT.md`-derived, generated allowlist, not as a static
 one — worth a distinct follow-up ticket; not implemented here (analysis only).**
 
-## Two-phase developer spawn (tdd tier)
+## Single developer spawn, two-commit discipline (tdd tier)
 
-For `tdd` tickets only, the Developer is spawned **twice**:
+Every ticket gets **one** Developer spawn regardless of tier. The earlier
+two-spawn protocol for `tdd` tickets (TEST mode, then a separate IMPL-mode
+spawn) is retired (agility review 2026-07-01, recommendation R1): each spawn
+paid full cold-context acquisition, roughly doubling Developer cost per `tdd`
+ticket.
 
-1. **TEST mode** — Developer writes failing tests encoding every AC. Must commit
-   the tests before returning. No implementation code lands in this phase.
-2. **IMPL mode** — Developer receives the failing-test commit SHA and implements
-   until all tests pass and existing tests still pass. Must run `npm run test:all`
-   before hand-off.
+For `tdd` tickets, the single spawn carries a **two-commit discipline** that
+keeps tests-first provable without a second spawn:
+
+1. Developer writes failing tests encoding every AC.
+2. Developer runs the tests and **captures the red output** (the actual
+   failing run) as evidence the tests fail for the right reason — included
+   verbatim in the hand-off.
+3. Developer commits the tests in a `test:` commit. This commit must land
+   **strictly before** any implementation commit. No implementation code lands
+   without this preceding test commit.
+4. Developer implements until all tests pass and existing tests still pass.
+5. Developer runs the per-ticket gate (`npm run test:changed` plus named
+   affected e2e specs).
+6. Developer commits the implementation in a separate impl commit.
+
+**What the Reviewer verifies:** the `test:` commit strictly precedes the impl
+commit in `git log`; the captured red-run evidence is present in the hand-off;
+and, when the hand-off looks suspicious, the Reviewer may re-run the tests
+against the impl commit's parent to independently reproduce the red state.
+Dropping the second spawn does not weaken the quality gate — historical HIGH
+findings were caught by fresh-context review, not by the TEST/IMPL spawn
+separation, and the reviewer remains the independent quality sensor.
 
 For `tests-after` and `uat-only` tickets the Developer is spawned in a **single
 IMPL phase** — implement first, add regression locks (tests-after) or no specs
