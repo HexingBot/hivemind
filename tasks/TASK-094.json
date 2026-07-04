@@ -8,7 +8,7 @@
     "Same-holder re-acquire branch (acquire :391 area): same treatment.",
     "All existing session-lock specs (30) stay green; comments in touched paths meet the TASK-090 honesty standard (detection-not-prevention, no overclaims)."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "low",
   "labels": [
     "locking",
@@ -19,9 +19,15 @@
   "depends_on": [],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T22:03:41.811Z",
+      "body": "PLAN (tier=tdd, ticket-carried, confirmed — locking module): extend the TASK-090 content-check/honesty standard to renew()/release()/same-holder-reacquire (guard where near-free, honest accepted-residue comment where disproportionate; per-path justification required). R1 single spawn, two-commit discipline. Reviewer window enumeration from the TASK-090 close comment is the authoritative hazard description. Loop iteration 14 — final goal ticket."
+    }
+  ],
   "created_at": "2026-07-04T17:30:51.209Z",
-  "updated_at": "2026-07-04T17:30:51.209Z",
+  "updated_at": "2026-07-04T22:03:41.811Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T21:53:09.669Z",
+  "generated_at": "2026-07-04T22:03:41.811Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -544,13 +544,13 @@
     {
       "key": "TASK-093",
       "title": "mcp-server skill: finish tool-contract.md table drift (create_task optional fields, transition_status closeGuard) + extend parity sensor to references/",
-      "status": "in_progress",
+      "status": "done",
       "priority": "low"
     },
     {
       "key": "TASK-094",
       "title": "session-lock: renew()/release()/same-holder-reacquire carry the unguarded path-vs-inode residue",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "low"
     }
   ]

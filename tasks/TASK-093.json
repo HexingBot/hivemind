@@ -7,7 +7,7 @@
     "Parity sensor extended to cover references/ files (byte-identity assertions), red-green proven against a planted one-byte drift.",
     "Fast tier green; no six/seven count regressions (grep clean)."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "low",
   "labels": [
     "docs",
@@ -17,17 +17,30 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "f4ea7ca7877569384c86982dc65ac1b11cfb1e7f",
+    "1600d90159e2752c94efbf49a714554039c27b7a"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-07-04T21:53:09.669Z",
       "body": "PLAN (tier=tests-after, ticket-carried, confirmed): finish the tool-contract.md table drift from ground truth (create_task optional fields, transition_status closeGuard) + extend the parity sensor to references/ (red-green proven against a planted one-byte drift). Single spawn per R1. Loop iteration 13."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T21:59:55.361Z",
+      "body": "PRE-REVIEW verification (orchestrator): commit order docs->test verified; pair sha256-identical (a09f4f4c); sensor 7/7; fast tier 571/2 (568+3 sensor tests, accounted). UAT: not required — tests-after ACs spec/grep-provable. REVIEW DEPTH: LIGHT — 121 changed lines (110+11 < hard 150); touched surfaces none mandatory-FULL (skill docs + one fast-tier spec at tests/ root; not test infra per the rubric definition). One-way escalation available."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T22:03:41.621Z",
+      "body": "CLOSED done (loop iteration 13, auto_close_on_green_review — clean APPROVE, 0H/0M/2L both cosmetic). tests-after satisfied: docs from ground truth + the references/ parity sensor as the lock deliverable, red-green proven (planted one-byte drift, sensor failed naming the file). | REVIEW DEPTH (recorded per R2 protocol): LIGHT — 121 lines < 150, no mandatory-FULL surface; reviewer stayed light, verified AC1 field-for-field against the zod registration (incl. enum values and the real task-store throw sites) and AC2's bidirectional set-equality + Buffer.equals statically. | SHIPPED (commits f4ea7ca docs + 1600d90 sensor): create_task row now carries all four optional calibration-era fields w/ enums; transition_status documents the closeGuard seam (checkUatGuard -> closeGuard before any write, loopModeCloseGuard semantics); all three self-contradictory sections fixed; other five rows + three file pairs source-checked, no drift. Sensor: readdirSync-DERIVED list, bidirectional set equality, per-file byte-identity — future reference files auto-covered. | GATES: sensor 7/7, fast tier 571/2 (+3 accounted), six/seven grep clean. Affected-e2e none (mcp-server e2e 8/8 run as adjacent-path check anyway). | TRACKED (cosmetic LOWs for future touches): marker? row lacks its inline enum (zod block has it); tests/e2e/mcp-server.spec.js:4,11,18 header comments still say six tools (spec itself asserts seven)."
     }
   ],
   "created_at": "2026-07-04T16:49:35.004Z",
-  "updated_at": "2026-07-04T21:53:09.669Z",
+  "updated_at": "2026-07-04T22:03:41.621Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
