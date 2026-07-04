@@ -13,7 +13,7 @@
 // fails only if a future change lets the two copies drift, or deletes one.
 
 import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { REPO_ROOT } from './helpers/repoRoot.js';
@@ -21,6 +21,10 @@ import { REPO_ROOT } from './helpers/repoRoot.js';
 const SKILL_REL = join('mcp-server', 'SKILL.md');
 const PLUGIN_SKILL = join(REPO_ROOT, 'skills', SKILL_REL);
 const DEV_SKILL = join(REPO_ROOT, '.claude', 'skills', SKILL_REL);
+
+const REFERENCES_REL = join('mcp-server', 'references');
+const PLUGIN_REFERENCES_DIR = join(REPO_ROOT, 'skills', REFERENCES_REL);
+const DEV_REFERENCES_DIR = join(REPO_ROOT, '.claude', 'skills', REFERENCES_REL);
 
 /** Parse the frontmatter block (text between the first two `---` fences). */
 function frontmatterOf(mdText) {
@@ -65,5 +69,48 @@ describe('TASK-026 — mcp-server skill is mirrored into .claude/skills (parity)
       pluginBytes.equals(devBytes),
       'skills/mcp-server/SKILL.md must be byte-identical to the .claude/skills copy',
     ).toBe(true);
+  });
+});
+
+// TASK-093 — the SKILL.md-only sensor above left skills/mcp-server/references/
+// (tool-contract.md, esbuild-and-mcp-json.md, in-memory-test-harness.md) drift
+// only manually checked. This extends the same parity guarantee to every file
+// under references/, deriving the file list from a directory listing (rather
+// than hardcoding names) so a future reference file added to either side is
+// automatically covered without touching this spec.
+describe('TASK-093 — mcp-server references/ files are mirrored in parity', () => {
+  it('both_references_dirs_exist', () => {
+    expect(
+      existsSync(PLUGIN_REFERENCES_DIR),
+      'skills/mcp-server/references/ must exist',
+    ).toBe(true);
+    expect(
+      existsSync(DEV_REFERENCES_DIR),
+      '.claude/skills/mcp-server/references/ must exist',
+    ).toBe(true);
+  });
+
+  it('both_sides_list_the_same_set_of_reference_files', () => {
+    const pluginFiles = readdirSync(PLUGIN_REFERENCES_DIR).sort();
+    const devFiles = readdirSync(DEV_REFERENCES_DIR).sort();
+    expect(
+      devFiles,
+      '.claude/skills/mcp-server/references/ must list the same files as the plugin copy',
+    ).toEqual(pluginFiles);
+  });
+
+  it('every_reference_file_is_byte_identical_between_copies', () => {
+    const files = readdirSync(PLUGIN_REFERENCES_DIR);
+    for (const file of files) {
+      const pluginPath = join(PLUGIN_REFERENCES_DIR, file);
+      const devPath = join(DEV_REFERENCES_DIR, file);
+      expect(existsSync(devPath), `.claude copy of references/${file} must exist`).toBe(true);
+      const pluginBytes = readFileSync(pluginPath);
+      const devBytes = readFileSync(devPath);
+      expect(
+        pluginBytes.equals(devBytes),
+        `skills/mcp-server/references/${file} must be byte-identical to the .claude/skills copy`,
+      ).toBe(true);
+    }
   });
 });
