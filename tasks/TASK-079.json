@@ -7,7 +7,7 @@
     "Spec coverage via the injected exists()/platform seam (platform-independent test).",
     "dist/brain-launch.cjs rebuilt; dist-parity green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "portability",
@@ -23,10 +23,15 @@
       "author": "orchestrator",
       "at": "2026-07-04T12:48:28.405Z",
       "body": "LOOP SKIP (iteration 8, 2026-07-04): NOT driven this pass — the 2026-07-02 deep-review decision records S5 (brain wire-or-demote) as a human decision to take BEFORE TASK-079 advances; driving a brain-launch fix ahead of that decision risks wasted work if the brain is demoted. Gate 3 (ambiguous scope — no authorization switch lifts it). Surfaced to the human in the drive report; ticket stays todo and re-enters the queue once S5 is decided."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T22:11:40.855Z",
+      "body": "CLOSED wont-do (S5 decision executed, 2026-07-04): the human ruled on the deep-review S5 fork — the wisearcher brain is DEMOTED to experimental opt-in (no drive ticket has needed it; lean-loop direction; Docker infra is a heavy moving part; this ticket's own rot while parked is itself evidence). Per the standing Gate-3 park (iteration-8 comment above), TASK-079 was to advance only if the brain was wired; with the demote verdict the win32 interpreter-fallback fix is not worth the maintenance surface. No code shipped. If the brain is ever promoted back, re-mint from this ticket's description — the AC set is still accurate."
     }
   ],
   "created_at": "2026-07-01T21:44:00.862Z",
-  "updated_at": "2026-07-04T12:48:28.405Z",
+  "updated_at": "2026-07-04T22:11:40.917Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

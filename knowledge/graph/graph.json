@@ -56,6 +56,18 @@
       "label": "Exclusive-create + verify-after-write + CAS-steal for session-lock; fd-write reservation for createTask (store-brick regression caught and fixed in RC round)"
     },
     {
+      "id": "2026-07-04T22:11:40.917Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "S5 verdict: brain demoted to experimental opt-in; TASK-079 closed wont-do"
+    },
+    {
+      "id": "2026-07-04T22:37:28.261Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "TASK-094 close: window #7 ledger complete — release/reacquire CAS-guarded, renew honestly documented (reviewer-concurred liveness argument)"
+    },
+    {
       "id": "TASK-063",
       "type": "task",
       "ref": "tasks/TASK-063.json",
@@ -122,6 +134,12 @@
       "label": "agility R3: mandatory pre-hand-off prevention checklist (5 recurring HIGH classes) + carried R2 sharpening"
     },
     {
+      "id": "TASK-079",
+      "type": "task",
+      "ref": "tasks/TASK-079.json",
+      "label": "brain-launch: Windows-aware python interpreter fallback when no venv exists"
+    },
+    {
       "id": "TASK-080",
       "type": "task",
       "ref": "tasks/TASK-080.json",
@@ -186,6 +204,12 @@
       "type": "task",
       "ref": "tasks/TASK-093.json",
       "label": "mcp-server skill: tool-contract drift finish + references/ parity sensor"
+    },
+    {
+      "id": "TASK-094",
+      "type": "task",
+      "ref": "tasks/TASK-094.json",
+      "label": "session-lock: renew()/release()/same-holder-reacquire path-vs-inode residue"
     },
     {
       "id": "decision-20260612-deep-workflows",
@@ -472,6 +496,11 @@
       "relation": "produced-by"
     },
     {
+      "from": "TASK-079",
+      "to": "2026-07-04T22:11:40.917Z",
+      "relation": "produced-by"
+    },
+    {
       "from": "TASK-080",
       "to": "2026-07-04T02:45:00Z",
       "relation": "produced-by"
@@ -525,6 +554,11 @@
       "from": "TASK-093",
       "to": "2026-07-02T16:41:33.605Z",
       "relation": "relates-to"
+    },
+    {
+      "from": "TASK-094",
+      "to": "2026-07-04T22:37:28.261Z",
+      "relation": "produced-by"
     },
     {
       "from": "ke-claude-headless-bridge",

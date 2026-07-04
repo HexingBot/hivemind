@@ -8,7 +8,7 @@
     "Same-holder re-acquire branch (acquire :391 area): same treatment.",
     "All existing session-lock specs (30) stay green; comments in touched paths meet the TASK-090 honesty standard (detection-not-prevention, no overclaims)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "locking",
@@ -17,7 +17,11 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "c9aee52be9a94dbaca42da1de4ca0f36e13e3371",
+    "fd8e6a1c9261c316cffa8732ce0c5411eec961be",
+    "6df2e7be68c5b398e719f00c93b9996c33eb31f7"
+  ],
   "linked_prs": [],
   "comments": [
     {
@@ -29,10 +33,15 @@
       "author": "orchestrator",
       "at": "2026-07-04T22:06:39.234Z",
       "body": "RESET to todo (2026-07-04): the human stopped all background agents mid-spawn to pause the session for a context clear. The developer had produced NO commits and NO dirty files (verified) — nothing durable lost; the ticket restarts cleanly next session. The iteration-14 plan comment above remains valid."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T22:37:28.261Z",
+      "body": "CLOSED done (loop iteration 14 — FINAL goal ticket, auto_close_on_green_review; clean APPROVE on cold re-verify after 1 in-band LOW fix round). tdd tier, R1 single-spawn two-commit contract verified mechanically by the reviewer (test c9aee52 strictly precedes impl fd8e6a1; red-run reproduced against the parent impl, both failure signatures matched). | REVIEW DEPTH (R2 record): FULL — mandatory on security-surface anchor src/session-lock.js + 228 lines > 150 + core tdd logic. First-round verdict APPROVE-W-FOLLOWUPS (0H/0M/2L). | SHIPPED: AC1 release() = content-checked CAS delete via stealAwayContentChecked anchored on the pre-decision rawExisting read (TASK-090 RC defect class verified absent); AC3 same-holder reacquire = same CAS guard, mismatch restores the stealer record + throws E_LOCK_HELD, spec asserts both error code and stealer-record survival; AC2 renew() = DOCUMENTED accepted-residue (not guarded) — reviewer CONCURRED and strengthened the case: a CAS guard on the heartbeat path would open a transient path-vacancy window every tick (net liveness LOSS), and the residue partially self-heals (stealer detects foreign record within one heartbeat). | IN-BAND FIX ROUND (6df2e7b): LOW-1 release() no-throw teardown contract restored (broad swallow around the CAS; red-proven EPERM-injection regression spec via the existing renameSync seam); LOW-2 AC3 vacancy-window honest-residue comment added (mirrors the steal-path note). Re-verify: both resolved, no new findings, swallow scope confirmed confined to release(), acquire() call sites keep loud handling. | GATES: session-lock 33/33 (30 pre + 2 AC + 1 regression), fast 571/2, dist NOT bundled (verified vs the six build entry points both rounds). Affected-e2e list (session-lock spec only) reviewer-assessed sufficient. | WINDOW #7 from the TASK-090 enumeration is now CLOSED (release/reacquire guarded) or HONESTLY DOCUMENTED (renew) — the session-lock residual-window ledger is complete."
     }
   ],
   "created_at": "2026-07-04T17:30:51.209Z",
-  "updated_at": "2026-07-04T22:06:39.234Z",
+  "updated_at": "2026-07-04T22:37:28.261Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

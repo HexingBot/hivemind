@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T22:06:39.234Z",
+  "generated_at": "2026-07-04T22:37:28.261Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -460,7 +460,7 @@
     {
       "key": "TASK-079",
       "title": "brain-launch: Windows-aware python interpreter fallback when no venv exists",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
@@ -550,7 +550,7 @@
     {
       "key": "TASK-094",
       "title": "session-lock: renew()/release()/same-holder-reacquire carry the unguarded path-vs-inode residue",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     }
   ]
