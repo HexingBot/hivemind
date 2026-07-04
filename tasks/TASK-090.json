@@ -9,7 +9,7 @@
     "Stale claim files (state/.lock.claim.*) older than the staleness window are swept opportunistically (e.g. during acquire) — spec: fresh claim survives, stale claim reaped.",
     "All existing session-lock specs stay green (tdd: failing tests first for the content-check and the claim sweep)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "session-lock",
@@ -18,11 +18,37 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "b4e415d9cb02d4d79f5d75c0875269ae6d3b78f0",
+    "0913f37f6e275112f1ef7d5c3ffaab2febcd1ec8",
+    "1b3be3903b3ba52cbd9532c856003945ce9f82ba",
+    "17b262221180aa2d1059fec41dc14bcc1b00f0ed"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T16:50:34.535Z",
+      "body": "PLAN (tier=tdd, ticket-carried, confirmed — source logic + shared-state module): session-lock CAS content-check, claim-file sweep, honest comments. FIRST tdd ticket under the R1 single-spawn two-commit discipline: one developer spawn writes failing tests encoding AC1/AC4 (+AC2 if guard shape) FIRST, captures the red run verbatim, lands a test: commit strictly before the impl commit, then implements. Reviewer will verify commit order + red-run evidence (either absence = HIGH) and may re-run tests against the impl parent. src/session-lock.js is NOT dist-bundled per prior analysis but developer must re-verify reachability (checklist 3). Loop iteration 10/11."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T17:03:07.628Z",
+      "body": "PRE-REVIEW verification (orchestrator): commit order verified (test b4e415d strictly precedes fix 0913f37; test commit touches only the spec file, impl commit only src/session-lock.js). Red-run evidence present in hand-off, verbatim, 3 fails for the right reasons. Suites reproduced: session-lock 29/29, fast 551/2, dist-parity 2/2. Developer ran full test:all (1097/4) unprompted after correctly identifying the dynamic-import blind spot in test:changed. REVIEW DEPTH: FULL — mandatory regardless of line count: src/session-lock.js is both shared-state surface AND named security-surface anchor in the rubric; also core tdd logic. 497 changed lines anyway."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T17:12:26.108Z",
+      "body": "REVIEW: REQUEST-CHANGES (rev-090, depth full, 0H/1M/3L/1nit — first R1-era tdd contract verification: PASSED both legs, red-run mechanically verified against parent impl). BLOCKING M1: corrupt-reclaim guard anchored on post-decision re-read (stat->read gap reopens the double-win; comments overclaim equivalence). Loop retry 1/2: developer to fix M1 (expectedRaw = the :382 decision-read bytes; honest comments; red spec for the gap via the statSync seam per tdd) + L2 (restore-throw -> E_LOCK_HELD) + L3 (mtime basis comment or utimesSync) + nit (sweep Date.now doc line) in-band; L4 (renew/release/reacquire residue) to be MINTED as a follow-up at close. Same reviewer will cold re-verify."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T17:30:51.312Z",
+      "body": "CLOSED done (loop iteration 10/11, auto_close_on_green_review — clean APPROVE on cold re-verify after 1 RC loop). tdd tier: FIRST ticket driven under the R1 single-spawn two-commit discipline, contract verified by the reviewer on BOTH rounds (commit order/purity; red-run credibility mechanically confirmed against the parent impl each time). | REVIEW DEPTH (recorded per R2 protocol): FULL — mandatory on three grounds (security-surface anchor src/session-lock.js, shared state, core tdd logic); 497 then +172 changed lines. | SHIPPED (commits b4e415d test + 0913f37 fix + 1b3be39 test + 17b2622 fix): content-checked CAS steal — pre-steal decision-read bytes (rawExisting) as the anchor on BOTH the foreign-steal and corrupt-reclaim paths (RC fix: the corrupt path originally anchored on a post-decision re-read, reopening the double-win in the stat->read gap — caught by the reviewer's independent window enumeration, fixed by dropping the re-read; vanished-file leg now fails closed, strictly safer); mismatch -> exclusive-create restore (any restore failure collapses to E_LOCK_HELD, no raw fs error escape) ; opportunistic stale-claim sweep with utimesSync-normalized claim mtimes (claim age = time-since-claimed); comments now state detection-not-prevention honestly across every touched path — reviewer re-enumerated all 7 residual windows: 6 closed/fail-closed and acknowledged, window #7 (renew/release/reacquire) open by design -> follow-up minted. | GATES: session-lock 30/30, fast tier 551/2, dist-parity 2/2 (not bundled — verified), FULL test:all 1098/4 (dev and reviewer counts match exactly). Tier tdd correct. | FOLLOW-UP MINTED: renew()/release()/same-holder-reacquire residue ticket (reviewer LOW-4, window #7). PROCESS NOTE: first RC loop of this drive, on the first deep-concurrency ticket after 7 clean doc/spec closes — the RC HIGH-class was once again an unspecced path (the stat->read interleaving no spec covered), and the R1 red-run contract + the reviewer's mechanical parent-impl verification worked as designed on both rounds."
+    }
+  ],
   "created_at": "2026-07-04T03:30:15.154Z",
-  "updated_at": "2026-07-04T03:30:15.154Z",
+  "updated_at": "2026-07-04T17:30:51.312Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

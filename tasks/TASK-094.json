@@ -1,0 +1,27 @@
+{
+  "key": "TASK-094",
+  "title": "session-lock: renew()/release()/same-holder-reacquire carry the unguarded path-vs-inode residue",
+  "description": "FOLLOW-UP from the TASK-090 review (LOW-4, out of that ticket's AC scope, confirmed untouched at close). renew() (unconditional tmp+rename), release() (read-then-unlink), and the same-holder re-acquire branch carry the SAME path-vs-inode residue TASK-090 closed on the steal/reclaim paths: a holder descheduled after its read whose lock goes stale and is stolen will clobber (renew) or delete (release) the stealer's fresh record on wake — unguarded and currently unmentioned in comments. Remedy per the TASK-090 honesty standard: either extend the content-checked guard (compare against the record the holder last wrote/observed before the mutating op; fail closed on mismatch) or land AC2-style accepted-residue comments with an accurate hazard description per path. Guard preferred where near-free (release read-then-unlink is the natural candidate — it already reads); document-only acceptable where the guard is disproportionate (renew's tmp+rename may be). The reviewer's residual-window enumeration (window #7) is the authoritative hazard description — see the TASK-090 close comment.",
+  "acceptance_criteria": [
+    "release(): content-checked delete (read-verify-unlink against the holder's expected record) or an accurate accepted-residue comment; decision justified in the hand-off; regression spec if guarded (tests-first per tdd).",
+    "renew(): same treatment (guard or honest comment), same justification standard.",
+    "Same-holder re-acquire branch (acquire :391 area): same treatment.",
+    "All existing session-lock specs (30) stay green; comments in touched paths meet the TASK-090 honesty standard (detection-not-prevention, no overclaims)."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "locking",
+    "concurrency",
+    "deep-review-follow-up"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-04T17:30:51.209Z",
+  "updated_at": "2026-07-04T17:30:51.209Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

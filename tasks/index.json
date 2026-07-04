@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T16:49:35.214Z",
+  "generated_at": "2026-07-04T17:30:51.312Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -526,7 +526,7 @@
     {
       "key": "TASK-090",
       "title": "session-lock: content-checked CAS steal (path-vs-inode residue), claim-file sweep, comment accuracy",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -544,6 +544,12 @@
     {
       "key": "TASK-093",
       "title": "mcp-server skill: finish tool-contract.md table drift (create_task optional fields, transition_status closeGuard) + extend parity sensor to references/",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-094",
+      "title": "session-lock: renew()/release()/same-holder-reacquire carry the unguarded path-vs-inode residue",
       "status": "todo",
       "priority": "low"
     }

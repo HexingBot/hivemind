@@ -164,6 +164,12 @@
       "label": "docs: mcp-server skill seven-tools drift fix (close_task, ground-truth-verified)"
     },
     {
+      "id": "TASK-090",
+      "type": "task",
+      "ref": "tasks/TASK-090.json",
+      "label": "session-lock: content-checked CAS steal + claim sweep + honest comments (1 RC loop)"
+    },
+    {
       "id": "decision-20260612-deep-workflows",
       "type": "decision",
       "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T17:15:00Z",
@@ -481,6 +487,11 @@
       "from": "TASK-089",
       "to": "2026-07-02T16:41:33.605Z",
       "relation": "relates-to"
+    },
+    {
+      "from": "TASK-090",
+      "to": "2026-07-04T04:30:00Z",
+      "relation": "produced-by"
     },
     {
       "from": "ke-claude-headless-bridge",
