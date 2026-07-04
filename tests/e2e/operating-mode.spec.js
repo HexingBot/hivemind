@@ -36,7 +36,7 @@ const OPERATING_MODE_URL = pathToFileURL(join(__srcDir, 'operating-mode.js')).hr
 
 /** Write a minimal pointer + active bundle under a fresh temp dir. */
 function makeRepo({ sessionId, bundleExtra = {} } = {}) {
-  const id = sessionId || '20260616T120000Z-testbeef';
+  const id = sessionId || '20260616T120000Z-deadbeef';
   const root = makeTmpDir('af-om');
 
   // Pointer

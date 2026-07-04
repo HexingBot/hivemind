@@ -43,7 +43,9 @@ const LOOP_AUTH_URL = pathToFileURL(join(__srcDir, 'loop-auth.js')).href;
 /** Write a minimal pointer + active bundle (with a populated loop_state
  * carrying backstop ceilings, mirroring the live bundle shape) under a fresh
  * temp dir. */
-function makeRepo({ sessionId, bundleExtra = {}, noPointer = false, nullActiveSession = false } = {}) {
+function makeRepo({
+  sessionId, bundleExtra = {}, noPointer = false, nullActiveSession = false, missingBundleDir = false,
+} = {}) {
   const id = sessionId || '20260616T120000Z-deadbeef';
   const root = makeTmpDir('af-la');
 
@@ -61,7 +63,10 @@ function makeRepo({ sessionId, bundleExtra = {}, noPointer = false, nullActiveSe
     );
   }
 
-  if (!nullActiveSession) {
+  // missingBundleDir (TASK-088 AC2): pointer names a real session id, but no
+  // bundle directory/session.json exists at all — distinct from
+  // nullActiveSession (pointer's active_session_id itself is null).
+  if (!nullActiveSession && !missingBundleDir) {
     const bundleDir = join(root, 'state', 'sessions', id);
     mkdirSync(bundleDir, { recursive: true });
     writeFileSync(
@@ -191,6 +196,76 @@ describe('AC1 — setLoopAuth surfaces a clear error when there is no active ses
     await expect(
       setLoopAuth({ repoRoot: root, grants: { auto_consolidate: true } }),
     ).rejects.toThrow(/no active session|active session/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-088 AC2 — the pointer names a session whose bundle directory is
+// missing (deleted or moved out from under it). Before the fix this surfaced
+// a raw ENOENT from readBundleSession; the tailored error must name the
+// session id and the expected session.json path instead.
+// ---------------------------------------------------------------------------
+
+describe('TASK-088 AC2 — setLoopAuth tailors the missing-bundle-dir error', () => {
+  it('setLoopAuth_missing_bundle_dir_throws_typed_error_with_session_id_and_path', async () => {
+    const { setLoopAuth } = await import(LOOP_AUTH_URL);
+    const { root, id } = makeRepo({ missingBundleDir: true });
+
+    let caughtErr;
+    try {
+      await setLoopAuth({ repoRoot: root, grants: { auto_consolidate: true } });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'setLoopAuth must reject when the bundle dir is missing').toBeDefined();
+    expect(caughtErr.code, 'must be the tailored code, not a raw ENOENT').toBe('E_BUNDLE_MISSING');
+    expect(caughtErr.code).not.toBe('ENOENT');
+    expect(caughtErr.message).toContain(id);
+    expect(caughtErr.message).toContain(join(root, 'state', 'sessions', id, 'session.json'));
+  });
+
+  it('grantUnattended_missing_bundle_dir_also_surfaces_the_tailored_error', async () => {
+    const { grantUnattended } = await import(LOOP_AUTH_URL);
+    const { root, id } = makeRepo({ missingBundleDir: true });
+
+    let caughtErr;
+    try {
+      await grantUnattended({ repoRoot: root });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr).toBeDefined();
+    expect(caughtErr.code).toBe('E_BUNDLE_MISSING');
+    expect(caughtErr.message).toContain(id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-088 AC1 — a failed mutation attempt on the frozen UNATTENDED_PRESET
+// must not poison a subsequent grantUnattended call: the bundle must still
+// end up with the canonical preset values, not any attempted override.
+// (Pure-logic proof that the exports are frozen and throw on mutation lives
+// in tests/loop-auth.spec.js; this is the disk-touching half of AC1, since
+// grantUnattended needs a real bundle to write to.)
+// ---------------------------------------------------------------------------
+
+describe('TASK-088 AC1 — a failed mutation attempt does not poison grantUnattended', () => {
+  it('grantUnattended_writes_canonical_preset_values_after_a_rejected_mutation_attempt', async () => {
+    const { grantUnattended, UNATTENDED_PRESET } = await import(LOOP_AUTH_URL);
+    const { root, id } = makeRepo();
+
+    expect(() => {
+      UNATTENDED_PRESET.auto_close_on_green_review = false;
+    }).toThrow(TypeError);
+
+    await grantUnattended({ repoRoot: root });
+
+    const onDisk = JSON.parse(readBundleFile(root, id));
+    expect(onDisk.loop_auth.auto_close_on_green_review).toBe(true);
+    expect(onDisk.loop_auth.uat_delegated_to_orchestrator).toBe(true);
+    expect(onDisk.loop_auth.auto_consolidate).toBe(true);
   });
 });
 

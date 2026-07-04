@@ -86,6 +86,49 @@ describe('AC2 — UNATTENDED_PRESET composes the unattended defaults', () => {
 });
 
 // ---------------------------------------------------------------------------
+// TASK-088 AC1 — LOOP_AUTH_SWITCHES and UNATTENDED_PRESET are frozen so a
+// caller mutating either exported binding in place cannot poison later
+// grantUnattended calls in the same process (see src/loop-auth.js header
+// comment on the two exports). Disk-touching proof that a subsequent
+// grantUnattended still writes canonical values lives in
+// tests/e2e/loop-auth.spec.js (grantUnattended needs a real bundle on disk).
+// ---------------------------------------------------------------------------
+
+describe('TASK-088 AC1 — exported constants are frozen against mutation', () => {
+  it('LOOP_AUTH_SWITCHES and UNATTENDED_PRESET are both frozen', async () => {
+    const { LOOP_AUTH_SWITCHES, UNATTENDED_PRESET } = await import(LOOP_AUTH_URL);
+    expect(Object.isFrozen(LOOP_AUTH_SWITCHES)).toBe(true);
+    expect(Object.isFrozen(UNATTENDED_PRESET)).toBe(true);
+  });
+
+  it('flipping an existing key on UNATTENDED_PRESET throws (ESM runs in strict mode)', async () => {
+    const { UNATTENDED_PRESET } = await import(LOOP_AUTH_URL);
+    expect(() => {
+      UNATTENDED_PRESET.auto_close_on_green_review = false;
+    }).toThrow(TypeError);
+    // The canonical value survives the failed mutation attempt.
+    expect(UNATTENDED_PRESET.auto_close_on_green_review).toBe(true);
+  });
+
+  it('adding a new key to UNATTENDED_PRESET throws and the key never lands', async () => {
+    const { UNATTENDED_PRESET } = await import(LOOP_AUTH_URL);
+    expect(() => {
+      UNATTENDED_PRESET.a_brand_new_switch = true;
+    }).toThrow(TypeError);
+    expect(UNATTENDED_PRESET.a_brand_new_switch).toBeUndefined();
+  });
+
+  it('pushing onto LOOP_AUTH_SWITCHES throws and the array stays a fixed five', async () => {
+    const { LOOP_AUTH_SWITCHES } = await import(LOOP_AUTH_URL);
+    expect(() => {
+      LOOP_AUTH_SWITCHES.push('auto_resolve_ambiguity');
+    }).toThrow(TypeError);
+    expect(LOOP_AUTH_SWITCHES).toHaveLength(5);
+    expect(LOOP_AUTH_SWITCHES).not.toContain('auto_resolve_ambiguity');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // AC3 — Gate 3 (ambiguous scope) has no switch name at all.
 // ---------------------------------------------------------------------------
 
