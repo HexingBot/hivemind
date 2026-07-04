@@ -23,7 +23,7 @@
 
 import {
   existsSync, readFileSync, readdirSync, unlinkSync, mkdirSync, statSync, renameSync,
-  openSync, writeSync, fsyncSync, closeSync, constants,
+  openSync, writeSync, fsyncSync, closeSync, constants, utimesSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -106,6 +106,14 @@ function readLock(repoRoot) {
  * non-blocking: any per-file error (including Windows EPERM/EBUSY against a
  * file another process still has open) is swallowed, since this is a
  * courtesy cleanup, not a correctness requirement.
+ *
+ * Review LOW-3 — a claim file's mtime reflects time-since-claimed, not
+ * time-since-the-original-lock-went-stale: stealAwayContentChecked() bumps
+ * it to "now" via utimesSync immediately after the CAS rename, specifically
+ * because renameSync would otherwise preserve the stale source lock's own
+ * (already old) mtime, which would make every claim instantly reap-eligible
+ * the moment it's created — a liveness bug that could reap a claim still
+ * legitimately mid-steal.
  */
 function sweepStaleClaimFiles(repoRoot, stalenessMs) {
   const stateDir = join(repoRoot, 'state');
@@ -115,6 +123,12 @@ function sweepStaleClaimFiles(repoRoot, stalenessMs) {
   } catch {
     return; // state dir absent/unreadable — nothing to sweep
   }
+  // Nit — this uses the REAL wall clock, not the injectable `now` that
+  // acquire()'s own lock-staleness decisions accept (resolveNow(now)).
+  // Claim-file housekeeping is an operational concern, not a test-pinned
+  // business rule, so no injection seam is threaded through here; tests
+  // that need control over claim-file age backdate mtime directly via
+  // utimesSync instead (see the AC4 spec).
   const nowMs = Date.now();
   for (const name of entries) {
     if (!CLAIM_FILE_RE.test(name)) continue;
@@ -234,6 +248,27 @@ function stealAwayContentChecked(repoRoot, myPid, expectedRaw) {
     throw stealErr;
   }
 
+  // Review LOW-3 — renameSync PRESERVES the source's mtime, so a claim
+  // minted from an already-stale lock (that's the whole reason we're
+  // stealing it) is born with an mtime that already looks old to
+  // sweepStaleClaimFiles(). Left uncorrected, a concurrent acquire()'s sweep
+  // could reap this claim file while THIS steal is still mid-flight (between
+  // this rename and the caller's finally-unlink), well before it has
+  // actually been sitting idle for a full staleness window. This is a
+  // liveness quirk only, not a safety hole — if the claim vanishes out from
+  // under us, the readFileSync below simply fails and we throw E_LOCK_HELD
+  // rather than silently succeeding on missing content. Bumping the mtime to
+  // "now" here gives the claim file an honest age (time-since-claimed, not
+  // time-since-the-lock-went-stale) so the sweep's staleness window means
+  // what it says.
+  try {
+    const claimedAt = new Date();
+    utimesSync(claimPath, claimedAt, claimedAt);
+  } catch {
+    // best-effort — a failure here only reintroduces the liveness quirk
+    // above, never a correctness issue.
+  }
+
   let claimRaw;
   try {
     claimRaw = readFileSync(claimPath, 'utf8');
@@ -251,14 +286,32 @@ function stealAwayContentChecked(repoRoot, myPid, expectedRaw) {
     // this path in the gap between our staleness read and this rename.
     // Restore it (best-effort) so their lock is not lost, then fail closed
     // ourselves rather than proceeding on borrowed/misattributed content.
-    const restored = restoreExclusive(lockPath, claimRaw);
+    //
+    // Review LOW-2 — restoreExclusive() can itself throw a raw fs error
+    // (e.g. Windows EPERM/EBUSY against the now-vacant path, for reasons
+    // other than the EEXIST it already handles). That raw error must never
+    // escape in place of E_LOCK_HELD — a caller catching for E_LOCK_HELD
+    // would otherwise see an unrelated, undocumented error shape. Any
+    // restore failure — EEXIST (handled, returns false) or any other thrown
+    // error (caught here) — is treated identically: restored = false.
+    let restored = false;
+    try {
+      restored = restoreExclusive(lockPath, claimRaw);
+    } catch {
+      restored = false;
+    }
     if (restored) {
       try { unlinkSync(claimPath); } catch { /* best-effort cleanup */ }
     }
-    // else: a third party has since reclaimed the slot at lockPath — leave
-    // the claim file behind rather than clobber them. This is an accepted,
-    // narrow residual: sweepStaleClaimFiles() (AC4) reaps it once it ages
-    // past the staleness window, same as any other dead claim.
+    // else: either a third party has since reclaimed the slot at lockPath,
+    // or the restore attempt itself failed — either way leave the claim
+    // file behind rather than risk clobbering whoever holds lockPath now.
+    // Consequence: the competitor's own captured record is left stranded in
+    // the claim file — they still believe they hold the lock, but their
+    // record is no longer at the canonical lock path, so nothing re-attaches
+    // it as their live lock. This is an accepted, narrow residual:
+    // sweepStaleClaimFiles() (AC4) reaps the stranded claim file once it
+    // ages past the staleness window, same as any other dead claim.
     throw makeErr(
       'E_LOCK_HELD',
       `Lock steal content-check failed at ${lockPath}: the record renamed ` +
@@ -519,26 +572,26 @@ export async function acquire({
       // unlinkSync here has no identity check of its own: a fresh
       // competitor's lock re-created in the gap between this staleness
       // check and the unlink would be silently destroyed, with nothing to
-      // detect it. Capture what's actually at the path right now and let
-      // stealAwayContentChecked() verify it before anything is removed —
-      // on a mismatch it restores the fresh competitor's record and throws
+      // detect it.
+      //
+      // Review MEDIUM-1 (re-review) — the content check MUST be anchored to
+      // rawExisting, the read that made the staleness DECISION in the first
+      // place (routing control into this branch at all), NOT a fresh
+      // re-read taken here. A fresh re-read only proves "the rename moved
+      // what we read a moment ago" — which is true almost by construction
+      // and does not defend against a competitor who re-created the lock
+      // any time between the statSync staleness check above and that later
+      // re-read: the re-read would simply capture the competitor's content
+      // and trivially "match itself" once renamed away, silently stealing a
+      // live lock. Anchoring to rawExisting instead means ANY change since
+      // the original decision — however it happened, at whatever point in
+      // this branch — surfaces as a mismatch, restore, and fail-closed
       // E_LOCK_HELD, exactly like the foreign-lock steal path.
-      let corruptRaw = null;
-      try {
-        corruptRaw = readFileSync(lockPath, 'utf8');
-      } catch {
-        corruptRaw = null; // vanished between statSync and here — treat as absent
-      }
-      if (corruptRaw !== null) {
-        const claimPath = stealAwayContentChecked(repoRoot, myPid, corruptRaw);
-        // The reclaimed content was garbage (that's why we're here) — there
-        // is nothing worth preserving, just discard the claim and fall
-        // through to create our own record on the now-vacant path.
-        try { unlinkSync(claimPath); } catch { /* best-effort cleanup */ }
-      }
-      // else: file already gone — fall through to the exclusive-create
-      // attempt below (a competitor may still win that attempt: EEXIST ->
-      // E_LOCK_HELD, thrown by writeLockExclusive).
+      const claimPath = stealAwayContentChecked(repoRoot, myPid, rawExisting);
+      // The reclaimed content was garbage (that's why we're here) — there
+      // is nothing worth preserving, just discard the claim and fall
+      // through to create our own record on the now-vacant path.
+      try { unlinkSync(claimPath); } catch { /* best-effort cleanup */ }
     }
   }
 
