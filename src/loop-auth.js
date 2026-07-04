@@ -5,7 +5,7 @@
 // readBundleSession / writeBundleSession, same atomic-write path).
 
 import { readPointer } from './pointer.js';
-import { readBundleSession, writeBundleSession, bundleSessionPath } from './bundle.js';
+import { readBundleSessionOrThrow, writeBundleSession } from './bundle.js';
 
 // ---------------------------------------------------------------------------
 // Single source-of-truth enum. The five known standing-authorization
@@ -40,12 +40,6 @@ export const UNATTENDED_PRESET = Object.freeze({
   auto_version_bump_on_milestone: false,
 });
 
-function makeErr(code, message) {
-  const e = new Error(message);
-  e.code = code;
-  return e;
-}
-
 // ---------------------------------------------------------------------------
 // validateGrantKeys(grants) — throws synchronously if any key is not a
 // member of LOOP_AUTH_SWITCHES. Called before any I/O so rejected calls
@@ -79,30 +73,14 @@ export async function setLoopAuth({ repoRoot, grants = {} }) {
 
   const sessionId = pointer.active_session_id;
 
-  // TASK-088 LOW #2 — tailor the missing-bundle-dir path. The pointer can
-  // name a session whose bundle directory was deleted or moved out from
-  // under it; readBundleSession's raw ENOENT gives no clue which session or
-  // where it was expected. Wrapped here (rather than in bundle.js's
-  // readBundleSession itself) to keep the change narrow: readBundleSession
-  // has other callers — src/close-guard.js (already wraps every call in a
-  // swallowing try/catch), src/lifecycle.js (already existsSync-guards
-  // before every call site, throwing its own typed E_BUNDLE_MISSING first),
-  // and src/loop-checkpoint.js / src/operating-mode.js's setMode (unwrapped,
-  // like this one, but out of scope for this ticket). Changing
-  // readBundleSession's throw shape would ripple into all of them; a
-  // caller-side wrap in this module alone does not.
-  let bundle;
-  try {
-    bundle = readBundleSession(repoRoot, sessionId);
-  } catch (err) {
-    if (err && err.code === 'ENOENT') {
-      throw makeErr(
-        'E_BUNDLE_MISSING',
-        `setLoopAuth: bundle for session ${sessionId} is missing — the pointer names it but no session.json was found at ${bundleSessionPath(repoRoot, sessionId)}.`,
-      );
-    }
-    throw err;
-  }
+  // TASK-088 LOW #2 / TASK-092 — the pointer can name a session whose bundle
+  // directory was deleted or moved out from under it; readBundleSession's
+  // raw ENOENT gives no clue which session or where it was expected.
+  // readBundleSessionOrThrow (src/bundle.js) tailors that case into a typed
+  // E_BUNDLE_MISSING naming the session id, expected path, and this caller —
+  // the same shared helper now also used by src/loop-checkpoint.js's
+  // writeLoopCheckpoint and src/operating-mode.js's setMode.
+  const bundle = readBundleSessionOrThrow(repoRoot, sessionId, 'setLoopAuth');
 
   const updated = {
     ...bundle,

@@ -61,6 +61,40 @@ export function readBundleSession(repoRoot, sessionId) {
   return JSON.parse(readFileSync(p, 'utf8'));
 }
 
+function makeErr(code, message) {
+  const e = new Error(message);
+  e.code = code;
+  return e;
+}
+
+/**
+ * readBundleSessionOrThrow(repoRoot, sessionId, callerLabel) — TASK-092.
+ *
+ * Same read as readBundleSession, but tailors the missing-bundle-dir case
+ * (the pointer names a session whose bundle directory was deleted or moved
+ * out from under it) into a typed E_BUNDLE_MISSING error naming the session
+ * id, the expected session.json path, and callerLabel (the calling
+ * function's name, for symptom attribution across call sites). Any other
+ * error (e.g. corrupt JSON / SyntaxError) is rethrown raw, unchanged.
+ *
+ * readBundleSession itself is deliberately left unchanged — this is an
+ * ADDITIVE export so callers that already handle the raw ENOENT themselves
+ * (src/close-guard.js, src/lifecycle.js) are unaffected.
+ */
+export function readBundleSessionOrThrow(repoRoot, sessionId, callerLabel) {
+  try {
+    return readBundleSession(repoRoot, sessionId);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      throw makeErr(
+        'E_BUNDLE_MISSING',
+        `${callerLabel}: bundle for session ${sessionId} is missing — the pointer names it but no session.json was found at ${bundleSessionPath(repoRoot, sessionId)}.`,
+      );
+    }
+    throw err;
+  }
+}
+
 /**
  * Atomically write the bundle's session.json (the per-bundle state file).
  */

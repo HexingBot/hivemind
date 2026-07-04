@@ -6,7 +6,7 @@
 // + bundle helpers so there is one atomic-write path for all session state.
 
 import { readPointer } from './pointer.js';
-import { readBundleSession, writeBundleSession } from './bundle.js';
+import { readBundleSession, readBundleSessionOrThrow, writeBundleSession } from './bundle.js';
 
 // ---------------------------------------------------------------------------
 // Single source-of-truth enum.  All callers MUST reference this constant so
@@ -54,7 +54,12 @@ export async function setMode({ repoRoot, mode }) {
   }
 
   const sessionId = pointer.active_session_id;
-  const bundle = readBundleSession(repoRoot, sessionId);
+  // TASK-092 — tailor the missing-bundle-dir case into a typed
+  // E_BUNDLE_MISSING rather than a raw ENOENT (shared with src/loop-auth.js
+  // and src/loop-checkpoint.js's writeLoopCheckpoint). getMode above is
+  // deliberately NOT migrated — it already swallows every error and
+  // defaults to 'harness', so the raw readBundleSession there is unchanged.
+  const bundle = readBundleSessionOrThrow(repoRoot, sessionId, 'setMode');
 
   // Merge mode and refresh updated_at, then write atomically.
   const updated = {

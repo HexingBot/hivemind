@@ -19,7 +19,7 @@
 //   store* to any client, but the *orchestration* stays Claude Code-only.
 //
 // DESIGN: `createServer({ repoRoot })` is a factory returning a configured
-// McpServer with all six tools registered, each closing over `repoRoot`. The
+// McpServer with all seven tools registered, each closing over `repoRoot`. The
 // module only auto-connects a StdioServerTransport when run as the entrypoint
 // (the dual ESM/CJS guard at the bottom), so tests inject a per-test temp
 // repoRoot via the in-memory transport instead of relying on CLAUDE_PROJECT_DIR.

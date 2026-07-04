@@ -16,7 +16,7 @@
 // readBundleSession / writeBundleSession, same atomic-write path.
 
 import { readPointer } from './pointer.js';
-import { readBundleSession, writeBundleSession } from './bundle.js';
+import { readBundleSessionOrThrow, writeBundleSession } from './bundle.js';
 
 // ---------------------------------------------------------------------------
 // LOOP_PHASES — identity map onto the bundle's workflow_step enum
@@ -69,7 +69,11 @@ export async function writeLoopCheckpoint({ repoRoot, checkpoint }) {
   }
 
   const sessionId = pointer.active_session_id;
-  const bundle = readBundleSession(repoRoot, sessionId);
+  // TASK-092 — tailor the missing-bundle-dir case (pointer names a session
+  // whose bundle directory was deleted or moved out from under it) into a
+  // typed E_BUNDLE_MISSING rather than a raw ENOENT (shared with
+  // src/loop-auth.js and src/operating-mode.js's setMode).
+  const bundle = readBundleSessionOrThrow(repoRoot, sessionId, 'writeLoopCheckpoint');
 
   const updated = {
     ...bundle,
