@@ -665,3 +665,169 @@ describe('AC8 — staleness window is configurable', () => {
     expect(caught.code).toBe('E_LOCK_HELD');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-080 — loop-grade heartbeat: renew cadence + staleness override, and
+// holder_id surfacing in the E_LOCK_HELD message.
+//
+// Note on scope (recorded here per Test design instructions):
+//   AC2 ("acquire() accepts a caller-supplied stalenessMs override, default
+//   unchanged at 5 min") is ALREADY fully implemented (see the `stalenessMs`
+//   parameter on `acquire()` in src/session-lock.js) AND already fully
+//   covered by the pre-existing 'AC8 — staleness window is configurable'
+//   spec above: it exercises both a short override that steals a lock that
+//   would otherwise be fresh, and a long override that keeps a lock fresh
+//   that would otherwise be stale — i.e. both the "override changes the
+//   boundary" and "default-without-override is unchanged" halves of AC2's
+//   code behavior. No new spec is added here for AC2 to respect the
+//   new-test budget (CLAUDE.md: "every new spec must encode an acceptance
+//   criterion or a real regression — nothing else"); a duplicate spec here
+//   would be redundant coverage of the same code path.
+// ---------------------------------------------------------------------------
+
+describe('TASK-080 AC1 — E_LOCK_HELD message surfaces holder_id', () => {
+  it('acquire_refuses_and_message_names_the_holder_id_alongside_pid_and_hostname', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-message-holder-id'));
+
+    // Holder A acquires first (real acquire, not a seeded record) so the
+    // persisted lock carries a holder_id the way a real caller would leave it.
+    await acquire({
+      repoRoot: repoDir,
+      now: () => TWO_MIN_AGO,
+      holder: HOLDER_A,
+      pid: MY_PID,
+      hostname: MY_HOST,
+    });
+
+    // Holder B attempts to acquire the still-fresh lock.
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        holder: HOLDER_B,
+        pid: PID_B,
+        hostname: HOST_B,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught, 'acquire must throw when a fresh foreign holder_id-bearing lock exists').toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+
+    // The message must surface the holder_id (currently missing — this is
+    // the RED behavior this spec pins) ...
+    expect(
+      caught.message,
+      'E_LOCK_HELD message must include the holder_id of the current holder',
+    ).toContain(HOLDER_A);
+
+    // ... while still retaining pid/hostname for diagnostics (unchanged).
+    expect(caught.message).toContain(String(MY_PID));
+    expect(caught.message).toContain(MY_HOST);
+  });
+});
+
+describe('TASK-080 AC3(a) — fresh lock WITH holder_id refuses a caller WITHOUT holder, but is stealable once stale', () => {
+  it('acquire_without_holder_is_refused_by_fresh_holder_id_lock', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-asym-fresh-no-holder-caller'));
+
+    // Fresh lock carries a holder_id.
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      holder_id: HOLDER_A,
+      heartbeat_at: TWO_MIN_AGO,
+    });
+
+    // Caller supplies NO holder at all (plain pid/hostname caller).
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'a holder-less caller must be refused by a fresh lock that carries a holder_id',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+  });
+
+  it('acquire_without_holder_steals_a_stale_holder_id_lock', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-asym-stale-no-holder-caller'));
+
+    // Same holder_id-bearing lock, but now STALE.
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      holder_id: HOLDER_A,
+      heartbeat_at: SIX_MIN_AGO,
+    });
+
+    // Caller supplies NO holder — must still be able to steal a stale lock.
+    const result = await acquire({
+      repoRoot: repoDir,
+      now: () => BASE_TIME,
+      pid: MY_PID,
+      hostname: MY_HOST,
+    });
+
+    expect(
+      result.acquired,
+      'a holder-less caller must still be able to steal a STALE holder_id-bearing lock',
+    ).toBe(true);
+
+    const lock = JSON.parse(readFileSync(lockFilePath(repoDir), 'utf8'));
+    expect(lock.holder_pid).toBe(MY_PID);
+    expect(lock.hostname).toBe(MY_HOST);
+  });
+});
+
+describe('TASK-080 AC3(b) — legacy record WITHOUT holder_id treats a holder-carrying caller as foreign', () => {
+  it('acquire_with_holder_is_refused_by_a_fresh_legacy_record_lacking_holder_id', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-asym-legacy-record-holder-caller'));
+
+    // Legacy record: no holder_id field at all (pre-TASK-070 shape).
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      heartbeat_at: TWO_MIN_AGO, // fresh
+    });
+
+    // Caller opts into holder-id identity.
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        holder: HOLDER_B,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'a holder-carrying caller must be treated as foreign against a legacy record with no holder_id',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+  });
+});
