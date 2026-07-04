@@ -16,7 +16,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 ## Recommended structure: a factory, not a side-effecting module
 
 `src/mcp-server.js` should export a `createServer({ repoRoot })` that builds and
-returns an `McpServer` with all six tools registered, and ONLY auto-connect a
+returns an `McpServer` with all seven tools registered, and ONLY auto-connect a
 `StdioServerTransport` when run as the entrypoint. That lets the test inject a
 per-test temp `repoRoot` instead of relying on the `CLAUDE_PROJECT_DIR` env var.
 
@@ -24,7 +24,7 @@ per-test temp `repoRoot` instead of relying on the `CLAUDE_PROJECT_DIR` env var.
 // src/mcp-server.js (shape)
 export function createServer({ repoRoot }) {
   const server = new McpServer({ name: 'hivemind-tasks', version: '0.1.0' });
-  // ...registerTool x6, each closing over `repoRoot`...
+  // ...registerTool x7, each closing over `repoRoot`...
   return server;
 }
 
@@ -117,9 +117,10 @@ describe('MCP task-store round-trip', () => {
 
 - `client.callTool({ name, arguments })` is the SDK client call shape; it returns
   the same `{ content: [...] , isError? }` object the handler returned.
-- `listTools()` on the client is a cheap extra assertion that all six tools
-  registered (assert the returned `tools` array has length 6 with the expected
-  names) — good for an AC1-style "the surface is complete" check.
+- `listTools()` on the client is a cheap extra assertion that all seven tools
+  registered (assert the returned `tools` array has length 7 with the expected
+  names, including `close_task`) — good for an AC1-style "the surface is
+  complete" check.
 - Connect server and client concurrently (`Promise.all`) — the in-memory
   handshake needs both ends live.
 - Each test gets a fresh `mkdtempSync` repo, so the task store starts empty and
@@ -127,4 +128,9 @@ describe('MCP task-store round-trip', () => {
 - Because this is in-process, errors thrown by a tool surface as
   `result.isError === true` with the message in `content` — assert on that for
   negative-path tests (e.g. `get_task` on an unknown key, `transition_status`
-  with an invalid status).
+  with an invalid status). `close_task` has two extra guard paths worth a
+  negative-path test each: the uat-only done-guard (a `verification_tier:
+  'uat-only'` task closed with no prior `author: 'uat'` comment) and the
+  loop-mode close guard (only reachable in loop mode without
+  `loop_auth.auto_close_on_green_review`; harness-mode tests hit this as a
+  no-op and don't need to simulate it).

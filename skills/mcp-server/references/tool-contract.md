@@ -3,7 +3,7 @@
 Authoritative tool surface is `tasks/TASK-020.research.md` §E.1, reproduced here
 with the verified `src/task-store.js` export names and call signatures.
 
-## The six tools (§E.1, quoted)
+## The seven tools (§E.1 + TASK-082's `close_task`)
 
 | MCP tool | Args | Returns | Wraps |
 |----------|------|---------|-------|
@@ -13,6 +13,7 @@ with the verified `src/task-store.js` export names and call signatures.
 | `create_task` | `{ title, description, acceptance_criteria: string[], priority, labels?: string[], depends_on?: string[] }` | `{ key, path }` | `createTask({repoRoot, …})` |
 | `transition_status` | `{ key: string, status: "todo"\|"in_progress"\|"in_review"\|"blocked"\|"done" }` | `{ ok: true }` | `transitionStatus({repoRoot, key, status})` |
 | `append_comment` | `{ key: string, author: string, body: string }` | `{ ok: true }` | `appendComment({repoRoot, key, author, body})` |
+| `close_task` | `{ key: string, comment: { author: string, body: string }, linked_commits?: string[], linked_prs?: string[] }` | `{ ok: true }` | `closeTask({repoRoot, key, comment, linked_commits, linked_prs, closeGuard})` |
 
 These map 1:1 onto the Jira-compatible field names in `tasks/schema.json`, so the
 surface survives the eventual Atlassian-MCP migration (backend swaps from local
@@ -34,6 +35,26 @@ JSON to Jira; the tool names stay).
   - Throws `unknown task key: <key>` if no such task.
   - Returns nothing → the `transition_status` wrapper synthesizes `{ ok: true }`.
 - `appendComment({ repoRoot, key, author, body, now? })` → `Promise<void>`.
+  - Throws `unknown task key: <key>` if absent. Wrapper synthesizes `{ ok: true }`.
+- `closeTask({ repoRoot, key, comment: { author, body }, linked_commits = [],
+  linked_prs = [], now?, closeGuard? })` → `Promise<void>` (TASK-082).
+  - Atomically transitions the task to `done`, appends `comment`, appends
+    `linked_commits`/`linked_prs`, and bumps `updated_at` in a single
+    validate-then-write pass (unlike a `transitionStatus` + `appendComment`
+    pair, which are two separate atomic writes and could leave a partial
+    close on a mid-sequence failure).
+  - **uat-only done-guard:** if `task.verification_tier === 'uat-only'`, the
+    task must already carry a comment with `author === 'uat'` recording the
+    UAT verdict — otherwise throws before any disk I/O (`... cannot transition
+    to "done" without a "uat" comment recording the UAT verdict`).
+  - **`closeGuard` seam:** an optional `({ repoRoot, task, key }) => Promise<void>`
+    called after the uat-only guard and before any write; it may throw to
+    block the close. The MCP layer passes `loopModeCloseGuard` (see
+    `src/close-guard.js`): a no-op unless the active session is in **loop**
+    mode, in which case it throws `LoopCloseGuardError` unless the bundle's
+    `loop_auth.auto_close_on_green_review === true`.
+  - Validates every `linked_commits` entry against `/^[0-9a-f]{7,40}$/i`
+    (short or full commit sha) before writing; throws on the first bad shape.
   - Throws `unknown task key: <key>` if absent. Wrapper synthesizes `{ ok: true }`.
 
 ### `get_task` has NO task-store function — implement it inline
@@ -73,6 +94,7 @@ const ok = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value) }
 - `create_task` → `ok(await createTask({ repoRoot, ... }))` → `{ key, path }`
 - `transition_status` → `await transitionStatus(...); return ok({ ok: true });`
 - `append_comment` → `await appendComment(...); return ok({ ok: true });`
+- `close_task` → `await closeTask({ ..., closeGuard: loopModeCloseGuard }); return ok({ ok: true });`
 
 Errors: let the wrapped function throw; the SDK converts a thrown error to
 `{ isError: true, content: [{ type:'text', text: <message> }] }`. That is the
@@ -106,13 +128,22 @@ inputSchema: { key: z.string(), status: STATUS }
 
 // append_comment
 inputSchema: { key: z.string(), author: z.string(), body: z.string() }
+
+// close_task (TASK-082)
+inputSchema: {
+  key: z.string(),
+  comment: z.object({ author: z.string(), body: z.string() }),
+  linked_commits: z.array(z.string()).optional(),
+  linked_prs: z.array(z.string()).optional(),
+}
 ```
 
 ## WILL / WON'T docstring (AC4) — put this at the top of src/mcp-server.js
 
 A non-Claude-Code MCP client (claude.ai, Claude Desktop, any MCP host) **WILL**
-get the six task-store tools: read the backlog, read/create tickets, transition
-status, append comments — full CRUD on the ticket store. It **WON'T** get the
+get the seven task-store tools: read the backlog, read/create tickets, transition
+status, append comments, and atomically close a ticket (`close_task`) — full CRUD
+on the ticket store. It **WON'T** get the
 orchestrator → developer/reviewer/researcher subagent loop, the RESUME-FIRST
 session-state orchestration, or the TDD-enforced dev loop — those are Claude
 Code-exclusive file-based constructs that MCP cannot install or drive. In one
