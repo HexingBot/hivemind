@@ -212,6 +212,34 @@ describe('TASK-054 — POST /api/tasks create-ticket route', () => {
   });
 
   // =========================================================================
+  // TASK-087 AC1 — body over the 64KiB cap → 413, no partial task file
+  // written. Regression lock: this guard's ONLY coverage lived in the
+  // TASK-074 console specs (chat/mode-badge/preview routes shared the same
+  // readBody helper); those were deleted along with the console, taking the
+  // 413 assertion with them. readBody() throws before touching disk, so the
+  // body need not be valid JSON — just oversized.
+  // =========================================================================
+  it('body_over_64KiB_cap_returns_413_and_no_task_file_written', async () => {
+    const countBefore = countTaskFiles(repoRoot);
+
+    const oversizedBody = 'x'.repeat(64 * 1024 + 1024); // > MAX_BODY_BYTES (65536)
+    const res = await fetch(`${baseUrl}/api/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: oversizedBody,
+    });
+
+    expect(res.status, 'a body over the 64KiB cap must return 413').toBe(413);
+    const data = await res.json();
+    expect(typeof data.error, '413 body must include an error message').toBe('string');
+
+    expect(
+      countTaskFiles(repoRoot),
+      'tasks/ must be unchanged after a 413 rejection',
+    ).toBe(countBefore);
+  });
+
+  // =========================================================================
   // Guard — Content-Type guard (415) still blocks non-JSON POSTs
   // =========================================================================
   it('POST_without_json_content_type_returns_415', async () => {

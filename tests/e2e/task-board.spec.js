@@ -247,6 +247,42 @@ describe('TASK-034 — createBoardServer HTTP surface', () => {
   });
 
   // =========================================================================
+  // TASK-087 AC2 — traversal-shaped key rejected by the KEY_RE guard → 404,
+  // nothing written to disk. KEY_RE (`/^TASK-\d{3,}$/`) and the store's own
+  // "unknown task key" throw both map to 404 with an identical message
+  // shape, so a bare status-code assertion can't tell which one fired. Pair
+  // the traversal key with an INVALID status value: if KEY_RE is the guard
+  // rejecting it, the request never reaches transitionStatus's status
+  // validation and stays 404; if the guard were absent, the invalid status
+  // would reach that validation instead and come back 400. See the red-green
+  // plant note in the hand-off for how this was proven to actually catch a
+  // missing guard.
+  // =========================================================================
+  it('POST_traversal_shaped_key_returns_404_via_KEY_RE_guard_not_downstream', async () => {
+    const beforeSnap = snapshotTasksDir(repoRoot);
+
+    const res = await fetch(`${baseUrl}/api/tasks/..%2f..%2fetc/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'not_a_real_status' }),
+    });
+
+    expect(
+      res.status,
+      'a traversal-shaped key paired with an invalid status must still return 404 ' +
+        '(KEY_RE guard fires first) rather than 400 (status validation downstream)',
+    ).toBe(404);
+    const data = await res.json();
+    expect(typeof data.error, '404 body must include an error message').toBe('string');
+
+    const afterSnap = snapshotTasksDir(repoRoot);
+    expect(
+      afterSnap,
+      'tasks/ directory must be byte-identical after the traversal attempt',
+    ).toEqual(beforeSnap);
+  });
+
+  // =========================================================================
   // AC5 — GET / returns HTML: five status columns, inline <style> and <script>,
   //        and zero external URLs (no http(s):// in src/href attributes).
   // =========================================================================
