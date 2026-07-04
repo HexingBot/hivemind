@@ -1293,6 +1293,100 @@ describe('TASK-090 AC2 — corrupt-reclaim gets the same content-checked guard',
   });
 });
 
+// ---------------------------------------------------------------------------
+// TASK-090 re-review MEDIUM-1 (AC2/AC3 follow-up) — the corrupt-reclaim
+// content check above is anchored to a POST-DECISION re-read (a fresh
+// readFileSync taken right before the steal), not the bytes the staleness
+// DECISION itself was made on (rawExisting, captured once at the top of
+// acquire()). If a fresh competitor re-creates a live, valid lock in the gap
+// between the staleness-deciding statSync and that later re-read, the
+// re-read captures the COMPETITOR'S content, which then trivially "matches
+// itself" once renamed away — the double-win this whole ticket exists to
+// close, reopened on the corrupt-reclaim leg specifically. The fix anchors
+// the content check to rawExisting (the original pre-decision read) instead.
+// ---------------------------------------------------------------------------
+
+describe('TASK-090 MEDIUM-1 — corrupt-reclaim content check must anchor to the ORIGINAL pre-decision read, not a fresh re-read taken after staleness is decided', () => {
+  it('acquire_restores_and_fails_closed_when_a_fresh_competitor_record_lands_between_the_staleness_stat_and_the_reclaim_content_read', async () => {
+    vi.resetModules();
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-medium1-stat-to-read-gap'));
+    const targetLockPath = lockFilePath(repoDir);
+
+    // Corrupt (unparseable) content, backdated past the staleness window —
+    // this is ALSO the exact content acquire()'s very first raw read
+    // (rawExisting) observes and uses to decide "unparseable -> corrupt
+    // branch" in the first place.
+    const ORIGINAL_CORRUPT_CONTENT = '{not valid json';
+    writeFileSync(targetLockPath, ORIGINAL_CORRUPT_CONTENT, 'utf8');
+    const staleAt = new Date(Date.now() - 10 * 60 * 1000);
+    utimesSync(targetLockPath, staleAt, staleAt);
+
+    const FRESH_COMPETITOR_RECORD = {
+      holder_pid: 66666,
+      hostname: 'fresh-competitor-host-3',
+      heartbeat_at: new Date().toISOString(),
+    };
+
+    let injected = false;
+    vi.doMock('node:fs', async (importOriginal) => {
+      const real = await importOriginal();
+      return {
+        ...real,
+        statSync: (p, ...rest) => {
+          // Capture the OLD (stale) stat BEFORE mutating — this is the read
+          // the staleness decision trusts.
+          const result = real.statSync(p, ...rest);
+          if (!injected && String(p) === targetLockPath) {
+            injected = true;
+            // Simulate a fresh competitor re-creating a LIVE, valid lock at
+            // this path in the gap between this staleness-deciding statSync
+            // call and whatever the reclaim logic reads afterward to decide
+            // what to rename away. A content check anchored to a
+            // POST-decision re-read will capture THIS fresh content and
+            // trivially "match" itself.
+            real.writeFileSync(
+              targetLockPath,
+              JSON.stringify(FRESH_COMPETITOR_RECORD, null, 2) + '\n',
+              'utf8',
+            );
+          }
+          return result;
+        },
+      };
+    });
+
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'acquire must detect that the content changed between the staleness decision and the reclaim, and refuse instead of silently stealing a fresh competitor lock',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+
+    // The fresh competitor's record must be RESTORED — it must not be
+    // destroyed just because it happened to occupy the path when the
+    // reclaim logic went looking for "what's there to rename away".
+    const onDisk = JSON.parse(readFileSync(targetLockPath, 'utf8'));
+    expect(onDisk.holder_pid).toBe(FRESH_COMPETITOR_RECORD.holder_pid);
+    expect(onDisk.hostname).toBe(FRESH_COMPETITOR_RECORD.hostname);
+
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  });
+});
+
 describe('TASK-090 AC4 — stale claim files are swept opportunistically during acquire()', () => {
   it('sweep_reaps_stale_claim_files_but_leaves_fresh_ones_untouched', async () => {
     const { acquire } = await import(SESSION_LOCK_URL);
