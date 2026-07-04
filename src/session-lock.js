@@ -22,10 +22,11 @@
 //   directly and call them around their session lifecycle operations.
 
 import {
-  existsSync, readFileSync, unlinkSync, mkdirSync,
+  existsSync, readFileSync, unlinkSync, mkdirSync, statSync, renameSync,
   openSync, writeSync, fsyncSync, closeSync, constants,
 } from 'node:fs';
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 
 import { atomicWriteFile } from './atomic-write.js';
@@ -206,8 +207,20 @@ export async function acquire({
 
   if (existing !== null) {
     if (isSameHolder(existing, holder, myPid, myHost)) {
-      // Idempotent re-acquire: bump heartbeat and succeed.
+      // Idempotent re-acquire: bump heartbeat and succeed. TASK-085 review
+      // LOW-2 — verify-after-write kept as belt-and-braces symmetry with the
+      // stale-steal branch below (a same-holder re-acquire has no realistic
+      // competing writer, but the check is free and consistent).
       await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
+      const afterRebump = readLock(repoRoot);
+      if (!isSameHolder(afterRebump, holder, myPid, myHost)) {
+        throw makeErr(
+          'E_LOCK_HELD',
+          `Lock re-acquire race detected at ${lockFilePath(repoRoot)}: a ` +
+          'competing writer\'s record is now persisted instead of ours. ' +
+          'Wait for it to release or expire.',
+        );
+      }
       return { acquired: true };
     }
 
@@ -228,30 +241,109 @@ export async function acquire({
       throw err;
     }
 
-    // Stale foreign lock: steal it (crashed-holder recovery). TASK-085 AC2 —
-    // verify-after-write: two callers can both observe the same stale foreign
-    // lock and both write their own record via the tmp+rename recipe, which
-    // has no existence/identity check on the target. Re-read AFTER the write
-    // (i.e. after the rename lands) to catch a competitor whose write landed
-    // in the window between our rename and this read.
-    await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
+    // Stale foreign lock: steal it (crashed-holder recovery). TASK-085 review
+    // MEDIUM-1 — CAS-steal. The original design wrote our new record via the
+    // tmp+rename recipe (writeLock) directly onto the lock path, which has no
+    // existence/identity check at rename time; a naive re-read-after-write
+    // ("verify-after-write") check does NOT close this deterministically —
+    // if stealer A's entire write+verify sequence completes strictly BEFORE
+    // stealer B's write lands, A sees its own content (success), B's later
+    // write then silently clobbers it, and B ALSO sees its own content on
+    // ITS OWN later verify (success): a double-win, with no synchronization
+    // forcing the two sequences to overlap.
+    //
+    // Fixed via a real compare-and-swap: renameSync(lockPath, uniqueClaimPath)
+    // MOVES the stale record we just observed OUT of the lock path. This is
+    // atomic at the OS level — of two racing stealers who both read the SAME
+    // stale record, only ONE can successfully rename that SAME source path;
+    // the other gets ENOENT (the winner already moved it) and fails closed
+    // with E_LOCK_HELD, deterministically, with no timing window at all. The
+    // winner then writes the NEW record via the same exclusive-create
+    // primitive used for first acquisition (writeLockExclusive) — the lock
+    // path is now guaranteed absent, so this either succeeds outright, or
+    // (residual race: a THIRD acquirer's fresh "no lock" acquire slipped in
+    // during the moving-out gap) fails EEXIST, which is ALSO a legitimate
+    // E_LOCK_HELD outcome (won the steal, lost the freshly-vacated slot to a
+    // third party). The claim file (the dead stale record) is cleaned up
+    // best-effort either way — nobody needs it again.
+    const lockPath = lockFilePath(repoRoot);
+    const claimPath = `${lockPath}.claim.${myPid}-${randomBytes(6).toString('hex')}`;
+    try {
+      renameSync(lockPath, claimPath);
+    } catch (stealErr) {
+      if (stealErr && stealErr.code === 'ENOENT') {
+        throw makeErr(
+          'E_LOCK_HELD',
+          `Lock steal race lost at ${lockPath}: a competing stealer already ` +
+          'claimed the stale lock an instant earlier. Wait for it to release or expire.',
+        );
+      }
+      throw stealErr;
+    }
+    try {
+      writeLockExclusive(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
+    } finally {
+      try { unlinkSync(claimPath); } catch { /* best-effort cleanup — the claim is dead either way */ }
+    }
+
+    // Verify-after-write, kept as belt-and-braces: a legitimate competitor
+    // can no longer land here (see above), but this still catches a rogue
+    // direct mutation of the just-written record.
     const afterSteal = readLock(repoRoot);
     if (!isSameHolder(afterSteal, holder, myPid, myHost)) {
       throw makeErr(
         'E_LOCK_HELD',
-        `Lock steal race detected at ${lockFilePath(repoRoot)}: a competing ` +
-        'writer\'s record is now persisted instead of ours. ' +
-        'Wait for it to release or expire.',
+        `Lock steal race detected at ${lockPath}: a competing writer's ` +
+        'record is now persisted instead of ours. Wait for it to release or expire.',
       );
     }
     return { acquired: true };
   }
 
-  // No lock at all (readLock() returned null: either the file is truly
-  // absent, or a file is present but unparseable). TASK-085 AC1 — decide via
-  // an OS-level exclusive create directly against the real lock path so a
-  // corrupt leftover fails closed instead of being silently clobbered, and so
-  // two racing FIRST acquires cannot both succeed (see writeLockExclusive).
+  // No valid lock record (readLock() returned null): either the file is
+  // truly absent, or a file is present but unparseable. TASK-085 AC1 —
+  // decide via an OS-level exclusive create directly against the real lock
+  // path so a corrupt leftover fails closed instead of being silently
+  // clobbered, and so two racing FIRST acquires cannot both succeed (see
+  // writeLockExclusive).
+  //
+  // TASK-085 review MEDIUM-2 — an unparseable lock file must not deadlock
+  // acquire() forever: isFresh() needs a parseable heartbeat_at, which a
+  // corrupt record doesn't have, so without this check a corrupt leftover
+  // would ALWAYS hit writeLockExclusive's EEXIST branch and throw
+  // E_LOCK_HELD — permanently, with no staleness escape hatch. When a file
+  // exists at the lock path but is unparseable, fall back to ITS MTIME: if
+  // older than stalenessMs, unlink it and fall through to the same
+  // exclusive-create attempt below (a one-shot "retry" that costs nothing
+  // extra, since control simply continues); if still fresh, fail closed with
+  // an ACCURATE message (there's no holder identity to name here, only a
+  // staleness clock to wait out).
+  const lockPath = lockFilePath(repoRoot);
+  if (existsSync(lockPath)) {
+    let corruptStat = null;
+    try {
+      corruptStat = statSync(lockPath);
+    } catch {
+      corruptStat = null; // vanished between existsSync and statSync — treat as absent
+    }
+    if (corruptStat) {
+      const ageMs = Date.now() - corruptStat.mtimeMs;
+      if (ageMs < stalenessMs) {
+        throw makeErr(
+          'E_LOCK_HELD',
+          `Lock file at ${lockPath} is present but unparseable (corrupt or ` +
+          `zero-byte) and not yet stale (age ${Math.round(ageMs)}ms < ` +
+          `staleness window ${stalenessMs}ms). It will become reclaimable ` +
+          'automatically once its age exceeds the staleness window.',
+        );
+      }
+      // Stale corrupt lock — unlink and fall through to the exclusive-create
+      // attempt below (a competitor may still win that attempt: EEXIST ->
+      // E_LOCK_HELD, thrown by writeLockExclusive).
+      try { unlinkSync(lockPath); } catch { /* best-effort; a competitor may already have reclaimed it */ }
+    }
+  }
+
   writeLockExclusive(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
 
   return { acquired: true };

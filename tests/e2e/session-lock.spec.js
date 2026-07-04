@@ -23,7 +23,9 @@
 // until src/session-lock.js is created (IMPL phase).
 
 import { describe, it, expect, afterAll, vi } from 'vitest';
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import {
+  existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, utimesSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
@@ -901,8 +903,47 @@ describe('TASK-085 AC1 — first acquisition must not silently clobber a pre-exi
   });
 });
 
-describe('TASK-085 AC2 — verify-after-write closes the stale-steal race', () => {
-  it('acquire_throws_e_lock_held_when_a_competitor_write_lands_immediately_after_our_stale_steal_rename', async () => {
+// ---------------------------------------------------------------------------
+// TASK-085 review MEDIUM-2 — a fresh unparseable lock file must fail closed
+// (covered by AC1 above, unchanged); a STALE unparseable lock file must NOT
+// deadlock every future acquire() forever — it must be reclaimable exactly
+// like a stale foreign lock, decided by the corrupt file's own mtime (since
+// there is no parseable heartbeat_at to compare against the staleness
+// window).
+// ---------------------------------------------------------------------------
+describe('TASK-085 MEDIUM-2 — a STALE unparseable lock file is reclaimed, not a permanent deadlock', () => {
+  it('acquire_reclaims_a_stale_unparseable_lock_file_via_mtime', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-stale-corrupt'));
+    const p = lockFilePath(repoDir);
+
+    // Corrupt (unparseable) content, backdated well past the default 5-min
+    // staleness window — simulates a crash mid-exclusive-create long enough
+    // ago that it must now be treated like any other stale/crashed holder.
+    writeFileSync(p, '{not valid json', 'utf8');
+    const staleAt = new Date(Date.now() - 10 * 60 * 1000); // 10 minutes ago
+    utimesSync(p, staleAt, staleAt);
+
+    const result = await acquire({
+      repoRoot: repoDir,
+      pid: MY_PID,
+      hostname: MY_HOST,
+      // No `now` override — MEDIUM-2's staleness check is against the
+      // corrupt file's real mtime (wall clock), not the caller's injected
+      // clock, since there is no parseable heartbeat_at to compare against.
+    });
+
+    expect(result.acquired, 'a stale unparseable lock file must be reclaimable, not a permanent deadlock').toBe(true);
+
+    const lock = JSON.parse(readFileSync(p, 'utf8'));
+    expect(lock.holder_pid).toBe(MY_PID);
+    expect(lock.hostname).toBe(MY_HOST);
+  });
+});
+
+describe('TASK-085 AC2 — the stale-steal race is closed (CAS-steal + verify-after-write)', () => {
+  it('acquire_throws_e_lock_held_when_a_competitor_claims_the_freshly_vacated_lock_immediately_after_our_steal_rename', async () => {
     vi.resetModules();
 
     const repoDir = makeStateDir(makeTmpDir('af-lock-verify-after-write'));
@@ -916,11 +957,21 @@ describe('TASK-085 AC2 — verify-after-write closes the stale-steal race', () =
       heartbeat_at: SIX_MIN_AGO,
     });
 
-    // Mock node:fs's renameSync so that immediately after OUR write's rename
-    // lands, we simulate a COMPETITOR's write landing a moment later —
-    // exactly the race window a correct verify-after-write step must catch.
-    // This mirrors the fs-mock TOCTOU-injection technique already used in
-    // tests/e2e/task-store-resilience.spec.js (AC4's readdir mock).
+    // POST fresh-context-review (MEDIUM-1 CAS-steal fix) design: acquire()'s
+    // stale-steal branch no longer writes its new record via a tmp+rename
+    // ONTO the lock path — it first does a compare-and-swap
+    // renameSync(lockPath, uniqueClaimPath) to MOVE the stale record OUT
+    // (source === lockPath; the random claim-path suffix makes the
+    // destination unpredictable to a test, so we match on the SOURCE
+    // instead), then writes the new record via the SAME O_CREAT|O_EXCL
+    // exclusive-create primitive used for first acquisition — there is no
+    // rename to mock ONTO the lock path anymore for this branch. This spec
+    // now simulates the one residual scenario a legitimate competitor CAN
+    // still land in: an instant after our CAS-steal rename vacates the lock
+    // path, a competing acquirer's own fresh "no lock" acquire (exclusive
+    // create) wins the now-empty slot before we get to write ours —
+    // resulting in OUR OWN exclusive-create attempt failing EEXIST, which
+    // acquire() must surface as E_LOCK_HELD (not silently report success).
     let injected = false;
     vi.doMock('node:fs', async (importOriginal) => {
       const real = await importOriginal();
@@ -928,8 +979,11 @@ describe('TASK-085 AC2 — verify-after-write closes the stale-steal race', () =
         ...real,
         renameSync: (src, dest) => {
           const result = real.renameSync(src, dest);
-          if (!injected && String(dest) === targetLockPath) {
+          if (!injected && String(src) === targetLockPath) {
             injected = true;
+            // Simulate the competitor's fresh acquire winning the freshly-
+            // vacated slot: plant a record directly at the lock path, exactly
+            // as their own writeLockExclusive would have.
             real.writeFileSync(
               targetLockPath,
               JSON.stringify({
@@ -961,9 +1015,15 @@ describe('TASK-085 AC2 — verify-after-write closes the stale-steal race', () =
 
     expect(
       caught,
-      'acquire must detect (via verify-after-write) that a competitor overwrote the record it just wrote during a stale-steal, and throw instead of reporting a false success',
+      'acquire must detect that a competitor claimed the freshly-vacated lock slot immediately after our steal-rename, and throw instead of reporting a false success',
     ).toBeDefined();
     expect(caught.code).toBe('E_LOCK_HELD');
+
+    // The competitor's record must survive untouched — our failed attempt
+    // must not have clobbered it.
+    const onDisk = JSON.parse(readFileSync(targetLockPath, 'utf8'));
+    expect(onDisk.holder_pid).toBe(OTHER_PID);
+    expect(onDisk.hostname).toBe(OTHER_HOST);
 
     vi.doUnmock('node:fs');
     vi.resetModules();
@@ -983,10 +1043,20 @@ describe('TASK-085 AC2 — verify-after-write closes the stale-steal race', () =
 //   2. The PARENT (this test) busy-polls for BOTH children's ready markers,
 //      then writes `go-<round>` — releasing both children to call acquire()
 //      at essentially the same instant.
-//   3. Whichever child wins releases before moving on; the loser just waits
-//      for the lock file to disappear. This guarantees the NEXT round starts
-//      from a genuinely empty lock (a real "first acquisition" race), not a
-//      leftover fresh lock from the prior round.
+//   3. Each child writes `done-<round>-<holderId>` immediately after
+//      recording its own outcome (win OR lose). TASK-085 review LOW-3 —
+//      structural flake fix: the WINNER must not release until it has
+//      observed the OTHER child's `done-<round>-*` marker too. Without this,
+//      a winner that releases immediately can re-open the lock while a slow
+//      loser is still mid-attempt, letting that "loser" acquire the
+//      now-vacated lock and spuriously record a double-win for the SAME
+//      round. Waiting for both outcomes to be recorded before releasing
+//      guarantees the loser's attempt already resolved against the winner's
+//      still-held lock.
+//   4. Whichever child wins releases only after that barrier; the loser just
+//      waits for the lock file to disappear. This guarantees the NEXT round
+//      starts from a genuinely empty lock (a real "first acquisition"
+//      race), not a leftover fresh lock from the prior round.
 // ---------------------------------------------------------------------------
 
 const LOCK_RACE_CHILD_SRC = `
@@ -994,7 +1064,7 @@ import { writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const [, , repoRoot, holderId, resultsPath, roundsArg, syncDir, sessionLockPath] = process.argv;
+const [, , repoRoot, holderId, otherHolderId, resultsPath, roundsArg, syncDir, sessionLockPath] = process.argv;
 const ROUNDS = parseInt(roundsArg, 10);
 
 const { acquire, release } = await import(pathToFileURL(sessionLockPath).href);
@@ -1016,6 +1086,8 @@ const results = [];
 for (let round = 0; round < ROUNDS; round++) {
   const readyPath = join(syncDir, \`ready-\${round}-\${holderId}\`);
   const goPath = join(syncDir, \`go-\${round}\`);
+  const donePath = join(syncDir, \`done-\${round}-\${holderId}\`);
+  const otherDonePath = join(syncDir, \`done-\${round}-\${otherHolderId}\`);
 
   writeFileSync(readyPath, '1');
   spinUntilExists(goPath);
@@ -1029,7 +1101,15 @@ for (let round = 0; round < ROUNDS; round++) {
   }
   results.push(result);
 
+  // Record our own outcome for this round BEFORE the winner is allowed to
+  // release (TASK-085 review LOW-3 — see the barrier-design comment above).
+  writeFileSync(donePath, '1');
+
   if (result.acquired) {
+    // Wait for the OTHER child's outcome to be recorded too — guarantees its
+    // attempt already resolved (win or lose) against OUR still-held lock,
+    // not a lock we've already vacated.
+    spinUntilExists(otherDonePath);
     await release({ repoRoot, holder: holderId });
   }
   // Ensure the lock is fully clear before the next round's contention
@@ -1054,14 +1134,14 @@ describe('TASK-085 AC3 — two concurrent child processes race acquire(); exactl
     const resultsA = join(syncDir, 'results-A.json');
     const resultsB = join(syncDir, 'results-B.json');
 
-    function spawnChild(holder, resultsPath) {
+    function spawnChild(holder, otherHolder, resultsPath) {
       return spawn(process.execPath, [
-        childScriptPath, repoDir, holder, resultsPath, String(ROUNDS), syncDir, sessionLockPath,
+        childScriptPath, repoDir, holder, otherHolder, resultsPath, String(ROUNDS), syncDir, sessionLockPath,
       ]);
     }
 
-    const childA = spawnChild('race-holder-A', resultsA);
-    const childB = spawnChild('race-holder-B', resultsB);
+    const childA = spawnChild('race-holder-A', 'race-holder-B', resultsA);
+    const childB = spawnChild('race-holder-B', 'race-holder-A', resultsB);
 
     let stderrA = '';
     let stderrB = '';
