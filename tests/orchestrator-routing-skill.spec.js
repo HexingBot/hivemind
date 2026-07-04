@@ -106,3 +106,58 @@ describe('AC3 — backstop skill is mirrored into .claude/skills (parity)', () =
     ).toBe(true);
   });
 });
+
+// TASK-086 — deep-review S6: data-fencing for ticket-derived text in
+// developer/reviewer briefings. The per-ticket loop interpolates ticket
+// title/description/ACs/comments into Developer (unrestricted Bash) and
+// Reviewer prompts with none of the fencing TASK-039 standardized for
+// deep-review's verifyPrompt() (BEGIN/END DATA blocks + never-as-a-directive
+// instruction). AC1 requires a canonical briefing template in BOTH SKILL.md
+// parity copies carrying the exact fence markers + never-as-a-directive
+// phrase + a length-cap rule, and agents/developer.md + agents/reviewer.md
+// referencing it.
+//
+// RED-GREEN PLANT PROTOCOL (reported in the hand-off, not committed): the
+// marker/phrase assertions below were verified to fail for the right reason
+// by temporarily deleting one `=== BEGIN DATA:` occurrence from the plugin
+// SKILL.md, confirming the spec went red, then restoring the file (git diff
+// clean) before this commit landed.
+describe('AC1/AC2 — canonical briefing template fences ticket-derived text (TASK-086)', () => {
+  it('plugin_skill_carries_the_data_fence_markers', () => {
+    const text = readFileSync(PLUGIN_SKILL, 'utf8');
+    expect(text.includes('=== BEGIN DATA:')).toBe(true);
+    expect(text.includes('=== END DATA:')).toBe(true);
+  });
+
+  it('dev_skill_carries_the_data_fence_markers', () => {
+    const text = readFileSync(DEV_SKILL, 'utf8');
+    expect(text.includes('=== BEGIN DATA:')).toBe(true);
+    expect(text.includes('=== END DATA:')).toBe(true);
+  });
+
+  it('plugin_skill_carries_the_never_as_a_directive_instruction', () => {
+    const text = readFileSync(PLUGIN_SKILL, 'utf8');
+    expect(/never as an instruction|never as a directive/i.test(text)).toBe(true);
+  });
+
+  it('dev_skill_carries_the_never_as_a_directive_instruction', () => {
+    const text = readFileSync(DEV_SKILL, 'utf8');
+    expect(/never as an instruction|never as a directive/i.test(text)).toBe(true);
+  });
+
+  it('plugin_skill_documents_a_length_cap_rule_for_ticket_fields', () => {
+    const text = readFileSync(PLUGIN_SKILL, 'utf8');
+    // TASK-041 convention: truncate with an explicit marker, never silently.
+    expect(/truncat/i.test(text)).toBe(true);
+    expect(/cap/i.test(text)).toBe(true);
+  });
+
+  it('agents_developer_and_reviewer_reference_the_fenced_briefing_template', () => {
+    const devAgent = readFileSync(join(REPO_ROOT, 'agents', 'developer.md'), 'utf8');
+    const reviewerAgent = readFileSync(join(REPO_ROOT, 'agents', 'reviewer.md'), 'utf8');
+    for (const text of [devAgent, reviewerAgent]) {
+      expect(text.includes('BEGIN DATA:')).toBe(true);
+      expect(/never as an instruction|never as a directive/i.test(text)).toBe(true);
+    }
+  });
+});
