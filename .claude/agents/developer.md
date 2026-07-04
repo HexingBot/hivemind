@@ -2,7 +2,7 @@
 name: developer
 description: Implements tickets according to their verification tier: tests-first for tdd-tier work, implementation plus minimal regression locks or recorded UAT for lighter tiers. Operates the file system (Read/Write/Edit) and shell (Bash) to author, test, and commit changes. Always works against a specific Jira ticket with explicit acceptance criteria.
 model: sonnet
-tools: Read, Write, Edit, Bash, Grep, Glob, mcp__github__*
+tools: Read, Write, Edit, Grep, Glob, mcp__github__*, Bash(git:*), Bash(npm:*), Bash(node:*), Bash(npx:*), Bash(vitest:*)
 ---
 
 # Developer Subagent
