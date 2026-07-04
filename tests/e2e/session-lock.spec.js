@@ -1419,6 +1419,157 @@ describe('TASK-090 AC4 — stale claim files are swept opportunistically during 
   });
 });
 
+// ---------------------------------------------------------------------------
+// TASK-094 — follow-up from the TASK-090 review (LOW-4): renew()/release()/
+// the same-holder re-acquire branch carry the SAME path-vs-inode residue
+// TASK-090 closed on the steal/reclaim paths above. AC1/AC3 close it on
+// release() and the same-holder re-acquire branch via the SAME
+// content-checked CAS primitive (stealAwayContentChecked) already exercised
+// by the TASK-090 specs; AC2 (renew()) is accepted, documented residue per
+// the plan's "guard where near-free, honest comment where disproportionate"
+// standard — see the comment on renew()'s writeLock() call in
+// src/session-lock.js. No new spec for renew() (documented paths are not
+// testable behavior, per the ticket).
+//
+// Injection seam: reuses the SAME node:fs `renameSync` mock seam as the
+// TASK-090 specs above — write a fresh competitor record onto the lock path
+// immediately BEFORE the real rename fires, simulating a steal that landed
+// in the narrow gap between this call's own decision-read and its own
+// mutating rename.
+// ---------------------------------------------------------------------------
+
+describe("TASK-094 AC1 — release() content-checked delete detects a stolen lock and does not destroy the stealer's fresh record", () => {
+  it('release_restores_and_no_ops_when_the_renamed_away_content_does_not_match_the_record_observed_pre_delete', async () => {
+    vi.resetModules();
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-release-content-check'));
+    const targetLockPath = lockFilePath(repoDir);
+
+    // Seed a lock held by ME.
+    seedLock(repoDir, {
+      holder_pid: MY_PID,
+      hostname: MY_HOST,
+      heartbeat_at: TWO_MIN_AGO,
+    });
+
+    const FRESH_COMPETITOR_RECORD = {
+      holder_pid: 55555,
+      hostname: 'fresh-competitor-host-release',
+      heartbeat_at: BASE_TIME,
+    };
+
+    let injected = false;
+    vi.doMock('node:fs', async (importOriginal) => {
+      const real = await importOriginal();
+      return {
+        ...real,
+        renameSync: (src, dest) => {
+          if (!injected && String(src) === targetLockPath) {
+            injected = true;
+            // Simulate a competitor stealing the lock (it went stale and was
+            // reclaimed by another process) in the gap between release()'s
+            // own decision-read and this mutating rename.
+            real.writeFileSync(
+              targetLockPath,
+              JSON.stringify(FRESH_COMPETITOR_RECORD, null, 2) + '\n',
+              'utf8',
+            );
+          }
+          return real.renameSync(src, dest);
+        },
+      };
+    });
+
+    const { release } = await import(SESSION_LOCK_URL);
+
+    await expect(
+      release({ repoRoot: repoDir, pid: MY_PID, hostname: MY_HOST }),
+    ).resolves.not.toThrow();
+
+    // The stealer's fresh record must survive — release() must not have
+    // destroyed it just because it happened to occupy the path release()
+    // went looking for "what's there to delete".
+    const onDisk = JSON.parse(readFileSync(targetLockPath, 'utf8'));
+    expect(onDisk.holder_pid).toBe(FRESH_COMPETITOR_RECORD.holder_pid);
+    expect(onDisk.hostname).toBe(FRESH_COMPETITOR_RECORD.hostname);
+
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  });
+});
+
+describe("TASK-094 AC3 — same-holder re-acquire content-checked write detects a stolen lock and does not clobber the stealer's fresh record", () => {
+  it('acquire_throws_e_lock_held_and_restores_when_a_fresh_competitor_record_is_renamed_away_during_same_holder_reacquire', async () => {
+    vi.resetModules();
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-reacquire-content-check'));
+    const targetLockPath = lockFilePath(repoDir);
+
+    // Seed a lock already held by ME.
+    seedLock(repoDir, {
+      holder_pid: MY_PID,
+      hostname: MY_HOST,
+      heartbeat_at: TWO_MIN_AGO,
+    });
+
+    const FRESH_COMPETITOR_RECORD = {
+      holder_pid: 44444,
+      hostname: 'fresh-competitor-host-reacquire',
+      heartbeat_at: BASE_TIME,
+    };
+
+    let injected = false;
+    vi.doMock('node:fs', async (importOriginal) => {
+      const real = await importOriginal();
+      return {
+        ...real,
+        renameSync: (src, dest) => {
+          if (!injected && String(src) === targetLockPath) {
+            injected = true;
+            // Simulate a competitor stealing the lock (it went stale and was
+            // reclaimed by another process) in the gap between acquire()'s
+            // own decision-read (rawExisting, at the top of acquire()) and
+            // this same-holder-reacquire branch's mutating rename.
+            real.writeFileSync(
+              targetLockPath,
+              JSON.stringify(FRESH_COMPETITOR_RECORD, null, 2) + '\n',
+              'utf8',
+            );
+          }
+          return real.renameSync(src, dest);
+        },
+      };
+    });
+
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'acquire must detect the content mismatch during same-holder re-acquire and refuse instead of clobbering a fresh competitor lock',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+
+    const onDisk = JSON.parse(readFileSync(targetLockPath, 'utf8'));
+    expect(onDisk.holder_pid).toBe(FRESH_COMPETITOR_RECORD.holder_pid);
+    expect(onDisk.hostname).toBe(FRESH_COMPETITOR_RECORD.hostname);
+
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  });
+});
+
 describe('TASK-085 AC3 — two concurrent child processes race acquire(); exactly one wins each round', () => {
   it('race_two_child_processes_exactly_one_winner_per_round', async () => {
     const ROUNDS = 15;
