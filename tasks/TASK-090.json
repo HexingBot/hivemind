@@ -1,0 +1,28 @@
+{
+  "key": "TASK-090",
+  "title": "session-lock: content-checked CAS steal (path-vs-inode residue), claim-file sweep, comment accuracy",
+  "description": "FOLLOW-UP from the TASK-085 re-review (MEDIUM, non-blocking). The CAS-steal and corrupt-reclaim paths are path-based, not inode-based: a stealer descheduled between readLock and renameSync can rename away (or unlinkSync can delete) a competitor FRESHLY-RE-CREATED lock at the same path; if that lands after the victim verify (or the victim came through the verify-less first-acquire branch) it is a double-win. Window is narrow (requires stale/corrupt lock + a deschedule spanning the winner fsync-laden write) and bounded by staleness, but the module guarantee is mutual exclusion. Also: comments in the steal path OVERCLAIM (atomic... no timing window at all / deterministically) and must be corrected regardless; and a crash between the CAS rename and the finally-unlink leaks an inert state/.lock.claim.<pid>-<hex> file nothing sweeps.",
+  "acceptance_criteria": [
+    "After the CAS rename, the stealer re-reads the claim file and confirms it byte-matches the stale record observed pre-steal; on mismatch it restores the captured file to the lock path (or fails closed) and throws E_LOCK_HELD — regression spec with an injected fresh-competitor capture.",
+    "The corrupt-reclaim unlink path gets the equivalent guard or a documented accepted-residue comment with an accurate hazard description.",
+    "Steal-path comments corrected to state the actual guarantee and residual window honestly.",
+    "Stale claim files (state/.lock.claim.*) older than the staleness window are swept opportunistically (e.g. during acquire) — spec: fresh claim survives, stale claim reaped.",
+    "All existing session-lock specs stay green (tdd: failing tests first for the content-check and the claim sweep)."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "session-lock",
+    "concurrency",
+    "deep-review"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-04T03:30:15.154Z",
+  "updated_at": "2026-07-04T03:30:15.154Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

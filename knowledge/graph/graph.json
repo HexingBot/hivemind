@@ -44,6 +44,12 @@
       "label": "Loop-grade lock: holder_id surfaced in E_LOCK_HELD + 3-boundary renew cadence + loop-mode staleness override documented"
     },
     {
+      "id": "2026-07-04T04:30:00Z",
+      "type": "decision",
+      "ref": "tasks/TASK-085.json",
+      "label": "Exclusive-create + verify-after-write + CAS-steal for session-lock; fd-write reservation for createTask (store-brick regression caught and fixed in RC round)"
+    },
+    {
       "id": "TASK-063",
       "type": "task",
       "ref": "tasks/TASK-063.json",
@@ -102,6 +108,12 @@
       "type": "task",
       "ref": "tasks/TASK-084.json",
       "label": "mid-ticket crash-resume for the loop + autonomous-drive use case e2e"
+    },
+    {
+      "id": "TASK-085",
+      "type": "task",
+      "ref": "tasks/TASK-085.json",
+      "label": "session-lock exclusive acquire + verify-after-write + contention specs"
     },
     {
       "id": "decision-20260612-deep-workflows",
@@ -375,6 +387,11 @@
     {
       "from": "TASK-084",
       "to": "2026-07-04T02:00:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-085",
+      "to": "2026-07-04T04:30:00Z",
       "relation": "produced-by"
     },
     {

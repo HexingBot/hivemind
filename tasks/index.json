@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T02:14:41.060Z",
+  "generated_at": "2026-07-04T03:30:15.154Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -496,7 +496,7 @@
     {
       "key": "TASK-085",
       "title": "deep-review S4: session-lock exclusive acquire + verify-after-write + contention spec",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -522,6 +522,12 @@
       "title": "docs: mcp-server skill references still say six tools (stale after close_task)",
       "status": "todo",
       "priority": "low"
+    },
+    {
+      "key": "TASK-090",
+      "title": "session-lock: content-checked CAS steal (path-vs-inode residue), claim-file sweep, comment accuracy",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }
