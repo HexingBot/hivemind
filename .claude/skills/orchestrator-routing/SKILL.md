@@ -336,7 +336,9 @@ writer and a pure decision helper:
 - **`resumePoint({ bundle, tasks })`** — pure (no I/O). Read at loop start,
   right after the lock is acquired (`commands/loop.md` Step 1.5):
   - `'none'` — no checkpoint evidence, or the recorded ticket is already
-    `done`. Start fresh.
+    `done`. Start the next iteration with the counters restored from
+    `loop_state` when present (never reset to zero) — only `current_ticket`
+    is absent/stale, not the run's progress.
   - `'reset'` — the recorded ticket is stranded (`in_progress` at a
     pre-commit phase, a status inconsistent with an active checkpoint, or a
     dangling ticket key). Transition the ticket back to `todo` with an
@@ -346,6 +348,13 @@ writer and a pure decision helper:
     `iteration`, `completed_this_run`, and `run_started_at` are restored
     **verbatim** from `loop_state` so `shouldStop` and `consolidationGate`
     ceilings survive the restart.
+
+**Ordering is load-bearing:** for a newly selected ticket, always write the
+`fetch`-phase checkpoint naming that ticket as `current_ticket` **before**
+transitioning it to `in_progress` — never the other way around — because a
+crash between the transition and the checkpoint write would leave
+`loop_state.current_ticket` pointing at the previous ticket, `resumePoint`
+returning `'none'`, and the new ticket stranded `in_progress` yet invisible.
 
 `LOOP_PHASES` is the canonical phase → `workflow_step` mapping (identity map
 onto the bundle enum):

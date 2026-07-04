@@ -50,7 +50,12 @@ prior run of this session crashed mid-ticket:
      the ticket back to `todo` via `transition_status`, append an explanatory
      `append_comment` citing `result.reason`, and continue to normal ticket
      selection.
-   - **`'none'`** — no crash evidence. Start the loop fresh.
+   - **`'none'`** — no crash evidence (no `current_ticket` recorded, or the
+     recorded ticket is already `done`). Start the next iteration with the
+     counters restored from `result` (`iteration`, `completed_this_run`,
+     `run_started_at`, verbatim when `loop_state` was present) rather than
+     from zero — only `current_ticket` is stale/absent, not the run's
+     progress.
 
 `writeLoopCheckpoint({ repoRoot, checkpoint })` from `src/loop-checkpoint.js`
 is the writer half of this contract: call it at **every** phase boundary —
@@ -62,6 +67,13 @@ the `LOOP_PHASES` keys (`idle`, `fetch`, `research`, `test`, `impl`, `review`,
 also documents the TASK-071 rule for any manual orchestrator checkpoint:
 `workflow_step` must always be set to an enum-valid value, never a raw phase
 name that happens not to be in the enum.
+
+**Ordering is load-bearing:** for a newly selected ticket, always write the
+`fetch`-phase checkpoint naming that ticket as `current_ticket` **before**
+transitioning it to `in_progress` — never the other way around — because a
+crash between the transition and the checkpoint write would leave
+`loop_state.current_ticket` pointing at the previous ticket, `resumePoint`
+returning `'none'`, and the new ticket stranded `in_progress` yet invisible.
 
 ### Step 2 — Loop until done, stopped, or stuck
 
