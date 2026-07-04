@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T22:37:28.261Z",
+  "generated_at": "2026-07-04T23:07:33.767Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -552,6 +552,12 @@
       "title": "session-lock: renew()/release()/same-holder-reacquire carry the unguarded path-vs-inode residue",
       "status": "done",
       "priority": "low"
+    },
+    {
+      "key": "TASK-095",
+      "title": "Release v0.10.0 — cut the post-0.9.0 drive (TASK-074..094) as a versioned release",
+      "status": "done",
+      "priority": "high"
     }
   ]
 }

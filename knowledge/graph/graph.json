@@ -68,6 +68,12 @@
       "label": "TASK-094 close: window #7 ledger complete — release/reacquire CAS-guarded, renew honestly documented (reviewer-concurred liveness argument)"
     },
     {
+      "id": "2026-07-04T23:07:33.778Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "Release v0.10.0: minor bump cutting the post-0.9.0 drive (074-094); two-site pin, clean APPROVE, human-approved tag+push"
+    },
+    {
       "id": "TASK-063",
       "type": "task",
       "ref": "tasks/TASK-063.json",
@@ -210,6 +216,12 @@
       "type": "task",
       "ref": "tasks/TASK-094.json",
       "label": "session-lock: renew()/release()/same-holder-reacquire path-vs-inode residue"
+    },
+    {
+      "id": "TASK-095",
+      "type": "task",
+      "ref": "tasks/TASK-095.json",
+      "label": "Release v0.10.0 — cut the post-0.9.0 drive as a versioned release"
     },
     {
       "id": "decision-20260612-deep-workflows",
@@ -558,6 +570,11 @@
     {
       "from": "TASK-094",
       "to": "2026-07-04T22:37:28.261Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-095",
+      "to": "2026-07-04T23:07:33.778Z",
       "relation": "produced-by"
     },
     {

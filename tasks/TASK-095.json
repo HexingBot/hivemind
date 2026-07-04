@@ -1,0 +1,39 @@
+{
+  "key": "TASK-095",
+  "title": "Release v0.10.0 — cut the post-0.9.0 drive (TASK-074..094) as a versioned release",
+  "description": "plugin.json has advertised 0.9.0 since commit 820671b, but the entire subsequent drive (console removal 074, unattended mode 075, deterministic-gate/state-resilience/crash-resume/injection-defense wave 081-086, agility trio 076-078, board-hardening 087, mcp/bundle/lock hardening 088-094) landed on top of it with no version bump. Because the marketplace source is \"./\", origin/main IS what Checking for updates for plugin \"hivemind\" at user scope… pulls — but the stale version string means updaters are not notified. Bump to 0.10.0 (minor, under 0.x: new features + the console removal), which the two-site pin enforced by tests/publish-config.spec.js requires be applied consistently. No CHANGELOG file exists in the repo, so none is updated. The orchestrator (not the developer) will create the annotated tag v0.10.0 and push main+tag after review — human already approved the bump and the tag/push.",
+  "acceptance_criteria": [
+    ".claude-plugin/plugin.json version field set to 0.10.0.",
+    "tests/publish-config.spec.js EXPECTED_VERSION set to 0.10.0 (the two-site pin — publish-config.spec.js fails if the sites disagree).",
+    "npm run test:all is green (release gate; includes publish-config parity + dist-parity so a stale dist/ or a one-site bump fails here).",
+    "No other files changed beyond the two version pins (and dist/ only if the gate demands a rebuild). Release commit authored by the developer; tagging + push are orchestrator release actions done post-review."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "release",
+    "versioning"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "d67710630f43c08215658856a2c60497f760f9f2"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-04T23:07:33.716Z",
+      "body": "UAT (delegated to Orchestrator per session grant; every step independently verified by the fresh-context reviewer rev-095):\n1. plugin.json version==0.10.0 — expect 0.10.0, observed 0.10.0 at HEAD. PASS — verified by Orchestrator at the human's request.\n2. publish-config.spec.js EXPECTED_VERSION==0.10.0, agreeing with plugin.json — expect agreement, observed both 0.10.0 (publish-config.spec.js 10/10 green, which is the agreement sensor). PASS — verified by Orchestrator at the human's request.\n3. npm run test:all green — expect all green, observed 1146 passed/4 skipped, 0 failures; release sensors publish-config 10/10 + dist-parity 2/2. PASS — verified by Orchestrator at the human's request.\n4. Only the two version pins changed — expect exactly 2 files (2 ins/2 del), observed exactly that in commit d677106, no other files. PASS — verified by Orchestrator at the human's request.\nOVERALL: PASS (4/4)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T23:07:33.767Z",
+      "body": "CLOSED done — RELEASE v0.10.0. Two-site version pin bumped 0.9.0->0.10.0 (plugin.json + publish-config.spec.js EXPECTED_VERSION), release commit d677106 (exactly 2 files, 2 ins/2 del). Review: clean APPROVE at LIGHT depth (0 findings), reviewer independently re-ran the release gate. Gate: npm run test:all 1146 passed/4 skipped; release sensors publish-config 10/10 + dist-parity 2/2 (dist bundles byte-match a fresh build — no stale bundle ships at 0.10.0). UAT 4/4 PASS (delegated). Cuts the entire post-0.9.0 drive (console removal 074, unattended mode 075, deterministic-gate/state-resilience/crash-resume/injection-defense wave 081-086, agility trio 076-078, board+mcp+bundle+lock hardening 087-094) as a versioned minor release. NEXT (orchestrator release actions, human pre-approved): annotated tag v0.10.0 on d677106 + push main+tag to origin. No CHANGELOG file exists in the repo — none updated."
+    }
+  ],
+  "created_at": "2026-07-04T23:01:55.284Z",
+  "updated_at": "2026-07-04T23:07:33.767Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}
