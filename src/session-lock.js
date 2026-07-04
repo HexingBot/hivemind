@@ -453,6 +453,18 @@ export async function acquire({
       // fail-closed E_LOCK_HELD (with the stealer's record restored
       // best-effort) — it cannot eliminate the window outright without
       // filesystem-level CAS.
+      // Review LOW-2 — residual note (same shape as the foreign-lock steal
+      // path's below): between this rename-away and the writeLockExclusive
+      // call, the lock path is transiently VACANT. A concurrent FIRST
+      // acquirer (one that observes no lock at all) can win that gap and
+      // plant its own record there via its own writeLockExclusive. When that
+      // happens, OUR writeLockExclusive fails EEXIST — surfaced below as
+      // E_LOCK_HELD — which means a caller that was, an instant ago, a LIVE
+      // holder mid-rebump can be dispossessed by a fresh first-acquirer. This
+      // is detected and fail-closed, not silent: mutual exclusion is
+      // preserved (exactly one of the two ends up holding the lock), and the
+      // dispossessed re-acquire simply loses its race rather than any record
+      // being corrupted or lost.
       const claimPath = stealAwayContentChecked(repoRoot, myPid, rawExisting);
       try {
         writeLockExclusive(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
@@ -734,12 +746,22 @@ export async function release({ repoRoot, pid, hostname, holder } = {}) {
   // mismatch handling restores the stealer's fresh record (best-effort)
   // rather than losing it, and this release() call becomes a no-op instead
   // of destroying a lock we no longer hold.
+  // Review LOW-1 — restore release()'s pre-existing no-throw guarantee (see
+  // the doc comment above: "Callers should not be penalized for a crash
+  // during release"). E_LOCK_HELD here means a detected takeover, or that
+  // the rename lost a race because the lock path had already vanished —
+  // both expected, no-op outcomes. But stealAwayContentChecked's own
+  // renameSync can ALSO throw a raw, unwrapped fs error for reasons other
+  // than ENOENT (Windows EPERM/EBUSY — a transient antivirus/handle hold,
+  // the same class of error the pre-existing unlink swallow below already
+  // tolerates). That must not escape either: this content-checked delete is
+  // an internal implementation detail of release()'s no-throw contract, not
+  // a new failure mode for callers to catch.
   let claimPath;
   try {
     claimPath = stealAwayContentChecked(repoRoot, myPid, rawExisting);
-  } catch (err) {
-    if (err && err.code === 'E_LOCK_HELD') return; // Detected a takeover (or the lock is already gone) — leave it alone.
-    throw err;
+  } catch {
+    return;
   }
 
   try {

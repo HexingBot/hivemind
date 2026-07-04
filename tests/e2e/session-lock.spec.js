@@ -1570,6 +1570,54 @@ describe("TASK-094 AC3 — same-holder re-acquire content-checked write detects 
   });
 });
 
+describe("TASK-094 review LOW-1 — release() swallows a transient fs error during the content-checked delete instead of throwing", () => {
+  it('release_does_not_throw_when_the_rename_step_hits_a_transient_windows_style_error', async () => {
+    vi.resetModules();
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-release-transient-error'));
+    const targetLockPath = lockFilePath(repoDir);
+
+    // Seed a lock held by ME.
+    seedLock(repoDir, {
+      holder_pid: MY_PID,
+      hostname: MY_HOST,
+      heartbeat_at: TWO_MIN_AGO,
+    });
+
+    let injected = false;
+    vi.doMock('node:fs', async (importOriginal) => {
+      const real = await importOriginal();
+      return {
+        ...real,
+        renameSync: (src, dest) => {
+          if (!injected && String(src) === targetLockPath) {
+            injected = true;
+            // Simulate a transient Windows-style fs error (antivirus/handle
+            // hold) on the rename that kicks off release()'s
+            // content-checked delete — NOT the ENOENT that
+            // stealAwayContentChecked already wraps as E_LOCK_HELD.
+            const err = new Error('simulated transient handle hold');
+            err.code = 'EPERM';
+            throw err;
+          }
+          return real.renameSync(src, dest);
+        },
+      };
+    });
+
+    const { release } = await import(SESSION_LOCK_URL);
+
+    // release() must never throw — even when the rename step underneath the
+    // content-checked delete hits a raw, unwrapped transient fs error.
+    await expect(
+      release({ repoRoot: repoDir, pid: MY_PID, hostname: MY_HOST }),
+    ).resolves.not.toThrow();
+
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  });
+});
+
 describe('TASK-085 AC3 — two concurrent child processes race acquire(); exactly one wins each round', () => {
   it('race_two_child_processes_exactly_one_winner_per_round', async () => {
     const ROUNDS = 15;
