@@ -149,21 +149,32 @@ describe('AC4 — createTask key-collision guard', () => {
 // ===========================================================================
 // TASK-085 AC5 — deep-review S4 scope extension (M1 from the TASK-083
 // review): the existsSync collision guard above (AC4) is itself a
-// check-before-write — the existsSync() check and the eventual atomicWriteFiles
-// rename are NOT atomic with each other, so a second concurrent writer can
-// still slip in between them and get silently clobbered by the FIRST
-// writer's later rename. Two hardenings are required:
+// check-before-write — the existsSync() check and the eventual write are NOT
+// atomic with each other, so a second concurrent writer can still slip in
+// between them and get silently clobbered. Hardenings required:
 //   (a) The thrown collision error must be TYPED (`.code === 'E_KEY_COLLISION'`)
 //       rather than a plain untyped Error, so callers can distinguish this
 //       failure mode programmatically.
 //   (b) createTask must verify-after-write: re-read the derived-key target
-//       AFTER its own rename lands and compare it to the payload it intended
-//       to write; a mismatch (a competitor's payload is what's actually
-//       there) must throw the same typed E_KEY_COLLISION error.
+//       after writing it and compare it to the payload it intended to write;
+//       a mismatch (someone else's payload is what's actually there) must
+//       throw the same typed E_KEY_COLLISION error. NOTE (post fresh-context
+//       review, HIGH fix): createTask's collision guard is now an O_CREAT|
+//       O_EXCL reservation directly against the derived-key path, and the
+//       FULL validated payload is written through that SAME reserved fd
+//       (write+fsync+close) — there is no separate tmp+rename step for the
+//       task file anymore (closing the observable zero-byte-file window a
+//       tmp+rename-based reservation left open). A LEGITIMATE second
+//       createTask call can therefore never reach "after" our write anymore
+//       (it fails EEXIST at the reservation step, see AC5(a)) — verify-after-
+//       write is retained purely as belt-and-braces against a ROGUE direct
+//       mutation of the file landing in the window between our write and our
+//       own re-read (see AC5(b) below, which now mocks that fd-write window
+//       instead of renameSync).
 //   (c) The observable, black-box contract of (a)+(b): two concurrent
 //       `node` CHILD PROCESSES both calling createTask against the same
-//       empty repoRoot must not both "win" — exactly one succeeds, the
-//       other throws E_KEY_COLLISION.
+//       empty repoRoot must not both claim the SAME key — see AC5(c) below
+//       for the exact (post fresh-context-review) invariant.
 // ===========================================================================
 
 describe('TASK-085 AC5(a) — createTask key-collision error is TYPED (E_KEY_COLLISION)', () => {
@@ -218,8 +229,8 @@ describe('TASK-085 AC5(a) — createTask key-collision error is TYPED (E_KEY_COL
   });
 });
 
-describe('TASK-085 AC5(b) — createTask verify-after-write catches a post-rename collision', () => {
-  it('create_task_throws_e_key_collision_when_a_competitor_write_lands_immediately_after_our_rename', async () => {
+describe('TASK-085 AC5(b) — createTask verify-after-write catches a rogue post-write mutation', () => {
+  it('create_task_throws_e_key_collision_when_the_reserved_task_file_is_overwritten_immediately_after_our_write', async () => {
     vi.resetModules();
 
     const repoDir = makeTmpDir('af-ts85-verify-after-write');
@@ -227,21 +238,35 @@ describe('TASK-085 AC5(b) — createTask verify-after-write catches a post-renam
 
     const expectedTaskPath = join(repoDir, 'tasks', 'TASK-001.json');
 
-    // Mock node:fs's renameSync so that immediately after OUR rename lands
-    // on the derived-key target, we simulate a COMPETITOR's createTask call
-    // landing ITS rename a moment later — the residual TOCTOU window the
-    // pre-write existsSync guard (AC4) cannot see, since at existsSync-check
-    // time neither writer's file exists yet. A correct verify-after-write
-    // step must catch this by re-reading the target and noticing its own
-    // intended payload is no longer what's on disk.
+    // POST fresh-context-review (HIGH fix) design: createTask no longer
+    // writes the task file via a separate tmp+rename — it writes the FULL
+    // validated payload directly through the O_CREAT|O_EXCL-reserved fd
+    // (write+fsync+close), so there is no renameSync call to mock for this
+    // path anymore. A LEGITIMATE second createTask call can never reach
+    // "after" our write (it fails EEXIST at the reservation step — see
+    // AC5(a)/(c)), so this spec instead simulates the ONE residual scenario
+    // verify-after-write still guards: a ROGUE direct mutation of the
+    // just-created file landing in the tiny window between our write and our
+    // own re-read. We mock openSync (to capture which fd corresponds to our
+    // target path) + fsyncSync (called immediately after our real bytes are
+    // written, right before we close and re-read) to inject that mutation at
+    // exactly that point — the closest equivalent of the retired
+    // "immediately after our rename" injection point for the new no-rename
+    // design.
     let injected = false;
+    let reservedFd = null;
     vi.doMock('node:fs', async (importOriginal) => {
       const real = await importOriginal();
       return {
         ...real,
-        renameSync: (src, dest) => {
-          const result = real.renameSync(src, dest);
-          if (!injected && String(dest) === expectedTaskPath) {
+        openSync: (path, flags, mode) => {
+          const fd = real.openSync(path, flags, mode);
+          if (String(path) === expectedTaskPath) reservedFd = fd;
+          return fd;
+        },
+        fsyncSync: (fd) => {
+          const result = real.fsyncSync(fd);
+          if (!injected && fd === reservedFd) {
             injected = true;
             real.writeFileSync(
               expectedTaskPath,
@@ -261,7 +286,7 @@ describe('TASK-085 AC5(b) — createTask verify-after-write catches a post-renam
       await createTask({
         repoRoot: repoDir,
         title: 'Ours - verify-after-write racer',
-        description: 'A competitor writes over our target immediately after our rename.',
+        description: 'A rogue direct mutation lands on our reserved task file immediately after our own write.',
         acceptance_criteria: ['AC1'],
         priority: 'medium',
         now: () => '2026-07-04T00:00:00Z',
@@ -272,7 +297,7 @@ describe('TASK-085 AC5(b) — createTask verify-after-write catches a post-renam
 
     expect(
       caught,
-      'createTask must detect (via verify-after-write) that a competitor overwrote its target immediately after its own rename',
+      'createTask must detect (via verify-after-write) that its just-written task file was mutated immediately afterward',
     ).toBeDefined();
     expect(caught.code).toBe('E_KEY_COLLISION');
 
@@ -372,15 +397,125 @@ describe('TASK-085 AC5(c) — two concurrent createTask child processes race for
     const a = JSON.parse(readFileSync(resultsA, 'utf8'));
     const b = JSON.parse(readFileSync(resultsB, 'utf8'));
 
-    expect(
-      a.created !== b.created,
-      `exactly one concurrent createTask call must win the derived-key race (A created=${a.created}, B created=${b.created})`,
-    ).toBe(true);
+    // TASK-085 fresh-context review HIGH-2 — "exactly one winner" is NOT the
+    // universal invariant: a loser whose derive+claim attempt happens to run
+    // entirely AFTER the winner's write has already landed will legitimately
+    // see TASK-001 taken and derive TASK-002 instead — same title never means
+    // same key forever, and both writers succeeding on DISTINCT keys is
+    // correct store semantics, not a race bug. The real, always-true
+    // invariant across every possible interleaving is:
+    //   - EITHER both succeed, with DISTINCT keys, both task files present
+    //     and intact, and index.json consistent with both;
+    //   - OR exactly one succeeds and the other throws the TYPED
+    //     E_KEY_COLLISION error;
+    //   - NEVER two writers landing on the SAME key both "succeeding" (data
+    //     loss/silent-clobber), and NEVER an untyped/unexpected failure.
+    if (a.created && b.created) {
+      expect(
+        a.key,
+        'two concurrent createTask calls that BOTH succeed must never claim the same key',
+      ).not.toBe(b.key);
+      expect(existsSync(a.path), `winner A's task file ${a.path} must exist`).toBe(true);
+      expect(existsSync(b.path), `winner B's task file ${b.path} must exist`).toBe(true);
+      const taskA = JSON.parse(readFileSync(a.path, 'utf8'));
+      const taskB = JSON.parse(readFileSync(b.path, 'utf8'));
+      expect(taskA.key).toBe(a.key);
+      expect(taskB.key).toBe(b.key);
+      const idx = JSON.parse(readFileSync(join(repoDir, 'tasks', 'index.json'), 'utf8'));
+      expect(idx.tasks.map((t) => t.key).sort()).toEqual([a.key, b.key].sort());
+    } else if (a.created !== b.created) {
+      const loser = a.created ? b : a;
+      const winner = a.created ? a : b;
+      expect(
+        loser.code,
+        `the losing createTask call must throw a TYPED collision error (E_KEY_COLLISION); got code=${loser.code} message=${loser.message}`,
+      ).toBe('E_KEY_COLLISION');
+      expect(existsSync(winner.path), `winner's task file ${winner.path} must exist`).toBe(true);
+    } else {
+      // Both failed — never a legitimate outcome (the loser of a SAME-key
+      // race always has a winner on the other side).
+      throw new Error(
+        `neither concurrent createTask call succeeded — A: code=${a.code} message=${a.message}; `
+        + `B: code=${b.code} message=${b.message}`,
+      );
+    }
 
-    const loser = a.created ? b : a;
-    expect(
-      loser.code,
-      'the losing createTask call must throw a TYPED collision error (E_KEY_COLLISION)',
-    ).toBe('E_KEY_COLLISION');
+    // Never an untyped error on either side, regardless of which branch above fired.
+    if (!a.created) expect(a.code, `A's failure must be typed E_KEY_COLLISION, got ${JSON.stringify(a)}`).toBe('E_KEY_COLLISION');
+    if (!b.created) expect(b.code, `B's failure must be typed E_KEY_COLLISION, got ${JSON.stringify(b)}`).toBe('E_KEY_COLLISION');
   }, 15000);
+});
+
+// ===========================================================================
+// TASK-085 fresh-context review HIGH — createTask's O_CREAT|O_EXCL
+// reservation on the derived-key task file leaves a µs-scale window (between
+// openSync succeeding and writeSync landing the real payload) where the
+// target holds ZERO bytes; a crash exactly then leaves it that way forever.
+// Two independent defenses, each covered by its own minimal spec:
+//   - readAllTasks (exercised via listTodos) must SKIP a zero-byte task file
+//     rather than throwing an untyped SyntaxError out of JSON.parse('').
+//   - sweepTasksTmpFiles must reap a STALE (>60s) zero-byte task file (crash
+//     orphan) while preserving a FRESH one (may be another writer's in-flight
+//     reservation) — mirrors the existing tmp-file age-gate exactly.
+// Neither spec touches non-empty corrupt JSON handling, which is unchanged
+// (still throws — see tests/e2e/task-018-corruption-policy.spec.js's locked
+// policy).
+// ===========================================================================
+describe('TASK-085 HIGH — readAllTasks skips a zero-byte task file', () => {
+  it('list_todos_skips_zero_byte_task_file_without_throwing', async () => {
+    const { listTodos } = await import(PROD.taskStore);
+
+    const repoDir = makeTmpDir('af-ts85-zerobyte-reader');
+    makeRepoSkeleton(repoDir, {
+      tasks: loadFixtureTasks(['TASK-101']),
+    });
+    const tasksDir = join(repoDir, 'tasks');
+
+    // A zero-byte task file — the observable createTask reservation window
+    // (or a crash orphan of it), NOT corruption.
+    writeFileSync(join(tasksDir, 'TASK-102.json'), '', 'utf8');
+
+    const result = await listTodos({ repoRoot: repoDir });
+
+    // Must not throw, and the zero-byte file must be silently excluded —
+    // only the genuinely populated TASK-101 surfaces.
+    expect(result.map((t) => t.key)).toEqual(['TASK-101']);
+  });
+});
+
+describe('TASK-085 HIGH — sweepTasksTmpFiles age-gates zero-byte task files', () => {
+  it('sweep_preserves_fresh_zero_byte_task_file_but_reaps_stale_one', async () => {
+    const { sweepTasksTmpFiles } = await import(PROD.taskStore);
+
+    const repoDir = makeTmpDir('af-ts85-zerobyte-sweep');
+    makeRepoSkeleton(repoDir, {
+      tasks: loadFixtureTasks(['TASK-101']),
+    });
+    const tasksDir = join(repoDir, 'tasks');
+
+    // Fresh zero-byte task file — mtime is "now", simulating a writer that is
+    // mid-way through createTask's exclusive-create reservation window.
+    const freshZeroByte = join(tasksDir, 'TASK-102.json');
+    writeFileSync(freshZeroByte, '', 'utf8');
+
+    // Stale zero-byte task file — backdated well past the age-gate threshold,
+    // simulating a genuine crash orphan from a prior process.
+    const staleZeroByte = join(tasksDir, 'TASK-103.json');
+    writeFileSync(staleZeroByte, '', 'utf8');
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    utimesSync(staleZeroByte, fiveMinutesAgo, fiveMinutesAgo);
+
+    await sweepTasksTmpFiles({ repoRoot: repoDir });
+
+    expect(
+      existsSync(freshZeroByte),
+      'a fresh (just-created) zero-byte task file must survive the sweep — it may be an in-flight reservation',
+    ).toBe(true);
+    expect(
+      existsSync(staleZeroByte),
+      'a stale (>60s old) zero-byte task file must still be reaped as a crash orphan',
+    ).toBe(false);
+    // The legitimate, populated task file survives untouched either way.
+    expect(existsSync(join(tasksDir, 'TASK-101.json'))).toBe(true);
+  });
 });

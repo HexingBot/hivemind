@@ -390,46 +390,69 @@ describe('writes go through src/atomic-write.js', () => {
     const taskTarget = path; // .../tasks/TASK-102.json
     const indexTarget = join(repoDir, 'tasks', 'index.json');
 
-    // 1. At least two sibling tmp files were opened with O_CREAT|O_EXCL —
-    //    one for the new task file, one for the index.
-    const tmpOpens = fs.openSync.mock.calls.filter(
+    // POST TASK-085 fresh-context-review (HIGH fix) design: the new task
+    // FILE is no longer written via a sibling-tmp-then-rename dance — it is
+    // opened with O_CREAT|O_EXCL directly at its FINAL path (an exclusive
+    // reservation that doubles as the collision guard — see
+    // tests/e2e/task-store-resilience.spec.js AC5) and the full payload is
+    // written+fsynced+closed through that SAME fd. This closes an observable
+    // zero-byte-file window a tmp+rename-based reservation left open (a
+    // concurrent reader or a crash mid-write would otherwise see/leave an
+    // empty target). index.json is UNCHANGED — it still goes through
+    // atomic-write.js's sibling-tmp+rename recipe.
+
+    // 1. The task file itself was opened with O_CREAT|O_EXCL directly at its
+    //    final path (the exclusive-create reservation).
+    const taskReservationOpen = fs.openSync.mock.calls.find(
       ([p, flags]) =>
-        typeof p === 'string' &&
-        p.includes('.tmp.') &&
+        p === taskTarget &&
         typeof flags === 'number' &&
         (flags & fs.constants.O_EXCL) !== 0 &&
         (flags & fs.constants.O_CREAT) !== 0,
     );
     expect(
-      tmpOpens.length,
-      'expected at least two O_CREAT|O_EXCL opens (task tmp + index tmp)',
-    ).toBeGreaterThanOrEqual(2);
+      taskReservationOpen,
+      'expected an O_CREAT|O_EXCL open directly at the task file\'s final path (the reservation)',
+    ).toBeDefined();
 
-    // 2. Two-phase invariant: max(fsync.callOrder) < min(rename.callOrder).
-    //    All fsyncs for ALL targets complete before ANY rename begins.
+    // 2. A sibling tmp file was ALSO opened with O_CREAT|O_EXCL for
+    //    index.json (its tmp+rename recipe is unchanged).
+    const indexTmpOpens = fs.openSync.mock.calls.filter(
+      ([p, flags]) =>
+        typeof p === 'string' &&
+        p.startsWith(indexTarget + '.tmp.') &&
+        typeof flags === 'number' &&
+        (flags & fs.constants.O_EXCL) !== 0 &&
+        (flags & fs.constants.O_CREAT) !== 0,
+    );
+    expect(
+      indexTmpOpens.length,
+      'expected an O_CREAT|O_EXCL open on a sibling index.json tmp file',
+    ).toBeGreaterThanOrEqual(1);
+
+    // 3. Ordering invariant: the task file's own write is fully fsynced
+    //    (durable) BEFORE index.json's rename lands — i.e. the task file is
+    //    durable on disk before the index (which references it) is published.
     expect(fs.fsyncSync.mock.invocationCallOrder.length).toBeGreaterThanOrEqual(2);
-    expect(fs.renameSync.mock.invocationCallOrder.length).toBeGreaterThanOrEqual(2);
+    expect(fs.renameSync.mock.invocationCallOrder.length).toBeGreaterThanOrEqual(1);
     const lastFsync = Math.max(...fs.fsyncSync.mock.invocationCallOrder);
     const firstRename = Math.min(...fs.renameSync.mock.invocationCallOrder);
     expect(
       lastFsync,
-      'two-phase atomic write: every fsync must complete before any rename',
+      'the task file\'s fsync (and the index tmp\'s fsync) must both complete before the index rename',
     ).toBeLessThan(firstRename);
 
-    // 3. A rename targeted the new task file (proves task write went through
-    //    tmp+rename, not direct writeFileSync).
+    // 4. No rename ever targets the task file anymore (it is written
+    //    directly, never renamed onto).
     const renameToTask = fs.renameSync.mock.calls.find(
-      ([src, dst]) =>
-        typeof src === 'string' &&
-        src.startsWith(taskTarget + '.tmp.') &&
-        dst === taskTarget,
+      ([, dst]) => dst === taskTarget,
     );
     expect(
       renameToTask,
-      'expected rename(tmp, TASK-102.json) — task file write must be atomic',
-    ).toBeDefined();
+      'the task file must never be the destination of a rename (it is written directly via exclusive create)',
+    ).toBeUndefined();
 
-    // 4. A rename targeted index.json (proves index write went through
+    // 5. A rename targeted index.json (proves index write went through
     //    tmp+rename, not direct writeFileSync).
     const renameToIndex = fs.renameSync.mock.calls.find(
       ([src, dst]) =>

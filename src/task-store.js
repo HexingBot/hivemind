@@ -27,7 +27,7 @@ import {
 } from 'node:fs/promises';
 import {
   mkdirSync, readFileSync, existsSync, statSync,
-  openSync, closeSync, constants,
+  openSync, closeSync, writeSync, fsyncSync, constants,
 } from 'node:fs';
 import { join } from 'node:path';
 
@@ -127,6 +127,16 @@ async function readAllTasks(repoRoot) {
   const out = [];
   for (const name of taskFiles) {
     const raw = await readFile(join(dir, name), 'utf8');
+    // TASK-085 HIGH — a zero-byte TASK-NNN.json is createTask's exclusive-
+    // create reservation window (openSync(O_CREAT|O_EXCL) succeeded but the
+    // real payload's writeSync hasn't landed yet — a µs-scale window in
+    // normal operation, or a permanent crash-orphan if the process died in
+    // it), NOT corruption. Skip it silently rather than throwing an untyped
+    // SyntaxError out of JSON.parse(''); sweepTasksTmpFiles reaps a STALE one
+    // (age-gated) so it never accretes forever. Non-empty corrupt JSON is
+    // UNCHANGED — it still throws (locked policy, see
+    // tests/e2e/task-018-corruption-policy.spec.js).
+    if (raw.length === 0) continue;
     out.push(JSON.parse(raw));
   }
   return out;
@@ -251,6 +261,23 @@ export async function sweepTasksTmpFiles({ repoRoot }) {
       } catch {
         // Best-effort — another writer may have already promoted/removed it,
         // or the stat/unlink raced with it in some other way.
+      }
+    } else if (TASK_FILENAME_RE.test(name)) {
+      // TASK-085 HIGH — reap a STALE zero-byte TASK-NNN.json: the residual
+      // window of createTask's exclusive-create reservation step (see
+      // readAllTasks's matching skip-zero-byte comment). Same age-gate as tmp
+      // reaping — a FRESH zero-byte file may be another writer's in-flight
+      // reservation, not a crash orphan. Non-zero-byte files are untouched
+      // (this branch never reaps a real, populated task file).
+      const p = join(dir, name);
+      try {
+        const st = statSync(p);
+        if (st.size !== 0) continue;
+        if (now - st.mtimeMs < TMP_SWEEP_MIN_AGE_MS) continue;
+        await unlink(p);
+        removed.push(name);
+      } catch {
+        // Best-effort — another writer may have already completed/removed it.
       }
     }
   }
@@ -620,19 +647,37 @@ export async function createTask({
   mkdirSync(tasksDir(repoRoot), { recursive: true });
 
   const target = taskFilePath(repoRoot, key);
+  const taskBytes = JSON.stringify(task, null, 2) + '\n';
+  const payload = Buffer.from(taskBytes, 'utf8');
 
-  // AC4 (TASK-083) + AC5(a)/(c) (TASK-085) — collision guard: derivedNextKey()
-  // and this write are not atomic, so a concurrent createTask call can win
-  // the race for the same key in between. A plain existsSync() check (the
-  // original AC4 fix) is ITSELF a check-then-write TOCTOU — a second writer
-  // can still slip in between the check and the write. Hardened to a real
-  // OS-level exclusive create directly against the derived-key path:
-  // O_CREAT|O_EXCL either reserves the slot — deterministically, even against
-  // a genuinely concurrent second OS process (see
-  // tests/e2e/task-store-resilience.spec.js AC5(c)) — or fails with EEXIST
-  // when a competitor already claimed it, exactly like the existsSync check
-  // used to, just race-free. The atomicWriteFiles() rename below simply
-  // overwrites our own (empty) reservation with the real, validated payload.
+  // AC4 (TASK-083) + AC5(a)/(c) + review-HIGH (TASK-085) — collision guard:
+  // derivedNextKey() and this write are not atomic, so a concurrent
+  // createTask call can win the race for the same key in between. A plain
+  // existsSync() check (the original AC4 fix) is ITSELF a check-then-write
+  // TOCTOU — a second writer can still slip in between the check and the
+  // write. Hardened to a real OS-level exclusive create directly against the
+  // derived-key path: O_CREAT|O_EXCL either reserves the slot —
+  // deterministically, even against a genuinely concurrent second OS process
+  // (see tests/e2e/task-store-resilience.spec.js AC5(c)) — or fails with
+  // EEXIST when a competitor already claimed it, exactly like the existsSync
+  // check used to, just race-free.
+  //
+  // review-HIGH fix: the FULL validated payload is written through the SAME
+  // reserved fd (write+fsync+close), mirroring writeLockExclusive in
+  // src/session-lock.js, INSTEAD of closing the fd empty and relying on a
+  // later atomicWriteFiles() rename to fill it in. The earlier design left
+  // target sitting at 0 bytes for the entire tmp-write+fsync window (tens of
+  // ms) — a concurrent reader (readAllTasks via listTodos/listReady/
+  // transitionStatus/createTask) would throw an untyped SyntaxError on
+  // JSON.parse(''), and a crash in that window left target permanently empty
+  // (unreachable by both the tmp sweep — TASK_FILENAME_RE, not TMP_FILE_RE —
+  // and deriveNextKey, which counts it toward maxN forever). Writing the real
+  // bytes directly through the reservation fd shrinks that window to the µs
+  // between openSync and writeSync; readAllTasks additionally skips a
+  // zero-byte task file outright (treats it as an in-flight reservation, not
+  // corruption) and sweepTasksTmpFiles reaps a STALE one — see both comments
+  // above — closing the residual window completely. atomicWriteFiles is used
+  // for index.json only now; the task file never goes through a rename.
   let reserveFd;
   try {
     reserveFd = openSync(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
@@ -644,21 +689,22 @@ export async function createTask({
     }
     throw err;
   }
-  closeSync(reserveFd);
+  try {
+    let written = 0;
+    while (written < payload.length) {
+      written += writeSync(reserveFd, payload, written, payload.length - written);
+    }
+    fsyncSync(reserveFd);
+  } finally {
+    closeSync(reserveFd);
+  }
 
-  const taskBytes = JSON.stringify(task, null, 2) + '\n';
-
-  await atomicWriteFiles([
-    { target, bytes: taskBytes },
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
-  ]);
-
-  // TASK-085 AC5(b) — verify-after-write: the existsSync guard above and the
-  // eventual rename are NOT atomic with each other, so a second concurrent
-  // writer can still slip in between them. Re-read the derived-key TASK FILE
-  // target (not index.json — per test design, only the task-file rename
-  // target is verified) and compare it to the exact bytes we intended to
-  // write; a mismatch means a competitor's payload landed instead of ours.
+  // Verify-after-write, kept as belt-and-braces (TASK-085 review MEDIUM-1
+  // parity with session-lock): a LEGITIMATE second createTask call can never
+  // reach this point for the same key (it would have failed EEXIST above),
+  // but re-reading and comparing against the exact bytes we intended to write
+  // still catches a rogue direct mutation of the just-created file landing in
+  // the (tiny, but real) window before we've verified it.
   const onDisk = readFileSync(target, 'utf8');
   if (onDisk !== taskBytes) {
     throw new KeyCollisionError(
@@ -667,6 +713,10 @@ export async function createTask({
       'immediately after landing.',
     );
   }
+
+  await atomicWriteFiles([
+    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
+  ]);
 
   return { key, path: target };
 }
