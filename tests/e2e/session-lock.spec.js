@@ -1120,6 +1120,211 @@ for (let round = 0; round < ROUNDS; round++) {
 writeFileSync(resultsPath, JSON.stringify(results));
 `;
 
+// ---------------------------------------------------------------------------
+// TASK-090 — follow-up from the TASK-085 re-review: the CAS-steal and
+// corrupt-reclaim paths are path-based, not inode-based. A stealer
+// descheduled between its staleness read and its renameSync/unlinkSync call
+// can rename away (or delete) a competitor's FRESHLY-RE-CREATED lock at the
+// same path — a silent double-win (or silent lock destruction) that the
+// existing verify-after-write does not catch, because by the time it reads
+// back, our own record is already correctly persisted.
+//
+// AC1/AC2 — a content check closes the read-to-rename/unlink gap: capture
+//   the exact raw bytes observed when staleness was decided, and after the
+//   rename-away, verify the claimed file's bytes byte-match. On mismatch,
+//   restore (best-effort, via exclusive-create so a third party who has
+//   since reclaimed the slot is never clobbered) and fail closed with
+//   E_LOCK_HELD.
+// AC4 — leftover claim files (state/.lock.claim.<pid>-<hex>), which can only
+//   be left behind by a crash between the CAS rename and the finally-unlink
+//   (or a failed restore-on-mismatch), are swept opportunistically during
+//   acquire() once they age past the staleness window.
+//
+// Injection seam: reuses the SAME node:fs `renameSync` mock seam already
+// exercised by the TASK-085 AC2 spec above (no new seam added to production
+// code) — but triggers the mutation BEFORE the real rename executes, so the
+// content that gets moved to the claim path is the fresh competitor's, not
+// the stale record acquire() originally observed and decided to steal.
+// ---------------------------------------------------------------------------
+
+describe('TASK-090 AC1 — content-checked CAS steal detects a fresh competitor record renamed away by mistake', () => {
+  it('acquire_restores_and_fails_closed_when_the_renamed_away_content_does_not_match_the_stale_record_observed_pre_steal', async () => {
+    vi.resetModules();
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-content-check-steal'));
+    const targetLockPath = lockFilePath(repoDir);
+
+    // Seed a STALE foreign lock so acquire() takes the stale-steal branch.
+    seedLock(repoDir, {
+      holder_pid: OTHER_PID,
+      hostname: OTHER_HOST,
+      heartbeat_at: SIX_MIN_AGO,
+    });
+
+    const FRESH_COMPETITOR_RECORD = {
+      holder_pid: 88888,
+      hostname: 'fresh-competitor-host',
+      heartbeat_at: BASE_TIME, // fresh
+    };
+
+    let injected = false;
+    vi.doMock('node:fs', async (importOriginal) => {
+      const real = await importOriginal();
+      return {
+        ...real,
+        renameSync: (src, dest) => {
+          if (!injected && String(src) === targetLockPath) {
+            injected = true;
+            // Simulate a fresh competitor re-creating a live lock at this
+            // path in the narrow gap between acquire()'s staleness read
+            // (which observed the STALE record above) and this very rename
+            // call. The rename below will now move THIS content away
+            // instead of the stale record acquire() intended to steal.
+            real.writeFileSync(
+              targetLockPath,
+              JSON.stringify(FRESH_COMPETITOR_RECORD, null, 2) + '\n',
+              'utf8',
+            );
+          }
+          return real.renameSync(src, dest);
+        },
+      };
+    });
+
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        now: () => BASE_TIME,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'acquire must detect the content mismatch and refuse instead of proceeding on the wrong record',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+
+    // The fresh competitor's record must be RESTORED to the lock path — it
+    // must not be lost just because acquire() grabbed the wrong file off
+    // the path.
+    const onDisk = JSON.parse(readFileSync(targetLockPath, 'utf8'));
+    expect(onDisk.holder_pid).toBe(FRESH_COMPETITOR_RECORD.holder_pid);
+    expect(onDisk.hostname).toBe(FRESH_COMPETITOR_RECORD.hostname);
+
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  });
+});
+
+describe('TASK-090 AC2 — corrupt-reclaim gets the same content-checked guard', () => {
+  it('acquire_restores_and_fails_closed_when_a_fresh_competitor_record_is_renamed_away_during_corrupt_reclaim', async () => {
+    vi.resetModules();
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-content-check-corrupt-reclaim'));
+    const targetLockPath = lockFilePath(repoDir);
+
+    // Corrupt (unparseable) content, backdated past the staleness window —
+    // takes acquire() into the stale-corrupt-lock reclaim branch.
+    writeFileSync(targetLockPath, '{not valid json', 'utf8');
+    const staleAt = new Date(Date.now() - 10 * 60 * 1000);
+    utimesSync(targetLockPath, staleAt, staleAt);
+
+    const FRESH_COMPETITOR_RECORD = {
+      holder_pid: 77777,
+      hostname: 'fresh-competitor-host-2',
+      heartbeat_at: new Date().toISOString(),
+    };
+
+    let injected = false;
+    vi.doMock('node:fs', async (importOriginal) => {
+      const real = await importOriginal();
+      return {
+        ...real,
+        renameSync: (src, dest) => {
+          if (!injected && String(src) === targetLockPath) {
+            injected = true;
+            // A fresh competitor re-creates a live lock at this path in the
+            // gap between acquire()'s corrupt-staleness read and this
+            // rename (only reachable once the impl phase reclaims corrupt
+            // locks via the same rename-based CAS as stale foreign locks).
+            real.writeFileSync(
+              targetLockPath,
+              JSON.stringify(FRESH_COMPETITOR_RECORD, null, 2) + '\n',
+              'utf8',
+            );
+          }
+          return real.renameSync(src, dest);
+        },
+      };
+    });
+
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    let caught;
+    try {
+      await acquire({
+        repoRoot: repoDir,
+        pid: MY_PID,
+        hostname: MY_HOST,
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(
+      caught,
+      'corrupt-reclaim must detect the content mismatch and refuse rather than destroying a fresh competitor lock',
+    ).toBeDefined();
+    expect(caught.code).toBe('E_LOCK_HELD');
+
+    const onDisk = JSON.parse(readFileSync(targetLockPath, 'utf8'));
+    expect(onDisk.holder_pid).toBe(FRESH_COMPETITOR_RECORD.holder_pid);
+    expect(onDisk.hostname).toBe(FRESH_COMPETITOR_RECORD.hostname);
+
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  });
+});
+
+describe('TASK-090 AC4 — stale claim files are swept opportunistically during acquire()', () => {
+  it('sweep_reaps_stale_claim_files_but_leaves_fresh_ones_untouched', async () => {
+    const { acquire } = await import(SESSION_LOCK_URL);
+
+    const repoDir = makeStateDir(makeTmpDir('af-lock-claim-sweep'));
+    const stateDir = join(repoDir, 'state');
+
+    const staleClaimPath = join(stateDir, '.lock.claim.12345-deadbeef01');
+    const freshClaimPath = join(stateDir, '.lock.claim.67890-cafef00d02');
+
+    writeFileSync(staleClaimPath, '{"holder_pid":12345}', 'utf8');
+    const staleAt = new Date(Date.now() - 10 * 60 * 1000); // 10 min ago — beyond default 5-min window
+    utimesSync(staleClaimPath, staleAt, staleAt);
+
+    writeFileSync(freshClaimPath, '{"holder_pid":67890}', 'utf8');
+    // fresh mtime (just written) — must survive the sweep.
+
+    // No pre-existing lock — acquire() takes the first-acquisition branch,
+    // but the sweep must run regardless of which branch acquire() takes.
+    const result = await acquire({
+      repoRoot: repoDir,
+      now: () => BASE_TIME,
+      pid: MY_PID,
+      hostname: MY_HOST,
+    });
+
+    expect(result.acquired).toBe(true);
+    expect(existsSync(staleClaimPath), 'stale claim file must be reaped').toBe(false);
+    expect(existsSync(freshClaimPath), 'fresh claim file must survive the sweep').toBe(true);
+  });
+});
+
 describe('TASK-085 AC3 — two concurrent child processes race acquire(); exactly one wins each round', () => {
   it('race_two_child_processes_exactly_one_winner_per_round', async () => {
     const ROUNDS = 15;
