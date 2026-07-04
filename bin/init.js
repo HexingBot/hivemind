@@ -784,8 +784,15 @@ export async function runInit({
       repoRoot,
       devStack: projectAnswers.dev_stack,
     });
+    // Review rider (LOW-2): a dangling ": " separator with nothing after it
+    // when changed.length is 0 (e.g. an idempotent re-apply, or every target
+    // skipped as malformed) reads oddly on a clean terminal — omit the
+    // colon-and-list suffix entirely when there is nothing to list.
     // eslint-disable-next-line no-console
-    console.log(`--apply-permissions: updated ${changed.length} file(s): ${changed.join(', ')}`);
+    console.log(
+      `--apply-permissions: updated ${changed.length} file(s)` +
+      (changed.length > 0 ? `: ${changed.join(', ')}` : '.'),
+    );
     return { state: 'applied_permissions', projectMdPath, sessionId: null };
   }
 

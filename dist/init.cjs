@@ -10520,7 +10520,9 @@ async function runInit({
       repoRoot,
       devStack: projectAnswers.dev_stack
     });
-    console.log(`--apply-permissions: updated ${changed.length} file(s): ${changed.join(", ")}`);
+    console.log(
+      `--apply-permissions: updated ${changed.length} file(s)` + (changed.length > 0 ? `: ${changed.join(", ")}` : ".")
+    );
     return { state: "applied_permissions", projectMdPath, sessionId: null };
   }
   const explicitConsent = parsed.claudeMdConsent || Boolean(answers && answers.claude_md_consent === true);
