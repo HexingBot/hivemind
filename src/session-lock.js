@@ -437,11 +437,34 @@ export async function acquire({
 
   if (existing !== null) {
     if (isSameHolder(existing, holder, myPid, myHost)) {
-      // Idempotent re-acquire: bump heartbeat and succeed. TASK-085 review
-      // LOW-2 — verify-after-write kept as belt-and-braces symmetry with the
-      // stale-steal branch below (a same-holder re-acquire has no realistic
-      // competing writer, but the check is free and consistent).
-      await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
+      // Idempotent re-acquire: bump heartbeat and succeed.
+      //
+      // TASK-094 AC3 — content-checked re-acquire write, reusing the
+      // TASK-090 CAS primitive (stealAwayContentChecked). Previously this
+      // branch wrote the bumped heartbeat via the unconditional tmp+rename
+      // writeLock(), which — like renameSync anywhere else in this module —
+      // has no identity check of what it replaces. A holder descheduled
+      // between the rawExisting read above and this write, whose lock has
+      // since gone stale and been stolen by another party, would silently
+      // clobber the stealer's fresh record with a stale heartbeat bump on
+      // wake. DETECTION-NOT-PREVENTION, same honesty standard as the
+      // foreign-lock steal below: the content check narrows the window to
+      // read-to-rename and turns a silent clobber into a detected,
+      // fail-closed E_LOCK_HELD (with the stealer's record restored
+      // best-effort) — it cannot eliminate the window outright without
+      // filesystem-level CAS.
+      const claimPath = stealAwayContentChecked(repoRoot, myPid, rawExisting);
+      try {
+        writeLockExclusive(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
+      } finally {
+        try { unlinkSync(claimPath); } catch { /* best-effort cleanup — the claim is dead either way */ }
+      }
+
+      // Verify-after-write, kept as belt-and-braces (TASK-085 review LOW-2):
+      // a legitimate competitor can no longer land here undetected (the
+      // content check above already rules out the read-to-rename gap), but
+      // this still catches a rogue direct mutation of the just-written
+      // record.
       const afterRebump = readLock(repoRoot);
       if (!isSameHolder(afterRebump, holder, myPid, myHost)) {
         throw makeErr(
@@ -643,6 +666,26 @@ export async function renew({
   if (!isSameHolder(existing, holder, myPid, myHost)) return false;
 
   // We are the holder — bump heartbeat.
+  //
+  // TASK-094 AC2 — this unconditional tmp+rename write carries the SAME
+  // path-vs-inode residue TASK-090 closed on the steal/reclaim paths and
+  // TASK-094 closed on release() and the same-holder re-acquire branch
+  // above: a holder descheduled between the readLock() above and this
+  // write, whose lock has since gone stale and been stolen by another
+  // party, would silently clobber the stealer's fresh record with a stale
+  // heartbeat bump on wake.
+  //
+  // ACCEPTED, undetected residue — left unguarded by design (document-only,
+  // per the "guard where near-free, honest comment where disproportionate"
+  // standard): renew() runs on the holder's own heartbeat cadence, typically
+  // every few seconds for the life of a session, so wrapping every tick in
+  // the CAS rename+read+unlink used above would multiply claim-file churn on
+  // a hot path to shrink a window that only opens once the LOCAL holder has
+  // already failed to renew in time for a full staleness period — by which
+  // point its own lock is already legitimately gone. This is an honest
+  // trade-off, not a claim that the window is closed: on plain fs there is
+  // no way to prevent it, only detect it, and here we choose not to pay the
+  // detection cost on every tick.
   await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
   return true;
 }
@@ -663,12 +706,17 @@ export async function renew({
 export async function release({ repoRoot, pid, hostname, holder } = {}) {
   if (!repoRoot) throw makeErr('E_LOCK_ARGS', 'release: repoRoot is required');
 
-  const p = lockFilePath(repoRoot);
-  if (!existsSync(p)) return; // Absent — idempotent success.
+  // TASK-094 AC1 — capture raw bytes so the delete below can be
+  // content-checked against exactly what we observed here, closing the
+  // same path-vs-inode residue TASK-090 closed on the steal/reclaim paths:
+  // a holder descheduled between this read and the unlink that used to
+  // follow it, whose lock has since gone stale and been stolen, must not
+  // delete the stealer's fresh record.
+  const rawExisting = readLockRaw(repoRoot);
+  if (rawExisting === null) return; // Absent — idempotent success.
 
-  // Read who holds the lock before deciding whether to delete.
-  const existing = readLock(repoRoot);
-  if (existing === null) return; // Absent or corrupt — treat as already gone.
+  const existing = tryParseLock(rawExisting);
+  if (existing === null) return; // Corrupt — treat as already gone.
 
   const myPid = pid ?? process.pid;
   const myHost = hostname ?? os.hostname();
@@ -676,8 +724,26 @@ export async function release({ repoRoot, pid, hostname, holder } = {}) {
   // Foreign lock — do NOT delete it.
   if (!isSameHolder(existing, holder, myPid, myHost)) return;
 
+  // Content-checked delete, reusing the TASK-090 CAS primitive
+  // (stealAwayContentChecked): rename the record we're about to delete OUT
+  // of the lock path first, and verify its bytes still match rawExisting
+  // before discarding it for good. DETECTION-NOT-PREVENTION, same honesty
+  // standard as the steal path: the read-to-rename gap cannot be eliminated
+  // on plain fs, only shrunk and detected. A mismatch here means our lock
+  // went stale and was stolen in that gap; stealAwayContentChecked's
+  // mismatch handling restores the stealer's fresh record (best-effort)
+  // rather than losing it, and this release() call becomes a no-op instead
+  // of destroying a lock we no longer hold.
+  let claimPath;
   try {
-    unlinkSync(p);
+    claimPath = stealAwayContentChecked(repoRoot, myPid, rawExisting);
+  } catch (err) {
+    if (err && err.code === 'E_LOCK_HELD') return; // Detected a takeover (or the lock is already gone) — leave it alone.
+    throw err;
+  }
+
+  try {
+    unlinkSync(claimPath);
   } catch (err) {
     // On Windows, EBUSY or EPERM during unlink can happen transiently.
     // Since this is an advisory lock, we swallow the error and let the
