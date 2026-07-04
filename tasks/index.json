@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T18:10:56.765Z",
+  "generated_at": "2026-07-04T21:44:54.138Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -538,7 +538,7 @@
     {
       "key": "TASK-092",
       "title": "bundle: shared readBundleSessionOrThrow helper — fix raw-ENOENT twins in writeLoopCheckpoint + setMode",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "low"
     },
     {
