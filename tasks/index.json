@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T11:43:12.826Z",
+  "generated_at": "2026-07-04T12:01:12.626Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -442,7 +442,7 @@
     {
       "key": "TASK-076",
       "title": "agility R1: single developer spawn for tdd tier with two-commit discipline",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {

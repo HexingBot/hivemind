@@ -9,7 +9,7 @@
     "CLAUDE.md workflow (step 4, tdd bullet) updated consistently with the new protocol.",
     "All existing specs green (any spec asserting the old two-spawn prose is updated with the feature); skill parity gate green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "agility",
@@ -17,11 +17,30 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "a45808cbc9d0cc8fc60fd43b434da75208868deb",
+    "5f82d3bda8e6241a779fd4ab63435e5f74c1d8ca"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T11:46:31.802Z",
+      "body": "PLAN (tier=uat-only, ticket-carried, confirmed): process-doc change only — rewrites the tdd developer-spawn protocol across developer.md/reviewer.md/SKILL.md parity copies + CLAUDE.md; no source logic. Single IMPL-mode developer spawn, no new specs (AC5 permits updating existing specs asserting the old two-spawn prose). UAT delegated to orchestrator (loop_auth). Loop iteration 4/11."
+    },
+    {
+      "author": "uat",
+      "at": "2026-07-04T11:56:27.318Z",
+      "body": "UAT (delegated to orchestrator via loop_auth.uat_delegated_to_orchestrator; each step verified by Orchestrator at the human's request): 1. AC1 developer.md single-spawn two-commit tdd protocol, dual TEST/IMPL removed — expect new protocol prose, parity byte-identical. Observed: 'spawned **once** per ticket' + two-commit discipline at agents/developer.md:10,22,31,85; sha256 identical with .claude copy. PASS — verified by Orchestrator. 2. AC2 SKILL.md Two-phase section replaced by single-spawn two-commit protocol incl. reviewer contract — expect both copies byte-identical. Observed: new section 'Single developer spawn, two-commit discipline (tdd tier)' with red-run evidence + commit-order + re-run-against-impl-parent contract; old protocol referenced only as retired; sha256 identical. PASS — verified by Orchestrator. 3. AC3 reviewer.md checks commit order + red-run evidence for tdd — Observed: agents/reviewer.md:25 (missing red-run or wrong order = HIGH; may re-run vs impl parent); parity identical. PASS — verified by Orchestrator. 4. AC4 CLAUDE.md step 4 tdd bullet consistent — Observed: CLAUDE.md:45 single-spawn two-commit wording, tests-first invariant unchanged. PASS — verified by Orchestrator. 5. AC5 specs green + parity gate — Observed: targeted tests/orchestrator-routing-skill.spec.js + tests/agents-parity.spec.js 14/14; full fast tier 47 files, 532 passed/2 skipped; TASK-086 doc-lock literals intact. PASS — verified by Orchestrator. OVERALL: PASS (5/5)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:01:12.626Z",
+      "body": "CLOSED done (loop iteration 4/11, auto_close_on_green_review). uat-only tier satisfied: UAT 5/5 PASS (delegated, orchestrator-verified) + fresh-context review APPROVE (0 HIGH / 0 MEDIUM / 1 LOW / 1 NIT). | SHIPPED: tdd tier now uses a SINGLE developer spawn with two-commit discipline (failing tests -> captured red run -> test: commit -> implement -> gate -> impl commit) across developer.md + reviewer.md + orchestrator-routing SKILL.md (all 3 parity pairs blob-identical: 812951f/036c0ce/0e3c6a4) + CLAUDE.md step-4 bullet + model-assignment note. Reviewer contract: test: commit strictly precedes impl commit + red-run evidence in hand-off (either absence = HIGH), optional re-run vs impl parent. Tests-first invariant unchanged. Old two-spawn protocol survives only as a labeled retired reference. Lock spec renamed documents_tdd_single_spawn_two_commit_discipline — reviewer independently proved non-vacuous (all 4 assertions fail against pre-ticket prose); developer ran an honest in-tree red-green plant (restored old SKILL.md, red for the right reason, never committed red). Commits a45808c (docs) + 5f82d3b (lock). | GATES: targeted 23/23 (reviewer) / 34/34 (developer incl. routing spec), fast tier 47 files 532 passed/2 skipped. Affected-e2e: none (doc-only). TASK-086 fence literals verified untouched (6/6 counts identical before/after). | CARRIED INTO TASK-077 (same docs, next in chain): LOW — stale IMPL-mode/phase vocabulary dangles in the non-tdd bullets (CLAUDE.md:46-47, SKILL.md:128-132/:298-299) now that developer.md defines no modes; sweep to mode-free wording. NIT — SKILL.md:288-289 abbreviates the tdd gate vs developer.md step 4 (binding doc includes npm test); align the parenthetical."
+    }
+  ],
   "created_at": "2026-07-01T21:32:14.497Z",
-  "updated_at": "2026-07-01T21:32:14.497Z",
+  "updated_at": "2026-07-04T12:01:12.626Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }
