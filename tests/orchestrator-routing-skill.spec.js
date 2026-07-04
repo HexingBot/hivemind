@@ -107,6 +107,28 @@ describe('AC3 — backstop skill is mirrored into .claude/skills (parity)', () =
   });
 });
 
+// TASK-091 — the developer Bash allowlist (--apply-permissions) is the actual
+// enforcement boundary complementing the TASK-086 ticket-text fencing above:
+// fencing is a prompt-level mitigation, the allowlist scopes the real sink
+// (Bash). Byte-parity between the two SKILL.md copies is already covered by
+// `plugin_and_dev_skill_md_are_byte_identical` above, so only the plugin copy
+// is asserted here (same convention as the TASK-086 block below).
+describe('TASK-091 — Developer Bash allowlist documented as the enforcement boundary', () => {
+  it('skill_names_apply_permissions_as_the_enforcement_boundary', () => {
+    const text = readFileSync(PLUGIN_SKILL, 'utf8');
+    expect(text.includes('--apply-permissions')).toBe(true);
+    expect(text.includes('enforcement boundary')).toBe(true);
+  });
+
+  it('skill_states_the_honest_safety_caveat_not_a_sandbox', () => {
+    const text = readFileSync(PLUGIN_SKILL, 'utf8');
+    // Must not oversell: a scoped Bash(pattern) allowlist is prefix-based, not
+    // a sandbox, and Bash(node:*) still runs arbitrary JS.
+    expect(/not a sandbox/i.test(text)).toBe(true);
+    expect(text.includes('Bash(node:*)')).toBe(true);
+  });
+});
+
 // TASK-086 — deep-review S6: data-fencing for ticket-derived text in
 // developer/reviewer briefings. The per-ticket loop interpolates ticket
 // title/description/ACs/comments into Developer (unrestricted Bash) and
