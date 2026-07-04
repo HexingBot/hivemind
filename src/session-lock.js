@@ -165,10 +165,15 @@ export async function acquire({
 
     // Different holder — check freshness.
     if (isFresh(existing.heartbeat_at, nowIso, stalenessMs)) {
-      // Fresh foreign lock: refuse.
+      // Fresh foreign lock: refuse. When the record carries a holder_id,
+      // surface it alongside pid/hostname (still kept for diagnostics);
+      // records without holder_id keep the original message shape.
+      const holderIdPart = existing.holder_id !== undefined
+        ? `holder ${existing.holder_id} (pid ${existing.holder_pid} on ${existing.hostname})`
+        : `pid ${existing.holder_pid} on ${existing.hostname}`;
       const err = makeErr(
         'E_LOCK_HELD',
-        `Lock is held by pid ${existing.holder_pid} on ${existing.hostname} ` +
+        `Lock is held by ${holderIdPart} ` +
         `(heartbeat: ${existing.heartbeat_at}). ` +
         'Wait for it to release or expire.',
       );
@@ -191,8 +196,10 @@ export async function acquire({
  * NO-OP when:
  *   - The lock file is absent (caller never acquired; minting a phantom lock
  *     would be a bug).
- *   - The lock is held by a different pid/hostname (keeping a foreign lock alive
- *     on the caller's clock is the exact corruption this module prevents).
+ *   - The lock is held by a different holder identity (keeping a foreign lock
+ *     alive on the caller's clock is the exact corruption this module
+ *     prevents). Identity is decided by holder_id when either side supplies
+ *     one, otherwise by pid+hostname — see isSameHolder().
  *
  * @param {{
  *   repoRoot: string,
