@@ -146,6 +146,12 @@
       "label": "Data-fencing of ticket-derived text in agent briefings (deep-review TASK-039 standard)"
     },
     {
+      "id": "TASK-087",
+      "type": "task",
+      "ref": "tasks/TASK-087.json",
+      "label": "task-board: 413 body-cap regression lock + KEY_RE traversal spec + stale mode.md fix"
+    },
+    {
       "id": "decision-20260612-deep-workflows",
       "type": "decision",
       "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json#2026-06-12T17:15:00Z",
@@ -448,6 +454,11 @@
       "from": "TASK-086",
       "to": "2026-07-02T16:41:33.605Z",
       "relation": "produced-by"
+    },
+    {
+      "from": "TASK-087",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
     },
     {
       "from": "ke-claude-headless-bridge",

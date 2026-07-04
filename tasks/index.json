@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T12:33:28.628Z",
+  "generated_at": "2026-07-04T12:47:25.102Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -508,7 +508,7 @@
     {
       "key": "TASK-087",
       "title": "task-board: regression lock for the 64KiB body-cap (413) + traversal spec + stale mode.md line",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {

@@ -7,7 +7,7 @@
     "One spec: POST /api/tasks/..%2f..%2fetc/status (traversal-shaped key) returns 404 via the KEY_RE guard.",
     "commands/mode.md no longer references GET /api/session or the bounded projection; mode remains documented via the session bundle field."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "console",
@@ -18,11 +18,30 @@
   "depends_on": [
     "TASK-074"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "5deede859d10853401d0418d71fd3f4ab51434cc",
+    "e155c22dfcd08cc7c17568288652662943306a30"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:34:36.239Z",
+      "body": "PLAN (tier=tests-after, ticket-carried, confirmed): regression locks for existing task-board guards (413 body-cap, traversal 404) + mode.md doc fix — behavior provable by running the code, low edge-risk; the locks ARE the deliverable. Single developer spawn per R1. Red-green plant mandatory for both new specs (guard exists in source — prove each spec fails when its guard is disabled in-memory/scratch). CARRIED (LOW-1 from TASK-078 review, doc-touching ticket): add the verify-each-AC-against-the-diff clause to SKILL.md:343's light-protocol summary, both copies, matching reviewer.md:44. Loop iteration 7/11."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:43:39.743Z",
+      "body": "PRE-REVIEW verification (orchestrator): affected e2e 2 files 16/16 (tests/e2e/task-board.spec.js + tests/e2e/create-task-routes.spec.js); doc-locks 35/35 (agility 15 + skill-v2 20); fast tier 547/2. mode.md stale refs gone; carried SKILL.md AC-verify clause landed (both copies identical fd0e15b0). UAT step: not required — tests-after ACs are code-provable (413/404 responses + doc content), no human-observable runtime surface. REVIEW DEPTH computed per rubric: LIGHT — 94 changed lines (79+15 < hard 150) and zero mandatory-FULL surfaces (diff touches specs + docs only; src/task-board.js/session-lock/close-guard unmodified). First light review of the R2 era; one-way escalation available to the reviewer."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T12:47:25.102Z",
+      "body": "CLOSED done (loop iteration 7/11, auto_close_on_green_review). tests-after tier satisfied: regression locks landed + proven, fresh-context review APPROVE (0 HIGH / 0 MEDIUM / 1 LOW). No UAT step — ACs code-provable (rationale on ticket). | REVIEW DEPTH (recorded per R2 protocol): LIGHT — first light review of the R2 era. Rubric inputs: 94 changed lines (79+15 < hard 150); touched surfaces none mandatory-FULL (specs under tests/e2e/ + docs only; src/task-board.js, session-lock, close-guard, schema, dist, test infra all unmodified). Reviewer did NOT escalate — nothing raised suspicion. | SHIPPED (commits 5deede8 test + e155c22 docs): 413 body-cap lock (create-task-routes.spec.js:221, 66560-byte raw body + no-partial-write countTaskFiles assertion) restoring coverage lost with the TASK-074 console specs; traversal-key 404 lock (task-board.spec.js:262) with the invalid-status disambiguation — developer identified a naive 404 assertion would be VACUOUS (KEY_RE 404 and unknown-key 404 share response shape) and designed the spec so guard-absent yields 400 via the store's status-enum-before-key-lookup order (task-store.js:408 vs :417) — reviewer independently confirmed the handler-order reasoning against source. Both plants run honestly with PREDICTED failure modes (cap->64MiB: 400-not-413; KEY_RE->/^.*$/: 400-not-404), fully reverted (src diff empty). mode.md stale GET /api/session ref dropped (no mirror — Glob-verified). CARRIED LOW-1 from 078: SKILL.md light-summary AC-verify clause, both copies fd0e15b0. | GATES: affected e2e 16/16 (10+6), fast tier 547/2/0, doc-locks 35/35. Tier-audit: tests-after sound. Five-class sweep clean (fresh mkdtemp per test — no cross-spec state; both sensors proven non-vacuous; no dist owed; parity holds; no markers). | FOLLOW-UP (tracked, non-blocking): LOW-1 — task-board.spec.js:256-258 comment points to the ephemeral hand-off document; the reasoning is already in the comment — drop the dead sentence on any future touch of this file."
+    }
+  ],
   "created_at": "2026-07-02T16:51:05.383Z",
-  "updated_at": "2026-07-02T16:51:05.383Z",
+  "updated_at": "2026-07-04T12:47:25.102Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
