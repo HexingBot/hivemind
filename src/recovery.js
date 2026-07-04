@@ -86,10 +86,17 @@ export function sweepAndRecover({ bundleDir }) {
     }
   }
 
-  // Clean up any remaining tmps.
+  // Clean up any remaining tmps (age-gated for symmetry with the branch
+  // above — TASK-085 review LOW-1: a fresh LOSING candidate might still be
+  // another writer's in-flight prepare, not a genuine loser of the
+  // promotion race, so it is left alone until it ages past the same
+  // TMP_SWEEP_MIN_AGE_MS threshold. The newest candidate is always promoted
+  // regardless of its own age — that decision is unaffected by this gate.
+  const nowMs2 = Date.now();
   for (const c of ranked) {
     if (promoted && c.path === promoted.path) continue;
     if (!existsSync(c.path)) continue;
+    if (nowMs2 - safeMtime(c.path) < TMP_SWEEP_MIN_AGE_MS) continue;
     try {
       unlinkSync(c.path);
       actions.push({ type: 'deleted_orphan_tmp', path: c.path });
