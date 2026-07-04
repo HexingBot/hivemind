@@ -8,7 +8,7 @@
     "commands/loop.md + orchestrator-routing SKILL.md (parity copies byte-identical) document the recovery rule at loop start using the helper; counters restored on resume so maxIterations and the consolidation gate survive restarts.",
     "USE-CASES.md gains a Drive-a-goal-autonomously entry with an e2e spec covering the deterministic seams: checkpoint write, fresh-process read, selectNextTicket over the restored state."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "high",
   "labels": [
     "deep-review",
@@ -17,11 +17,23 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "b2e1676",
+    "f5f1863",
+    "a0860fe",
+    "45541de",
+    "bcb3596"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T01:47:27.388Z",
+      "body": "CLOSED done. tdd: TEST b2e1676 (29 RED, module-not-found) -> IMPL f5f1863 (src/loop-checkpoint.js: frozen LOOP_PHASES identity map onto the workflow_step enum, writeLoopCheckpoint validate-before-IO atomic + field-preserving, resumePoint PURE none/reset/resume with never-invisible guarantee + verbatim counter restore) -> docs a0860fe. Fresh-context review REQUEST-CHANGES (1H/2M/3L): HIGH = AC1 schema-description half undelivered; MEDIUMs = checkpoint-before-transition ordering undocumented (re-opened the S2 window in miniature) + counter loss on the none path. Fixed 45541de+bcb3596 (noneWithCounters seeds counters verbatim at both none sites w/ concrete-value specs; ordering-is-load-bearing paragraph in loop.md + both SKILL.md copies; schema loop_state.description names all five fields; LOOP_PHASES frozen; permissive assertion pinned to reset; 2 redundant specs removed w/ surviving twins verified). Cold re-verify APPROVE: all six findings resolved, return-shape regression sweep clean (no code consumer of resumePoint outside the module), full gate 1051 passed/4 skipped. NOTE: this session resumed the review step after the prior session crashed post-docs-commit — the crash-resume ticket was itself crash-resumed. Commits LOCAL on main, NOT pushed."
+    }
+  ],
   "created_at": "2026-07-02T16:40:42.003Z",
-  "updated_at": "2026-07-02T22:08:07.500Z",
+  "updated_at": "2026-07-04T01:47:27.470Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

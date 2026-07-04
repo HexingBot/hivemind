@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-02T22:08:07.500Z",
+  "generated_at": "2026-07-04T01:47:27.601Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -412,7 +412,7 @@
     {
       "key": "TASK-071",
       "title": "loop checkpoint writes must map workflow phases to valid workflow_step enum values",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -490,7 +490,7 @@
     {
       "key": "TASK-084",
       "title": "deep-review S2: mid-ticket crash-resume for the loop + autonomous-drive use case e2e",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {

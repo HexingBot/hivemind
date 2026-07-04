@@ -8,7 +8,7 @@
     "A regression lock asserts an invalid phase string is mapped/rejected rather than written verbatim (red-green proven).",
     "orchestrator-routing skill documents the valid enum + the mapping for manual checkpoints; byte-identical parity copy."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "beta",
@@ -20,9 +20,15 @@
   "depends_on": [],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T01:47:27.541Z",
+      "body": "CLOSED done — SUBSUMED by TASK-084 (reviewer-verified per-AC, cold re-verified): AC1 exported mapping = frozen LOOP_PHASES + SKILL.md table; AC2 enum-only writes = writeLoopCheckpoint validate-before-IO + on-disk schema-validity e2e; AC3 invalid-string regression lock = red-proven rejection specs at b2e1676; AC4 skill docs + byte-identical parity = verified via cmp/hash-object. Accepted design note: TASK-084 canonicalizes phase names to the enum itself and REJECTS unknown strings rather than translating ad-hoc aliases (test-writing/developer-tests etc.) — strictly stronger than this ticket asked for; the enum values are the canonical loop vocabulary. No separate implementation needed. Linked commits are TASK-084 range c07a995..bcb3596."
+    }
+  ],
   "created_at": "2026-06-17T15:25:31.618Z",
-  "updated_at": "2026-06-17T15:25:31.618Z",
+  "updated_at": "2026-07-04T01:47:27.601Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
