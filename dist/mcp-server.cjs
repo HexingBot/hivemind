@@ -22163,6 +22163,7 @@ async function readAllTasks(repoRoot) {
   const out = [];
   for (const name of taskFiles) {
     const raw = await (0, import_promises.readFile)((0, import_node_path2.join)(dir, name), "utf8");
+    if (raw.length === 0) continue;
     out.push(JSON.parse(raw));
   }
   return out;
@@ -22243,6 +22244,16 @@ async function sweepTasksTmpFiles({ repoRoot }) {
       try {
         const { mtimeMs } = (0, import_node_fs2.statSync)(p);
         if (now - mtimeMs < TMP_SWEEP_MIN_AGE_MS) continue;
+        await (0, import_promises.unlink)(p);
+        removed.push(name);
+      } catch {
+      }
+    } else if (TASK_FILENAME_RE.test(name)) {
+      const p = (0, import_node_path2.join)(dir, name);
+      try {
+        const st = (0, import_node_fs2.statSync)(p);
+        if (st.size !== 0) continue;
+        if (now - st.mtimeMs < TMP_SWEEP_MIN_AGE_MS) continue;
         await (0, import_promises.unlink)(p);
         removed.push(name);
       } catch {
@@ -22465,6 +22476,8 @@ async function createTask({
   const allTasks = [...existing, task];
   (0, import_node_fs2.mkdirSync)(tasksDir(repoRoot), { recursive: true });
   const target = taskFilePath(repoRoot, key);
+  const taskBytes = JSON.stringify(task, null, 2) + "\n";
+  const payload = Buffer.from(taskBytes, "utf8");
   let reserveFd;
   try {
     reserveFd = (0, import_node_fs2.openSync)(target, import_node_fs2.constants.O_CREAT | import_node_fs2.constants.O_EXCL | import_node_fs2.constants.O_WRONLY, 384);
@@ -22476,18 +22489,24 @@ async function createTask({
     }
     throw err;
   }
-  (0, import_node_fs2.closeSync)(reserveFd);
-  const taskBytes = JSON.stringify(task, null, 2) + "\n";
-  await atomicWriteFiles([
-    { target, bytes: taskBytes },
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
-  ]);
+  try {
+    let written = 0;
+    while (written < payload.length) {
+      written += (0, import_node_fs2.writeSync)(reserveFd, payload, written, payload.length - written);
+    }
+    (0, import_node_fs2.fsyncSync)(reserveFd);
+  } finally {
+    (0, import_node_fs2.closeSync)(reserveFd);
+  }
   const onDisk = (0, import_node_fs2.readFileSync)(target, "utf8");
   if (onDisk !== taskBytes) {
     throw new KeyCollisionError(
       `createTask: verify-after-write detected a competing writer's payload at ${target} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
     );
   }
+  await atomicWriteFiles([
+    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+  ]);
   return { key, path: target };
 }
 
