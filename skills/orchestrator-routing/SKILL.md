@@ -125,20 +125,22 @@ same workflow applies; only the I/O surface changes.
      them as a `test:` commit strictly before any implementation commit, then
      implement until all tests are green, run the per-ticket gate, and commit the
      implementation separately.
-   - `tests-after` — Spawn the Developer in a single IMPL phase: implement first,
-     then add a minimal set of regression locks before hand-off. No TEST-mode phase.
-     When the ACs describe human-observable behavior, the UAT step is also mandatory
-     — run it after the regression locks land, exactly as for `uat-only`.
-   - `uat-only` — Spawn the Developer in IMPL mode only; no new specs. After
+   - `tests-after` — Spawn the Developer in a single spawn: implement first, then
+     add a minimal set of regression locks before hand-off. When the ACs describe
+     human-observable behavior, the UAT step is also mandatory — run it after the
+     regression locks land, exactly as for `uat-only`.
+   - `uat-only` — Spawn the Developer for implementation only; no new specs. After
      implementation, run the UAT step below.
-5. **Spawn the Reviewer.** Give it the diff range and the original acceptance
-   criteria. Block on any HIGH-severity finding — loop back to the Developer with
-   the findings.
+5. **Spawn the Reviewer.** Give it the diff range, the original acceptance criteria,
+   and the computed `review_depth` (see "Review depth rubric" below) together with
+   the rubric inputs (changed-line count, touched surfaces) that produced it. Block
+   on any HIGH-severity finding — loop back to the Developer with the findings.
 6. **Update ticket.** On a clean review, edit `tasks/<KEY>.json` to set
-   `status: done`, append a summary comment, append commit SHAs to `linked_commits`
-   and any PR URL to `linked_prs`, refresh `updated_at`, then regenerate
-   `tasks/index.json`. Status transitions during the workflow (`todo → in_progress →
-   in_review → done`, or `→ blocked`) follow the same write pattern.
+   `status: done`, append a summary comment naming the review depth and its rubric
+   inputs, append commit SHAs to `linked_commits` and any PR URL to `linked_prs`,
+   refresh `updated_at`, then regenerate `tasks/index.json`. Status transitions
+   during the workflow (`todo → in_progress → in_review → done`, or `→ blocked`)
+   follow the same write pattern.
 7. **Close out the session.** See "Session close-out" above.
 
 ## Delegation protocol
@@ -283,8 +285,8 @@ keeps tests-first provable without a second spawn:
    **strictly before** any implementation commit. No implementation code lands
    without this preceding test commit.
 4. Developer implements until all tests pass and existing tests still pass.
-5. Developer runs the per-ticket gate (`npm run test:changed` plus named
-   affected e2e specs).
+5. Developer runs the per-ticket gate (`npm run test:changed` plus `npm test`
+   (fast tier) plus named affected e2e specs).
 6. Developer commits the implementation in a separate impl commit.
 
 **What the Reviewer verifies:** the `test:` commit strictly precedes the impl
@@ -296,8 +298,56 @@ findings were caught by fresh-context review, not by the TEST/IMPL spawn
 separation, and the reviewer remains the independent quality sensor.
 
 For `tests-after` and `uat-only` tickets the Developer is spawned in a **single
-IMPL phase** — implement first, add regression locks (tests-after) or no specs
+spawn** — implement first, add regression locks (tests-after) or no specs
 (uat-only), then optionally run UAT.
+
+## Review depth rubric (agility R2)
+
+Every diff used to get the same full-review treatment on the strongest model
+regardless of risk (agility review 2026-07-01, recommendation R2). The
+Orchestrator now computes a `review_depth` (`light` or `full`) from an
+objective rubric **before spawning the Reviewer**, states the chosen depth and
+the rubric inputs in the Reviewer spawn briefing, and records both in the
+ticket close comment. This is the same three-part obligation named in
+Workflow steps 5-6 above: (a) compute the depth from this rubric before
+spawning the Reviewer, (b) state the depth and its inputs in the spawn
+briefing, and (c) record the depth and its inputs in the close comment.
+
+**Inputs:** changed-line count (added + removed) and the touched-surface list
+(which of the mandatory-FULL surfaces below the diff touches, if any).
+
+| Depth | When |
+|---|---|
+| `light` | Changed lines are roughly under 150 (approximate, not a hard cutoff) AND the diff touches none of the mandatory-FULL surfaces below. |
+| `full` | Changed lines are roughly 150 or more, OR the diff touches any mandatory-FULL surface, OR core `tdd`-tier logic, OR the ticket is a release/milestone/publish gate. |
+
+**Mandatory-FULL surfaces** (any one forces `full` regardless of line count):
+schema (`tasks/schema.json`, state/bundle schemas), security surface, shared
+state (`state/`, the session bundle, locks), packaging/dist (`dist/*.cjs`,
+build config), test infrastructure (`vitest.config*.js`, `tests/helpers/`),
+core `tdd`-tier logic, and release/milestone/publish gates.
+
+**`light` protocol:** an AC-compliance check, a re-run of the scaled
+per-ticket gate (the same `test:changed`/`test:since` plus `npm test` plus
+named e2e specs the Developer ran), and a sweep of the five recurring
+HIGH-severity classes: unspecced path, vacuous sensor, stale dist, parity
+drift, calibration laundering. `full` runs the complete Reviewer process —
+every Process step, the calibration gate, and the observability/minimalism
+gate.
+
+**One-way escalation.** The Reviewer may upgrade `light` to `full` at any
+point on suspicion — a surprising diff, a sensor that looks vacuous, anything
+that doesn't smell right. The Reviewer may never downgrade `full` to `light`;
+only the Orchestrator's rubric computation produces a `light` depth.
+
+**Orthogonal to the tier gate (E2).** `review_depth` scales review *cost*;
+`verification_tier` governs whether tests exist at all, and is the
+highest-leverage knob in the policy — the only gate with no downstream sensor
+of its own. In unattended mode the Orchestrator both assigns the tier and
+benefits from a lighter one, grading its own homework without a verifier. The
+Reviewer's tier-audit (see `agents/reviewer.md`) closes that loop at prose
+cost and runs at **both** depths; `review_depth` never overrides or
+substitutes for it.
 
 ## UAT procedure (uat-only and tests-after tickets)
 
