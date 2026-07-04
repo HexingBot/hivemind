@@ -23,11 +23,13 @@ Present the goal interpretation to the human and ask for a `yes / start / go` co
 
 ### Step 1 — Acquire the session lock (TASK-061) and flip to loop mode
 
-Call `acquire()` from `src/session-lock.js` before any ticket work begins.
+Call `acquire()` from `src/session-lock.js` before any ticket work begins. In loop mode, pass a longer `stalenessMs` override (e.g. 30–60 min) so a slow ticket's heartbeat gap doesn't make the lock look abandoned to another session; outside loop mode the default 5-minute window is unchanged.
 
-- If `E_LOCK_HELD` is raised: read the error message for the holder's pid and hostname, surface it to the human, and STOP. Do not steal the lock.
+- If `E_LOCK_HELD` is raised: read the error message — it names the holder's `holder_id` (when the current holder supplied one) alongside its pid and hostname for diagnostics — surface it to the human, and STOP. Do not steal the lock.
 - If acquisition succeeds: record the lock in the session bundle so a crash-recovery path can inspect it.
 - **Immediately after a successful `acquire()`**, call `setMode({ repoRoot, mode: 'loop' })` from `src/operating-mode.js`. This records that the session is now autonomously driving, so downstream tooling reading the session bundle can observe it.
+
+**Renew cadence:** call `renew()` (from `src/session-lock.js`) at every phase boundary, not just once per ticket — after the ticket's `in_progress` transition, after each Developer subagent return, and after each Reviewer subagent return. This keeps the heartbeat fresh across the longest gaps in a ticket's lifecycle (a slow Developer or Reviewer turn) so the lock is never mistaken for stale mid-ticket. If `renew()` returns `false` (lock absent or foreign), re-acquire.
 
 ### Step 1.5 — Crash-resume check (TASK-084)
 
@@ -93,12 +95,15 @@ while NOT goalSatisfied(tasks, goal)
 
   // A ready ticket was found — run the standard per-ticket workflow:
   1. Transition ticket to in_progress (transitionStatus)
+     -> Renew the session lock (renew() from src/session-lock.js; if renew returns false, re-acquire)
   2. Spawn the Developer subagent (IMPL or TDD per verification_tier)
+     -> Renew the session lock
   3. Spawn the Reviewer subagent (fresh context, read-only)
      - On HIGH finding: loop back to Developer (max 2 retries); on third HIGH, surface and break
+     -> Renew the session lock
   4. [HARD-STOP GATE — see below before proceeding to close]
   5. Checkpoint the session bundle
-  6. Renew the session lock (renew() from src/session-lock.js; if renew returns false, re-acquire)
+  6. Renew the session lock (final renew before the next iteration's selection)
   consecutiveNoProgress = 0  // reset on any progress
   iteration += 1
 
@@ -289,7 +294,7 @@ These helpers are pure (no I/O, no side effects). The orchestrator passes the cu
 
 ## Notes
 
-- The lock (`state/.lock`) is advisory. If the orchestrator crashes without releasing, the lock expires after 5 minutes (default staleness window). The next session can then acquire it.
+- The lock (`state/.lock`) is advisory. If the orchestrator crashes without releasing, the lock expires after the staleness window — 5 minutes by default, or the longer `stalenessMs` override passed at `acquire()` time in loop mode (e.g. 30–60 min). The next session can then acquire it.
 - The loop drives the EXISTING per-ticket workflow. It does NOT reimplement the Developer, Reviewer, or UAT steps — it orchestrates them.
 - The session bundle is checkpointed after every ticket completes so a crash recovery can resume from the last completed ticket.
 - The loop respects `depends_on`: a ticket is not selected until all its dependencies are `done`.

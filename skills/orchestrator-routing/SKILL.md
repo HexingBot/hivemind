@@ -201,9 +201,15 @@ set). Full protocol is in `commands/loop.md`; the durable contract lives here.
 ### Single-active-session lock requirement
 
 The loop MUST acquire the TASK-061 advisory lock (`src/session-lock.js`) before
-driving any ticket, and renew it each iteration. If `acquire()` raises
-`E_LOCK_HELD`, the loop stops and surfaces the holder's identity to the human.
-The lock is released in a finally-style step on exit, pause, or any unhandled
+driving any ticket, passing a longer `stalenessMs` override in loop mode (e.g.
+30-60 min; default 5 min elsewhere) so a slow ticket doesn't make the lock look
+abandoned. Renew the lock at every phase boundary — after the ticket's
+`in_progress` transition, after each Developer subagent return, and after each
+Reviewer subagent return — not just once per iteration (see `commands/loop.md`
+Step 1/Step 2 for the exact cadence). If `acquire()` raises `E_LOCK_HELD`, the
+loop stops and surfaces the holder's identity to the human — the message names
+the current holder's `holder_id` (when supplied) alongside pid/hostname. The
+lock is released in a finally-style step on exit, pause, or any unhandled
 error. A held lock blocks other sessions.
 
 ### Operating-mode auto-flip (TASK-063)
