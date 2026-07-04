@@ -21,7 +21,10 @@
 //   Orchestrators that want lock protection import { acquire, renew, release }
 //   directly and call them around their session lifecycle operations.
 
-import { existsSync, readFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import {
+  existsSync, readFileSync, unlinkSync, mkdirSync,
+  openSync, writeSync, fsyncSync, closeSync, constants,
+} from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
 
@@ -69,13 +72,58 @@ function readLock(repoRoot) {
 }
 
 /**
- * Write a lock record atomically via tmp+rename.
+ * Write a lock record atomically via tmp+rename. Used for the two cases where
+ * a lock file ALREADY occupies the target path and we intend to overwrite it
+ * (idempotent same-holder re-acquire, and stealing a stale foreign lock).
  */
 async function writeLock(repoRoot, record) {
   const target = lockFilePath(repoRoot);
   // Ensure state/ dir exists (idempotent).
   mkdirSync(join(repoRoot, 'state'), { recursive: true });
   await atomicWriteFile(target, JSON.stringify(record, null, 2) + '\n');
+}
+
+/**
+ * TASK-085 AC1 — write a lock record via an OS-level exclusive create
+ * (O_CREAT|O_EXCL) directly against the real lock path, NOT the tmp+rename
+ * recipe. This is used ONLY for the "no lock" branch of acquire() (readLock()
+ * returned null — either the file is truly absent, or a file is present but
+ * unparseable). renameSync (used by writeLock/atomicWriteFile) unconditionally
+ * replaces whatever occupies the target with no existence/identity check, so
+ * it cannot fail closed against a pre-existing-but-corrupt file, and it gives
+ * two racing "first acquire" callers no way to detect that they collided.
+ * O_CREAT|O_EXCL, by contrast, fails with EEXIST whenever ANY file already
+ * occupies the path (regardless of its content) — so a corrupt leftover fails
+ * closed, and only one of two racing callers can ever win the create.
+ */
+function writeLockExclusive(repoRoot, record) {
+  const target = lockFilePath(repoRoot);
+  mkdirSync(join(repoRoot, 'state'), { recursive: true });
+  const payload = Buffer.from(JSON.stringify(record, null, 2) + '\n', 'utf8');
+
+  let fd;
+  try {
+    fd = openSync(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      throw makeErr(
+        'E_LOCK_HELD',
+        `Lock file already exists at ${target} — refusing to clobber a ` +
+        'pre-existing (possibly corrupt) lock via exclusive create. ' +
+        'Wait for it to release or expire.',
+      );
+    }
+    throw err;
+  }
+  try {
+    let written = 0;
+    while (written < payload.length) {
+      written += writeSync(fd, payload, written, payload.length - written);
+    }
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /**
@@ -180,11 +228,31 @@ export async function acquire({
       throw err;
     }
 
-    // Stale foreign lock: steal it (crashed-holder recovery).
+    // Stale foreign lock: steal it (crashed-holder recovery). TASK-085 AC2 —
+    // verify-after-write: two callers can both observe the same stale foreign
+    // lock and both write their own record via the tmp+rename recipe, which
+    // has no existence/identity check on the target. Re-read AFTER the write
+    // (i.e. after the rename lands) to catch a competitor whose write landed
+    // in the window between our rename and this read.
+    await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
+    const afterSteal = readLock(repoRoot);
+    if (!isSameHolder(afterSteal, holder, myPid, myHost)) {
+      throw makeErr(
+        'E_LOCK_HELD',
+        `Lock steal race detected at ${lockFilePath(repoRoot)}: a competing ` +
+        'writer\'s record is now persisted instead of ours. ' +
+        'Wait for it to release or expire.',
+      );
+    }
+    return { acquired: true };
   }
 
-  // No lock or stale lock: write our record.
-  await writeLock(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
+  // No lock at all (readLock() returned null: either the file is truly
+  // absent, or a file is present but unparseable). TASK-085 AC1 — decide via
+  // an OS-level exclusive create directly against the real lock path so a
+  // corrupt leftover fails closed instead of being silently clobbered, and so
+  // two racing FIRST acquires cannot both succeed (see writeLockExclusive).
+  writeLockExclusive(repoRoot, makeLockRecord(myPid, myHost, nowIso, holder));
 
   return { acquired: true };
 }
@@ -238,7 +306,8 @@ export async function renew({
 
 /**
  * Release the advisory lock. Holder-aware and idempotent:
- *   - Same holder (pid + hostname match) → deletes the lock file.
+ *   - Same holder (decided by isSameHolder — holder_id match when either side
+ *     carries one, otherwise pid + hostname match) → deletes the lock file.
  *   - Foreign lock present → NO-OP (do not delete a lock you don't hold).
  *   - Absent lock → NO-OP (idempotent, no throw).
  *
