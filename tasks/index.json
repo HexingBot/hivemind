@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T03:30:15.154Z",
+  "generated_at": "2026-07-04T11:43:12.826Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -502,7 +502,7 @@
     {
       "key": "TASK-086",
       "title": "deep-review S6: data-fencing for ticket-derived text in developer/reviewer briefings",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -528,6 +528,12 @@
       "title": "session-lock: content-checked CAS steal (path-vs-inode residue), claim-file sweep, comment accuracy",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-091",
+      "title": "developer Bash allowlist for unattended mode: PROJECT.md-derived, generated at init (--apply-permissions pattern)",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

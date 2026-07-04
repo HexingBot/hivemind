@@ -1,0 +1,27 @@
+{
+  "key": "TASK-091",
+  "title": "developer Bash allowlist for unattended mode: PROJECT.md-derived, generated at init (--apply-permissions pattern)",
+  "description": "FOLLOW-UP advised by the TASK-086 reviewer (mint-now, moderate-to-high): the TASK-086 fencing is a prompt-level mitigation only — the developer subagent retains unrestricted Bash, which is the actual sink for the ticket-text injection channel, and unattended mode (TASK-075) is exactly the regime where prompt-level mitigations alone are insufficient. The viability analysis is already done (TASK-086 SKILL.md note): a static allowlist cannot anticipate per-project stacks, but a PROJECT.md-derived allowlist generated at init — mirroring the --apply-models surgical-patch pattern and reviewer.md existing scoped Bash(...) frontmatter — is feasible. Scope: generate a scoped Bash allowlist for agents/developer.md (+ parity copies) from the project stack declared in PROJECT.md; re-appliable via a bin/init.js flag; unattended-mode docs reference it.",
+  "acceptance_criteria": [
+    "A generator derives a scoped Bash(...) tool allowlist for the developer agent from PROJECT.md stack fields (git/npm/node core always included; stack-specific runners added per declared stack), applied via surgical frontmatter patch to agents/developer.md and .claude/agents/developer.md (parity preserved).",
+    "A bin/init.js flag (e.g. --apply-permissions) re-applies it idempotently without touching other frontmatter or content, mirroring --apply-models semantics; invalid/unknown stack values rejected before any write.",
+    "The unattended-mode / loop docs state that the allowlist is the enforcement boundary complementing the TASK-086 fencing; orchestrator-routing SKILL.md parity copies stay byte-identical.",
+    "tdd: failing tests first for the generator mapping, the surgical patch, and the idempotent re-apply."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "security",
+    "unattended",
+    "deep-review"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-04T03:43:57.402Z",
+  "updated_at": "2026-07-04T03:43:57.402Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

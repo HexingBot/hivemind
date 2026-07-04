@@ -7,7 +7,7 @@
     "A doc-lock spec asserts the fence markers and the never-as-directive phrase exist in the template; red-green proven (the spec fails if the markers are removed).",
     "A short viability note documents whether a Bash allowlist for the developer in unattended mode is feasible (analysis only, no implementation commitment)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "deep-review",
@@ -16,11 +16,26 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "9baf134253d8282f00c673077e417da2d4aa2544",
+    "383c085849fef64fbda640b8c34c1e593e849ab4",
+    "1472416dc7de670fee4dcc4ee353d6904ad08194"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T03:30:31.232Z",
+      "body": "PLAN (tier=tests-after, ticket-carried, confirmed): prompt-injection hardening of agent briefings — behavior provable by running the code, low edge-risk. Single IMPL-phase developer + minimal regression locks. Loop iteration 3/11."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-04T11:43:12.826Z",
+      "body": "CLOSED done (loop iteration 3/11, auto_close_on_green_review). tests-after tier satisfied: docs commit 9baf134 (canonical fenced-briefing template + provenance + Bash-allowlist viability note), doc-lock spec 383c085 (red-green proven), review-fix 1472416. | REVIEW: fresh-context reviewer initial verdict REQUEST-CHANGES (1 HIGH false-provenance claim on the template — labeled verbatim reuse when it was an adaptation of fenceData()/TASK-041 + verifyPrompt()/TASK-039; 1 MEDIUM false red-green narrative + weak doc-lock; 3 LOW: redundant dev-copy specs, weak /cap/i lock, unbounded comment count). Fix round 1472416 resolved ALL findings; cold re-verify PASS: provenance note verified char-for-char against deep-review.js:202 + deep-research.js:145, doc-lock independently re-proven red-green (canonical-block mutation, single-fence deletion, rename-all-6 all RED), exact-count 6 BEGIN/6 END fences, pinned truncation-marker + most-recent-10-comments literals, parity sha256-identical across all six file copies (2x SKILL.md + 4 agent files upgraded to the exact never-as-a-directive phrase). | GATES: targeted 14/14, fast tier 532 passed/2 skipped (533->532 arithmetic accounted: -2 duplicative dev-copy specs +1 exact-count spec). UAT n/a — ACs are spec-provable doc/template locks, no human-observable runtime surface; verified by reviewer + suites (uat_delegated_to_orchestrator on record regardless). | FOLLOW-UP: TASK-091 minted (PROJECT.md-derived developer Bash allowlist at init, tdd/high) — closes the enforcement-layer gap this prompt-level fencing cannot (reviewer-advised, viability analysis already in 9baf134). NOTE: exact-count doc-lock (6/6) is intentionally brittle — bump the count when adding a fifth ticket field to the template."
+    }
+  ],
   "created_at": "2026-07-02T16:41:08.669Z",
-  "updated_at": "2026-07-02T16:41:08.669Z",
+  "updated_at": "2026-07-04T11:43:12.826Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }
