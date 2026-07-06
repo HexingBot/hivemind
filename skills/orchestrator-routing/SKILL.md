@@ -391,31 +391,57 @@ The `/hivemind:loop` command runs a goal-driven drive loop that
 self-drives the per-ticket workflow toward a stated goal (label or explicit key
 set). Full protocol is in `commands/loop.md`; the durable contract lives here.
 
+### Loop-ctl CLI
+
+The four loop-machinery modules — session-lock, operating-mode,
+loop-checkpoint, loop-auth — are invoked exclusively through
+`${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs`, never via a bare `src/` import, so
+the loop is executable on a plugin install (where no framework `src/` exists on
+disk). `--repo-root` may be omitted and falls back to `CLAUDE_PROJECT_DIR` or
+the process cwd. Every subcommand prints exactly one JSON line to stdout:
+`{"ok":true, ...}` on success (exit 0), or `{"ok":false,"code":"...","message":"..."}`
+on failure (exit non-zero) — `code` mirrors the underlying error's code (e.g.
+`E_LOCK_HELD`) and `message` carries diagnostic detail such as the lock
+holder's identity.
+
+| Subcommand | Wraps | Flags |
+|---|---|---|
+| `acquire` | `acquire()` (session-lock) | `--repo-root`, `--holder`, `--staleness-ms` |
+| `renew` | `renew()` (session-lock) | `--repo-root`, `--holder` |
+| `release` | `release()` (session-lock) | `--repo-root`, `--holder` |
+| `get-mode` | `getMode()` (operating-mode) | `--repo-root` |
+| `set-mode` | `setMode()` (operating-mode) | `--repo-root`, `--mode` |
+| `checkpoint` | `writeLoopCheckpoint()` (loop-checkpoint) | `--repo-root`, `--current-ticket`, `--phase`, `--iteration`, `--completed-this-run`, `--run-started-at` |
+| `resume-point` | `resumePoint()` (loop-checkpoint) | `--repo-root` (reads the active bundle + full task list internally) |
+| `grant-unattended` | `grantUnattended()` (loop-auth) | `--repo-root`, repeatable `--opt-in <switch>` |
+
 ### Single-active-session lock requirement
 
-The loop MUST acquire the TASK-061 advisory lock (`src/session-lock.js`) before
-driving any ticket, passing a longer `stalenessMs` override in loop mode (e.g.
-30-60 min; default 5 min elsewhere) so a slow ticket doesn't make the lock look
-abandoned. Renew the lock at every phase boundary — after the ticket's
-`in_progress` transition, after each Developer subagent return, and after each
-Reviewer subagent return — not just once per iteration (see `commands/loop.md`
-Step 1/Step 2 for the exact cadence). If `acquire()` raises `E_LOCK_HELD`, the
-loop stops and surfaces the holder's identity to the human — the message names
-the current holder's `holder_id` (when supplied) alongside pid/hostname. The
-lock is released in a finally-style step on exit, pause, or any unhandled
-error. A held lock blocks other sessions.
+The loop MUST acquire the TASK-061 advisory lock (`loop-ctl.cjs acquire`)
+before driving any ticket, passing a longer `--staleness-ms` override in loop
+mode (e.g. 30-60 min in ms; default 5 min elsewhere) so a slow ticket doesn't
+make the lock look abandoned. Renew the lock at every phase boundary — after
+the ticket's `in_progress` transition, after each Developer subagent return,
+and after each Reviewer subagent return — not just once per iteration (see
+`commands/loop.md` Step 1/Step 2 for the exact cadence). If `acquire` returns
+`"code":"E_LOCK_HELD"`, the loop stops and surfaces the holder's identity to
+the human — the message names the current holder's `holder_id` (when
+supplied) alongside pid/hostname. The lock is released in a finally-style step
+on exit, pause, or any unhandled error. A held lock blocks other sessions.
 
 ### Operating-mode auto-flip (TASK-063)
 
 The session bundle carries a `mode` field (`'harness'` | `'loop'`, default
-`'harness'`). The loop auto-flips this field via `src/operating-mode.js`:
+`'harness'`). The loop auto-flips this field via `loop-ctl.cjs set-mode`:
 
-- **After `acquire()` succeeds (Step 1):** call
-  `setMode({ repoRoot, mode: 'loop' })` to signal that autonomous driving has
-  started. This is recorded on the session bundle for downstream tooling to read.
-- **Before `release()` (Step 3, finally-style):** call
-  `setMode({ repoRoot, mode: 'harness' })` first, then call `release()`. This
-  ensures the mode is reset even if an unhandled error cut the loop short.
+- **After `acquire` succeeds (Step 1):** run
+  `loop-ctl.cjs set-mode --repo-root <repoRoot> --mode loop` to signal that
+  autonomous driving has started. This is recorded on the session bundle for
+  downstream tooling to read.
+- **Before `release` (Step 3, finally-style):** run
+  `loop-ctl.cjs set-mode --repo-root <repoRoot> --mode harness` first, then run
+  `loop-ctl.cjs release`. This ensures the mode is reset even if an unhandled
+  error cut the loop short.
 
 The mode can also be set manually outside the loop via
 `/hivemind:mode` (see `commands/mode.md`) — useful for crash
@@ -478,9 +504,10 @@ at each gate. Switches do not persist across sessions unless re-stated.
 ### Unattended-mode preset (TASK-075)
 
 For a human who wants the loop to run without per-step supervision, a single
-up-front grant is available via `grantUnattended({ repoRoot, optIns })` in
-`src/loop-auth.js` instead of stating each switch individually. The preset
-(`UNATTENDED_PRESET`) sets:
+up-front grant is available via
+`loop-ctl.cjs grant-unattended --repo-root <repoRoot> [--opt-in <switch>]...`
+instead of stating each switch individually. The preset (`UNATTENDED_PRESET`)
+sets:
 
 - `auto_close_on_green_review: true`
 - `uat_delegated_to_orchestrator: true`
@@ -488,7 +515,7 @@ up-front grant is available via `grantUnattended({ repoRoot, optIns })` in
 
 `auto_push_after_close` and `auto_version_bump_on_milestone` are **strictly
 opt-in** — the preset leaves both `false`; the human must pass them explicitly
-via `optIns` (e.g. `grantUnattended({ repoRoot, optIns: { auto_push_after_close: true } })`)
+via repeated `--opt-in` flags (e.g. `loop-ctl.cjs grant-unattended --repo-root <repoRoot> --opt-in auto_push_after_close`)
 to lift Gate 1's push or Gate 4.
 
 Gate 3 (genuinely ambiguous scope) has **no switch** in `LOOP_AUTH_SWITCHES`
@@ -545,21 +572,25 @@ log the blocking conditions, surface a summary, and stop — do not spin.
 
 A crash between a ticket's `in_progress` transition and its close must never
 leave the ticket permanently invisible to `selectNextTicket` (which only
-matches `status === 'todo'`). `src/loop-checkpoint.js` closes this gap with a
+matches `status === 'todo'`). The loop-checkpoint module, invoked via
+`loop-ctl.cjs checkpoint` / `loop-ctl.cjs resume-point`, closes this gap with a
 writer and a pure decision helper:
 
-- **`writeLoopCheckpoint({ repoRoot, checkpoint })`** — call at **every**
-  phase boundary: after ticket selection, after the Developer subagent
-  returns, after the Reviewer subagent returns, and after ticket close.
-  `checkpoint` carries `current_ticket`, `phase`, `iteration`,
-  `completed_this_run`, and `run_started_at`. `phase` is validated against
-  `LOOP_PHASES` **before any I/O** (an invalid phase throws and touches
-  nothing on disk); on success the fields are merged into the bundle's
-  `loop_state` (preserving existing keys like `goal`/`maxIterations`) and
-  `phase` is mapped onto `workflow_step` via `LOOP_PHASES`.
+- **`loop-ctl.cjs checkpoint --repo-root <repoRoot> --current-ticket <key> --phase <phase> [--iteration <n>] [--completed-this-run <n>] [--run-started-at <iso>]`**
+  (wraps `writeLoopCheckpoint`) — call at **every** phase boundary: after
+  ticket selection, after the Developer subagent returns, after the Reviewer
+  subagent returns, and after ticket close. The checkpoint carries
+  `current_ticket`, `phase`, `iteration`, `completed_this_run`, and
+  `run_started_at`. `phase` is validated against `LOOP_PHASES` **before any
+  I/O** (an invalid phase exits non-zero and touches nothing on disk); on
+  success the fields are merged into the bundle's `loop_state` (preserving
+  existing keys like `goal`/`maxIterations`) and `phase` is mapped onto
+  `workflow_step` via `LOOP_PHASES`.
 
-- **`resumePoint({ bundle, tasks })`** — pure (no I/O). Read at loop start,
-  right after the lock is acquired (`commands/loop.md` Step 1.5):
+- **`loop-ctl.cjs resume-point --repo-root <repoRoot>`** (wraps
+  `resumePoint({ bundle, tasks })`, pure and read-only) — reads the active
+  bundle and full task list internally. Run at loop start, right after the
+  lock is acquired (`commands/loop.md` Step 1.5):
   - `'none'` — no checkpoint evidence, or the recorded ticket is already
     `done`. Start the next iteration with the counters restored from
     `loop_state` when present (never reset to zero) — only `current_ticket`

@@ -21,25 +21,38 @@ Present the goal interpretation to the human and ask for a `yes / start / go` co
 
 ## Control flow
 
+### Loop-ctl CLI
+
+All four loop-machinery modules (session-lock, operating-mode, loop-checkpoint,
+loop-auth) are invoked exclusively through
+`${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs` — this is what makes the loop
+executable on a plugin install, where no framework `src/` exists on disk. Every
+subcommand prints one JSON line to stdout: `{"ok":true, ...}` on success, or
+`{"ok":false,"code":"...","message":"..."}` on a non-zero exit (`code` names
+the failure, e.g. `E_LOCK_HELD`; `message` carries the holder identity for a
+lock conflict). The full subcommand contract lives in the orchestrator-routing
+SKILL.md's "Loop-ctl CLI" section; this document shows only the call sites.
+
 ### Step 1 — Acquire the session lock (TASK-061) and flip to loop mode
 
-Call `acquire()` from `src/session-lock.js` before any ticket work begins. In loop mode, pass a longer `stalenessMs` override (e.g. 30–60 min) so a slow ticket's heartbeat gap doesn't make the lock look abandoned to another session; outside loop mode the default 5-minute window is unchanged.
+Run `node ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs acquire --repo-root <repoRoot> [--holder <id>] [--staleness-ms <n>]` before any ticket work begins. In loop mode, pass a longer `--staleness-ms` override (e.g. 30–60 min in ms) so a slow ticket's heartbeat gap doesn't make the lock look abandoned to another session; outside loop mode the default 5-minute window is unchanged.
 
-- If `E_LOCK_HELD` is raised: read the error message — it names the holder's `holder_id` (when the current holder supplied one) alongside its pid and hostname for diagnostics — surface it to the human, and STOP. Do not steal the lock.
-- If acquisition succeeds: record the lock in the session bundle so a crash-recovery path can inspect it.
-- **Immediately after a successful `acquire()`**, call `setMode({ repoRoot, mode: 'loop' })` from `src/operating-mode.js`. This records that the session is now autonomously driving, so downstream tooling reading the session bundle can observe it.
+- If the JSON carries `"code":"E_LOCK_HELD"`: its `message` names the holder's `holder_id` (when the current holder supplied one) alongside its pid and hostname for diagnostics — surface it to the human, and STOP. Do not steal the lock.
+- If acquisition succeeds (`"acquired":true`): record the lock in the session bundle so a crash-recovery path can inspect it.
+- **Immediately after a successful `acquire`**, run `loop-ctl.cjs set-mode --repo-root <repoRoot> --mode loop`. This records that the session is now autonomously driving, so downstream tooling reading the session bundle can observe it.
 
-**Renew cadence:** call `renew()` (from `src/session-lock.js`) at every phase boundary, not just once per ticket — after the ticket's `in_progress` transition, after each Developer subagent return, and after each Reviewer subagent return. This keeps the heartbeat fresh across the longest gaps in a ticket's lifecycle (a slow Developer or Reviewer turn) so the lock is never mistaken for stale mid-ticket. If `renew()` returns `false` (lock absent or foreign), re-acquire.
+**Renew cadence:** run `loop-ctl.cjs renew --repo-root <repoRoot> [--holder <id>]` at every phase boundary, not just once per ticket — after the ticket's `in_progress` transition, after each Developer subagent return, and after each Reviewer subagent return. This keeps the heartbeat fresh across the longest gaps in a ticket's lifecycle (a slow Developer or Reviewer turn) so the lock is never mistaken for stale mid-ticket. If the JSON's `renewed` is `false` (lock absent or foreign), re-acquire.
 
 ### Step 1.5 — Crash-resume check (TASK-084)
 
 After the lock is acquired and before the main loop begins, check whether a
 prior run of this session crashed mid-ticket:
 
-1. Read the active bundle (`readBundleSession` from `src/bundle.js`) and the
-   current task list.
-2. Call `resumePoint({ bundle, tasks })` from `src/loop-checkpoint.js`.
-3. Branch on `action`:
+1. Run `loop-ctl.cjs resume-point --repo-root <repoRoot>` — it reads the active
+   bundle and the full task list internally and returns the same
+   `{ action, ... }` shape the underlying `resumePoint` decision helper
+   produces (there is no separate bundle-read step to perform first).
+2. Branch on `action`:
    - **`'resume'`** — a mid-ticket checkpoint was found at a post-commit
      phase (or the ticket was `in_review`). Continue the recorded ticket
      (`result.ticket`) at its recorded `phase`, restoring `iteration`,
@@ -59,16 +72,17 @@ prior run of this session crashed mid-ticket:
      from zero — only `current_ticket` is stale/absent, not the run's
      progress.
 
-`writeLoopCheckpoint({ repoRoot, checkpoint })` from `src/loop-checkpoint.js`
+`loop-ctl.cjs checkpoint --repo-root <repoRoot> --current-ticket <key> --phase <phase> [--iteration <n>] [--completed-this-run <n>] [--run-started-at <iso>]`
 is the writer half of this contract: call it at **every** phase boundary —
 after ticket selection, after the Developer subagent returns, after the
-Reviewer subagent returns, and after ticket close — passing `phase` as one of
+Reviewer subagent returns, and after ticket close — passing `--phase` as one of
 the `LOOP_PHASES` keys (`idle`, `fetch`, `research`, `test`, `impl`, `review`,
-`update`). `writeLoopCheckpoint` maps `phase` onto the bundle's
-`workflow_step` enum via `LOOP_PHASES` and validates it before any I/O. This
-also documents the TASK-071 rule for any manual orchestrator checkpoint:
-`workflow_step` must always be set to an enum-valid value, never a raw phase
-name that happens not to be in the enum.
+`update`). The subcommand maps `phase` onto the bundle's `workflow_step` enum
+via `LOOP_PHASES` and validates it before any I/O (an invalid phase exits
+non-zero and touches nothing on disk). This also documents the TASK-071 rule
+for any manual orchestrator checkpoint: `workflow_step` must always be set to
+an enum-valid value, never a raw phase name that happens not to be in the
+enum.
 
 **Ordering is load-bearing:** for a newly selected ticket, always write the
 `fetch`-phase checkpoint naming that ticket as `current_ticket` **before**
@@ -96,7 +110,7 @@ while NOT goalSatisfied(tasks, goal)
 
   // A ready ticket was found — run the standard per-ticket workflow:
   1. Transition ticket to in_progress (transitionStatus)
-     -> Renew the session lock (renew() from src/session-lock.js; if renew returns false, re-acquire)
+     -> Renew the session lock (loop-ctl.cjs renew --repo-root <repoRoot>; if the JSON's `renewed` is false, re-acquire)
   2. Spawn the Developer subagent (IMPL or TDD per verification_tier)
      -> Renew the session lock
   3. Spawn the Reviewer subagent (fresh context, read-only)
@@ -128,8 +142,8 @@ while NOT goalSatisfied(tasks, goal)
 
 On exit, pause, or any unhandled error — in this order:
 
-1. Call `setMode({ repoRoot, mode: 'harness' })` from `src/operating-mode.js` to signal that autonomous driving has ended. Do this **before** releasing the lock so the mode change is recorded while the lock is still held.
-2. Call `release()` from `src/session-lock.js` to free the advisory lock.
+1. Run `loop-ctl.cjs set-mode --repo-root <repoRoot> --mode harness` to signal that autonomous driving has ended. Do this **before** releasing the lock so the mode change is recorded while the lock is still held.
+2. Run `loop-ctl.cjs release --repo-root <repoRoot> [--holder <id>]` to free the advisory lock.
 
 Both steps are mandatory — a held lock blocks other sessions, and a stale `mode: 'loop'` in the bundle misrepresents the session state.
 
@@ -254,10 +268,10 @@ To grant an authorization: the human must say so explicitly (e.g. "auto-close on
 ### Unattended-mode preset
 
 Instead of granting switches one at a time, the human can make a single up-front grant via
-`grantUnattended({ repoRoot, optIns })` (`src/loop-auth.js`) so the loop runs without per-step
-supervision. This sets `auto_close_on_green_review`, `uat_delegated_to_orchestrator`, and
+`loop-ctl.cjs grant-unattended --repo-root <repoRoot> [--opt-in <switch>]...` so the loop runs
+without per-step supervision. This sets `auto_close_on_green_review`, `uat_delegated_to_orchestrator`, and
 `auto_consolidate` to `true`. `auto_push_after_close` and `auto_version_bump_on_milestone` remain
-strictly opt-in — pass them via `optIns` to lift Gate 1's push or Gate 4 as well. Gate 3 has no
+strictly opt-in — pass them via repeated `--opt-in <switch>` flags to lift Gate 1's push or Gate 4 as well. Gate 3 has no
 switch and is never liftable, preset or not. See SKILL.md's "Unattended-mode preset" section for
 the full contract.
 

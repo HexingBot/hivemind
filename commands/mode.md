@@ -21,7 +21,7 @@ Or with no argument to **toggle** the current mode:
 
 ## What it does
 
-Calls `setMode({ repoRoot, mode })` from `src/operating-mode.js` to write the requested mode into the active bundle's `session.json` via the existing atomic-write helper. The change is immediately visible via `getMode` and through the `mode` field on the session bundle (read via `readBundleSession` — see the `/hivemind:mode` command and `src/operating-mode.js`).
+Invokes the `set-mode` subcommand of `${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs` — the CLI wrapper around `setMode`/`getMode` (see the "Loop-ctl CLI" section of the orchestrator-routing SKILL.md) — to write the requested mode into the active bundle's `session.json` via the existing atomic-write helper. The change is immediately visible via the `get-mode` subcommand and through the `mode` field on the session bundle.
 
 ## Valid modes
 
@@ -46,14 +46,17 @@ Any other value is rejected with an error.
 
 ## Implementation
 
-```javascript
-import { setMode, getMode } from './src/operating-mode.js';
-
-// Toggle:
-const current = await getMode({ repoRoot });
-const next = current === 'loop' ? 'harness' : 'loop';
-await setMode({ repoRoot, mode: next });
-
-// Explicit:
-await setMode({ repoRoot, mode: 'harness' }); // or 'loop'
 ```
+# Toggle: read the current mode, then set the opposite.
+node ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs get-mode --repo-root <repoRoot>
+# -> {"ok":true,"mode":"harness"}  (invert 'harness'<->'loop' and pass it below)
+node ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs set-mode --repo-root <repoRoot> --mode loop
+
+# Explicit:
+node ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs set-mode --repo-root <repoRoot> --mode harness
+node ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs set-mode --repo-root <repoRoot> --mode loop
+```
+
+Each invocation prints a single JSON line to stdout — `{"ok":true,"mode":"..."}` on
+success, or `{"ok":false,"code":"E_ARGS","message":"..."}` (non-zero exit) when
+`--mode` is missing/invalid or no active session exists.
