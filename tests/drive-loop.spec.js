@@ -123,6 +123,56 @@ describe('selectNextTicket — dependency readiness', () => {
 });
 
 // ---------------------------------------------------------------------------
+// selectNextTicket composed with listReady's filter (TASK-096, R1 HIGH)
+//
+// src/task-store.js's listReady() filters its OWN output to status==='todo'
+// only, using a full internal task list to resolve deps before filtering —
+// so its returned array never contains the 'done' dependency itself. Piping
+// that filtered array into selectNextTicket (which re-derives readiness from
+// whatever array it is given) strands any ticket whose done dep got filtered
+// out: depsAreDone can't find the dep key in the passed array and treats it
+// as unsatisfied. This composes the two functions the way commands/loop.md
+// used to instruct, to prove the full-list contract is the actual fix.
+// ---------------------------------------------------------------------------
+
+describe('selectNextTicket — composed with listReady (TASK-096, R1)', () => {
+  const goal = { label: 'epic' };
+
+  // Mirrors src/task-store.js listReady()'s filter: keep only status==='todo'
+  // tasks whose deps resolve to done against the FULL input — but the
+  // returned array itself carries only the surviving todo tasks, so any
+  // 'done' task (including a dependency) is absent from the output.
+  function simulateListReady(tasks) {
+    const byKey = new Map(tasks.map((t) => [t.key, t]));
+    return tasks.filter((t) => {
+      if (t.status !== 'todo') return false;
+      const deps = Array.isArray(t.depends_on) ? t.depends_on : [];
+      return deps.every((depKey) => byKey.get(depKey)?.status === 'done');
+    });
+  }
+
+  const tasks = [
+    task({ key: 'TASK-001', labels: ['epic'], depends_on: ['TASK-000'] }),
+    task({ key: 'TASK-000', status: 'done', labels: [] }),
+  ];
+
+  it('selects the ready ticket when passed the FULL task list', () => {
+    expect(selectNextTicket(tasks, goal).key).toBe('TASK-001');
+  });
+
+  it('fails loudly (AC4) instead of silently stranding when passed listReady-filtered output', () => {
+    const filtered = simulateListReady(tasks);
+    // TASK-000 (done) never appears in listReady's own output, so
+    // depsAreDone can't find it in the passed array. Per AC4, this must
+    // throw a descriptive error rather than silently returning null (which
+    // is what caused the R1 stranding: null ticket + goalStuck=false spun
+    // the no-progress counter with no signal of what went wrong).
+    expect(filtered.map((t) => t.key)).toEqual(['TASK-001']);
+    expect(() => selectNextTicket(filtered, goal)).toThrow(/TASK-000/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // goalProgress
 // ---------------------------------------------------------------------------
 
