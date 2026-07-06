@@ -80,17 +80,18 @@ returning `'none'`, and the new ticket stranded `in_progress` yet invisible.
 ### Step 2 — Loop until done, stopped, or stuck
 
 ```
+tasks = readAllTasks({ repoRoot })   // FULL list, every status — Read/Glob tasks/*.json
 while NOT goalSatisfied(tasks, goal)
       AND NOT shouldStop({ iteration, maxIterations, consecutiveNoProgress, maxNoProgress }).stop:
-  tasks = listReady({ repoRoot })
-  ticket = selectNextTicket(tasks, goal)          // from src/drive-loop.js
+  ticket = selectNextTicket(tasks, goal)          // from src/drive-loop.js — pass the FULL list, never listReady()'s filtered output (see below)
   if ticket is null:
-    if goalStuck(allTasks, goal):
+    if goalStuck(tasks, goal):
       SURFACE to human (see "Stuck handling" below)
       BREAK
     else:
       // No ready ticket yet but not stuck — increment no-progress counter, continue
       consecutiveNoProgress += 1
+      tasks = readAllTasks({ repoRoot })   // refresh before the next check
       continue
 
   // A ready ticket was found — run the standard per-ticket workflow:
@@ -104,6 +105,7 @@ while NOT goalSatisfied(tasks, goal)
   4. [HARD-STOP GATE — see below before proceeding to close]
   5. Checkpoint the session bundle
   6. Renew the session lock (final renew before the next iteration's selection)
+  tasks = readAllTasks({ repoRoot })   // refresh — statuses changed (e.g. this ticket closed to 'done'), which may unblock dependents
   consecutiveNoProgress = 0  // reset on any progress
   iteration += 1
 
@@ -290,7 +292,7 @@ The following pure helpers are used internally by the loop logic:
 - `goalStuck(tasks, goal)` — true when not satisfied and no ticket is selectable.
 - `shouldStop({ iteration, maxIterations, consecutiveNoProgress, maxNoProgress })` — backstop check returning `{ stop, reason }`.
 
-These helpers are pure (no I/O, no side effects). The orchestrator passes the current task list from `listReady` / `readAllTasks` at each iteration.
+These helpers are pure (no I/O, no side effects). The orchestrator MUST pass the FULL task list (every status, read via `Read`/`Glob` on `tasks/*.json` — conceptually `readAllTasks`, not `listReady`) into `selectNextTicket` and `goalStuck` at each iteration. `listReady()` (src/task-store.js) filters its own return value down to `status==='todo'` tasks only, so a 'done' dependency never appears in what it returns; composing `listReady()` into `selectNextTicket` strands any dependent ticket because `depsAreDone` can't find the missing dep key in the array it was given, and — as of TASK-096 — throws rather than silently returning null (see the READINESS comment in `src/drive-loop.js`).
 
 ## Notes
 

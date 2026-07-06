@@ -7,11 +7,16 @@
 // handles all I/O and agentic dispatch; these helpers encode only the non-agentic
 // decision logic.
 //
-// READINESS: selectNextTicket accepts the FULL task list and computes readiness
-// internally (a task is ready when status is 'todo' AND every dep in depends_on
-// is in the list with status 'done'). This matches the listReady logic in
-// src/task-store.js. Callers may also pass a pre-filtered ready list; the helper
-// is safe in either case because it re-checks readiness before selecting.
+// READINESS: selectNextTicket REQUIRES the FULL task list (every status,
+// including 'done') as input — it computes readiness internally (a task is
+// ready when status is 'todo' AND every dep in depends_on resolves, in the
+// passed array, to status 'done'). It is NOT safe to pass a pre-filtered
+// list such as src/task-store.js's listReady() output: listReady filters its
+// OWN return value down to status==='todo' tasks only, so a done dependency
+// never appears in what it returns — piping that into selectNextTicket then
+// strands the dependent ticket, because depsAreDone can't find the dep key
+// in the array it was given (TASK-096, R1 HIGH). depsAreDone throws in that
+// case rather than silently rejecting the ticket — see its own comment.
 //
 // PRIORITY ORDER: critical > high > medium > low. Ties broken by ascending
 // numeric key (TASK-001 before TASK-002).
@@ -38,12 +43,31 @@ function keyNumber(key) {
 /**
  * Return true when the task's all depends_on keys are satisfied (status 'done')
  * in the provided task list. Tasks with no depends_on are trivially ready.
+ *
+ * AC4 (TASK-096): a depKey entirely ABSENT from byKey throws rather than
+ * silently counting as "not done". This is deliberately different from "dep
+ * present but not yet done" (which returns false, the normal in-progress
+ * case). An absent key means either (a) the caller passed a pre-filtered
+ * array — e.g. listReady()'s todo-only output — instead of the full task
+ * list the readiness comment above requires, or (b) depends_on references a
+ * task key that does not exist anywhere. Both are caller/data bugs that
+ * previously produced a silent null from selectNextTicket and spun the
+ * drive-loop's no-progress counter with no signal of why (the R1 defect);
+ * failing loudly surfaces the bug at the call site instead.
  */
 function depsAreDone(task, byKey) {
   const deps = Array.isArray(task.depends_on) ? task.depends_on : [];
   for (const depKey of deps) {
     const dep = byKey.get(depKey);
-    if (!dep || dep.status !== 'done') return false;
+    if (!dep) {
+      throw new Error(
+        `selectNextTicket: task ${task.key} depends_on "${depKey}", which is `
+        + 'absent from the task list passed in. Pass the FULL task list '
+        + "(every status, including 'done') — never listReady()'s "
+        + 'todo-only-filtered output — or fix the dangling depends_on reference.',
+      );
+    }
+    if (dep.status !== 'done') return false;
   }
   return true;
 }
@@ -75,13 +99,17 @@ export function matchesGoal(task, goal) {
 }
 
 /**
- * From the full task list (or a pre-filtered ready list), select the ONE task
- * that matches the goal AND is ready (status 'todo', all deps done), ordered by
- * priority (critical > high > medium > low), then by ascending numeric key.
+ * From the FULL task list (every status, including 'done' — see the READINESS
+ * comment above), select the ONE task that matches the goal AND is ready
+ * (status 'todo', all deps done), ordered by priority (critical > high >
+ * medium > low), then by ascending numeric key.
  *
- * @param {object[]} tasks - Array of plain task objects.
+ * @param {object[]} tasks - Array of plain task objects (the full list, not a
+ *   pre-filtered ready list).
  * @param {{ label?: string, keys?: string[] }} goal
  * @returns {object|null} The selected task, or null if none is ready.
+ * @throws {Error} If a candidate's depends_on references a key absent from
+ *   `tasks` (see depsAreDone) — a signal the caller passed an incomplete list.
  */
 export function selectNextTicket(tasks, goal) {
   if (!Array.isArray(tasks) || tasks.length === 0) return null;
