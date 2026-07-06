@@ -25,8 +25,15 @@
 //   Set BUILD_PLUGIN_OUT_DIR env var to redirect output (used by the dist-parity
 //   spec to rebuild into a temp dir for byte-comparison). Default is dist/ as
 //   before — a plain `npm run build:plugin` is byte-unchanged.
-//   The ENTRYPOINT_NAMES export allows the parity spec to enumerate the four
-//   expected bundle filenames without duplicating knowledge.
+//   The ENTRYPOINT_NAMES export allows the parity spec to enumerate the
+//   expected bundle filenames without duplicating knowledge — its length is
+//   the current entrypoint count, not a number worth hard-coding in prose.
+//
+// TASK-097 — added the seventh entry: bin/loop-ctl.js -> dist/loop-ctl.cjs, the
+// CLI wrapper exposing session-lock/operating-mode/loop-checkpoint/loop-auth
+// so a plugin-installed project can drive the loop via
+// ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs (see commands/loop.md, commands/mode.md,
+// the orchestrator-routing SKILL.md).
 
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
@@ -46,10 +53,11 @@ export const ENTRYPOINT_NAMES = [
   'task-board.cjs',
   'report-framework-bug.cjs',
   'brain-launch.cjs',
+  'loop-ctl.cjs',
 ];
 
 /**
- * Build all four plugin bundles into `outDir`.
+ * Build all plugin bundles (see ENTRYPOINT_NAMES) into `outDir`.
  * cwd MUST be the repo root so esbuild source-path comments are identical
  * between the committed build and a parity-check temp build.
  *
@@ -71,6 +79,10 @@ export async function buildTo(outDir) {
     // Phase 6 — the brain launcher (zero-dep): brings up the wisearcher stack + execs its MCP.
     // Shipped so an installed plugin can bootstrap the brain without a build step.
     { entry: join(REPO_ROOT, 'bin', 'brain-launch.js'), outfile: join(outDir, 'brain-launch.cjs') },
+    // TASK-097 — the loop-control CLI: wraps session-lock/operating-mode/
+    // loop-checkpoint/loop-auth so a plugin install (no framework src/ on
+    // disk) can drive the autonomous loop.
+    { entry: join(REPO_ROOT, 'bin', 'loop-ctl.js'), outfile: join(outDir, 'loop-ctl.cjs') },
   ];
 
   for (const { entry, outfile } of entrypoints) {
