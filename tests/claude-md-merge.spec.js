@@ -195,3 +195,44 @@ describe('AC1 — routingBlockContent carries the v2 canonical activation', () =
     expect(/idle template/i.test(body)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-102 (R14, F36+F24) — regression lock: the generated routing block a
+// user project's CLAUDE.md receives must reflect the tier policy (not an
+// unconditional "Tests first"), point at /hivemind:loop, and must not dangle
+// a reference to state/README.md — bin/init.js never materializes that file
+// into a user project, so a generated pointer to it would be dead on arrival.
+// ---------------------------------------------------------------------------
+describe('AC4 (TASK-102) — routingBlockContent reflects the tier policy, mentions /hivemind:loop, drops the dead state/README.md pointer', () => {
+  it('workflow_step_is_tier_aware_not_an_unconditional_tests_first_mandate', async () => {
+    const { routingBlockContent } = await import(PROD.claudeMd);
+    const body = routingBlockContent();
+
+    // The old unconditional mandate must be gone.
+    expect(
+      /Tests first: the `developer` writes failing tests/.test(body),
+      'the generated block must not hard-code an unconditional "Tests first" step — the tier policy replaces it',
+    ).toBe(false);
+
+    // The three tier names must all be present so the generated block matches
+    // the tier rubric (tdd / tests-after / uat-only), not just the tdd path.
+    expect(body).toMatch(/\btdd\b/);
+    expect(body).toMatch(/\btests-after\b/);
+    expect(body).toMatch(/\buat-only\b/);
+  });
+
+  it('mentions_the_hivemind_loop_command', async () => {
+    const { routingBlockContent } = await import(PROD.claudeMd);
+    const body = routingBlockContent();
+    expect(body.includes('/hivemind:loop')).toBe(true);
+  });
+
+  it('drops_the_dangling_state_readme_reference', async () => {
+    const { routingBlockContent } = await import(PROD.claudeMd);
+    const body = routingBlockContent();
+    // bin/init.js copies workflows/ into a fresh project but never
+    // materializes state/README.md there — a generated pointer to it would be
+    // a dead link in every project the wizard scaffolds.
+    expect(body.includes('state/README.md')).toBe(false);
+  });
+});
