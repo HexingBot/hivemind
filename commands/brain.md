@@ -36,7 +36,6 @@ hivemind is running in **grep-fallback** mode, and if the latter, which dependen
 
 - Auth: the brain reuses the Claude Code subscription via the `claude` CLI; `ANTHROPIC_API_KEY`
   is stripped from the spawned environment.
-- Lifecycle: hivemind's brain-client spawns `${CLAUDE_PLUGIN_ROOT}/dist/brain-launch.cjs` on
-  demand, so the wisearcher path is resolved at runtime rather than hard-coded into a committed
-  `.mcp.json` entry — this also makes the command work on a plugin install, where no repo-relative
-  `bin/` exists on disk.
+- Lifecycle: the launch script is invoked on demand (this command, the smoke harness) rather than
+  hard-coded into a committed `.mcp.json` entry — this also makes the command work on a plugin
+  install, where no repo-relative `bin/` exists on disk.
