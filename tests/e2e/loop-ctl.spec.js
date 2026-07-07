@@ -32,13 +32,16 @@ afterAll(cleanupAll);
 const CLI = join(REPO_ROOT, 'dist', 'loop-ctl.cjs');
 const SESSION_ID = '20260706T230000Z-c0ffee00';
 
-function runCli(args, { cwd, env } = {}) {
+function runCli(args, {
+  cwd, env, input,
+} = {}) {
   const cleanEnv = { ...process.env, ...env };
   delete cleanEnv.CLAUDE_PROJECT_DIR; // force cwd-based resolution unless a test opts in
   const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd: cwd || REPO_ROOT,
     env: cleanEnv,
     encoding: 'utf8',
+    input, // piped to the child's stdin — undefined means "no stdin write" (spawnSync default)
   });
   const stdoutLine = (r.stdout || '').trim().split('\n').filter(Boolean).pop() || '';
   let json = null;
@@ -230,6 +233,39 @@ describe('checkpoint / resume-point', () => {
     const result = runCli(['resume-point', '--repo-root', root]);
     expect(result.status).toBe(0);
     expect(result.json.action).toBe('none');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-100 review M2 — ticketHasLandedCommits (src/loop-checkpoint.js) was
+// tree-shaken out of every dist bundle: nothing imported it, so a
+// plugin-installed project (no framework src/ on disk) had no way to run the
+// reset-protocol's git-log check the docs point it at. This subcommand reads
+// the already-captured `git log --oneline` output from stdin (no git spawn
+// inside the CLI itself — the caller/orchestrator runs git and pipes the
+// output in) and returns whether it references --key, via the same pure
+// helper the fast-tier spec locks.
+// ---------------------------------------------------------------------------
+describe('landed-commits (TASK-100 M2 — ticketHasLandedCommits exposed via CLI)', () => {
+  it('landed_commits_happy_path_true_when_stdin_git_log_references_the_key', () => {
+    const gitLog = 'a1b2c3d fix(TASK-101): unrelated\ne4f5g6h test(TASK-100): add failing spec\n';
+    const result = runCli(['landed-commits', '--key', 'TASK-100'], { input: gitLog });
+    expect(result.status).toBe(0);
+    expect(result.json).toEqual({ ok: true, hasLandedCommits: true });
+  });
+
+  it('landed_commits_happy_path_false_when_stdin_git_log_does_not_reference_the_key', () => {
+    const gitLog = 'a1b2c3d fix(TASK-101): unrelated\n';
+    const result = runCli(['landed-commits', '--key', 'TASK-100'], { input: gitLog });
+    expect(result.status).toBe(0);
+    expect(result.json).toEqual({ ok: true, hasLandedCommits: false });
+  });
+
+  it('landed_commits_failure_path_missing_key_nonzero_exit', () => {
+    const result = runCli(['landed-commits'], { input: 'a1b2c3d fix(TASK-100): x\n' });
+    expect(result.status).not.toBe(0);
+    expect(result.json.ok).toBe(false);
+    expect(result.json.message).toMatch(/--key/);
   });
 });
 

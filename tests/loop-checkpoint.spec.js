@@ -414,6 +414,15 @@ describe('ticketHasLandedCommits — TASK-100 AC3: pure git-log scan for a ticke
     expect(ticketHasLandedCommits({ gitLog, key: 'TASK-100' })).toBe(false);
   });
 
+  // TASK-100 review R1/L1 — a lowercased commit message (e.g. a human typing
+  // 'task-100' in a commit subject) must still match; a case-sensitive miss
+  // here produces exactly the silent reset this helper exists to prevent.
+  it('matches case-insensitively (a commit referencing "task-100" lowercase)', async () => {
+    const { ticketHasLandedCommits } = await import(CHECKPOINT_URL);
+    const gitLog = 'a1b2c3d fix(task-100): lowercase reference';
+    expect(ticketHasLandedCommits({ gitLog, key: 'TASK-100' })).toBe(true);
+  });
+
   it('returns false for empty/undefined git log or key without throwing', async () => {
     const { ticketHasLandedCommits } = await import(CHECKPOINT_URL);
     expect(ticketHasLandedCommits({ gitLog: '', key: 'TASK-100' })).toBe(false);
