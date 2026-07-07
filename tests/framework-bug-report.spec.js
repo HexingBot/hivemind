@@ -847,22 +847,32 @@ describe('TASK-101 AC1 — DEFAULT_REPO points at this product, not the pre-rebr
   });
 
   it('fileFrameworkBug uses DEFAULT_REPO when no repo is supplied', async () => {
+    // Capture the --repo arg into a variable and assert it AFTER the await,
+    // at the top level of the test — asserting inside the mocked runner is
+    // vacuous: if it throws there, fileFrameworkBug's inner catch around
+    // ghIssueCreate swallows it and falls through to the local fallback,
+    // and a test with no top-level assertions still passes (regression:
+    // this spec passed while DEFAULT_REPO was still lordiwa/agent-framework).
+    let capturedRepo;
     const runner = vi.fn((cmd, args) => {
       if (args.includes('--version')) return { status: 0, stdout: 'gh version 2.50.0\n', stderr: '' };
       if (args.includes('auth') && args.includes('status')) return { status: 0, stdout: '', stderr: 'Logged in\n' };
       if (args.includes('issue') && args.includes('create')) {
-        // Assert the --repo value gh was invoked with is the new default.
         const repoIdx = args.indexOf('--repo');
-        expect(args[repoIdx + 1]).toBe('HexingBot/hivemind');
+        capturedRepo = args[repoIdx + 1];
         return { status: 0, stdout: '\nhttps://github.com/HexingBot/hivemind/issues/1\n', stderr: '' };
       }
       return { status: 1, stdout: '', stderr: '' };
     });
 
-    await fileFrameworkBug({
+    const result = await fileFrameworkBug({
       title: 't', body: 'b', pluginRoot: '/p', projectDir: '/d',
       runner, fallbackWriter: vi.fn(),
     });
+
+    // Guards against a swallowed failure silently surfacing as a fallback.
+    expect(result.filed).toBe('github');
+    expect(capturedRepo).toBe('HexingBot/hivemind');
   });
 
   it('README.md install example points at HexingBot/hivemind, not the pre-rebrand upstream', () => {
@@ -899,6 +909,19 @@ describe('TASK-101 AC2 — URI-userinfo credential scrub (regression: R12 live r
   it('does not touch a plain URL with no userinfo', () => {
     const input = 'see https://github.com/HexingBot/hivemind/issues/1';
     expect(scrubSecrets(input)).toBe(input);
+  });
+
+  it('scrubs redis://:hunter2@db:6379 (RFC-valid empty-username form)', () => {
+    // Regression: reviewer MEDIUM finding — the original pattern required a
+    // non-empty username, so the RFC-valid empty-username userinfo form
+    // (scheme://:password@host) leaked the password verbatim.
+    const input = 'set REDIS_URL=redis://:hunter2@db:6379 in the compose file';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/hunter2/);
+    expect(out).toMatch(/\[REDACTED/);
+    // Scheme + host stay legible, same as the non-empty-username case.
+    expect(out).toMatch(/redis:\/\//);
+    expect(out).toMatch(/db:6379/);
   });
 });
 
