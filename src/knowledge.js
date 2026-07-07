@@ -1,13 +1,24 @@
 // src/knowledge.js
-// Three responsibilities:
+// Five responsibilities:
 //   (1) validateEntry(entryPath)         — schema-validate a single entry file
 //   (2) lookupKnowledge({ repoRoot, question })
 //                                        — deterministic three-pass lookup per research §F
+//                                          (scans ONLY knowledge/entries/ — knowledge/proposed/
+//                                          drafts are excluded by construction, TASK-105 AC3)
 //   (3) recordKbReuse({ repoRoot, entryId, at })
 //                                        — atomic update of last_seen_at, body preserved
+//   (4) writeKnowledgeEntry({ repoRoot, entry, draft })
+//                                        — TASK-105 AC1: schema-validated, atomic KB write path.
+//                                          draft (default true) writes knowledge/proposed/<id>.md
+//                                          (unvetted); draft: false writes knowledge/entries/<id>.md
+//                                          (vetted). Mirrors the store's validate-before-write
+//                                          pattern (task-store.js / knowledge-graph.js): the schema
+//                                          check runs BEFORE any disk mutation.
+//   (5) listDraftEntries({ repoRoot })   — enumerate knowledge/proposed/ (Gate 5's draftEntryCount
+//                                          input, see src/drive-loop.js's consolidationGate)
 
 import {
-  readFileSync, readdirSync, existsSync, statSync,
+  readFileSync, readdirSync, existsSync, statSync, mkdirSync,
 } from 'node:fs';
 import { join } from 'node:path';
 
@@ -177,6 +188,97 @@ export async function recordKbReuse({ repoRoot, entryId, at }) {
   const newData = { ...parsed.data, last_seen_at: at || new Date().toISOString() };
   const rebuilt = matter.stringify(parsed.content, newData);
   await atomicWriteFile(entryPath, rebuilt);
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              writeKnowledgeEntry                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Schema-validated, atomic KB entry write (TASK-105 AC1) — the write-side
+ * counterpart to validateEntry/lookupKnowledge. Validates `entry` against
+ * knowledge/schema.json BEFORE any disk mutation (mirrors task-store.js /
+ * knowledge-graph.js's validate-before-write convention); on failure, throws
+ * and touches nothing on disk — not even the target directory.
+ *
+ * `entry` carries the same frontmatter fields as a vetted entry (id, problem,
+ * symptoms, solution, tags, projects, created_at, last_seen_at, and the
+ * optional source_urls/supersedes/superseded_by/source_tier), plus an
+ * optional `body` string (the markdown after the frontmatter fence — NOT a
+ * schema field, stripped before validation).
+ *
+ * `draft` (default true) selects the target directory: true writes
+ * `knowledge/proposed/<id>.md` (unvetted — excluded entirely from
+ * lookupKnowledge, which only ever scans knowledge/entries/); false writes
+ * `knowledge/entries/<id>.md` (vetted). Promoting a draft is calling this
+ * again with the same entry data and draft: false, then deleting the
+ * knowledge/proposed/ copy — see knowledge/schema.md's "Draft entries"
+ * section for the full write/promote/discard contract.
+ *
+ * @param {{ repoRoot: string, entry: object, draft?: boolean }} args
+ * @returns {Promise<{ id: string, path: string, draft: boolean }>}
+ */
+export async function writeKnowledgeEntry({ repoRoot, entry, draft = true }) {
+  if (!repoRoot) throw makeErr('E_KB_ARGS', 'writeKnowledgeEntry: repoRoot is required');
+  if (!entry || typeof entry !== 'object') {
+    throw makeErr('E_KB_ARGS', 'writeKnowledgeEntry: entry object is required');
+  }
+  if (!entry.id || typeof entry.id !== 'string') {
+    throw makeErr('E_KB_ARGS', 'writeKnowledgeEntry: entry.id is required');
+  }
+
+  const { body, ...frontmatter } = entry;
+
+  const schemaPath = join(repoRoot, 'knowledge', 'schema.json');
+  if (!existsSync(schemaPath)) {
+    throw makeErr('E_KB_SCHEMA_MISSING', `knowledge/schema.json not found at ${schemaPath}`);
+  }
+  const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const compiled = ajv.compile(schema);
+  const ok = compiled(frontmatter);
+  if (!ok) {
+    const details = (compiled.errors || [])
+      .map((e) => `${e.instancePath || '/'} ${e.message}`)
+      .join('; ');
+    throw makeErr(
+      'E_KB_INVALID_ENTRY',
+      `writeKnowledgeEntry: entry failed schema validation: ${details}`,
+    );
+  }
+
+  const targetDir = join(repoRoot, 'knowledge', draft ? 'proposed' : 'entries');
+  const targetPath = join(targetDir, `${entry.id}.md`);
+  const rendered = matter.stringify(body || '', frontmatter);
+
+  // Directory creation happens AFTER validation passes — an invalid entry
+  // never even creates knowledge/proposed/ (self-bootstrap on success only).
+  mkdirSync(targetDir, { recursive: true });
+  await atomicWriteFile(targetPath, rendered);
+
+  return { id: entry.id, path: targetPath, draft };
+}
+
+/* -------------------------------------------------------------------------- */
+/*                               listDraftEntries                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Enumerate draft (unvetted) entries under knowledge/proposed/. Used to feed
+ * `draftEntryCount` into `consolidationGate` (src/drive-loop.js) so Gate 5
+ * surfaces pending drafts even when auto_consolidate lifts the ticket-count
+ * pause. Returns [] when the directory does not exist — never throws.
+ *
+ * @param {{ repoRoot: string }} args
+ * @returns {Array<{ id: string, path: string }>}
+ */
+export function listDraftEntries({ repoRoot }) {
+  const dir = join(repoRoot, 'knowledge', 'proposed');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.md'))
+    .map((name) => ({ id: name.replace(/\.md$/, ''), path: join(dir, name) }));
 }
 
 /* -------------------------------------------------------------------------- */

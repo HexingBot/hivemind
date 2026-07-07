@@ -213,24 +213,50 @@ export function shouldStop({
  * consolidation checkpoint: every `consolidateEvery` completed tickets the loop pauses so the
  * human can consolidate (review the batch, update the knowledge base) before the next phase.
  * Conservative by default — lifted only when the human has granted `autoConsolidate`, mirroring
- * the loop_auth gates. Returns { stop, reason }; reason is the empty string when not stopping.
+ * the loop_auth gates. Returns { stop, reason, draftsPending }; reason is the empty string when
+ * neither stopping nor reporting pending drafts.
  *
- * @param {{ completedThisRun: number, consolidateEvery?: number, autoConsolidate?: boolean }} opts
- * @returns {{ stop: boolean, reason: string }}
+ * TASK-105 AC4 — `draftEntryCount` (the number of files under knowledge/proposed/, see
+ * `listDraftEntries` in src/knowledge.js) is always echoed back as `draftsPending`, even when
+ * `autoConsolidate` lifts the ticket-count pause. `auto_consolidate` was previously the ONLY
+ * knowledge hook and silently skipped it entirely (stop: false, reason: '', no trace of pending
+ * drafts) — that silent skip is what this ticket closes. The human's role at consolidation is
+ * curator (batched promote/discard of knowledge/proposed/), not scribe — per-entry approval
+ * already happened, or rather was deliberately skipped, at each qualifying ticket close.
+ *
+ * @param {{
+ *   completedThisRun: number, consolidateEvery?: number, autoConsolidate?: boolean,
+ *   draftEntryCount?: number,
+ * }} opts
+ * @returns {{ stop: boolean, reason: string, draftsPending: number }}
  */
 export function consolidationGate({
   completedThisRun,
   consolidateEvery = 5,
   autoConsolidate = false,
+  draftEntryCount = 0,
 }) {
-  if (autoConsolidate) return { stop: false, reason: '' };
+  const draftsNote = draftEntryCount > 0
+    ? ` ${draftEntryCount} knowledge draft(s) pending in knowledge/proposed/ — batched promote/discard is the human's role at consolidation (curator, not scribe).`
+    : '';
+
+  if (autoConsolidate) {
+    return {
+      stop: false,
+      reason: draftEntryCount > 0
+        ? `auto_consolidate lifts the ticket-count pause, but knowledge work is not skipped:${draftsNote}`
+        : '',
+      draftsPending: draftEntryCount,
+    };
+  }
   if (consolidateEvery > 0 && completedThisRun > 0 && completedThisRun % consolidateEvery === 0) {
     return {
       stop: true,
-      reason: `Consolidation checkpoint: ${completedThisRun} tickets completed this run (every ${consolidateEvery}). Pausing for human consolidation — review the batch and update the knowledge base, then resume. Grant auto_consolidate to lift this gate.`,
+      reason: `Consolidation checkpoint: ${completedThisRun} tickets completed this run (every ${consolidateEvery}). Pausing for human consolidation — review the batch and update the knowledge base, then resume. Grant auto_consolidate to lift this gate.${draftsNote}`,
+      draftsPending: draftEntryCount,
     };
   }
-  return { stop: false, reason: '' };
+  return { stop: false, reason: '', draftsPending: draftEntryCount };
 }
 
 /**

@@ -1,6 +1,7 @@
 ---
 name: graphify
 description: How to build, query, and inspect the project knowledge graph stored under knowledge/graph/graph.json using src/knowledge-graph.js. Load this skill when the user or orchestrator wants to add nodes or edges to the graph, query neighbors or type-filtered nodes, inspect the current graph state, or open the /graph visualization in the board. Triggers on knowledge/graph/, addNode, addEdge, neighbors, nodesByType, loadGraph, or /hivemind:graph.
+source_tier: T2
 ---
 
 # Graphify — Project Knowledge Graph Skill
@@ -42,9 +43,7 @@ Each node has four required fields: `id`, `type`, `ref`, `label`.
 | `decision`        | A recorded design decision              | `knowledge/decisions/graph-design.md`  |
 | `skill`           | A skill directory                       | `skills/graphify/SKILL.md`             |
 
-### Canonical id shapes (TASK-104 — the canonical reference, identical to the
-orchestrator-routing skill's close-protocol section; the two sites must never
-contradict)
+### Canonical id shapes (TASK-104 — the canonical reference, identical to the orchestrator-routing skill's close-protocol section; the two sites must never contradict)
 
 `id` must be unique across all nodes and match its type's canonical shape:
 
@@ -54,10 +53,14 @@ contradict)
 | `decision`         | `decision-<YYYYMMDD>-<slug>`  | `decision-20260704-release-v0-10-0-minor-bump`     |
 | `skill`            | `skill-<slug>`                | `skill-graphify`                                   |
 | `knowledge_entry`  | `ke-<slug>`                   | `ke-windows-atomic-rename`                         |
+
 `<slug>` is lowercase, hyphen-separated, `[a-z0-9-]+` only — never a raw ISO
 timestamp and never an uppercase task key (e.g. `TASK-104`). Derive/validate
 mechanically via `canonicalIdPattern`/`isCanonicalId`/`deriveCanonicalId` in
-`src/graph-id-migration.js` rather than hand-rolling the convention.
+`src/graph-id-migration.js` rather than hand-rolling the convention. On an
+`addNode` slug-collision rejection (the id is already in use), add a
+distinguishing word to the `<slug>` rather than reusing or overloading the
+existing id.
 
 ## Edge Relations (typed)
 

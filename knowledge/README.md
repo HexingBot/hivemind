@@ -40,6 +40,14 @@ The Researcher subagent, on receiving a research question, runs this procedure d
 
 This is in `.claude/agents/researcher.md` as a mandatory step. The Researcher itself is read-only with respect to `knowledge/`; the Orchestrator writes the `last_seen_at` updates and any new entries via atomic temp+rename writes.
 
+## Draft entries (`proposed/`, TASK-105)
+
+Unvetted knowledge entries — captured automatically by the Orchestrator at ticket close when a
+review recorded a HIGH finding or the ticket needed an RC (REQUEST-CHANGES) loop — live in
+`knowledge/proposed/`, never in `knowledge/entries/`. They use the same schema and are excluded
+from the lookup procedure entirely (step 2 below only ever scans `knowledge/entries/*.md`). See
+`schema.md`'s "Draft entries" section for the full write/promote/discard contract.
+
 ## Knowledge graph (`graph/`)
 
 `knowledge/graph/` holds a typed graph that links the artifacts the framework

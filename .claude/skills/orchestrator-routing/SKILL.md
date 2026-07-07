@@ -521,7 +521,12 @@ authoritative for the gate/switch contract.
 5. **Phase / consolidation checkpoint** — after every `consolidateEvery`
    tickets completed in a run (default 5), the loop must pause so the human
    can consolidate the batch (review what shipped, update the knowledge base
-   / brain graph) before continuing. Gate lifted only by `auto_consolidate`.
+   / brain graph) before continuing. Gate lifted only by `auto_consolidate` —
+   but lifting the ticket-count pause never skips knowledge work:
+   `consolidationGate` still reports `draftsPending` (see "Knowledge capture
+   at ticket close" below) even when `auto_consolidate` is granted, and the
+   human's role at consolidation is to curate that batch (promote/discard),
+   not to author each entry from scratch.
 
 ### Standing-authorization switches
 
@@ -767,8 +772,7 @@ When a ticket is transitioned to `done`, the orchestrator **must** record the
 decisions that shaped the work as typed edges in the knowledge graph
 (`knowledge/graph/graph.json`) via `src/knowledge-graph.js`.
 
-### Canonical id shapes (TASK-104 — the canonical reference, identical to the
-graphify skill's Node Types section; the two sites must never contradict)
+### Canonical id shapes (TASK-104 — the canonical reference, identical to the graphify skill's Node Types section; the two sites must never contradict)
 
 | node type          | id shape                     | example                                          |
 |--------------------|-------------------------------|---------------------------------------------------|
@@ -776,10 +780,14 @@ graphify skill's Node Types section; the two sites must never contradict)
 | `decision`         | `decision-<YYYYMMDD>-<slug>`  | `decision-20260704-release-v0-10-0-minor-bump`     |
 | `skill`            | `skill-<slug>`                | `skill-graphify`                                   |
 | `knowledge_entry`  | `ke-<slug>`                   | `ke-windows-atomic-rename`                         |
+
 `<slug>` is lowercase, hyphen-separated, `[a-z0-9-]+` only — never a raw ISO
 timestamp and never an uppercase task key (e.g. `TASK-104`). Derive/validate
 mechanically via `canonicalIdPattern`/`isCanonicalId`/`deriveCanonicalId` in
-`src/graph-id-migration.js` rather than hand-rolling the convention.
+`src/graph-id-migration.js` rather than hand-rolling the convention. On an
+`addNode` slug-collision rejection (the id is already in use), add a
+distinguishing word to the `<slug>` rather than reusing or overloading the
+existing id.
 
 1. For each significant decision recorded in the session bundle's `decisions`
    array, ensure a node of type `decision` exists in the graph (add it with
@@ -800,6 +808,50 @@ mechanically via `canonicalIdPattern`/`isCanonicalId`/`deriveCanonicalId` in
 This gives future sessions a traversable audit trail: given any task node,
 following its outgoing `produced-by` edges to `decision` nodes explains *why*
 the work was scoped the way it was.
+
+## Knowledge capture at ticket close (TASK-105)
+
+**Trigger:** at ticket close (Workflow step 7), if the gating review recorded
+ANY HIGH-severity finding, or the ticket needed one or more REQUEST-CHANGES
+(RC) loops before landing, the Orchestrator writes a draft knowledge entry —
+without per-entry human approval. This closes the R16 gap: `auto_consolidate`
+(Gate 5) was previously the only knowledge hook, and it silently skipped
+knowledge work entirely when granted; capture now happens at every qualifying
+close, regardless of whether Gate 5's pause fires this run.
+
+**Write path:** `writeKnowledgeEntry({ repoRoot, entry, draft: true })`
+(`src/knowledge.js`). `entry` carries the same required fields as a vetted
+entry (`id`, `problem`, `symptoms`, `solution`, `tags`, `projects`,
+`created_at`, `last_seen_at`) — schema-validated against
+`knowledge/schema.json` before any write, atomically written via
+`atomicWriteFile`. The Orchestrator composes `entry` from the ticket key, the
+HIGH finding(s) or the RC-loop root cause, and the fix — the same material
+already going into the closing comment.
+
+**Unvetted location (AC3 design decision):** drafts land in
+`knowledge/proposed/`, a sibling of `knowledge/entries/`, rather than a
+`vetted: false` frontmatter flag on shared entries. This needs no
+`knowledge/schema.json` change, and `lookupKnowledge` (`src/knowledge.js`)
+already only scans `knowledge/entries/` — the directory boundary EXCLUDES
+drafts from ranking entirely, by construction, with no extra conditional on
+the hot lookup path. Full rationale: `knowledge/schema.md`'s "Draft entries"
+section.
+
+**Promotion (batched, at Gate 5 — curator, not scribe):** the human never
+approves a draft at write time; that already happened, without approval, at
+ticket close. At the consolidation checkpoint (`consolidationGate`,
+`src/drive-loop.js` — see Gate 5 below) the human reviews the batch of files
+under `knowledge/proposed/` and either promotes one (re-run
+`writeKnowledgeEntry({ repoRoot, entry, draft: false })` with the same entry
+data, landing it in `knowledge/entries/`, then delete the
+`knowledge/proposed/<id>.md` copy) or discards it (delete the file). A
+promoted entry linked into the knowledge graph gets graph node id `ke-<slug>`
+per the canonical id shapes above — never a raw filename or ticket key.
+
+**KB-first contract, now backed by a real write path (was read-only,
+TASK-035):** `lookupKnowledge` remains the mandatory pre-web-search step;
+captured drafts are how the KB grows without waiting on a human to author an
+entry from scratch.
 
 ## Deep workflows
 

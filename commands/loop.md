@@ -263,9 +263,11 @@ Any ticket that would trigger a version bump (`package.json`, `CHANGELOG`, relea
 
 ### Gate 5 — Phase / consolidation checkpoint
 
-An autonomous run must never barrel past a consolidation boundary. After every `consolidateEvery` tickets completed this run (default 5), call `consolidationGate({ completedThisRun, consolidateEvery, autoConsolidate })` from `src/drive-loop.js`; on `stop: true`, pause so the human can consolidate the batch (review what shipped, update the knowledge base / brain graph) before the next phase.
+An autonomous run must never barrel past a consolidation boundary. After every `consolidateEvery` tickets completed this run (default 5), call `consolidationGate({ completedThisRun, consolidateEvery, autoConsolidate, draftEntryCount })` from `src/drive-loop.js` — `draftEntryCount` is the number of files under `knowledge/proposed/` (`listDraftEntries` in `src/knowledge.js`); on `stop: true`, pause so the human can consolidate the batch (review what shipped, update the knowledge base / brain graph) before the next phase.
 
-**Authorization switch:** `auto_consolidate` — the human pre-authorizes skipping the consolidation pause.
+**Knowledge work is never silently skipped (TASK-105):** under `auto_consolidate` the ticket-count pause is lifted, but `consolidationGate` still returns `draftsPending` (and a non-empty `reason` whenever `draftsPending > 0`), so pending drafts always surface in the run's own logging. The human's role at consolidation is curator, not scribe — batched promote/discard of `knowledge/proposed/` entries; per-entry approval already happened, or rather was deliberately skipped, at each qualifying ticket close — see the orchestrator-routing skill's "Knowledge capture at ticket close" section.
+
+**Authorization switch:** `auto_consolidate` — the human pre-authorizes skipping the ticket-count consolidation pause (knowledge drafts still surface as described above).
 
 > Research tickets run their inner round loop via `loopUntilDry({ runRound, maxDryRounds, maxRounds })` — keep searching until K consecutive rounds find nothing new, then stop. The outer drive-loop wraps this.
 

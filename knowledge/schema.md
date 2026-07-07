@@ -70,3 +70,32 @@ Tie-break by most recent `last_seen_at`. Top 3 are read; the first whose `soluti
 - Filesystem-safe on Windows, macOS, Linux.
 - Human-readable in directory listings.
 - Stable across renames of the underlying tech (the tech may move, but the lesson id can stay).
+
+## Draft entries (`knowledge/proposed/`, TASK-105)
+
+Any reviewer HIGH-severity finding or REQUEST-CHANGES (RC) loop on a ticket produces a draft
+knowledge entry at close, written by the Orchestrator via `writeKnowledgeEntry({ repoRoot, entry,
+draft: true })` (`src/knowledge.js`) — without per-entry human approval. Drafts use the exact same
+frontmatter schema as a vetted entry; the only difference is WHERE they live.
+
+**Design decision: a sibling directory, not a `vetted: false` flag.** Two designs were on the
+table: (a) add a `vetted: false` frontmatter flag entries carry inside `knowledge/entries/` itself,
+or (b) a separate `knowledge/proposed/` directory holding the exact same schema. (b) was chosen: it
+needs no `schema.json` change, and `lookupKnowledge` already only scans `knowledge/entries/` — so
+drafts are excluded from ranking entirely, by construction, with zero extra conditional on the hot
+lookup path. A flag-based design would have required every lookup call site to remember to filter
+on `vetted !== false`, which is exactly the kind of silent-skip failure mode this ticket exists to
+close.
+
+**Promotion, batched at Gate 5 consolidation (curator, not scribe):** the human does not approve
+drafts one at a time. At the consolidation checkpoint (see `commands/loop.md`'s Gate 5) the human
+reviews the batch of files under `knowledge/proposed/` and either:
+
+- **promotes** one — re-run `writeKnowledgeEntry({ repoRoot, entry, draft: false })` with the same
+  entry data (lands it in `knowledge/entries/`), then delete the `knowledge/proposed/<id>.md` copy;
+  or
+- **discards** one — delete the file.
+
+A promoted entry that gets linked into the knowledge graph (`knowledge/graph/graph.json`) mints a
+`ke-<slug>` node id per the canonical id shapes convention — never a raw filename or ticket key
+(see the orchestrator-routing skill's "Recording decision→task edges" section).
