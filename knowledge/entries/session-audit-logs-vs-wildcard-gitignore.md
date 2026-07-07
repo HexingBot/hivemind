@@ -32,6 +32,7 @@ created_at: "2026-05-25T00:00:00Z"
 last_seen_at: "2026-05-25T00:00:00Z"
 supersedes: []
 superseded_by: null
+source_tier: T1
 ---
 
 ## Why it happens

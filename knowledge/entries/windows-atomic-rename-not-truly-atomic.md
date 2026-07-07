@@ -40,6 +40,7 @@ source_urls:
   - "https://github.com/jprichardson/node-fs-extra/issues/835"
 supersedes: []
 superseded_by: null
+source_tier: T3
 ---
 
 ## Why `fs.rename` is not strictly atomic on Windows

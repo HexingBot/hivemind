@@ -46,6 +46,7 @@ source_urls:
   - "https://github.com/anthropics/claude-code/issues/24594"
 supersedes: []
 superseded_by: null
+source_tier: T3
 ---
 
 ## Why CLI-spawn (not the Agent SDK in-process)

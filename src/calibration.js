@@ -34,15 +34,19 @@ export function validateMarkers(filePath, content) {
       });
     }
 
-    // G3/PG3 — a "confirmed/decided/resolved/proven" claim with no marker at all
-    if (line.includes('confirmed') && !line.includes('[EXPLICIT]') && !line.includes('[INFERRED') && !line.includes('[ASSUMED]')) {
-      if (/\b(confirmed|decided|resolved|proven)\b/i.test(line) && line.trim().startsWith('-')) {
-        violations.push({
-          file: filePath, line: lineNum, text: line.trim().slice(0, 80),
-          rule: "G3/PG3 — 'confirmed/decided' claim has no marker; verify it's [EXPLICIT] or [INFERRED:strong]",
-          severity: 'FLAG',
-        });
-      }
+    // G3/PG3 — a "confirmed/decided/resolved/proven" claim with no marker at all.
+    // (R3) The previous version pre-filtered on a literal, case-sensitive
+    // `line.includes('confirmed')` before ever reaching the case-insensitive
+    // \b(confirmed|decided|resolved|proven)\b test below — which made
+    // 'decided'/'resolved'/'proven' and any capitalized form ('Confirmed',
+    // 'Decided') dead code, since those never contain the substring 'confirmed'.
+    if (/\b(confirmed|decided|resolved|proven)\b/i.test(line) && line.trim().startsWith('-')
+      && !line.includes('[EXPLICIT]') && !line.includes('[INFERRED') && !line.includes('[ASSUMED]')) {
+      violations.push({
+        file: filePath, line: lineNum, text: line.trim().slice(0, 80),
+        rule: "G3/PG3 — 'confirmed/decided' claim has no marker; verify it's [EXPLICIT] or [INFERRED:strong]",
+        severity: 'FLAG',
+      });
     }
   }
 
@@ -81,10 +85,45 @@ export function validateMarkerForwarding(sourceContent, derivedContent, sourcePa
   return violations;
 }
 
-/** Extract the source_tier (T1..T4/TX) from frontmatter, or null. */
+/**
+ * Extract the source_tier (T1..T4/TX) from either YAML frontmatter
+ * (`source_tier: T1`) or the JSON-property form used by tasks/*.json
+ * (`"source_tier": "T1"`). (AC3) The optional `"` around both the key and
+ * the value covers both forms with one pattern; a bare `source_tier` key
+ * whose value is an object (e.g. the schema's own property *definition*,
+ * `"source_tier": { "type": "string" }`) does not match — the next
+ * non-whitespace character after the colon is `{`, not a quote/tier token.
+ */
 export function extractTier(content) {
-  const match = content.match(/source_tier:\s*(T[1-4X])/);
+  const match = content.match(/"?source_tier"?\s*:\s*"?(T[1-4X])"?/);
   return match ? match[1] : null;
+}
+
+/**
+ * (R3/AC1) The two concrete, machine-checkable surfaces agents/reviewer.md's
+ * calibration gate mandates a source_tier on: knowledge entries and ticket
+ * files. Deliberately narrow — NOT "every markdown file" or "every JSON
+ * file" — so the BLOCKER below can never fire on unrelated repo surfaces
+ * (README, commands/*.md, schema/index/graph files) that carry no
+ * source_tier convention and never will.
+ */
+export function isMandatedTierSurface(filePath) {
+  const p = filePath.replace(/\\/g, '/');
+  return /(^|\/)knowledge\/entries\/[^/]+\.md$/.test(p) || /(^|\/)tasks\/TASK-[0-9]+\.json$/.test(p);
+}
+
+/**
+ * (R3/AC1) Exemption: a mandated ticket file whose lifecycle has already
+ * closed (`status: "done"`) is grandfathered — retrofitting tier metadata
+ * onto closed historical tickets is out of scope for the mandate, which
+ * binds active work (todo/in_progress/in_review/blocked), not the audit
+ * trail. Knowledge entries carry no such exemption: they are living docs,
+ * always re-editable, so the mandate always applies to them.
+ */
+export function isExemptTierSurface(filePath, content) {
+  const p = filePath.replace(/\\/g, '/');
+  if (!/(^|\/)tasks\/TASK-[0-9]+\.json$/.test(p)) return false;
+  return /"status"\s*:\s*"done"/.test(content);
 }
 
 /** Source-tier ceiling: T3/T4 can't be [EXPLICIT], T4 can't be [INFERRED], TX is rejected. */
@@ -92,11 +131,14 @@ export function validateTiers(filePath, content) {
   const violations = [];
   const tier = extractTier(content);
   if (!tier) {
-    violations.push({
-      file: filePath, line: 1, text: '(frontmatter)',
-      rule: 'source_tier missing from frontmatter — add T1/T2/T3/T4',
-      severity: 'FLAG',
-    });
+    if (isMandatedTierSurface(filePath) && !isExemptTierSurface(filePath, content)) {
+      violations.push({
+        file: filePath, line: 1, text: '(frontmatter)',
+        rule: 'source_tier missing from a mandated surface — add T1/T2/T3/T4/TX or document an exemption',
+        severity: 'BLOCKER',
+      });
+    }
+    // Non-mandated surfaces produce no finding at all — no uniform FLAG wall (AC5).
     return violations;
   }
 
