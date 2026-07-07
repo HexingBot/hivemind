@@ -1,0 +1,830 @@
+{
+  "schema_version": 1,
+  "nodes": [
+    {
+      "id": "2026-06-16T23:08:38.712Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "BETA-TEST GOAL goal-mode-switch minted (operating-mode harness|loop, dogfood-driven via /hivemind-beta:loop)"
+    },
+    {
+      "id": "2026-06-17T03:40:00Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "Plan+mint goal-app-preview (TASK-065..069): console app-preview screen, scope locked via 3 AskUserQuestion forks"
+    },
+    {
+      "id": "2026-06-17T05:51:00Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "2026-06-17 goal-app-preview drive complete: recorded the 4x-recurring lock pid-identity finding"
+    },
+    {
+      "id": "2026-07-01T21:20:37.785Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "2026-07-01 direction: remove web console, unsupervised loop, agility program, win32 baseline fix"
+    },
+    {
+      "id": "2026-07-01T21:36:25.900Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "2026-07-01 agility tickets minted (human-approved R1+R2+R3): TASK-076 single tdd spawn, TASK-077 risk-scaled review depth, TASK-078 pre-hand-off prevention checklist"
+    },
+    {
+      "id": "2026-07-02T16:41:33.605Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "2026-07-02 deep-review complete: 37 confirmed findings, E1/E2 amendments, TASK-081..086 cut"
+    },
+    {
+      "id": "2026-07-04T02:00:00Z",
+      "type": "decision",
+      "ref": "tasks/TASK-084.json",
+      "label": "Loop crash-resume via loop_state checkpoint contract + pure resumePoint (never-invisible, durable counters); subsumes TASK-071 enum mapping"
+    },
+    {
+      "id": "2026-07-04T02:45:00Z",
+      "type": "decision",
+      "ref": "tasks/TASK-080.json",
+      "label": "Loop-grade lock: holder_id surfaced in E_LOCK_HELD + 3-boundary renew cadence + loop-mode staleness override documented"
+    },
+    {
+      "id": "2026-07-04T04:30:00Z",
+      "type": "decision",
+      "ref": "tasks/TASK-085.json",
+      "label": "Exclusive-create + verify-after-write + CAS-steal for session-lock; fd-write reservation for createTask (store-brick regression caught and fixed in RC round)"
+    },
+    {
+      "id": "2026-07-04T22:11:40.917Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "S5 verdict: brain demoted to experimental opt-in; TASK-079 closed wont-do"
+    },
+    {
+      "id": "2026-07-04T22:37:28.261Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "TASK-094 close: window #7 ledger complete — release/reacquire CAS-guarded, renew honestly documented (reviewer-concurred liveness argument)"
+    },
+    {
+      "id": "2026-07-04T23:07:33.778Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "Release v0.10.0: minor bump cutting the post-0.9.0 drive (074-094); two-site pin, clean APPROVE, human-approved tag+push"
+    },
+    {
+      "id": "2026-07-06T23:30:00.000Z",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "Deep-review sweep #2 ticket cut: minted TASK-096..106 (8 sweep items + KB trio), human-approved"
+    },
+    {
+      "id": "TASK-063",
+      "type": "task",
+      "ref": "tasks/TASK-063.json",
+      "label": "Operating-mode state (loop vs harness) + auto-flip + manual toggle"
+    },
+    {
+      "id": "TASK-064",
+      "type": "task",
+      "ref": "tasks/TASK-064.json",
+      "label": "Console live mode badge + toggle control (loop vs harness)"
+    },
+    {
+      "id": "TASK-065",
+      "type": "task",
+      "ref": "tasks/TASK-065.json",
+      "label": "App-preview config resolver (PROJECT.md preview block + package.json inference)"
+    },
+    {
+      "id": "TASK-066",
+      "type": "task",
+      "ref": "tasks/TASK-066.json",
+      "label": "Preview process manager — spawn/stop/restart + bounded log capture + URL detection"
+    },
+    {
+      "id": "TASK-067",
+      "type": "task",
+      "ref": "tasks/TASK-067.json",
+      "label": "Console preview backend routes — start/stop/restart/status + SSE log stream"
+    },
+    {
+      "id": "TASK-068",
+      "type": "task",
+      "ref": "tasks/TASK-068.json",
+      "label": "Console preview panel — iframe (web) / log view (process) + controls + sample fixtures"
+    },
+    {
+      "id": "TASK-069",
+      "type": "task",
+      "ref": "tasks/TASK-069.json",
+      "label": "/hivemind-beta:preview command + orchestrator-routing preview docs"
+    },
+    {
+      "id": "TASK-071",
+      "type": "task",
+      "ref": "tasks/TASK-071.json",
+      "label": "loop checkpoint writes map workflow phases to valid workflow_step enum values (subsumed)"
+    },
+    {
+      "id": "TASK-076",
+      "type": "task",
+      "ref": "tasks/TASK-076.json",
+      "label": "agility R1: single developer spawn for tdd tier with two-commit discipline"
+    },
+    {
+      "id": "TASK-077",
+      "type": "task",
+      "ref": "tasks/TASK-077.json",
+      "label": "agility R2: risk-scaled review depth (light|full) rubric + one-way escalation + E2 reviewer tier-audit"
+    },
+    {
+      "id": "TASK-078",
+      "type": "task",
+      "ref": "tasks/TASK-078.json",
+      "label": "agility R3: mandatory pre-hand-off prevention checklist (5 recurring HIGH classes) + carried R2 sharpening"
+    },
+    {
+      "id": "TASK-079",
+      "type": "task",
+      "ref": "tasks/TASK-079.json",
+      "label": "brain-launch: Windows-aware python interpreter fallback when no venv exists"
+    },
+    {
+      "id": "TASK-080",
+      "type": "task",
+      "ref": "tasks/TASK-080.json",
+      "label": "session-lock: loop-grade heartbeat + holder_id surfacing"
+    },
+    {
+      "id": "TASK-084",
+      "type": "task",
+      "ref": "tasks/TASK-084.json",
+      "label": "mid-ticket crash-resume for the loop + autonomous-drive use case e2e"
+    },
+    {
+      "id": "TASK-085",
+      "type": "task",
+      "ref": "tasks/TASK-085.json",
+      "label": "session-lock exclusive acquire + verify-after-write + contention specs"
+    },
+    {
+      "id": "TASK-086",
+      "type": "task",
+      "ref": "tasks/TASK-086.json",
+      "label": "Data-fencing of ticket-derived text in agent briefings (deep-review TASK-039 standard)"
+    },
+    {
+      "id": "TASK-087",
+      "type": "task",
+      "ref": "tasks/TASK-087.json",
+      "label": "task-board: 413 body-cap regression lock + KEY_RE traversal spec + stale mode.md fix"
+    },
+    {
+      "id": "TASK-088",
+      "type": "task",
+      "ref": "tasks/TASK-088.json",
+      "label": "loop-auth polish: frozen exports + typed E_BUNDLE_MISSING (tier-audit reclassified tdd)"
+    },
+    {
+      "id": "TASK-089",
+      "type": "task",
+      "ref": "tasks/TASK-089.json",
+      "label": "docs: mcp-server skill seven-tools drift fix (close_task, ground-truth-verified)"
+    },
+    {
+      "id": "TASK-090",
+      "type": "task",
+      "ref": "tasks/TASK-090.json",
+      "label": "session-lock: content-checked CAS steal + claim sweep + honest comments (1 RC loop)"
+    },
+    {
+      "id": "TASK-091",
+      "type": "task",
+      "ref": "tasks/TASK-091.json",
+      "label": "developer Bash allowlist: PROJECT.md-derived, --apply-permissions (enforcement layer for TASK-086 fencing)"
+    },
+    {
+      "id": "TASK-092",
+      "type": "task",
+      "ref": "tasks/TASK-092.json",
+      "label": "bundle: shared readBundleSessionOrThrow + ENOENT-twin migrations + riders"
+    },
+    {
+      "id": "TASK-093",
+      "type": "task",
+      "ref": "tasks/TASK-093.json",
+      "label": "mcp-server skill: tool-contract drift finish + references/ parity sensor"
+    },
+    {
+      "id": "TASK-094",
+      "type": "task",
+      "ref": "tasks/TASK-094.json",
+      "label": "session-lock: renew()/release()/same-holder-reacquire path-vs-inode residue"
+    },
+    {
+      "id": "TASK-095",
+      "type": "task",
+      "ref": "tasks/TASK-095.json",
+      "label": "Release v0.10.0 — cut the post-0.9.0 drive as a versioned release"
+    },
+    {
+      "id": "TASK-096",
+      "type": "task",
+      "ref": "tasks/TASK-096.json",
+      "label": "loop: pass the FULL task list to selectNextTicket (R1)"
+    },
+    {
+      "id": "TASK-097",
+      "type": "task",
+      "ref": "tasks/TASK-097.json",
+      "label": "loop: ship dist/loop-ctl.cjs + re-path docs (R2)"
+    },
+    {
+      "id": "TASK-098",
+      "type": "task",
+      "ref": "tasks/TASK-098.json",
+      "label": "calibration: revive the structurally-dead gate (R3)"
+    },
+    {
+      "id": "TASK-099",
+      "type": "task",
+      "ref": "tasks/TASK-099.json",
+      "label": "ticket writes: single guarded path + Gate 2 in code (R4+R5)"
+    },
+    {
+      "id": "TASK-100",
+      "type": "task",
+      "ref": "tasks/TASK-100.json",
+      "label": "loop checkpoint: crash-resume correctness (R7)"
+    },
+    {
+      "id": "TASK-101",
+      "type": "task",
+      "ref": "tasks/TASK-101.json",
+      "label": "bug reporter + repo identity: DEFAULT_REPO/README, URI-userinfo/_AUTH scrub, agent confirm gate (R12)"
+    },
+    {
+      "id": "TASK-102",
+      "type": "task",
+      "ref": "tasks/TASK-102.json",
+      "label": "onboarding repair: npm install quickstart, brain.md dist path + experimental, Run-the-loop README, generated claude-md routing block (R13+R14)"
+    },
+    {
+      "id": "TASK-103",
+      "type": "task",
+      "ref": "tasks/TASK-103.json",
+      "label": "bundle hygiene: validate-before-write + compaction/rotation with enforced size sensor (R11+R10+R29)"
+    },
+    {
+      "id": "decision-20260612-deep-workflows",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/archive.jsonl#2026-06-12T17:15:00Z",
+      "label": "Deep-workflows pair: Workflow-tool scripts distributed via init materialization; opt-in amplifiers, never replacing the per-ticket loop"
+    },
+    {
+      "id": "decision-20260612-fable-retired",
+      "type": "decision",
+      "ref": "tasks/TASK-042.json",
+      "label": "Fable 5 unavailable: reviewer model fable→inherit (tracks session default, now Opus 4.8); orchestrator already inherits; dev/researcher stay sonnet; fable stays a valid alias"
+    },
+    {
+      "id": "decision-20260612-graphify-inhouse",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/archive.jsonl#2026-06-12T02:30:00Z",
+      "label": "Graphify built in-house under knowledge/ (index-not-copy); data-island injection bug caught and fixed in review"
+    },
+    {
+      "id": "decision-20260612-orchestrator-demotion",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/archive.jsonl#2026-06-12",
+      "label": "Orchestrator is the main session thread with the orchestrator-routing skill; no orchestrator subagent ships"
+    },
+    {
+      "id": "decision-20260615-web-console",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/archive.jsonl#2026-06-15T19:00:00Z",
+      "label": "Agentic OS web console: browser window into a persistent orchestrator session via the existing claude login (no API key); extend the board server; local-only"
+    },
+    {
+      "id": "decision-20260616-os-ergonomics",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "v0.6.0 OS-ergonomics trio: console launcher into projects + /update + graphify skill+/graph"
+    },
+    {
+      "id": "ke-claude-headless-bridge",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
+      "label": "Headless claude stream-json bridge: persistent session mechanics + subscription auth"
+    },
+    {
+      "id": "ke-session-audit-logs-gitignore",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/session-audit-logs-vs-wildcard-gitignore.md",
+      "label": "Session audit logs vs wildcard gitignore"
+    },
+    {
+      "id": "ke-windows-atomic-rename",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/windows-atomic-rename-not-truly-atomic.md",
+      "label": "Windows atomic rename is not truly atomic"
+    },
+    {
+      "id": "skill-graphify",
+      "type": "skill",
+      "ref": "skills/graphify/SKILL.md",
+      "label": "graphify skill"
+    },
+    {
+      "id": "skill-orchestrator-routing",
+      "type": "skill",
+      "ref": "skills/orchestrator-routing/SKILL.md",
+      "label": "orchestrator-routing - the orchestrator operational manual"
+    },
+    {
+      "id": "task-032",
+      "type": "task",
+      "ref": "tasks/TASK-032.json",
+      "label": "Orchestrator demotion - main thread + skills"
+    },
+    {
+      "id": "task-035",
+      "type": "task",
+      "ref": "tasks/TASK-035.json",
+      "label": "Knowledge graph (graphify propio)"
+    },
+    {
+      "id": "task-037",
+      "type": "task",
+      "ref": "tasks/TASK-037.json",
+      "label": "Deep-review workflow + workflow materializer infra"
+    },
+    {
+      "id": "task-038",
+      "type": "task",
+      "ref": "tasks/TASK-038.json",
+      "label": "Deep-research workflow (multi-angle sweep)"
+    },
+    {
+      "id": "task-039",
+      "type": "task",
+      "ref": "tasks/TASK-039.json",
+      "label": "deep-review hardening: prompt-injection guards + materializer test gaps"
+    },
+    {
+      "id": "task-040",
+      "type": "task",
+      "ref": "tasks/TASK-040.json",
+      "label": "--apply-workflows retrofit flag + apply-workflows plugin command"
+    },
+    {
+      "id": "task-041",
+      "type": "task",
+      "ref": "tasks/TASK-041.json",
+      "label": "deep-research fence-cap fix: declared-not-silent truncation"
+    },
+    {
+      "id": "task-042",
+      "type": "task",
+      "ref": "tasks/TASK-042.json",
+      "label": "Retire reviewer fable pin → inherit (default main model)"
+    },
+    {
+      "id": "task-050",
+      "type": "task",
+      "ref": "tasks/TASK-050.json",
+      "label": "Web console P0 spike: persistent headless orchestrator session over the existing claude login"
+    },
+    {
+      "id": "task-051",
+      "type": "task",
+      "ref": "tasks/TASK-051.json",
+      "label": "Web console P1: orchestrator-session bridge + chat routes"
+    },
+    {
+      "id": "task-052",
+      "type": "task",
+      "ref": "tasks/TASK-052.json",
+      "label": "Web console P2: chat panel UI (streaming render + activity chips)"
+    },
+    {
+      "id": "task-053",
+      "type": "task",
+      "ref": "tasks/TASK-053.json",
+      "label": "Web console P3: skill buttons (panel-safe catalog + run-on-click)"
+    },
+    {
+      "id": "task-054",
+      "type": "task",
+      "ref": "tasks/TASK-054.json",
+      "label": "Web console P4: create-ticket + unified OS shell + live refresh"
+    },
+    {
+      "id": "task-055",
+      "type": "task",
+      "ref": "tasks/TASK-055.json",
+      "label": "Web console P5: session-state status bar (bounded projection)"
+    },
+    {
+      "id": "task-056",
+      "type": "task",
+      "ref": "tasks/TASK-056.json",
+      "label": "Web console P6: launcher + /console + security review + v0.5.0 release"
+    },
+    {
+      "id": "task-057",
+      "type": "task",
+      "ref": "tasks/TASK-057.json",
+      "label": "Materialize console launcher into user projects at init"
+    },
+    {
+      "id": "task-058",
+      "type": "task",
+      "ref": "tasks/TASK-058.json",
+      "label": "/hivemind:update command"
+    },
+    {
+      "id": "task-059",
+      "type": "task",
+      "ref": "tasks/TASK-059.json",
+      "label": "graphify skill + /hivemind:graph command"
+    },
+    {
+      "id": "task-070",
+      "type": "task",
+      "ref": "tasks/TASK-070.json",
+      "label": "session-lock stable caller-supplied holder identity (holder_id)"
+    },
+    {
+      "id": "task-072",
+      "type": "task",
+      "ref": "tasks/TASK-072.json",
+      "label": "Preview panel behavioral coverage (closed obsolete)"
+    },
+    {
+      "id": "task-073",
+      "type": "task",
+      "ref": "tasks/TASK-073.json",
+      "label": "brain-launch Windows portability (venv layout + path-agnostic tests)"
+    },
+    {
+      "id": "task-074",
+      "type": "task",
+      "ref": "tasks/TASK-074.json",
+      "label": "Remove the Agentic OS web console"
+    },
+    {
+      "id": "task-075",
+      "type": "task",
+      "ref": "tasks/TASK-075.json",
+      "label": "loop unattended mode: single up-front loop_auth grant"
+    },
+    {
+      "id": "task-081",
+      "type": "task",
+      "ref": "tasks/TASK-081.json",
+      "label": "repair reviewer re-verification gate (test:since + fast tier + calibration)"
+    },
+    {
+      "id": "task-082",
+      "type": "task",
+      "ref": "tasks/TASK-082.json",
+      "label": "deterministic gate enforcement + atomic close_task tool"
+    },
+    {
+      "id": "task-083",
+      "type": "task",
+      "ref": "tasks/TASK-083.json",
+      "label": "state resilience: recovery wiring, gitignore, tmp age-gate, create collision guard"
+    }
+  ],
+  "edges": [
+    {
+      "from": "TASK-063",
+      "to": "2026-06-16T23:08:38.712Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-064",
+      "to": "2026-06-16T23:08:38.712Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-065",
+      "to": "2026-06-17T03:40:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-066",
+      "to": "2026-06-17T03:40:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-067",
+      "to": "2026-06-17T03:40:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-068",
+      "to": "2026-06-17T03:40:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-069",
+      "to": "2026-06-17T03:40:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-071",
+      "to": "2026-07-04T02:00:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-076",
+      "to": "2026-07-01T21:36:25.900Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-077",
+      "to": "2026-07-01T21:36:25.900Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-077",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-078",
+      "to": "2026-07-01T21:36:25.900Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-079",
+      "to": "2026-07-04T22:11:40.917Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-080",
+      "to": "2026-07-04T02:45:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-084",
+      "to": "2026-07-04T02:00:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-085",
+      "to": "2026-07-04T04:30:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-086",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-087",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-088",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-089",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-090",
+      "to": "2026-07-04T04:30:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-091",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-092",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-093",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "TASK-094",
+      "to": "2026-07-04T22:37:28.261Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-095",
+      "to": "2026-07-04T23:07:33.778Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-096",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-097",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-098",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-099",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-100",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-101",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-102",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "TASK-103",
+      "to": "2026-07-06T23:30:00.000Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "ke-claude-headless-bridge",
+      "to": "task-050",
+      "relation": "learned-in"
+    },
+    {
+      "from": "skill-graphify",
+      "to": "task-059",
+      "relation": "learned-in"
+    },
+    {
+      "from": "skill-orchestrator-routing",
+      "to": "task-032",
+      "relation": "learned-in"
+    },
+    {
+      "from": "task-032",
+      "to": "decision-20260612-orchestrator-demotion",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-035",
+      "to": "decision-20260612-graphify-inhouse",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-037",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-038",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-039",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-040",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-041",
+      "to": "decision-20260612-deep-workflows",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-042",
+      "to": "decision-20260612-fable-retired",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-050",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-051",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-052",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-053",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-054",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-055",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-056",
+      "to": "decision-20260615-web-console",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-057",
+      "to": "decision-20260616-os-ergonomics",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-058",
+      "to": "decision-20260616-os-ergonomics",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-059",
+      "to": "decision-20260616-os-ergonomics",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-070",
+      "to": "2026-06-17T05:51:00Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-070",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "task-072",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "task-073",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-074",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-075",
+      "to": "2026-07-01T21:20:37.785Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-075",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "relates-to"
+    },
+    {
+      "from": "task-081",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-082",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-083",
+      "to": "2026-07-02T16:41:33.605Z",
+      "relation": "produced-by"
+    }
+  ]
+}

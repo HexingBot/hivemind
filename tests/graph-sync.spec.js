@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mapNodeToAssert, recordNode, neighborsCanonicalFirst } from '../src/graph-sync.js';
+import { UnknownNodeIdError } from '../src/knowledge-graph.js';
 
 describe('mapNodeToAssert', () => {
   it('maps a decision node with explicit defaults and artifact provenance', () => {
@@ -95,5 +96,25 @@ describe('neighborsCanonicalFirst', () => {
     await neighborsCanonicalFirst({ brain, repoRoot: '/r', id: 'n1', neighbors });
     expect(brain.neighbors).not.toHaveBeenCalled();
     expect(neighbors).toHaveBeenCalled();
+  });
+
+  // TASK-104 — neighbors() now throws UnknownNodeIdError instead of silently
+  // returning [] for an id absent from the LOCAL projection. This fallback
+  // path is the one documented exception: a node can exist canonically but
+  // not yet be mirrored locally, so the degradation to an empty array here
+  // must stay intentional and explicit, not an accidental regression.
+  it('treats a local UnknownNodeIdError as an expected degradation and returns empty neighbors', async () => {
+    const brain = { neighbors: vi.fn(async () => ({ source: 'unavailable', neighbors: null })) };
+    const neighbors = vi.fn(async () => { throw new UnknownNodeIdError('n1'); });
+    const out = await neighborsCanonicalFirst({ brain, repoRoot: '/r', id: 'n1', canonicalId: 'Task:abc', neighbors });
+    expect(out).toEqual({ source: 'projection', neighbors: [] });
+  });
+
+  it('rethrows a non-UnknownNodeIdError local failure (no swallowing real errors)', async () => {
+    const brain = { neighbors: vi.fn(async () => ({ source: 'unavailable', neighbors: null })) };
+    const neighbors = vi.fn(async () => { throw new Error('disk boom'); });
+    await expect(
+      neighborsCanonicalFirst({ brain, repoRoot: '/r', id: 'n1', canonicalId: 'Task:abc', neighbors }),
+    ).rejects.toThrow('disk boom');
   });
 });
