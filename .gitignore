@@ -46,3 +46,4 @@ build/
 state/.lock
 state/**/*.tmp.*
 tasks/*.tmp.*
+.firebase/

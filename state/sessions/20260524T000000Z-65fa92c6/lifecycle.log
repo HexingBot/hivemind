@@ -1,1 +1,2 @@
 {"at":"2026-05-25T04:05:07.452Z","op":"migrate_v1","from_step":"test","to_step":"test","idempotent_noop":false}
+{"at":"2026-07-07T18:45:59.428Z","op":"end","from_step":"idle","to_step":"idle","idempotent_noop":false}

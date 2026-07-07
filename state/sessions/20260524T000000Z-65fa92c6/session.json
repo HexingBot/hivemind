@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "session_id": "20260524T000000Z-65fa92c6",
-  "lifecycle_state": "active",
+  "lifecycle_state": "ended",
   "open_questions": [
     "Set Atlassian creds to unblock TASK-003 (now has deep-research intel)?"
   ],
@@ -223,7 +223,7 @@
     }
   ],
   "pending_human_confirmation": "NONE PENDING — v0.11.0 released with explicit human approval (tag+push executed, UAT delegated 4/4 PASS). Workflow idle.",
-  "updated_at": "2026-07-07T12:01:35.801Z",
+  "updated_at": "2026-07-07T18:45:59.428Z",
   "active_task": null,
   "workflow_step": "idle",
   "loop_auth": {
@@ -264,7 +264,7 @@
     "completed_this_run": 12,
     "run_started_at": "2026-07-06T23:45:00.000Z"
   },
-  "next_action": "Nothing mid-flight. NOTE: release-close bookkeeping (tasks/TASK-114.json, tasks/index.json, knowledge/graph/graph.json, this bundle file) is uncommitted in the working tree — commit as chore(release-close) bookkeeping and push at next convenient point (origin already has the release itself). Open backlog (todo): TASK-107, 108, 109, 110, 112, 113; TASK-003 blocked on Atlassian creds. Cloud routine 20:50Z will find 106+111 done+pushed and no-op. Pre-existing LOWs from rev-114 (publish-config test name says 0_1_1; package.json inert 0.0.0) are candidates to fold into TASK-113 or the next sweep.",
-  "handoff_summary": "RELEASED hivemind v0.11.0 (2026-07-07, human-approved) on top of the completed goal-sweep2 drive. Release commit c238ba3 (two-site bump per d677106 precedent), annotated tag v0.11.0 (object bccd870) pushed with main; origin/main in sync at c238ba3; origin plugin.json advertises 0.11.0 — publish live for updaters. rev-114 clean APPROVE (0H/0M/2L, gate re-run 1360/4); UAT 4/4 delegated-PASS recorded; TASK-114 closed; graph edge task-114 -> decision-20260707-release-v0-11-0-minor-bump. Earlier today: drive stopped clean (12 tickets: 096-106+111), TASK-113 LOW-bundle minted, all pushed. Orchestrator IDLE, mode=harness, no lock held.",
+  "next_action": null,
+  "handoff_summary": "SESSION CLOSED (2026-07-07). Two threads done: (1) goal-sweep2 drive finished + hivemind v0.11.0 RELEASED (annotated tag v0.11.0 on c238ba3, pushed; origin advertises 0.11.0). (2) SHOWCASE SITE built + deployed: docs/index.html — retro pixel/CRT landing translated from the Claude Design Hivemind.dc.html, bilingual EN/ES, install->init->loop walkthrough, command reference, PayPal donate (paypal.me/josematovelle1/5USD), rotating PixelLab pixel-art monitor background (8-direction flipbook @250ms, blurred), plus hidden AI-readable install instructions (HTML comment + DOM-hidden <pre> that survives markdown extraction). Hosted on Firebase project hivemind-ef84a at https://hivemind-ef84a.web.app; repo homepage + README link set. MCP servers added to local config this session: claude_design, pixellab. Everything committed and pushed to origin/main. Orchestrator idle; bundle ended.",
   "mode": "harness"
 }
