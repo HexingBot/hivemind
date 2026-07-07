@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hivemind — Agentic Plugin</title>
+<meta name="description" content="Hivemind: a multi-agent development crew that lives inside your repository. Install, init, and put it on autopilot with Claude Code.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { margin: 0; padding: 0; background: #05060a; overflow-x: hidden; }
+  ::selection { background: #ff9a1f; color: #05060a; }
+  a { color: #b07fff; text-decoration: none; }
+  a:hover { color: #ff9a1f; }
+  @keyframes flick { 0%,100%{opacity:.9} 50%{opacity:.78} 8%{opacity:.82} }
+  @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+  ::-webkit-scrollbar { width: 12px; }
+  ::-webkit-scrollbar-track { background: #0a0d16; }
+  ::-webkit-scrollbar-thumb { background: #ff9a1f; border: 2px solid #0a0d16; }
+</style>
+</head>
+<body>
+
+<canvas id="bg" style="position:fixed; inset:0; width:100vw; height:100vh; z-index:0; display:block;"></canvas>
+<div style="position:fixed; inset:0; z-index:1; pointer-events:none; background:radial-gradient(ellipse 120% 80% at 50% 40%, rgba(5,6,10,0) 40%, rgba(5,6,10,.75) 100%);"></div>
+<div style="position:fixed; inset:0; z-index:2; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0px, rgba(0,0,0,.28) 1px, transparent 1px, transparent 3px); animation:flick 4s infinite;"></div>
+
+<div id="app" style="position:relative; z-index:3; min-height:100vh; padding:0 20px 56px; font-family:'VT323',monospace; color:#cfe3ff;"></div>
+
+<script>
+const T = {
+  en: {
+    label: "LET'S BUILD",
+    heroLead: "A development team,", heroHi1: "multi-agent,",
+    heroMid: "that lives inside your repository. You describe what you want in plain language and an orchestrator dispatches the work to specialized assistants that",
+    heroHi2: "plan, write tests, implement and review each other",
+    heroTail: "— and only then close the ticket.",
+    btnInstall: "▶ INSTALL", btnFlow: "THE FLOW",
+    secWhat: "// WHAT IT DOES",
+    secFlow: "// A TICKET'S FLOW",
+    flowIntro: "Nothing happens off the books. Every feature, bug or refactor is a JSON ticket in tasks/ with acceptance criteria, and state survives across chats.",
+    secCrew: "// THE CREW",
+    secUse: "// HOW TO USE IT",
+    s1title: "INSTALL",
+    s1desc: "All you need is Claude Code and Node.js 20+ — no Docker, no databases.",
+    s1c1: "# register the marketplace (once per machine)",
+    s1c2: "# install the crew — available in every chat",
+    s2title: "START YOUR PROJECT",
+    s2desc: "Open Claude Code in your folder and run init. It asks a few questions — name, type, users, use cases, stack — and creates a PROJECT.md, an initial backlog in tasks/ and memory in state/.",
+    s3title: "AUTOPILOT",
+    s3desc: "For a one-off ticket, just ask in plain language. To move several toward a goal unsupervised, start the loop: it repeats the full flow — research, test, implement, review, close.",
+    s3comment: "# give it a goal and confirm",
+    s3gates: "It only stops at 5 safety gates: before closing or publishing, on UAT verdicts, if scope is ambiguous, before a release, and every few tickets so you can review what shipped.",
+    s3auto: "Or, if you're feeling adventurous, you can put it in auto-mode.",
+    footer: "Under the hood: specialized agents, a real ticket queue, a graph-backed knowledge base and a local kanban board",
+    secCommands: "// THE COMMANDS",
+    commands: [
+      { label: "THE ONES YOU'LL ALWAYS USE", color: "#ff9a1f", items: [
+        { cmd: "/hivemind:init-project", desc: "Bootstraps Hivemind in your project: asks a few questions and creates PROJECT.md, an initial backlog in tasks/ and session memory. Your first step in a new project." },
+        { cmd: "/hivemind:loop", desc: "Puts the orchestrator on autopilot toward a goal (a label or list of tickets), repeating the full flow — research, test, implement, review, close — with no repeated instructions. Confirms the goal before starting." },
+        { cmd: "/hivemind:task-status", desc: "Opens the kanban board in your browser: all your tickets in columns, with drag-and-drop to change state. Local (127.0.0.1)." },
+      ]},
+      { label: "THE ONES YOU'LL USE NOW AND THEN", color: "#b07fff", items: [
+        { cmd: "/hivemind:graph", desc: "Opens the knowledge-graph visualization in your browser — nodes and edges of the project's decisions and tasks." },
+        { cmd: "/hivemind:mode", desc: "Manually switches the session mode between harness (step-by-step, with your sign-off) and loop (autonomous). Handy to reset a stuck mode after a failure." },
+        { cmd: "/hivemind:update", desc: "Updates the plugin to the latest version (new commands, agents, workflows)." },
+        { cmd: "/hivemind:report-framework-bug", desc: "Reports a bug in Hivemind itself: gathers the details, scrubs secrets and opens the issue on GitHub." },
+      ]},
+      { label: "ADVANCED / RARE", color: "#ffb85c", items: [
+        { cmd: "/hivemind:apply-workflows", desc: "After updating the plugin, adds any missing workflow files to an already-initialized project (without touching your PROJECT.md)." },
+        { cmd: "/hivemind:brain", desc: "Experimental, opt-in. Spins up the \"brain\" (Neo4j + Qdrant via Docker) for cited-graph search instead of the local KB. Only if you accept the Docker infrastructure overhead." },
+      ]},
+    ],
+    features: [
+      { idx: "01", color: "#ff9a1f", title: "REAL TICKET QUEUE", body: "Every feature, bug or refactor lives as a ticket with acceptance criteria. The flow is always the same, verified by levels: TDD, tests-after or UAT." },
+      { idx: "02", color: "#b07fff", title: "SPECIALIZED AGENTS", body: "The orchestrator writes no code: it delegates to developer, reviewer and researcher. Each with its own role and tools." },
+      { idx: "03", color: "#ff7a1f", title: "AUTONOMOUS LOOP", body: "/hivemind:loop works several tickets toward a goal unsupervised, with 5 safety gates: closes, UAT, ambiguity, releases and checkpoints." },
+      { idx: "04", color: "#8f5fe0", title: "KNOWLEDGE BASE", body: "Lessons captured when tickets close, queryable via the MCP tool kb_lookup, with a typed graph of decisions → tasks you can browse." },
+      { idx: "05", color: "#ffb85c", title: "LOCAL KANBAN BOARD", body: "All tickets in columns with drag-and-drop, via /hivemind:task-status. Local, no external services." },
+    ],
+    flow: [
+      { n: "01", label: "READ TICKET" }, { n: "02", label: "PLAN" }, { n: "03", label: "RESEARCH" },
+      { n: "04", label: "VERIFY" }, { n: "05", label: "IMPLEMENT" }, { n: "06", label: "REVIEW" }, { n: "07", label: "CLOSE" },
+    ],
+    crew: [
+      { name: "ORCHESTRATOR", art: "⬡", color: "#ff9a1f", glow: "rgba(255,154,31,.14)", role: "Your main chat. Writes no code: it grasps the goal, creates tickets and dispatches the work." },
+      { name: "DEVELOPER", art: "⌨", color: "#b07fff", glow: "rgba(176,127,255,.16)", role: "Implements with two-commit discipline. Tests first, until everything is green." },
+      { name: "REVIEWER", art: "◎", color: "#ff9a1f", glow: "rgba(255,154,31,.14)", role: "Review in a fresh context. Read-only tools — impartial by design." },
+      { name: "RESEARCHER", art: "⌕", color: "#b07fff", glow: "rgba(176,127,255,.16)", role: "Researches libraries and APIs, and produces reusable skills for the rest of the team." },
+    ],
+  },
+  es: {
+    label: "VAMOS A CONSTRUIR",
+    heroLead: "Un equipo de desarrollo", heroHi1: "multi-agente",
+    heroMid: "que vive dentro de tu repositorio. Describes lo que quieres en lenguaje natural y un orquestador despacha el trabajo a asistentes especializados que",
+    heroHi2: "planifican, escriben tests, implementan y se revisan entre ellos",
+    heroTail: "— y solo entonces cierran el ticket.",
+    btnInstall: "▶ INSTALAR", btnFlow: "EL FLUJO",
+    secWhat: "// ¿QUÉ HACE?",
+    secFlow: "// EL FLUJO DE UN TICKET",
+    flowIntro: "Nada ocurre fuera de los libros. Cada feature, bug o refactor es un ticket JSON en tasks/ con criterios de aceptación, y el estado sobrevive entre chats.",
+    secCrew: "// LA TRIPULACIÓN",
+    secUse: "// CÓMO SE USA",
+    s1title: "INSTALAR",
+    s1desc: "Solo necesitas Claude Code y Node.js 20+ — sin Docker, sin bases de datos.",
+    s1c1: "# registrar el marketplace (una vez por máquina)",
+    s1c2: "# instalar el equipo — disponible en cada chat",
+    s2title: "ARRANCAR EL PROYECTO",
+    s2desc: "Abre Claude Code en tu carpeta y ejecuta el init. Te hace unas preguntas — nombre, tipo, usuarios, casos de uso, stack — y crea un PROJECT.md, un backlog inicial en tasks/ y la memoria en state/.",
+    s3title: "PILOTO AUTOMÁTICO",
+    s3desc: "Para un ticket puntual, pídelo en lenguaje natural. Para avanzar varios hacia una meta sin supervisión, arranca el loop: repite el flujo completo — investigar, testear, implementar, revisar, cerrar.",
+    s3comment: "# le das una meta y confirma",
+    s3gates: "Se detiene solo en 5 puntos de seguridad: antes de cerrar o publicar, en verdictos de UAT, si el alcance es ambiguo, antes de un release, y cada pocos tickets para que revises lo que salió.",
+    s3auto: "O si te sientes aventurero puedes ponerlo en auto-mode.",
+    footer: "Bajo el capó: agentes especializados, cola de tickets real, base de conocimiento con grafo y un tablero kanban local",
+    secCommands: "// LOS COMANDOS",
+    commands: [
+      { label: "LOS QUE USARÁS SIEMPRE", color: "#ff9a1f", items: [
+        { cmd: "/hivemind:init-project", desc: "Arranca Hivemind en tu proyecto: te hace unas preguntas y crea el PROJECT.md, un backlog inicial en tasks/ y la memoria de sesión. Es tu primer paso en un proyecto nuevo." },
+        { cmd: "/hivemind:loop", desc: "Pone al orquestador en piloto automático hacia una meta (una etiqueta o lista de tickets), repitiendo el flujo completo —investigar, testear, implementar, revisar, cerrar— sin que repitas instrucciones. Pide confirmación de la meta antes de arrancar." },
+        { cmd: "/hivemind:task-status", desc: "Abre el tablero kanban en el navegador: todos tus tickets en columnas, con arrastrar-y-soltar para cambiar de estado. Local (127.0.0.1)." },
+      ]},
+      { label: "LOS QUE USARÁS DE VEZ EN CUANDO", color: "#b07fff", items: [
+        { cmd: "/hivemind:graph", desc: "Abre la visualización del grafo de conocimiento en el navegador — nodos y aristas de decisiones y tareas del proyecto." },
+        { cmd: "/hivemind:mode", desc: "Cambia manualmente el modo de la sesión entre harness (paso a paso, con tu visto bueno) y loop (autónomo). Útil para reiniciar un modo colgado tras un fallo." },
+        { cmd: "/hivemind:update", desc: "Actualiza el plugin a la última versión (nuevos comandos, agentes, workflows)." },
+        { cmd: "/hivemind:report-framework-bug", desc: "Reporta un bug del propio Hivemind: recoge los detalles, limpia secretos y abre el issue on GitHub." },
+      ]},
+      { label: "AVANZADOS / RAROS", color: "#ffb85c", items: [
+        { cmd: "/hivemind:apply-workflows", desc: "Tras actualizar el plugin, añade los archivos de workflow que falten a un proyecto ya inicializado (sin tocar tu PROJECT.md)." },
+        { cmd: "/hivemind:brain", desc: "Experimental, opt-in. Levanta el \"brain\" (Neo4j + Qdrant vía Docker) para búsquedas sobre grafo citado en vez del KB local. Solo si aceptas la carga de infraestructura Docker." },
+      ]},
+    ],
+    features: [
+      { idx: "01", color: "#ff9a1f", title: "COLA DE TICKETS REAL", body: "Cada feature, bug o refactor vive como un ticket con criterios de aceptación. El flujo es siempre el mismo, verificado por niveles: TDD, tests-after o UAT." },
+      { idx: "02", color: "#b07fff", title: "AGENTES ESPECIALIZADOS", body: "El orquestador no escribe código: delega en developer, reviewer y researcher. Cada uno con su rol y sus herramientas." },
+      { idx: "03", color: "#ff7a1f", title: "LOOP AUTÓNOMO", body: "/hivemind:loop trabaja varios tickets hacia una meta sin supervisión, con 5 compuertas de seguridad: cierres, UAT, ambigüedad, releases y checkpoints." },
+      { idx: "04", color: "#8f5fe0", title: "BASE DE CONOCIMIENTO", body: "Lecciones capturadas al cerrar tickets, consultables vía la herramienta MCP kb_lookup, con un grafo tipado de decisiones → tareas navegable en el navegador." },
+      { idx: "05", color: "#ffb85c", title: "TABLERO KANBAN LOCAL", body: "Todos los tickets en columnas con drag-and-drop, mediante /hivemind:task-status. Local, sin servicios externos." },
+    ],
+    flow: [
+      { n: "01", label: "LEER TICKET" }, { n: "02", label: "PLANIFICAR" }, { n: "03", label: "INVESTIGAR" },
+      { n: "04", label: "VERIFICAR" }, { n: "05", label: "IMPLEMENTAR" }, { n: "06", label: "REVISIÓN" }, { n: "07", label: "CERRAR" },
+    ],
+    crew: [
+      { name: "ORQUESTADOR", art: "⬡", color: "#ff9a1f", glow: "rgba(255,154,31,.14)", role: "Tu chat principal. No escribe código: entiende la meta, crea tickets y despacha el trabajo." },
+      { name: "DEVELOPER", art: "⌨", color: "#b07fff", glow: "rgba(176,127,255,.16)", role: "Implementa con disciplina de dos commits. Tests primero, hasta que todo está en verde." },
+      { name: "REVIEWER", art: "◎", color: "#ff9a1f", glow: "rgba(255,154,31,.14)", role: "Revisión en contexto fresco. Solo herramientas de lectura — imparcial por diseño." },
+      { name: "RESEARCHER", art: "⌕", color: "#b07fff", glow: "rgba(176,127,255,.16)", role: "Investiga librerías y APIs, y produce skills reusables para el resto del equipo." },
+    ],
+  },
+};
+
+let lang = "en";
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+const PS = "font-family:'Press Start 2P',monospace;";
+const codeBox = "border:2px solid #2a3a5f; background:#070a12; padding:16px 18px; font-size:20px; line-height:1.7; box-shadow:0 0 26px rgba(176,127,255,.08);";
+
+function sectionHead(title, color) {
+  return `<div style="${PS} font-size:16px; color:${color}; letter-spacing:2px; margin-bottom:8px;">${esc(title)}</div>
+  <div style="height:2px; background:repeating-linear-gradient(90deg,${color} 0 14px,transparent 14px 22px); margin-bottom:26px;"></div>`;
+}
+
+function render() {
+  const t = T[lang];
+  const enBg = lang==="en" ? "#ff9a1f" : "transparent";
+  const enFg = lang==="en" ? "#05060a" : "#ff9a1f";
+  const esBg = lang==="es" ? "#b07fff" : "transparent";
+  const esFg = lang==="es" ? "#05060a" : "#b07fff";
+
+  const features = t.features.map(f => `
+    <div style="border:2px solid #1d2740; background:linear-gradient(180deg,rgba(13,18,32,.92),rgba(8,11,20,.92)); padding:20px 20px 22px; position:relative; box-shadow:inset 0 0 40px rgba(176,127,255,.05);">
+      <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:10px;">
+        <span style="${PS} font-size:15px; color:${f.color};">${esc(f.idx)}</span>
+        <span style="${PS} font-size:12px; color:#e9f1ff; line-height:1.5; letter-spacing:1px;">${esc(f.title)}</span>
+      </div>
+      <p style="font-size:20px; line-height:1.4; color:#9fb4d8; margin:0;">${esc(f.body)}</p>
+      <span style="position:absolute; top:-2px; right:-2px; width:10px; height:10px; border-top:2px solid ${f.color}; border-right:2px solid ${f.color};"></span>
+      <span style="position:absolute; bottom:-2px; left:-2px; width:10px; height:10px; border-bottom:2px solid ${f.color}; border-left:2px solid ${f.color};"></span>
+    </div>`).join("");
+
+  const flow = t.flow.map(s => `
+    <div style="flex:1 1 120px; min-width:120px; border:2px solid #223055; background:rgba(10,14,26,.9); padding:14px 10px; text-align:center; position:relative;">
+      <div style="${PS} font-size:11px; color:#3a4d78;">${esc(s.n)}</div>
+      <div style="font-size:21px; color:#e9f1ff; margin-top:8px; line-height:1.1;">${esc(s.label)}</div>
+    </div>`).join("");
+
+  const crew = t.crew.map(c => `
+    <div style="border:2px solid ${c.color}; background:rgba(8,11,20,.92); padding:18px; box-shadow:0 0 22px ${c.glow};">
+      <div style="font-size:34px; line-height:1; color:${c.color};">${esc(c.art)}</div>
+      <div style="${PS} font-size:12px; color:${c.color}; margin:12px 0 8px; letter-spacing:1px;">${esc(c.name)}</div>
+      <p style="font-size:19px; line-height:1.35; color:#9fb4d8; margin:0;">${esc(c.role)}</p>
+    </div>`).join("");
+
+  const commands = t.commands.map(tier => `
+    <div style="margin-bottom:30px; border-left:3px solid ${tier.color}; padding-left:16px;">
+      <div style="${PS} font-size:11px; color:${tier.color}; letter-spacing:1px; margin-bottom:14px;">▚ ${esc(tier.label)}</div>
+      ${tier.items.map(it => `
+        <div style="display:grid; grid-template-columns:minmax(0,290px) 1fr; gap:18px; align-items:start; padding:12px 0; border-bottom:1px dashed #1d2740;">
+          <code style="font-family:'VT323',monospace; font-size:21px; color:#ff9a1f; background:#0a0f1c; border:1px solid #2a3a5f; padding:5px 10px; align-self:start; word-break:break-all;">${esc(it.cmd)}</code>
+          <p style="font-size:20px; line-height:1.4; color:#9fb4d8; margin:0;">${esc(it.desc)}</p>
+        </div>`).join("")}
+    </div>`).join("");
+
+  document.getElementById("app").innerHTML = `
+  <div style="max-width:1080px; margin:0 auto; display:flex; justify-content:flex-end; gap:6px; padding:14px 2px 0;">
+    <button onclick="setLang('en')" style="${PS} font-size:10px; letter-spacing:1px; padding:9px 12px; cursor:pointer; background:${enBg}; color:${enFg}; border:2px solid #ff9a1f;">EN</button>
+    <button onclick="setLang('es')" style="${PS} font-size:10px; letter-spacing:1px; padding:9px 12px; cursor:pointer; background:${esBg}; color:${esFg}; border:2px solid #b07fff;">ES</button>
+  </div>
+
+  <section style="max-width:1080px; margin:0 auto; padding:22px 0 40px; text-align:center;">
+    <div style="font-family:'VT323',monospace; font-size:16px; color:#b07fff; letter-spacing:3px; margin-bottom:14px;">╡ ${esc(t.label)} ╞</div>
+    <div style="display:inline-block; position:relative; animation:bob 6s ease-in-out infinite;">
+      <h1 style="${PS} font-size:clamp(30px,7vw,68px); line-height:1.05; margin:8px 0 0; letter-spacing:2px; color:#ff9a1f; text-shadow:4px 4px 0 #7a3d00, 0 0 26px rgba(255,154,31,.5); -webkit-text-stroke:1px #ffd39a;">HIVEMIND</h1>
+    </div>
+    <p style="${PS} font-size:clamp(9px,1.6vw,13px); color:#b07fff; letter-spacing:2px; margin:16px 0 0; text-shadow:2px 2px 0 #3a1a6e;">A G E N T I C&nbsp;&nbsp;P L U G I N</p>
+    <p style="font-size:clamp(20px,2.4vw,27px); line-height:1.4; max-width:760px; margin:26px auto 0; color:#cfe3ff;">
+      ${esc(t.heroLead)} <span style="color:#ff9a1f;">${esc(t.heroHi1)}</span> ${esc(t.heroMid)} <span style="color:#b07fff;">${esc(t.heroHi2)}</span> ${esc(t.heroTail)}
+    </p>
+    <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-top:34px;">
+      <a href="#instalar" style="${PS} font-size:13px; padding:16px 22px; background:#ff9a1f; color:#05060a; border:3px solid #ffd39a; box-shadow:5px 5px 0 #7a3d00;">${esc(t.btnInstall)}</a>
+      <a href="#flujo" style="${PS} font-size:13px; padding:16px 22px; background:transparent; color:#b07fff; border:3px solid #b07fff; box-shadow:5px 5px 0 #3a1a6e;">${esc(t.btnFlow)}</a>
+    </div>
+  </section>
+
+  <section style="max-width:1080px; margin:44px auto 0;">
+    ${sectionHead(t.secWhat, "#ff9a1f")}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px;">${features}</div>
+  </section>
+
+  <section id="flujo" style="max-width:1080px; margin:56px auto 0;">
+    ${sectionHead(t.secFlow, "#ffb85c")}
+    <p style="font-size:21px; color:#9fb4d8; margin:0 0 22px; max-width:720px;">${esc(t.flowIntro)}</p>
+    <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:10px;">${flow}</div>
+  </section>
+
+  <section style="max-width:1080px; margin:56px auto 0;">
+    ${sectionHead(t.secCrew, "#b07fff")}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px;">${crew}</div>
+  </section>
+
+  <section id="instalar" style="max-width:1080px; margin:56px auto 0;">
+    ${sectionHead(t.secUse, "#ff9a1f")}
+
+    <div style="display:grid; grid-template-columns:auto 1fr; gap:20px; align-items:start; margin-bottom:26px;">
+      <div style="${PS} font-size:18px; color:#05060a; background:#ff9a1f; border:3px solid #ffd39a; box-shadow:4px 4px 0 #7a3d00; width:52px; height:52px; display:flex; align-items:center; justify-content:center;">1</div>
+      <div>
+        <h3 style="${PS} font-size:14px; color:#ff9a1f; margin:6px 0 10px; letter-spacing:1px;">${esc(t.s1title)}</h3>
+        <p style="font-size:21px; color:#9fb4d8; margin:0 0 14px;">${esc(t.s1desc)}</p>
+        <div style="${codeBox}">
+          <div style="color:#5a6f9c;">${esc(t.s1c1)}</div>
+          <div><span style="color:#b07fff;">$</span> <span style="color:#e9f1ff;">claude plugin marketplace add</span> <span style="color:#ff9a1f;">https://github.com/HexingBot/hivemind.git</span></div>
+          <div style="height:12px;"></div>
+          <div style="color:#5a6f9c;">${esc(t.s1c2)}</div>
+          <div><span style="color:#b07fff;">$</span> <span style="color:#e9f1ff;">claude plugin install</span> <span style="color:#ff9a1f;">hivemind@hivemind-marketplace</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:auto 1fr; gap:20px; align-items:start; margin-bottom:26px;">
+      <div style="${PS} font-size:18px; color:#05060a; background:#b07fff; border:3px solid #d6c2ff; box-shadow:4px 4px 0 #3a1a6e; width:52px; height:52px; display:flex; align-items:center; justify-content:center;">2</div>
+      <div>
+        <h3 style="${PS} font-size:14px; color:#b07fff; margin:6px 0 10px; letter-spacing:1px;">${esc(t.s2title)}</h3>
+        <p style="font-size:21px; color:#9fb4d8; margin:0 0 14px;">${esc(t.s2desc)}</p>
+        <div style="${codeBox}">
+          <div><span style="color:#b07fff;">&gt;</span> <span style="color:#ff9a1f;">/hivemind:init-project</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:auto 1fr; gap:20px; align-items:start;">
+      <div style="${PS} font-size:18px; color:#05060a; background:#ff9a1f; border:3px solid #ffd39a; box-shadow:4px 4px 0 #7a3d00; width:52px; height:52px; display:flex; align-items:center; justify-content:center;">3</div>
+      <div>
+        <h3 style="${PS} font-size:14px; color:#ff9a1f; margin:6px 0 10px; letter-spacing:1px;">${esc(t.s3title)}</h3>
+        <p style="font-size:21px; color:#9fb4d8; margin:0 0 14px;">${esc(t.s3desc)}</p>
+        <div style="${codeBox} margin-bottom:14px;">
+          <div><span style="color:#b07fff;">&gt;</span> <span style="color:#ff9a1f;">/hivemind:loop</span> <span style="color:#5a6f9c;">${esc(t.s3comment)}</span></div>
+        </div>
+        <div style="font-size:20px; color:#9fb4d8; line-height:1.45;">${esc(t.s3gates)} <span style="color:#b07fff;">${esc(t.s3auto)}</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section style="max-width:1080px; margin:56px auto 0;">
+    ${sectionHead(t.secCommands, "#ff7a1f")}
+    ${commands}
+  </section>
+
+  <div style="max-width:1080px; margin:52px auto 0; border-top:2px solid #1d2740; padding-top:22px; text-align:center;">
+    <p style="font-size:20px; color:#9fb4d8; margin:0 auto; max-width:760px; line-height:1.45;">${esc(t.footer)} (<span style="color:#ff9a1f;">/hivemind:task-status</span>).</p>
+  </div>`;
+}
+
+function setLang(l) { lang = l; document.documentElement.lang = l; render(); }
+
+// Matrix-rain background
+(function startBg(){
+  const c = document.getElementById("bg");
+  const ctx = c.getContext("2d");
+  const step = 16;
+  let cols, drops;
+  const glyphs = "01ABCDEF0123456789<>/[]{}#*+=$@HIVEMIND01x8f3c".split("");
+  function resize(){
+    c.width = window.innerWidth; c.height = window.innerHeight;
+    cols = Math.floor(c.width / step);
+    drops = new Array(cols).fill(0).map(() => Math.random() * -60);
+  }
+  resize();
+  window.addEventListener("resize", resize);
+  function draw(){
+    ctx.fillStyle = "rgba(5,6,10,0.11)";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.font = "15px 'VT323', monospace";
+    for (let i = 0; i < cols; i++) {
+      const y = drops[i] * step;
+      const g = glyphs[(Math.random() * glyphs.length) | 0];
+      if (y > 0) {
+        ctx.fillStyle = (i % 2 === 0) ? "#ff9a1f" : "#b07fff";
+        ctx.fillText(g, i * step, y);
+        ctx.fillStyle = (i % 2 === 0) ? "rgba(255,154,31,0.28)" : "rgba(176,127,255,0.26)";
+        ctx.fillText(glyphs[(Math.random() * glyphs.length) | 0], i * step, y - step);
+      }
+      if (y > c.height && Math.random() > 0.975) drops[i] = Math.random() * -20;
+      drops[i] += 0.5 + (i % 3) * 0.12;
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+render();
+</script>
+</body>
+</html>
