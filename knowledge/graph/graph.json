@@ -116,6 +116,12 @@
       "label": "Deep-review sweep #2 ticket cut: minted TASK-096..106 (8 sweep items + KB trio), human-approved"
     },
     {
+      "id": "decision-20260707-gate5-batch2-continue-106-111-stop",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "Gate 5 batch-2 consolidation ruling (human, 2026-07-07): continue the drive with TASK-106 then TASK-111 then stop; batch bookkeeping pushed; no KB entries this batch; TASK-112 minted for OBSERVABILITY.md scoping"
+    },
+    {
       "id": "ke-claude-headless-bridge",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
@@ -522,6 +528,18 @@
       "type": "task",
       "ref": "tasks/TASK-105.json",
       "label": "knowledge capture: entry-write path + capture step at close + Gate 5 drafts (R16)"
+    },
+    {
+      "id": "task-106",
+      "type": "task",
+      "ref": "tasks/TASK-106.json",
+      "label": "kb_lookup: executable, reproducible KB lookup for the researcher + live recordKbReuse caller (R18)"
+    },
+    {
+      "id": "task-111",
+      "type": "task",
+      "ref": "tasks/TASK-111.json",
+      "label": "KB write-path completion: E_KB_EXISTS overwrite guard + atomic promoteDraftEntry + researcher/loop-ctl wiring"
     }
   ],
   "edges": [
@@ -868,6 +886,16 @@
     {
       "from": "task-105",
       "to": "decision-20260706-deep-review-sweep-2-ticket-cut",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-106",
+      "to": "decision-20260706-deep-review-sweep-2-ticket-cut",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-111",
+      "to": "decision-20260707-gate5-batch2-continue-106-111-stop",
       "relation": "produced-by"
     }
   ]

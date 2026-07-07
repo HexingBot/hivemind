@@ -1,0 +1,31 @@
+{
+  "key": "TASK-113",
+  "title": "KB seam polish: graph-query executability, deterministic top-3 selection, recordKbReuse/promoteDraftEntry hardening, calibration-checker exemption (rev-106 + rev-111 LOWs)",
+  "description": "Bundled follow-up minted at goal-sweep2 drive end (human-approved 2026-07-07, single-ticket bundling per the TASK-111 precedent) from the tracked LOW/INFO findings of rev-106 (TASK-106 close comment) and rev-111 (TASK-111 close comment). All items touch the same knowledge/loop-ctl surface. (a) agents/researcher.md:34 (both copies) step 1 still instructs graph queries \"using neighbors and nodesByType from src/knowledge-graph.js\" with no execution grant — the same hand-simulation defect class TASK-106 fixed for scoring, named in TASK-106's description but scoped out of its ACs. (b) src/knowledge.js:140-147: lookupKnowledge's top-3 cut tie-breaks the returned SET on last_seen_at, which the same kb_lookup call mutates — initial selection is not id-deterministic when more than 3 entries tie on score (order is fixed; selection isn't). (c) src/mcp-server.js:270-272: the recordKbReuse loop is non-atomic across hits — one throwing bump (e.g. frontmatter id != filename → E_KB_NOT_FOUND) leaves earlier hits bumped and returns isError with no statement of which bumps landed. (d) src/knowledge.js:341-350: promoteDraftEntry never asserts the draft's frontmatter id equals the id argument — a hand-edited mismatched draft writes entries/&lt;frontmatter-id&gt;.md, unlinks proposed/&lt;arg-id&gt;.md, and returns an internally inconsistent { id, path } (never lossy). (e) src/knowledge.js:347: unlinkSync throwing after the durable entries write (AV-handle class per the ke-windows-atomic-rename KB entry) rejects even though promotion landed, and a retry then throws E_KB_EXISTS — the error text should state the entry already landed and name the leftover proposed copy. (f) INFO: bin/check-calibration.js FLAGs skills/mcp-server/references/tool-contract.md:127 where the marker vocabulary appears as a zod enum literal — a marker-vocabulary exemption would silence the false positive; also add the missing source_tier frontmatter there.",
+  "acceptance_criteria": [
+    "researcher.md's graph-query step (both copies) either gains an executable seam consistent with the kb_lookup precedent or drops the 'as code' phrasing in favor of an honest direct-file-read fallback — the chosen route documented, no hand-simulation instruction remains, doc-locks updated; red-first for any new seam.",
+    "lookupKnowledge's top-3 selection is deterministic independent of last_seen_at (score desc, then id asc for the cut, matching kb_lookup's output ordering) OR the recency-selection is explicitly ruled intended and documented with the self-reinforcement rationale — red-first spec with >3 score-tied entries proving the chosen behavior.",
+    "kb_lookup's recordKbReuse pass reports partial outcomes: a throwing bump no longer yields a bare isError — the response states which hits were bumped and which failed (or the loop becomes all-or-nothing); red-first spec with a hit whose bump throws.",
+    "promoteDraftEntry rejects a draft whose frontmatter id differs from the id argument with a typed error before any write — red-first spec with a hand-edited mismatched draft proving today's inconsistent return.",
+    "promoteDraftEntry's unlink-failure path reports that the promotion landed (entry written durably) and names the surviving proposed copy, distinguishing it from a failed promotion — red-first spec injecting an unlink failure.",
+    "bin/check-calibration.js gains a marker-vocabulary exemption so enum/vocabulary literals (tool-contract.md:127 exemplar) no longer FLAG; tool-contract.md gains its missing source_tier frontmatter; check:calibration runs clean on the file — red spec locking the exemption's scope (a real bare marker still FLAGs)."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "kb-process",
+    "task-106-followup",
+    "task-111-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-07T13:33:53.185Z",
+  "updated_at": "2026-07-07T13:33:53.185Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

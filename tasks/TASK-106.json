@@ -9,7 +9,7 @@
     "knowledge/README.md's last_seen_at claim is corrected to describe the actual mechanism.",
     "The tool/CLI output includes the scored hits with their ids/paths so a Reviewer can reproduce the exact lookup from the recorded invocation."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "goal-sweep2",
@@ -18,11 +18,20 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "5e3a4666acf040253cb892879c8d41f0efad8cc4",
+    "4467b49ceefeaca031037bf119f12bea054a1064"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T11:35:03.582Z",
+      "body": "CLOSED on green review (drive iteration 11, goal-sweep2 — LAST goal ticket). Review depth FULL (rubric inputs: 15 files, +4262/−286 across 5e3a466^..4467b49 — far above the 150-line light ceiling; mandatory-FULL surfaces touched: packaging/dist (dist/mcp-server.cjs) and core tdd-tier logic (src/mcp-server.js)). Fresh-context reviewer rev-106 verdict: APPROVE-WITH-FOLLOWUPS, 0H/2M/3L/2INFO. tdd two-commit contract PASS: test 5e3a466 (spec-only, +223) strictly precedes impl 4467b49; red independently reproduced by the reviewer against the pre-impl tree (5 failed/1 passed, exact claimed signatures). All 5 ACs PASS with line evidence. Gates independently re-run by reviewer and matched dev exactly: test:since 5 files/44, fast tier 55 files/698/2 skipped, named affected 10 files/74, dist-parity 7/7 byte-match. dist delta (~4126 lines) ROOT-CAUSED as honest: first-time inclusion of knowledge.js drags gray-matter→js-yaml into the bundle; package-lock untouched in range. MEDIUM dispositions: M1 (kb_lookup emits no OTel span) resolved by the standing Gate 5 human ruling that OBSERVABILITY.md is scoped to generated projects, not this repo (TASK-112 tracks documenting that scoping) — repo-wide question, not a TASK-106 defect; M2 (R3-checklist visibility) discarded per its own condition — the raw dev hand-off carried all five per-item outcomes. LOW follow-ups TRACKED for drive-end minting decision: (L1) researcher.md:34 step 1 still hand-simulates graph queries (neighbors/nodesByType) with no execution grant — same defect class this ticket fixed for scoring, named in the ticket description but scoped out of the ACs; (L2) lookupKnowledge's top-3 cut (src/knowledge.js:140-147) tie-breaks the returned SET on recency, which the same call mutates — initial selection not id-deterministic when >3 score-tied; (L3) recordKbReuse loop (src/mcp-server.js:270-272) non-atomic across hits on a throwing bump. INFO: four fast-tier specs mislabeled e2e in hand-off (counts reconcile); two pre-existing calibration FLAGs on tool-contract.md are checker false-positives (marker-vocabulary exemption candidate for bin/check-calibration.js). Knowledge-capture trigger (TASK-105): NOT met — zero HIGH findings, zero RC loops. Route decision on record: MCP tool over CLI+Bash (one scoped tool name for the researcher instead of a Bash(node:*)-shaped grant); PROJECT.md MCP-scope line amended per AC1."
+    }
+  ],
   "created_at": "2026-07-06T23:06:46.509Z",
-  "updated_at": "2026-07-06T23:06:46.509Z",
+  "updated_at": "2026-07-07T11:35:03.582Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[INFERRED:strong]",

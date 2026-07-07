@@ -9,7 +9,7 @@
     "loop-ctl gains a drafts-count seam (subcommand or checkpoint field) that feeds listDraftEntries output into consolidationGate's draftEntryCount so Gate 5's most forgettable input is automated; dist rebuilt.",
     "Windows reserved device names rejected by the id validation (schema or code guard) — red spec with nul/con1 exemplars; the two never-fail ke-slug doc locks removed or made falsifiable."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "kb-process",
@@ -18,11 +18,20 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "83f0d89824e509ab2dcd198d6d6dd5980d557779",
+    "cc8084f980f15880187ee6df506d2245d5e2078c"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T11:59:41.756Z",
+      "body": "CLOSED on green review (drive iteration 12 — final ticket per the Gate 5 human ruling: continue 106 → 111 → stop). Review depth FULL (rubric inputs: 13 files, +3979/−124 across 83f0d89^..cc8084f; mandatory-FULL surfaces: packaging/dist (dist/loop-ctl.cjs rebuild), core tdd-tier logic (src/knowledge.js), schema file (knowledge/schema.json id pattern)). Fresh-context reviewer rev-111 verdict: APPROVE, 0H/0M/2L/2INFO. tdd contract PASS: test 83f0d89 (3 spec files only, +245/−3) strictly precedes impl cc8084f; red independently reproduced in a temp worktree (19 failures, exact claimed shapes). All 5 ACs PASS with line evidence; the developer's self-flagged AC1 test collapse (vetted-over-vetted + draft:false-over-vetted as one spec) ruled SOUND — single existsSync on one target path, no third branch exists. Gates independently re-run and matched: fast 55 files/704/2 skipped; test:since -- 83f0d89^ 9 files/127; named e2e 4 files/51; dist-parity 7/7 byte-match; check:calibration clean on all six changed docs. dist delta ROOT-CAUSED honest: gray-matter enters dist/loop-ctl.cjs for the first time via the knowledge.js import (0 hits at parent → 19 after), same class as TASK-106's mcp-server.cjs. Shared-surface safety verified: all 5 committed knowledge/entries/ ids validate under the new reserved-name pattern; knowledge/proposed/ empty, nothing orphaned; repointed ke-slug doc locks falsifiable in both drift directions. LOW follow-ups TRACKED for drive-end minting decision: (L1) promoteDraftEntry never asserts the draft's frontmatter id equals the id argument — a hand-edited mismatched draft yields an internally inconsistent return (never lossy); suggested E_KB_ARGS assert. (L2) unlinkSync throwing after a durable write (AV-handle class per the windows-atomic-rename KB entry) rejects even though promotion landed, and a retry then throws E_KB_EXISTS — error text should tell the operator the entry already landed. INFO: AC1 existsSync check-then-write is TOCTOU-racy under a concurrent writer (acceptable single-orchestrator model); reviewer worked from the orchestrator's distilled briefing but independently verified all five R3 classes clean. Tier-audit: tdd correct, contract followed. Knowledge-capture trigger (TASK-105): NOT met — zero HIGH, zero RC loops."
+    }
+  ],
   "created_at": "2026-07-07T05:32:29.403Z",
-  "updated_at": "2026-07-07T05:32:29.403Z",
+  "updated_at": "2026-07-07T11:59:41.756Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
