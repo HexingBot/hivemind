@@ -23,29 +23,25 @@ Examples of bad entries (do NOT put these here):
 1. Pick a kebab-case `<id>`. The filename must be `<id>.md` and the frontmatter `id:` field must match.
 2. Fill in the required frontmatter fields per `schema.md`.
 3. Write the body in generic terms. **No absolute filesystem paths** — refer to files by relative or abstract names (`the bundle's session.json`, not `C:\Users\me\repo\state\sessions\<id>\session.json`). The deny-list is enforced by the test suite.
-4. Commit the file. The Orchestrator updates `last_seen_at` automatically when the entry is reused.
+4. Commit the file. `last_seen_at` is updated automatically the next time the entry is returned by a `kb_lookup` call (see below) — not by hand and not on commit.
 
 ## How the lookup procedure works
 
 The Researcher subagent, on receiving a research question, runs this procedure deterministically before any web search:
 
-1. **Tokenize** the question. Lowercase, drop English stopwords, keep tokens of length ≥ 3.
-2. **Three-pass grep** over `knowledge/entries/*.md`:
-   - tag matches (weight 3),
-   - symptom matches (weight 2),
-   - body / problem matches (weight 1).
-3. **Score and rank** candidates. Read the top 3.
-4. If any candidate's `solution` answers the question, the Researcher returns it citing the entry id and **skips** web search.
-5. Otherwise, the Researcher proceeds to web search, and at the end **proposes** (does not write) a new entry for the Orchestrator to commit after human approval.
+1. **Call the `kb_lookup` MCP tool** (`mcp__plugin_hivemind_hivemind-tasks__kb_lookup`, TASK-106) with `{ question }`. The tool — not the Researcher by hand — tokenizes the question (lowercase, drop English stopwords, keep tokens of length ≥ 3) and does a three-pass scan over `knowledge/entries/*.md`: tag matches (weight 3), symptom matches (weight 2), body/problem matches (weight 1). It returns the scored hits as `{ id, path, score }`, sorted score desc then id asc.
+2. **Read the top candidates** at their returned paths.
+3. If any candidate's `solution` answers the question, the Researcher returns it citing the entry id and **skips** web search.
+4. Otherwise, the Researcher proceeds to web search, and at the end **proposes** (does not write) a new entry for the Orchestrator to commit after human approval.
 
-This is in `.claude/agents/researcher.md` as a mandatory step. The Researcher itself is read-only with respect to `knowledge/`; the Orchestrator writes the `last_seen_at` updates and any new entries via atomic temp+rename writes.
+This is in `.claude/agents/researcher.md` as a mandatory step. The Researcher itself is read-only with respect to `knowledge/`: it never edits an entry file directly. **`last_seen_at` is updated by the `kb_lookup` MCP tool itself**, server-side, via `recordKbReuse` (`src/knowledge.js`) — as a side effect of returning a hit, on every call, for every hit returned — using the same atomic temp+rename write the Orchestrator uses for new entries.
 
 ## Draft entries (`proposed/`, TASK-105)
 
 Unvetted knowledge entries — captured automatically by the Orchestrator at ticket close when a
 review recorded a HIGH finding or the ticket needed an RC (REQUEST-CHANGES) loop — live in
 `knowledge/proposed/`, never in `knowledge/entries/`. They use the same schema and are excluded
-from the lookup procedure entirely (step 2 below only ever scans `knowledge/entries/*.md`). See
+from the lookup procedure entirely (step 1 above only ever scans `knowledge/entries/*.md`). See
 `schema.md`'s "Draft entries" section for the full write/promote/discard contract.
 
 ## Knowledge graph (`graph/`)

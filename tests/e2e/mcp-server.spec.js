@@ -91,7 +91,9 @@ describe('TASK-026 — MCP task-store server (in-memory round-trip)', () => {
     expect(server).toBeInstanceOf(McpServer);
   });
 
-  it('registers_exactly_the_seven_named_tools', async () => {
+  it('registers_exactly_the_eight_named_tools', async () => {
+    // TASK-106 (R18) added an eighth tool, kb_lookup — see
+    // tests/e2e/kb-lookup-seam.spec.js for its dedicated coverage.
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
@@ -100,6 +102,7 @@ describe('TASK-026 — MCP task-store server (in-memory round-trip)', () => {
         'close_task',
         'create_task',
         'get_task',
+        'kb_lookup',
         'list_ready',
         'list_todos',
         'transition_status',

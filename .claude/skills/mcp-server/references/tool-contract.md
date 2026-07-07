@@ -3,7 +3,7 @@
 Authoritative tool surface is `tasks/TASK-020.research.md` §E.1, reproduced here
 with the verified `src/task-store.js` export names and call signatures.
 
-## The seven tools (§E.1 + TASK-082's `close_task`)
+## The seven task-store tools (§E.1 + TASK-082's `close_task`) plus `kb_lookup` (TASK-106)
 
 | MCP tool | Args | Returns | Wraps |
 |----------|------|---------|-------|
@@ -14,10 +14,14 @@ with the verified `src/task-store.js` export names and call signatures.
 | `transition_status` | `{ key: string, status: "todo"\|"in_progress"\|"in_review"\|"blocked"\|"done" }` | `{ ok: true }` | `transitionStatus({repoRoot, key, status, closeGuard: loopModeCloseGuard})` (TASK-082 — closeGuard wired through unconditionally; no-ops outside loop mode) |
 | `append_comment` | `{ key: string, author: string, body: string }` | `{ ok: true }` | `appendComment({repoRoot, key, author, body})` |
 | `close_task` | `{ key: string, comment: { author: string, body: string }, linked_commits?: string[], linked_prs?: string[] }` | `{ ok: true }` | `closeTask({repoRoot, key, comment, linked_commits, linked_prs, closeGuard})` |
+| `kb_lookup` (TASK-106) | `{ question: string }` | `{ query: string, kb_hits: [{ id, path, score }] }` (sorted score desc, then id asc) | `lookupKnowledge({repoRoot, question})` then `recordKbReuse({repoRoot, entryId})` for every returned hit |
 
-These map 1:1 onto the Jira-compatible field names in `tasks/schema.json`, so the
-surface survives the eventual Atlassian-MCP migration (backend swaps from local
-JSON to Jira; the tool names stay).
+The first seven map 1:1 onto the Jira-compatible field names in `tasks/schema.json`, so
+that surface survives the eventual Atlassian-MCP migration (backend swaps from local
+JSON to Jira; the tool names stay). `kb_lookup` is NOT ticket CRUD — it is a scoped
+extension of the MCP surface (see the WILL/WON'T docstring below) wrapping
+`src/knowledge.js`'s grep-KB lookup so the Researcher subagent gets an executable,
+reproducible lookup instead of hand-emulating the scoring algorithm.
 
 ## Verified `src/task-store.js` exports (single object-arg, all async)
 
@@ -162,6 +166,9 @@ inputSchema: {
   linked_commits: z.array(z.string()).optional(),
   linked_prs: z.array(z.string()).optional(),
 }
+
+// kb_lookup (TASK-106)
+inputSchema: { question: z.string() }
 ```
 
 ## WILL / WON'T docstring (AC4) — put this at the top of src/mcp-server.js
@@ -169,9 +176,11 @@ inputSchema: {
 A non-Claude-Code MCP client (claude.ai, Claude Desktop, any MCP host) **WILL**
 get the seven task-store tools: read the backlog, read/create tickets, transition
 status, append comments, and atomically close a ticket (`close_task`) — full CRUD
-on the ticket store. It **WON'T** get the
+on the ticket store — plus, since TASK-106, an eighth tool, `kb_lookup`, that
+looks up the local grep knowledge base (not ticket CRUD, but still exposed to
+any MCP client). It **WON'T** get the
 orchestrator → developer/reviewer/researcher subagent loop, the RESUME-FIRST
 session-state orchestration, or the TDD-enforced dev loop — those are Claude
 Code-exclusive file-based constructs that MCP cannot install or drive. In one
-line: the MCP seam turns the framework's *ticket store* into a cross-client API,
-but the *orchestration* stays Claude Code-only.
+line: the MCP seam turns the framework's *ticket store* (plus one KB-lookup
+tool) into a cross-client API, but the *orchestration* stays Claude Code-only.

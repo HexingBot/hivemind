@@ -41,7 +41,7 @@ Solo developers and small teams using LLM coding agents get inconsistent, unveri
 ## Scope (out)
 - Being a one-shot autonomous product generator (the human stays in the loop on destructive actions)
 - Permanently replacing Jira (the local store is an interim, loss-free stand-in until the Atlassian MCP server is wired up)
-- Carrying the full orchestration loop to non-Claude-Code clients (subagents are Claude Code-exclusive; the MCP server only broadens ticket CRUD)
+- Carrying the full orchestration loop to non-Claude-Code clients (subagents are Claude Code-exclusive; the MCP server broadens ticket CRUD plus a scoped `kb_lookup` knowledge-base tool, TASK-106 — it does not carry the orchestration loop itself)
 - Auto-pushing or closing tickets without explicit human approval
 
 ## Stack

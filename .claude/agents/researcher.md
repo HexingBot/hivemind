@@ -2,7 +2,7 @@
 name: researcher
 description: Read-only research specialist. Investigates unfamiliar libraries, APIs, frameworks, and patterns using web search and documentation fetching. When a new tech stack is encountered, produces a reusable Agent Skill under .claude/skills/ so the rest of the team can be "trained" on it cheaply.
 model: sonnet
-tools: Read, Grep, Glob, WebSearch, WebFetch, Write, mcp__github__*, mcp__wisearcher-brain__*
+tools: Read, Grep, Glob, WebSearch, WebFetch, Write, mcp__github__*, mcp__wisearcher-brain__*, mcp__plugin_hivemind_hivemind-tasks__kb_lookup
 ---
 
 # Researcher Subagent
@@ -32,15 +32,10 @@ If the wisearcher brain tools are present this session — `kb_search`, `kb_answ
 ### Grep KB (always available — the offline fallback)
 
 1. **Graph lookup first.** Query `knowledge/graph/graph.json` using `neighbors` and `nodesByType` from `src/knowledge-graph.js` (or read the file directly) to find nodes of type `knowledge_entry` or `skill` related to the question topic. Any node whose `label` or `ref` matches key terms is a candidate. Read the referenced entries/skills before proceeding. (This local graph is a projection/cache of the canonical brain graph.)
-2. **Tokenize the question.** Lowercase, split on whitespace and punctuation, drop English stopwords (a fixed short list: `the, a, an, of, to, for, in, on, with, and, or, is, are, be, as, at, by, it, this, that, these, those, do, does, how, what, when, where, why, can, should, would, could, i, you, we, they`), keep tokens of length ≥ 3.
-3. **Three-pass grep over `knowledge/entries/*.md`.** For each entry, count how many of the question tokens appear in:
-   - the frontmatter `tags:` block — weight **3**,
-   - the frontmatter `symptoms:` block — weight **2**,
-   - the `problem:` field and the body — weight **1**.
-4. **Score and rank.** `score = 3*tagHits + 2*symptomHits + 1*bodyHits`. Break ties by most recent `last_seen_at`.
-5. **Read the top 3 candidates** in full (merge with any graph-surfaced candidates from step 1).
-6. **Decide.** If any candidate's `solution` answers the question, return that answer citing the entry id and set `used: true` for that hit in your output. **Do NOT proceed to web research.**
-7. **Otherwise**, proceed to web research per the Process step, and at the end of your output **propose** a new knowledge entry — do NOT write it directly.
+2. **Call the `kb_lookup` MCP tool** (`mcp__plugin_hivemind_hivemind-tasks__kb_lookup`, TASK-106) with `{ question }`. It runs the deterministic three-pass scoring — tag matches weight 3, symptom matches weight 2, problem/body matches weight 1 — over `knowledge/entries/*.md` **in code**, not by hand: no more tokenizing or grepping the KB yourself. It returns `kb_hits: [{ id, path, score }]`, sorted score desc then id asc, and — as a side effect — bumps `last_seen_at` on every entry it returns (that entry's reuse signal; see `knowledge/README.md`). Because the Reviewer can re-run the identical tool call and get the identical `kb_hits`, this is what makes the lookup Reviewer-reproducible.
+3. **Read the top candidates** at their returned `path`s in full (merge with any graph-surfaced candidates from step 1).
+4. **Decide.** If any candidate's `solution` answers the question, return that answer citing the entry id and set `used: true` for that hit in your output. **Do NOT proceed to web research.**
+5. **Otherwise**, proceed to web research per the Process step, and at the end of your output **propose** a new knowledge entry — do NOT write it directly.
 
 The lookup (brain-first, then grep) runs **before** any `WebSearch` or `WebFetch` call, with no exceptions. If you find yourself reaching for a web tool first, stop and run the lookup.
 

@@ -18,8 +18,15 @@
 //   MCP cannot install or drive. In one line: the MCP seam exposes the *ticket
 //   store* to any client, but the *orchestration* stays Claude Code-only.
 //
+//   TASK-106 (R18) added an EIGHTH tool, `kb_lookup`, that is NOT ticket CRUD:
+//   it wraps the local grep knowledge base (src/knowledge.js's lookupKnowledge
+//   + recordKbReuse) so the Researcher subagent can call a real, reproducible
+//   lookup instead of hand-emulating the scoring algorithm via Grep. Any MCP
+//   client gets it too — see PROJECT.md's amended scope line ("the MCP server
+//   extends ticket CRUD plus a KB-lookup tool").
+//
 // DESIGN: `createServer({ repoRoot })` is a factory returning a configured
-// McpServer with all seven tools registered, each closing over `repoRoot`. The
+// McpServer with all eight tools registered, each closing over `repoRoot`. The
 // module only auto-connects a StdioServerTransport when run as the entrypoint
 // (the dual ESM/CJS guard at the bottom), so tests inject a per-test temp
 // repoRoot via the in-memory transport instead of relying on CLAUDE_PROJECT_DIR.
@@ -45,6 +52,7 @@ import {
   closeTask,
 } from './task-store.js';
 import { loopModeCloseGuard } from './close-guard.js';
+import { lookupKnowledge, recordKbReuse } from './knowledge.js';
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
@@ -89,10 +97,11 @@ async function readTask(repoRoot, key) {
 }
 
 /**
- * Build and return a configured McpServer with all seven task-store tools
- * registered, each closing over `repoRoot`. Throwing handlers surface to the
- * client as { isError: true } (the SDK converts a thrown error), which keeps
- * state uncorrupted on bad input rather than silently succeeding.
+ * Build and return a configured McpServer with all seven task-store tools plus
+ * kb_lookup (TASK-106) registered, each closing over `repoRoot`. Throwing
+ * handlers surface to the client as { isError: true } (the SDK converts a
+ * thrown error), which keeps state uncorrupted on bad input rather than
+ * silently succeeding.
  */
 export function createServer({ repoRoot }) {
   const server = new McpServer({
@@ -230,6 +239,48 @@ export function createServer({ repoRoot }) {
         closeGuard: loopModeCloseGuard,
       });
       return ok({ ok: true });
+    },
+  );
+
+  // TASK-106 (R18) — kb_lookup: wraps lookupKnowledge + recordKbReuse (both
+  // src/knowledge.js) so the Researcher can call a real, reproducible KB
+  // lookup instead of hand-emulating the three-pass scoring algorithm. Every
+  // returned hit's last_seen_at is bumped (its reuse signal) before the
+  // envelope is built, so the ranking below is computed from the PRE-bump
+  // scores/ids but the id-based tie-break makes that irrelevant to
+  // reproducibility. Hits are re-sorted score desc, then id asc: an
+  // independent, immutable tie-break — unlike lookupKnowledge's own recency
+  // tie-break, it cannot be perturbed by the very last_seen_at bump this call
+  // performs.
+  server.registerTool(
+    'kb_lookup',
+    {
+      description:
+        'Look up the local grep knowledge base (knowledge/entries/) for a '
+        + 'question. Runs the deterministic three-pass tag/symptom/body '
+        + 'scoring in code and returns the top hits as { id, path, score }, '
+        + 'sorted score desc then id asc. As a side effect, bumps '
+        + 'last_seen_at on every returned entry (its reuse signal).',
+      inputSchema: {
+        question: z.string(),
+      },
+    },
+    async ({ question }) => {
+      const { kb_hits } = await lookupKnowledge({ repoRoot, question });
+      const ranked = kb_hits
+        .slice()
+        .sort((a, b) => (b.score - a.score) || a.id.localeCompare(b.id));
+      for (const hit of ranked) {
+        await recordKbReuse({ repoRoot, entryId: hit.id });
+      }
+      return ok({
+        query: question,
+        kb_hits: ranked.map((hit) => ({
+          id: hit.id,
+          path: join(repoRoot, 'knowledge', 'entries', `${hit.id}.md`),
+          score: hit.score,
+        })),
+      });
     },
   );
 
