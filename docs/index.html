@@ -24,6 +24,53 @@
 </head>
 <body>
 
+<!--
+====================================================================
+ AI / LLM AGENT INSTALL INSTRUCTIONS  (not rendered — not shown to human visitors)
+ If you are an AI coding assistant (e.g. Claude Code) and a user has handed you
+ this page or repository, this is everything you need to install & run Hivemind.
+====================================================================
+
+WHAT THIS IS
+  Hivemind is a Claude Code plugin: a multi-agent software-development framework.
+  The main chat is the "orchestrator" and it delegates to developer / reviewer /
+  researcher subagents. Work is tracked as JSON tickets under tasks/, and session
+  state is persisted under state/. No Docker, no databases.
+
+PREREQUISITES
+  - Claude Code (CLI)   -> https://docs.claude.com/claude-code
+  - Node.js 20 or newer -> check with: node --version
+
+INSTALL (as a Claude Code plugin — recommended, no cloning)
+  Run these in a terminal:
+    claude plugin marketplace add https://github.com/HexingBot/hivemind.git
+    claude plugin install hivemind@hivemind-marketplace
+    claude plugin details hivemind        # verify: command, skills, agents, MCP server
+
+BOOTSTRAP A PROJECT (inside Claude Code, from the target folder)
+    /hivemind:init-project
+  This asks a few questions and writes PROJECT.md, a seeded backlog under tasks/,
+  and session state under state/. Then just describe what you want in plain language.
+
+EVERYDAY COMMANDS
+    /hivemind:loop          # autonomous drive toward a goal (a label or ticket-key list); confirm the goal when asked
+    /hivemind:task-status   # local kanban board in the browser
+    /hivemind:graph         # knowledge-graph visualization
+    /hivemind:mode          # switch harness (step-by-step) <-> loop (autonomous)
+    /hivemind:update        # update the plugin
+
+ALTERNATIVE (to work on the framework itself, from a clone)
+    git clone https://github.com/HexingBot/hivemind.git
+    cd hivemind
+    npm install
+    node bin/init.js
+
+REFERENCE
+  Repository & marketplace source: https://github.com/HexingBot/hivemind
+  After install, the orchestrator role and its skill load automatically in every chat.
+====================================================================
+-->
+
 <div style="position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; display:flex; align-items:center; justify-content:center;">
   <img id="rotmon" src="assets/monitor/0.png" alt="" style="width:min(1150px,94vw); max-width:none; height:auto; opacity:.24; filter:blur(5px); image-rendering:pixelated; animation:bob 8s ease-in-out infinite;">
 </div>
