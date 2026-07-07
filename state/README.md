@@ -13,6 +13,7 @@ state/
 └── sessions/
     └── <session-id>/                       ← one bundle directory per session
         ├── session.json                    ← the substantive orchestrator state
+        ├── archive.jsonl                   ← optional: append-only rotation archive (see "Compaction" below)
         ├── manifest.json                   ← bundle metadata (created_at, host fingerprint, snapshot flag, …)
         ├── lifecycle.log                   ← append-only JSONL audit trail of pause/resume/end events
         ├── summary.md                      ← human-readable wrap-up (present after session.end)
@@ -50,6 +51,7 @@ That four-step sequence is the **RESUME-FIRST contract** enshrined in `CLAUDE.md
 | File | Required? | Purpose |
 |------|-----------|---------|
 | `session.json` | **required** | full orchestrator state for the session; validates against `state/bundle.schema.json` |
+| `archive.jsonl` | optional | append-only rotation archive written by compaction (see "Compaction" below); absent until the bundle's `decisions`/`subagent_results` first exceed the cap |
 | `manifest.json` | **required** | `session_id`, `schema_version` (bundle-layout version), `created_at`, `host` (SHA-256 of hostname), `snapshot_transcript: bool`, `transcript_refs[]` |
 | `lifecycle.log` | **required** | one JSONL entry per pause/resume/end event; append-only audit trail |
 | `summary.md` | required after `end` | human-readable wrap-up; absent during `active`/`paused` |
@@ -58,6 +60,40 @@ That four-step sequence is the **RESUME-FIRST contract** enshrined in `CLAUDE.md
 | `artifacts/` | optional | catch-all for files the orchestrator wants to keep with the session |
 
 The two `schema_version` numbers (pointer/bundle state at `2`, manifest at `1`) track independent dimensions on purpose; see the comment block in `src/schemas.js`.
+
+## Compaction (bundle hygiene — TASK-103)
+
+`writeBundleSession` (`src/bundle.js`) validates every payload against
+`state/bundle.schema.json` (mirrored from `src/schemas.js#bundleStateSchema`)
+BEFORE the atomic write, and throws a typed `E_BUNDLE_INVALID` carrying the
+ajv error paths on any violation — no invalid payload ever reaches disk. The
+schema caps `decisions` and `subagent_results` at 15 entries each
+(`maxItems`); this is the enforced size sensor that replaces the free-text
+length caps removed from `next_action`/`handoff_summary`/
+`subagent_results[].summary` (those stay uncapped — see `src/schemas.js`'s
+comment for why capping prose broke real usage instead).
+
+`src/bundle-compaction.js#compactBundleSession` (also reachable via
+`node dist/loop-ctl.cjs compact-bundle --repo-root <repoRoot>`) keeps a
+bundle within both caps without losing history: it partitions each array by
+most-recent `at`, keeps the 15 newest in `session.json`, and appends
+everything older to `archive.jsonl` — one JSON object per line, tagged
+`type: 'decision' | 'subagent_result'` plus `archived_at`. The archive is
+append-only (repeated compactions never rewrite or drop prior lines) and the
+mechanism is idempotent — a bundle already within both caps is left
+untouched (no write, no archive append). Required fields, `mode`,
+`loop_auth`, `loop_state`, and the current `handoff_summary` are unaffected
+by compaction.
+
+Because `archive.jsonl` lives inside the bundle directory, the bundle stays
+self-contained under the "copy the dir" contract above. A knowledge-graph
+decision node (`knowledge/graph/graph.json`) whose `ref` names the bare
+bundle path (`state/sessions/<id>/session.json`) remains addressable at the
+directory level: if the decision isn't in `session.json`'s live `decisions`
+array, check `archive.jsonl` next. A node whose `ref` carries a `#<at>`
+fragment pointing at an entry that rotated out was repointed (one-time, at
+TASK-103) to `archive.jsonl#<at>` so the fragment keeps resolving to the
+exact entry.
 
 ## Lifecycle operations
 

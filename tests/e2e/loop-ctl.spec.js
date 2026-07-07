@@ -297,6 +297,47 @@ describe('grant-unattended', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// TASK-103 — compact-bundle subcommand, exposing src/bundle-compaction.js's
+// compactBundleSession so a plugin-installed project (no framework src/ on
+// disk) can rotate decisions/subagent_results beyond the documented cap into
+// the bundle's archive.jsonl via the built dist/loop-ctl.cjs.
+// ---------------------------------------------------------------------------
+describe('compact-bundle (TASK-103)', () => {
+  function makeDecision(at, i) {
+    return { at, decision: `decision ${i}`, rationale: `rationale ${i}` };
+  }
+
+  it('compact_bundle_happy_path_rotates_beyond_the_cap_into_archive_jsonl', () => {
+    const root = makeProject();
+    const bundle = readBundle(root);
+    bundle.decisions = Array.from({ length: 20 }, (_, i) => makeDecision(new Date(2026, 0, 1 + i).toISOString(), i));
+    writeFileSync(join(root, 'state', 'sessions', SESSION_ID, 'session.json'), JSON.stringify(bundle, null, 2), 'utf8');
+
+    const result = runCli(['compact-bundle', '--repo-root', root, '--max-decisions', '15']);
+    expect(result.status).toBe(0);
+    expect(result.json).toEqual({
+      ok: true, sessionId: SESSION_ID, archivedDecisions: 5, archivedSubagentResults: 0, compacted: true,
+    });
+    expect(readBundle(root).decisions.length).toBe(15);
+    expect(existsSync(join(root, 'state', 'sessions', SESSION_ID, 'archive.jsonl'))).toBe(true);
+  });
+
+  it('compact_bundle_failure_path_no_active_session_nonzero_exit', () => {
+    const root = makeTmpDir('af-loopctl-noactive');
+    mkdirSync(join(root, 'state'), { recursive: true });
+    writeFileSync(
+      join(root, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: null, updated_at: '2026-07-06T23:00:00Z' }, null, 2),
+      'utf8',
+    );
+    const result = runCli(['compact-bundle', '--repo-root', root]);
+    expect(result.status).not.toBe(0);
+    expect(result.json.ok).toBe(false);
+    expect(result.json.message).toMatch(/No active session/);
+  });
+});
+
 // ===========================================================================
 // AC4 — plugin-layout proof: cwd-only resolution (no --repo-root passed), no
 // framework src/ present in the temp project, operating on THAT project's

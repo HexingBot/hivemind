@@ -48,7 +48,19 @@ export const bundleStateSchema = {
     'that lived on next_action and subagent_results[].summary in the v1 ' +
     'schema were removed: in practice the orchestrator writes multi-paragraph ' +
     'handoff text and 2-4 paragraph subagent summaries, and capping those ' +
-    'at 300/1000 characters caused the live bundle to fail validation. ' +
+    'at 300/1000 characters caused the live bundle to fail validation. Those ' +
+    'free-text fields (next_action, handoff_summary, subagent_results[].summary) ' +
+    'stay deliberately uncapped for that reason. ' +
+    'TASK-103 (R11+R10): the ARRAYS grew unbounded instead (the live bundle ' +
+    'reached 83 decisions / 63 subagent_results / 260KB) with no replacing ' +
+    'sensor after the length caps were removed, so decisions and ' +
+    'subagent_results now carry maxItems caps — the enforced size sensor. ' +
+    'src/bundle-compaction.js rotates entries beyond the cap into an ' +
+    'append-only archive.jsonl inside the bundle dir (no data loss) BEFORE ' +
+    'writeBundleSession (src/bundle.js) is called again; writeBundleSession ' +
+    'itself validates every payload against this schema before the atomic ' +
+    'write and throws a typed E_BUNDLE_INVALID with the ajv error paths on ' +
+    'any violation, including these maxItems caps. ' +
     'subagent_results items also declare two optional fields the orchestrator ' +
     'uses (`task`: free-text label for the run, `agentId`: SendMessage ' +
     'continuation handle) — they are typed explicitly rather than waved ' +
@@ -94,6 +106,9 @@ export const bundleStateSchema = {
     decisions: {
       type: 'array',
       default: [],
+      // TASK-103 (R11+R10) — enforced size sensor: keep in lock-step with
+      // src/bundle-compaction.js#MAX_DECISIONS and state/bundle.schema.json.
+      maxItems: 15,
       items: {
         type: 'object',
         required: ['at', 'decision', 'rationale'],
@@ -108,6 +123,9 @@ export const bundleStateSchema = {
     subagent_results: {
       type: 'array',
       default: [],
+      // TASK-103 (R11+R10) — enforced size sensor: keep in lock-step with
+      // src/bundle-compaction.js#MAX_SUBAGENT_RESULTS and state/bundle.schema.json.
+      maxItems: 15,
       items: {
         type: 'object',
         required: ['agent', 'at', 'summary'],

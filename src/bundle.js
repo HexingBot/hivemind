@@ -7,8 +7,12 @@ import {
 import { join, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+
 import { atomicWriteFile } from './atomic-write.js';
 import { hostFingerprint } from './host.js';
+import { bundleStateSchema } from './schemas.js';
 
 /**
  * YYYYMMDDTHHMMSSZ-<8-hex>. Sortable by creation time, collision-resistant.
@@ -54,6 +58,18 @@ export function bundleTranscriptSnapshotDir(repoRoot, sessionId) {
 }
 
 /**
+ * TASK-103 — append-only archive file a bundle's compaction/rotation
+ * mechanism (src/bundle-compaction.js) rotates older decisions/
+ * subagent_results into once session.json's arrays exceed their documented
+ * maxItems cap (src/schemas.js#bundleStateSchema). Lives inside the bundle
+ * dir so the bundle stays self-contained (R29: the bundle directory, not
+ * just session.json, is the addressable unit for archived decisions).
+ */
+export function bundleArchivePath(repoRoot, sessionId) {
+  return join(bundleDirFor(repoRoot, sessionId), 'archive.jsonl');
+}
+
+/**
  * Read the bundle's session.json. Returns the parsed object.
  */
 export function readBundleSession(repoRoot, sessionId) {
@@ -95,10 +111,50 @@ export function readBundleSessionOrThrow(repoRoot, sessionId, callerLabel) {
   }
 }
 
+// ----- ajv compile-once-per-process, mirroring src/task-store.js's
+// validate-before-write convention. bundleStateSchema is the single source of
+// truth (state/bundle.schema.json is a kept-in-sync JSON mirror read directly
+// by tests/live-state.spec.js's drift guard, not by this module). -----
+let _validateBundleState = null;
+
+function getBundleStateValidator() {
+  if (_validateBundleState) return _validateBundleState;
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  _validateBundleState = ajv.compile(bundleStateSchema);
+  return _validateBundleState;
+}
+
+/**
+ * TASK-103 (R11) — validate a bundle payload against bundleStateSchema.
+ * Throws a typed E_BUNDLE_INVALID carrying the raw ajv errors (`.errors`) on
+ * failure; the thrown message joins each error's instancePath + message so a
+ * human/reviewer can see exactly which field(s) failed without inspecting
+ * `.errors` directly.
+ */
+function validateBundleStateOrThrow(payload) {
+  const validate = getBundleStateValidator();
+  const ok = validate(payload);
+  if (ok) return;
+  const errors = validate.errors || [];
+  const msg = errors
+    .map((e) => `${e.instancePath || '/'} ${e.message}`)
+    .join('; ');
+  const err = makeErr('E_BUNDLE_INVALID', `bundle session payload failed schema validation: ${msg}`);
+  err.errors = errors;
+  throw err;
+}
+
 /**
  * Atomically write the bundle's session.json (the per-bundle state file).
+ *
+ * TASK-103 (R11) — validates `payload` against bundleStateSchema BEFORE any
+ * disk I/O; an invalid payload never reaches atomicWriteFile (zero
+ * mutation on failure), matching the validate-before-write convention
+ * already used by src/task-store.js and src/knowledge-graph.js.
  */
 export async function writeBundleSession(repoRoot, sessionId, payload) {
+  validateBundleStateOrThrow(payload);
   const dir = bundleDirFor(repoRoot, sessionId);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const target = bundleSessionPath(repoRoot, sessionId);

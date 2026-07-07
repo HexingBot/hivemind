@@ -21,6 +21,10 @@
 //                    git-log check; does not spawn git itself, --repo-root not
 //                    needed)
 //   grant-unattended --repo-root <path> [--opt-in <switch>]...
+//   compact-bundle   --repo-root <path> [--max-decisions <n>] [--max-subagent-results <n>]
+//                    (TASK-103 — rotates decisions/subagent_results beyond the
+//                    documented cap into the bundle's archive.jsonl; see
+//                    src/bundle-compaction.js)
 //
 // `--repo-root` may be omitted; it then falls back to CLAUDE_PROJECT_DIR or
 // process.cwd() (src/repo-root.js's existing resolution policy).
@@ -42,13 +46,14 @@ import { writeLoopCheckpoint, resumePoint, ticketHasLandedCommits } from '../src
 import { grantUnattended } from '../src/loop-auth.js';
 import { readPointer } from '../src/pointer.js';
 import { readBundleSession } from '../src/bundle.js';
+import { compactBundleSession } from '../src/bundle-compaction.js';
 import { TASK_FILENAME_RE } from '../src/task-store.js';
 
 const SUBCOMMANDS = new Set([
   'acquire', 'renew', 'release',
   'get-mode', 'set-mode',
   'checkpoint', 'resume-point', 'landed-commits',
-  'grant-unattended',
+  'grant-unattended', 'compact-bundle',
 ]);
 
 // Known single-value flags per subcommand (kebab-case, as typed on the CLI).
@@ -65,6 +70,7 @@ const FLAG_SPEC = {
   'resume-point': ['--repo-root'],
   'landed-commits': ['--key'],
   'grant-unattended': ['--repo-root'],
+  'compact-bundle': ['--repo-root', '--max-decisions', '--max-subagent-results'],
 };
 
 function kebabToCamel(flag) {
@@ -230,6 +236,24 @@ async function run(subcommand, flags) {
       for (const key of flags.optIn || []) optIns[key] = true;
       await grantUnattended({ repoRoot, optIns });
       return { granted: true, optIns };
+    }
+    case 'compact-bundle': {
+      const pointer = readPointer(repoRoot);
+      if (!pointer || pointer.active_session_id == null) {
+        throw new Error('No active session — cannot compact a bundle without an active bundle.');
+      }
+      const opts = { repoRoot, sessionId: pointer.active_session_id };
+      if (flags.maxDecisions !== undefined) {
+        const n = Number(flags.maxDecisions);
+        if (!Number.isFinite(n)) throw new Error(`--max-decisions must be a number, got: ${flags.maxDecisions}`);
+        opts.maxDecisions = n;
+      }
+      if (flags.maxSubagentResults !== undefined) {
+        const n = Number(flags.maxSubagentResults);
+        if (!Number.isFinite(n)) throw new Error(`--max-subagent-results must be a number, got: ${flags.maxSubagentResults}`);
+        opts.maxSubagentResults = n;
+      }
+      return compactBundleSession(opts);
     }
     default:
       throw new Error(`unknown subcommand: ${subcommand}`);

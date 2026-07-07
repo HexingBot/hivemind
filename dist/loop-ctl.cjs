@@ -7078,7 +7078,7 @@ var require__ = __commonJS({
     var discriminator_1 = require_discriminator();
     var json_schema_2020_12_1 = require_json_schema_2020_12();
     var META_SCHEMA_ID = "https://json-schema.org/draft/2020-12/schema";
-    var Ajv2020 = class extends core_1.default {
+    var Ajv20202 = class extends core_1.default {
       constructor(opts = {}) {
         super({
           ...opts,
@@ -7105,11 +7105,11 @@ var require__ = __commonJS({
         return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
       }
     };
-    exports2.Ajv2020 = Ajv2020;
-    module2.exports = exports2 = Ajv2020;
-    module2.exports.Ajv2020 = Ajv2020;
+    exports2.Ajv2020 = Ajv20202;
+    module2.exports = exports2 = Ajv20202;
+    module2.exports.Ajv2020 = Ajv20202;
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.default = Ajv2020;
+    exports2.default = Ajv20202;
     var validate_1 = require_validate();
     Object.defineProperty(exports2, "KeywordCxt", { enumerable: true, get: function() {
       return validate_1.KeywordCxt;
@@ -7680,12 +7680,12 @@ var require_dist = __commonJS({
     var fastName = new codegen_1.Name("fastFormats");
     var formatsPlugin = (ajv, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats2(ajv, opts, formats_1.fullFormats, fullName);
+        addFormats3(ajv, opts, formats_1.fullFormats, fullName);
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats2(ajv, list, formats, exportName);
+      addFormats3(ajv, list, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -7697,7 +7697,7 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv, list, fs, exportName) {
+    function addFormats3(ajv, list, fs, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
@@ -7719,7 +7719,7 @@ __export(loop_ctl_exports, {
 module.exports = __toCommonJS(loop_ctl_exports);
 var import_node_url = require("node:url");
 var import_promises = require("node:fs/promises");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 
 // src/repo-root.js
 function resolveRepoRoot(env, cwd) {
@@ -8103,11 +8103,135 @@ function readPointer(repoRoot) {
 // src/bundle.js
 var import_node_fs4 = require("node:fs");
 var import_node_path4 = require("node:path");
+var import__ = __toESM(require__(), 1);
+var import_ajv_formats = __toESM(require_dist(), 1);
+
+// src/schemas.js
+var bundleStateSchema = {
+  $id: "https://hivemind.local/state/sessions/bundle.schema.json",
+  title: "BundleSession",
+  description: "Per-session orchestrator state living inside a portable bundle at state/sessions/<id>/session.json. Per resolved Q #8 the version field is named schema_version (matching the pointer file). The length caps that lived on next_action and subagent_results[].summary in the v1 schema were removed: in practice the orchestrator writes multi-paragraph handoff text and 2-4 paragraph subagent summaries, and capping those at 300/1000 characters caused the live bundle to fail validation. Those free-text fields (next_action, handoff_summary, subagent_results[].summary) stay deliberately uncapped for that reason. TASK-103 (R11+R10): the ARRAYS grew unbounded instead (the live bundle reached 83 decisions / 63 subagent_results / 260KB) with no replacing sensor after the length caps were removed, so decisions and subagent_results now carry maxItems caps \u2014 the enforced size sensor. src/bundle-compaction.js rotates entries beyond the cap into an append-only archive.jsonl inside the bundle dir (no data loss) BEFORE writeBundleSession (src/bundle.js) is called again; writeBundleSession itself validates every payload against this schema before the atomic write and throws a typed E_BUNDLE_INVALID with the ajv error paths on any violation, including these maxItems caps. subagent_results items also declare two optional fields the orchestrator uses (`task`: free-text label for the run, `agentId`: SendMessage continuation handle) \u2014 they are typed explicitly rather than waved through with additionalProperties: true, so the schema still documents the full payload shape.",
+  type: "object",
+  required: [
+    "schema_version",
+    "session_id",
+    "lifecycle_state",
+    "updated_at",
+    "active_task",
+    "workflow_step",
+    "next_action",
+    "handoff_summary"
+  ],
+  additionalProperties: false,
+  properties: {
+    schema_version: { const: 2 },
+    session_id: {
+      type: "string",
+      pattern: "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
+    },
+    lifecycle_state: { type: "string", enum: ["active", "paused", "ended"] },
+    updated_at: { type: "string", format: "date-time" },
+    active_task: {
+      type: ["string", "null"],
+      pattern: "^TASK-[0-9]{3,}$"
+    },
+    workflow_step: {
+      type: "string",
+      enum: ["idle", "fetch", "research", "test", "impl", "review", "update"]
+    },
+    next_action: {
+      type: ["string", "null"],
+      description: "Multi-paragraph description of the next step on resume. Intentionally uncapped \u2014 see schema description."
+    },
+    handoff_summary: { type: "string" },
+    open_questions: { type: "array", default: [], items: { type: "string" } },
+    blockers: { type: "array", default: [], items: { type: "string" } },
+    decisions: {
+      type: "array",
+      default: [],
+      // TASK-103 (R11+R10) — enforced size sensor: keep in lock-step with
+      // src/bundle-compaction.js#MAX_DECISIONS and state/bundle.schema.json.
+      maxItems: 15,
+      items: {
+        type: "object",
+        required: ["at", "decision", "rationale"],
+        additionalProperties: false,
+        properties: {
+          at: { type: "string", format: "date-time" },
+          decision: { type: "string" },
+          rationale: { type: "string" }
+        }
+      }
+    },
+    subagent_results: {
+      type: "array",
+      default: [],
+      // TASK-103 (R11+R10) — enforced size sensor: keep in lock-step with
+      // src/bundle-compaction.js#MAX_SUBAGENT_RESULTS and state/bundle.schema.json.
+      maxItems: 15,
+      items: {
+        type: "object",
+        required: ["agent", "at", "summary"],
+        additionalProperties: false,
+        properties: {
+          agent: { type: "string", enum: ["researcher", "developer", "reviewer"] },
+          at: { type: "string", format: "date-time" },
+          summary: {
+            type: "string",
+            description: "Multi-paragraph subagent return summary. Intentionally uncapped \u2014 see schema description."
+          },
+          artifacts: { type: "array", default: [], items: { type: "string" } },
+          task: {
+            type: "string",
+            description: "Optional free-text label naming the run this subagent did (e.g. 'TASK-004 phase 3a implementation')."
+          },
+          agentId: {
+            type: "string",
+            description: "Optional SendMessage continuation handle for re-spawning the same subagent in a later turn."
+          }
+        }
+      }
+    },
+    pending_human_confirmation: { type: ["string", "null"], default: null },
+    mode: {
+      type: "string",
+      enum: ["harness", "loop"],
+      default: "harness",
+      description: "Operating mode of the active session. 'harness' = default, human-gated, one-step-at-a-time. 'loop' = autonomous drive loop is active. Absence is treated as 'harness' (backward-compatible). TASK-063."
+    },
+    loop_auth: {
+      type: "object",
+      description: "Standing-authorization switches for the autonomous drive loop. All default false (most conservative). See commands/loop.md.",
+      additionalProperties: false,
+      properties: {
+        auto_close_on_green_review: { type: "boolean", default: false },
+        auto_push_after_close: { type: "boolean", default: false },
+        uat_delegated_to_orchestrator: { type: "boolean", default: false },
+        auto_version_bump_on_milestone: { type: "boolean", default: false },
+        auto_consolidate: {
+          type: "boolean",
+          default: false,
+          description: "Standing authorization to run Gate 5 phase/milestone consolidation without a per-step human check-in. Part of the unattended preset. TASK-075."
+        }
+      }
+    },
+    loop_state: {
+      type: "object",
+      description: "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form \u2014 contents evolve with the loop implementation.",
+      additionalProperties: true
+    }
+  }
+};
+
+// src/bundle.js
 function bundleDirFor(repoRoot, sessionId) {
   return (0, import_node_path4.join)(repoRoot, "state", "sessions", sessionId);
 }
 function bundleSessionPath(repoRoot, sessionId) {
   return (0, import_node_path4.join)(bundleDirFor(repoRoot, sessionId), "session.json");
+}
+function bundleArchivePath(repoRoot, sessionId) {
+  return (0, import_node_path4.join)(bundleDirFor(repoRoot, sessionId), "archive.jsonl");
 }
 function readBundleSession(repoRoot, sessionId) {
   const p = bundleSessionPath(repoRoot, sessionId);
@@ -8131,7 +8255,26 @@ function readBundleSessionOrThrow(repoRoot, sessionId, callerLabel) {
     throw err;
   }
 }
+var _validateBundleState = null;
+function getBundleStateValidator() {
+  if (_validateBundleState) return _validateBundleState;
+  const ajv = new import__.default({ allErrors: true, strict: false });
+  (0, import_ajv_formats.default)(ajv);
+  _validateBundleState = ajv.compile(bundleStateSchema);
+  return _validateBundleState;
+}
+function validateBundleStateOrThrow(payload) {
+  const validate = getBundleStateValidator();
+  const ok = validate(payload);
+  if (ok) return;
+  const errors = validate.errors || [];
+  const msg = errors.map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ");
+  const err = makeErr2("E_BUNDLE_INVALID", `bundle session payload failed schema validation: ${msg}`);
+  err.errors = errors;
+  throw err;
+}
 async function writeBundleSession(repoRoot, sessionId, payload) {
+  validateBundleStateOrThrow(payload);
   const dir = bundleDirFor(repoRoot, sessionId);
   if (!(0, import_node_fs4.existsSync)(dir)) (0, import_node_fs4.mkdirSync)(dir, { recursive: true });
   const target = bundleSessionPath(repoRoot, sessionId);
@@ -8343,9 +8486,97 @@ async function grantUnattended({ repoRoot, optIns = {} }) {
   });
 }
 
+// src/bundle-compaction.js
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
+var MAX_DECISIONS = 15;
+var MAX_SUBAGENT_RESULTS = 15;
+function partitionMostRecent(items, maxItems) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length <= maxItems) return { kept: [...list], archived: [] };
+  const withIndex = list.map((item, index) => ({ item, index }));
+  withIndex.sort((a, b) => {
+    const ta = Date.parse(a.item.at);
+    const tb = Date.parse(b.item.at);
+    if (tb !== ta) return tb - ta;
+    return a.index - b.index;
+  });
+  const keptIndexes = new Set(withIndex.slice(0, maxItems).map((e) => e.index));
+  const kept = [];
+  const archived = [];
+  list.forEach((item, index) => {
+    (keptIndexes.has(index) ? kept : archived).push(item);
+  });
+  return { kept, archived };
+}
+function compactBundleState(bundle, opts = {}) {
+  const maxDecisions = opts.maxDecisions ?? MAX_DECISIONS;
+  const maxSubagentResults = opts.maxSubagentResults ?? MAX_SUBAGENT_RESULTS;
+  const { kept: keptDecisions, archived: archivedDecisions } = partitionMostRecent(
+    bundle.decisions,
+    maxDecisions
+  );
+  const { kept: keptSubagentResults, archived: archivedSubagentResults } = partitionMostRecent(
+    bundle.subagent_results,
+    maxSubagentResults
+  );
+  const compacted = {
+    ...bundle,
+    decisions: keptDecisions,
+    subagent_results: keptSubagentResults
+  };
+  return { compacted, archivedDecisions, archivedSubagentResults };
+}
+function appendBundleArchive(repoRoot, sessionId, { decisions = [], subagentResults = [] }, archivedAt) {
+  if (decisions.length === 0 && subagentResults.length === 0) return 0;
+  const p = bundleArchivePath(repoRoot, sessionId);
+  if (!(0, import_node_fs5.existsSync)((0, import_node_path5.dirname)(p))) (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(p), { recursive: true });
+  const at = archivedAt || (/* @__PURE__ */ new Date()).toISOString();
+  const lines = [
+    ...decisions.map((d) => JSON.stringify({ type: "decision", archived_at: at, ...d })),
+    ...subagentResults.map((s) => JSON.stringify({ type: "subagent_result", archived_at: at, ...s }))
+  ];
+  (0, import_node_fs5.appendFileSync)(p, lines.join("\n") + "\n", "utf8");
+  return lines.length;
+}
+async function compactBundleSession({
+  repoRoot,
+  sessionId,
+  maxDecisions,
+  maxSubagentResults
+}) {
+  const bundle = readBundleSessionOrThrow(repoRoot, sessionId, "compactBundleSession");
+  const { compacted, archivedDecisions, archivedSubagentResults } = compactBundleState(
+    bundle,
+    { maxDecisions, maxSubagentResults }
+  );
+  if (archivedDecisions.length === 0 && archivedSubagentResults.length === 0) {
+    return {
+      sessionId,
+      archivedDecisions: 0,
+      archivedSubagentResults: 0,
+      compacted: false
+    };
+  }
+  const archivedAt = (/* @__PURE__ */ new Date()).toISOString();
+  appendBundleArchive(
+    repoRoot,
+    sessionId,
+    { decisions: archivedDecisions, subagentResults: archivedSubagentResults },
+    archivedAt
+  );
+  await writeBundleSession(repoRoot, sessionId, { ...compacted, updated_at: archivedAt });
+  return {
+    sessionId,
+    archivedDecisions: archivedDecisions.length,
+    archivedSubagentResults: archivedSubagentResults.length,
+    compacted: true
+  };
+}
+
 // src/task-store.js
-var import__ = __toESM(require__(), 1);
-var import_ajv_formats = __toESM(require_dist(), 1);
+var import__2 = __toESM(require__(), 1);
+var import_ajv_formats2 = __toESM(require_dist(), 1);
 
 // tasks/schema.json
 var schema_default = {
@@ -8465,8 +8696,8 @@ var schema_default = {
 
 // src/task-store.js
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
-var __ajv = new import__.default({ allErrors: true, strict: false });
-(0, import_ajv_formats.default)(__ajv);
+var __ajv = new import__2.default({ allErrors: true, strict: false });
+(0, import_ajv_formats2.default)(__ajv);
 var __validateTask = __ajv.compile(schema_default);
 
 // bin/loop-ctl.js
@@ -8480,7 +8711,8 @@ var SUBCOMMANDS = /* @__PURE__ */ new Set([
   "checkpoint",
   "resume-point",
   "landed-commits",
-  "grant-unattended"
+  "grant-unattended",
+  "compact-bundle"
 ]);
 var FLAG_SPEC = {
   acquire: ["--repo-root", "--holder", "--staleness-ms"],
@@ -8498,7 +8730,8 @@ var FLAG_SPEC = {
   ],
   "resume-point": ["--repo-root"],
   "landed-commits": ["--key"],
-  "grant-unattended": ["--repo-root"]
+  "grant-unattended": ["--repo-root"],
+  "compact-bundle": ["--repo-root", "--max-decisions", "--max-subagent-results"]
 };
 function kebabToCamel(flag) {
   return flag.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -8526,7 +8759,7 @@ function resolveRoot(flags) {
   return flags.repoRoot || resolveRepoRoot(process.env, process.cwd());
 }
 async function readAllTasksForResume(repoRoot) {
-  const dir = (0, import_node_path5.join)(repoRoot, "tasks");
+  const dir = (0, import_node_path6.join)(repoRoot, "tasks");
   let entries;
   try {
     entries = await (0, import_promises.readdir)(dir);
@@ -8537,7 +8770,7 @@ async function readAllTasksForResume(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises.readFile)((0, import_node_path5.join)(dir, name), "utf8");
+    const raw = await (0, import_promises.readFile)((0, import_node_path6.join)(dir, name), "utf8");
     if (raw.length === 0) continue;
     out.push(JSON.parse(raw));
   }
@@ -8630,6 +8863,24 @@ async function run(subcommand, flags) {
       for (const key of flags.optIn || []) optIns[key] = true;
       await grantUnattended({ repoRoot, optIns });
       return { granted: true, optIns };
+    }
+    case "compact-bundle": {
+      const pointer = readPointer(repoRoot);
+      if (!pointer || pointer.active_session_id == null) {
+        throw new Error("No active session \u2014 cannot compact a bundle without an active bundle.");
+      }
+      const opts = { repoRoot, sessionId: pointer.active_session_id };
+      if (flags.maxDecisions !== void 0) {
+        const n = Number(flags.maxDecisions);
+        if (!Number.isFinite(n)) throw new Error(`--max-decisions must be a number, got: ${flags.maxDecisions}`);
+        opts.maxDecisions = n;
+      }
+      if (flags.maxSubagentResults !== void 0) {
+        const n = Number(flags.maxSubagentResults);
+        if (!Number.isFinite(n)) throw new Error(`--max-subagent-results must be a number, got: ${flags.maxSubagentResults}`);
+        opts.maxSubagentResults = n;
+      }
+      return compactBundleSession(opts);
     }
     default:
       throw new Error(`unknown subcommand: ${subcommand}`);

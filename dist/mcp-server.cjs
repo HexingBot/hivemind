@@ -6855,12 +6855,12 @@ var require_dist = __commonJS({
     var fastName = new codegen_1.Name("fastFormats");
     var formatsPlugin = (ajv, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats2(ajv, opts, formats_1.fullFormats, fullName);
+        addFormats3(ajv, opts, formats_1.fullFormats, fullName);
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats2(ajv, list, formats, exportName);
+      addFormats3(ajv, list, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -6872,7 +6872,7 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv, list, fs, exportName) {
+    function addFormats3(ajv, list, fs, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
@@ -20278,8 +20278,8 @@ function createDefaultAjvInstance() {
     validateSchema: false,
     allErrors: true
   });
-  const addFormats2 = import_ajv_formats.default;
-  addFormats2(ajv);
+  const addFormats3 = import_ajv_formats.default;
+  addFormats3(ajv);
   return ajv;
 }
 var AjvJsonSchemaValidator = class {
@@ -22525,6 +22525,7 @@ function readPointer(repoRoot) {
 // src/bundle.js
 var import_node_fs4 = require("node:fs");
 var import_node_path4 = require("node:path");
+var import_ajv_formats3 = __toESM(require_dist(), 1);
 function bundleDirFor(repoRoot, sessionId) {
   return (0, import_node_path4.join)(repoRoot, "state", "sessions", sessionId);
 }

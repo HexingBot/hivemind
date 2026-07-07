@@ -7680,12 +7680,12 @@ var require_dist = __commonJS({
     var fastName = new codegen_1.Name("fastFormats");
     var formatsPlugin = (ajv, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats3(ajv, opts, formats_1.fullFormats, fullName);
+        addFormats4(ajv, opts, formats_1.fullFormats, fullName);
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats3(ajv, list, formats, exportName);
+      addFormats4(ajv, list, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -7697,7 +7697,7 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats3(ajv, list, fs, exportName) {
+    function addFormats4(ajv, list, fs, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
@@ -8175,6 +8175,7 @@ function readPointer(repoRoot) {
 // src/bundle.js
 var import_node_fs5 = require("node:fs");
 var import_node_path5 = require("node:path");
+var import_ajv_formats3 = __toESM(require_dist(), 1);
 function bundleDirFor(repoRoot, sessionId) {
   return (0, import_node_path5.join)(repoRoot, "state", "sessions", sessionId);
 }

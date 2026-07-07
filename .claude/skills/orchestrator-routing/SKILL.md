@@ -57,6 +57,10 @@ Keep the bundle small:
 - `subagent_results[].summary` is at most ~1000 chars.
 - Raw subagent output, file dumps, and search results stay OUT of the bundle's
   `session.json`; reference them by path or commit SHA in `artifacts/`.
+- `decisions` and `subagent_results` are capped at 15 entries each
+  (`bundleStateSchema`'s `maxItems` — TASK-103's enforced size sensor);
+  `writeBundleSession` throws a typed `E_BUNDLE_INVALID` if either array is
+  written beyond that cap.
 
 Use the lifecycle operations — pause / resume / end are explicit operations on the
 active bundle (each appends to `lifecycle.log` and refreshes the pointer); all
@@ -66,6 +70,26 @@ the pointer to archive a session.
 The pointer schema is `state/session.schema.json`; the bundle schema is
 `state/bundle.schema.json`. The full bundle layout and the pause / resume / end
 lifecycle are documented in `state/README.md`.
+
+## Bundle compaction (rotation)
+
+Before appending a `decisions` or `subagent_results` entry that would push
+either array past 15, rotate first: run
+`node dist/loop-ctl.cjs compact-bundle --repo-root <repoRoot>` (or import
+`compactBundleSession` from `src/bundle-compaction.js` in the dev repo). It
+keeps the 15 most-recent-by-`at` entries of each array in `session.json` and
+moves everything older into an append-only `archive.jsonl` inside the same
+bundle directory — no data loss, and idempotent (a no-op when already within
+both caps). Required fields, `mode`, `loop_auth`, `loop_state`, and the
+current `handoff_summary` are untouched by compaction; only the two arrays
+rotate.
+
+A knowledge-graph decision node whose `ref` names the bundle's
+`session.json` may point at an entry that has since rotated into
+`archive.jsonl` — check both files when a referenced decision isn't in
+`session.json`'s live `decisions` array. A node whose `ref` carries a
+`#<at>` fragment was repointed to `archive.jsonl#<at>` at rotation time so
+the fragment keeps resolving to the exact entry.
 
 ## Session close-out
 

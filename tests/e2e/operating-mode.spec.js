@@ -68,7 +68,11 @@ function makeRepo({ sessionId, bundleExtra = {}, missingBundleDir = false } = {}
       lifecycle_state: 'active',
       updated_at: '2026-06-16T12:00:00Z',
       active_task: 'TASK-063',
-      workflow_step: 'implement',
+      // TASK-103 — was 'implement' (not a valid workflow_step enum value;
+      // the schema only allows 'impl'). Invisible before TASK-103 added
+      // validate-before-write to writeBundleSession (AC1); setMode's merge
+      // + write now surfaces it as a real E_BUNDLE_INVALID.
+      workflow_step: 'impl',
       next_action: 'write tests',
       handoff_summary: 'in progress',
       open_questions: [],

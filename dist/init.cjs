@@ -7078,7 +7078,7 @@ var require__ = __commonJS({
     var discriminator_1 = require_discriminator();
     var json_schema_2020_12_1 = require_json_schema_2020_12();
     var META_SCHEMA_ID = "https://json-schema.org/draft/2020-12/schema";
-    var Ajv2020 = class extends core_1.default {
+    var Ajv20202 = class extends core_1.default {
       constructor(opts = {}) {
         super({
           ...opts,
@@ -7105,11 +7105,11 @@ var require__ = __commonJS({
         return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
       }
     };
-    exports2.Ajv2020 = Ajv2020;
-    module2.exports = exports2 = Ajv2020;
-    module2.exports.Ajv2020 = Ajv2020;
+    exports2.Ajv2020 = Ajv20202;
+    module2.exports = exports2 = Ajv20202;
+    module2.exports.Ajv2020 = Ajv20202;
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.default = Ajv2020;
+    exports2.default = Ajv20202;
     var validate_1 = require_validate();
     Object.defineProperty(exports2, "KeywordCxt", { enumerable: true, get: function() {
       return validate_1.KeywordCxt;
@@ -7680,12 +7680,12 @@ var require_dist = __commonJS({
     var fastName = new codegen_1.Name("fastFormats");
     var formatsPlugin = (ajv, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats2(ajv, opts, formats_1.fullFormats, fullName);
+        addFormats3(ajv, opts, formats_1.fullFormats, fullName);
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats2(ajv, list, formats, exportName);
+      addFormats3(ajv, list, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -7697,7 +7697,7 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv, list, fs, exportName) {
+    function addFormats3(ajv, list, fs, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
@@ -7843,6 +7843,8 @@ async function writePointer(repoRoot, { activeSessionId, updatedAt }) {
 var import_node_fs3 = require("node:fs");
 var import_node_path3 = require("node:path");
 var import_node_crypto3 = require("node:crypto");
+var import__ = __toESM(require__(), 1);
+var import_ajv_formats = __toESM(require_dist(), 1);
 
 // src/host.js
 var import_node_os = require("node:os");
@@ -7850,6 +7852,123 @@ var import_node_crypto2 = require("node:crypto");
 function hostFingerprint() {
   return (0, import_node_crypto2.createHash)("sha256").update((0, import_node_os.hostname)()).digest("hex");
 }
+
+// src/schemas.js
+var bundleStateSchema = {
+  $id: "https://hivemind.local/state/sessions/bundle.schema.json",
+  title: "BundleSession",
+  description: "Per-session orchestrator state living inside a portable bundle at state/sessions/<id>/session.json. Per resolved Q #8 the version field is named schema_version (matching the pointer file). The length caps that lived on next_action and subagent_results[].summary in the v1 schema were removed: in practice the orchestrator writes multi-paragraph handoff text and 2-4 paragraph subagent summaries, and capping those at 300/1000 characters caused the live bundle to fail validation. Those free-text fields (next_action, handoff_summary, subagent_results[].summary) stay deliberately uncapped for that reason. TASK-103 (R11+R10): the ARRAYS grew unbounded instead (the live bundle reached 83 decisions / 63 subagent_results / 260KB) with no replacing sensor after the length caps were removed, so decisions and subagent_results now carry maxItems caps \u2014 the enforced size sensor. src/bundle-compaction.js rotates entries beyond the cap into an append-only archive.jsonl inside the bundle dir (no data loss) BEFORE writeBundleSession (src/bundle.js) is called again; writeBundleSession itself validates every payload against this schema before the atomic write and throws a typed E_BUNDLE_INVALID with the ajv error paths on any violation, including these maxItems caps. subagent_results items also declare two optional fields the orchestrator uses (`task`: free-text label for the run, `agentId`: SendMessage continuation handle) \u2014 they are typed explicitly rather than waved through with additionalProperties: true, so the schema still documents the full payload shape.",
+  type: "object",
+  required: [
+    "schema_version",
+    "session_id",
+    "lifecycle_state",
+    "updated_at",
+    "active_task",
+    "workflow_step",
+    "next_action",
+    "handoff_summary"
+  ],
+  additionalProperties: false,
+  properties: {
+    schema_version: { const: 2 },
+    session_id: {
+      type: "string",
+      pattern: "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
+    },
+    lifecycle_state: { type: "string", enum: ["active", "paused", "ended"] },
+    updated_at: { type: "string", format: "date-time" },
+    active_task: {
+      type: ["string", "null"],
+      pattern: "^TASK-[0-9]{3,}$"
+    },
+    workflow_step: {
+      type: "string",
+      enum: ["idle", "fetch", "research", "test", "impl", "review", "update"]
+    },
+    next_action: {
+      type: ["string", "null"],
+      description: "Multi-paragraph description of the next step on resume. Intentionally uncapped \u2014 see schema description."
+    },
+    handoff_summary: { type: "string" },
+    open_questions: { type: "array", default: [], items: { type: "string" } },
+    blockers: { type: "array", default: [], items: { type: "string" } },
+    decisions: {
+      type: "array",
+      default: [],
+      // TASK-103 (R11+R10) — enforced size sensor: keep in lock-step with
+      // src/bundle-compaction.js#MAX_DECISIONS and state/bundle.schema.json.
+      maxItems: 15,
+      items: {
+        type: "object",
+        required: ["at", "decision", "rationale"],
+        additionalProperties: false,
+        properties: {
+          at: { type: "string", format: "date-time" },
+          decision: { type: "string" },
+          rationale: { type: "string" }
+        }
+      }
+    },
+    subagent_results: {
+      type: "array",
+      default: [],
+      // TASK-103 (R11+R10) — enforced size sensor: keep in lock-step with
+      // src/bundle-compaction.js#MAX_SUBAGENT_RESULTS and state/bundle.schema.json.
+      maxItems: 15,
+      items: {
+        type: "object",
+        required: ["agent", "at", "summary"],
+        additionalProperties: false,
+        properties: {
+          agent: { type: "string", enum: ["researcher", "developer", "reviewer"] },
+          at: { type: "string", format: "date-time" },
+          summary: {
+            type: "string",
+            description: "Multi-paragraph subagent return summary. Intentionally uncapped \u2014 see schema description."
+          },
+          artifacts: { type: "array", default: [], items: { type: "string" } },
+          task: {
+            type: "string",
+            description: "Optional free-text label naming the run this subagent did (e.g. 'TASK-004 phase 3a implementation')."
+          },
+          agentId: {
+            type: "string",
+            description: "Optional SendMessage continuation handle for re-spawning the same subagent in a later turn."
+          }
+        }
+      }
+    },
+    pending_human_confirmation: { type: ["string", "null"], default: null },
+    mode: {
+      type: "string",
+      enum: ["harness", "loop"],
+      default: "harness",
+      description: "Operating mode of the active session. 'harness' = default, human-gated, one-step-at-a-time. 'loop' = autonomous drive loop is active. Absence is treated as 'harness' (backward-compatible). TASK-063."
+    },
+    loop_auth: {
+      type: "object",
+      description: "Standing-authorization switches for the autonomous drive loop. All default false (most conservative). See commands/loop.md.",
+      additionalProperties: false,
+      properties: {
+        auto_close_on_green_review: { type: "boolean", default: false },
+        auto_push_after_close: { type: "boolean", default: false },
+        uat_delegated_to_orchestrator: { type: "boolean", default: false },
+        auto_version_bump_on_milestone: { type: "boolean", default: false },
+        auto_consolidate: {
+          type: "boolean",
+          default: false,
+          description: "Standing authorization to run Gate 5 phase/milestone consolidation without a per-step human check-in. Part of the unattended preset. TASK-075."
+        }
+      }
+    },
+    loop_state: {
+      type: "object",
+      description: "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form \u2014 contents evolve with the loop implementation.",
+      additionalProperties: true
+    }
+  }
+};
 
 // src/bundle.js
 function newSessionId(now = /* @__PURE__ */ new Date()) {
@@ -7881,7 +8000,31 @@ function bundleTranscriptRefPath(repoRoot, sessionId) {
 function bundleTranscriptSnapshotDir(repoRoot, sessionId) {
   return (0, import_node_path3.join)(bundleDirFor(repoRoot, sessionId), "transcript.snapshot");
 }
+function makeErr(code, message) {
+  const e = new Error(message);
+  e.code = code;
+  return e;
+}
+var _validateBundleState = null;
+function getBundleStateValidator() {
+  if (_validateBundleState) return _validateBundleState;
+  const ajv = new import__.default({ allErrors: true, strict: false });
+  (0, import_ajv_formats.default)(ajv);
+  _validateBundleState = ajv.compile(bundleStateSchema);
+  return _validateBundleState;
+}
+function validateBundleStateOrThrow(payload) {
+  const validate = getBundleStateValidator();
+  const ok = validate(payload);
+  if (ok) return;
+  const errors = validate.errors || [];
+  const msg = errors.map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ");
+  const err = makeErr("E_BUNDLE_INVALID", `bundle session payload failed schema validation: ${msg}`);
+  err.errors = errors;
+  throw err;
+}
 async function writeBundleSession(repoRoot, sessionId, payload) {
+  validateBundleStateOrThrow(payload);
   const dir = bundleDirFor(repoRoot, sessionId);
   if (!(0, import_node_fs3.existsSync)(dir)) (0, import_node_fs3.mkdirSync)(dir, { recursive: true });
   const target = bundleSessionPath(repoRoot, sessionId);
@@ -7990,7 +8133,7 @@ async function startSession(opts) {
     nextAction = null,
     snapshotTranscript = false
   } = opts;
-  if (!repoRoot) throw makeErr("E_LIFECYCLE_ARGS", "startSession: repoRoot is required");
+  if (!repoRoot) throw makeErr2("E_LIFECYCLE_ARGS", "startSession: repoRoot is required");
   const now = /* @__PURE__ */ new Date();
   const nowIso = now.toISOString();
   const sessionId = newSessionId(now);
@@ -8030,7 +8173,7 @@ async function startSession(opts) {
   await writePointer(repoRoot, { activeSessionId: sessionId, updatedAt: nowIso });
   return { sessionId };
 }
-function makeErr(code, message) {
+function makeErr2(code, message) {
   const e = new Error(message);
   e.code = code;
   return e;
@@ -9194,8 +9337,8 @@ var import_node_path8 = require("node:path");
 var import_promises2 = require("node:fs/promises");
 var import_node_fs9 = require("node:fs");
 var import_node_path7 = require("node:path");
-var import__ = __toESM(require__(), 1);
-var import_ajv_formats = __toESM(require_dist(), 1);
+var import__2 = __toESM(require__(), 1);
+var import_ajv_formats2 = __toESM(require_dist(), 1);
 
 // tasks/schema.json
 var schema_default = {
@@ -9316,8 +9459,8 @@ var schema_default = {
 // src/task-store.js
 var PRIORITIES = ["low", "medium", "high", "critical"];
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
-var __ajv = new import__.default({ allErrors: true, strict: false });
-(0, import_ajv_formats.default)(__ajv);
+var __ajv = new import__2.default({ allErrors: true, strict: false });
+(0, import_ajv_formats2.default)(__ajv);
 var __validateTask = __ajv.compile(schema_default);
 function validateTaskOrThrow(task) {
   const ok = __validateTask(task);
