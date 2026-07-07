@@ -26,7 +26,7 @@ This four-step sequence is non-negotiable — skipping it loses the prior sessio
 1. **Agent = Model + Harness.** Always rely on the harness — subagents, skills, MCP servers, and verification scripts — rather than trying to do everything in the main context.
 2. **Context hygiene.** Spawn a subagent (via the `Agent` tool) whenever a task involves heavy reading, web research, or speculative exploration. Never bloat the orchestrator's context with raw search output or full file dumps.
 3. **Feedforward + feedback.** Steer subagents up front with explicit instructions, then verify their output with sensors (linters, tests, the Reviewer subagent).
-4. **Human-in-the-loop for destructive actions.** Require explicit user approval before Jira transitions that close tickets, force pushes, database migrations, or any irreversible operation.
+4. **Human-in-the-loop for destructive actions.** Require explicit user approval before Jira transitions that close tickets, force pushes, database migrations, or any irreversible operation — unless a standing `loop_auth` authorization covers the action (see the `/hivemind:loop` gates below).
 
 ## Ticket Source
 
@@ -54,6 +54,8 @@ The Orchestrator must follow this loop for every unit of work:
 5. **Implement.** The `developer` subagent writes code until the acceptance criteria are satisfied and existing tests still pass.
 6. **Review.** Spawn the `reviewer` subagent in a fresh context, stating the computed `review_depth` (`light` or `full`) and the rubric inputs (changed-line count, touched surfaces) that produced it — see the orchestrator-routing skill's "Review depth rubric" section. It must use only read-only tools and verification scripts. Block the workflow on any HIGH-severity finding.
 7. **Update the ticket.** On a green review, call the `close_task` MCP tool (`mcp__plugin_hivemind_hivemind-tasks__close_task` — see the orchestrator-routing skill's "Ticket-update protocol" section) to atomically transition the task's `status` to `done`, append a summary comment that also records the review depth and its rubric inputs, record the commit SHAs in `linked_commits` and PR URL in `linked_prs`, refresh `updated_at`, and regenerate `tasks/index.json`. A direct `Edit` of the task file is a documented, degraded fallback only, used when the MCP server is unavailable — it bypasses the uat-only done-guard and the loop-mode close guard (TASK-082). (After Jira migration, mirror the same updates via the Atlassian MCP server.)
+
+To self-drive this loop across multiple tickets toward a stated goal instead of repeating these steps by hand, use `/hivemind:loop` — see the README's "Run the loop" section for the goal syntax, the five hard-stop gates, and the unattended-mode preset (`commands/loop.md` and the orchestrator-routing SKILL.md carry the full gate contract).
 
 ## Repository Etiquette
 

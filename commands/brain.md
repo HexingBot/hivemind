@@ -1,13 +1,16 @@
 ---
-description: Bring up the wisearcher "brain" (Neo4j + Qdrant via docker compose, then the MCP server) and report its health, so research and knowledge tools run against the cited graph instead of the local grep KB. Use this at the start of a knowledge-heavy session.
+description: EXPERIMENTAL opt-in. Bring up the wisearcher "brain" (Neo4j + Qdrant via docker compose, then the MCP server) and report its health, so research and knowledge tools run against the cited graph instead of the local grep KB. The grep KB is the supported default for knowledge-heavy sessions; only reach for this if you specifically want the graph-backed path and accept its Docker/infra footprint.
 ---
 
-# /hivemind:brain
+# /hivemind:brain (EXPERIMENTAL)
 
 Start and health-check the wisearcher **brain** — the out-of-process knowledge service hivemind
-calls over MCP (see `.knowledge/derived/brain-contract.md`). The brain is optional: when it is
-absent, hivemind degrades gracefully to the local grep KB (`knowledge/entries/`), so this
-command is about *upgrading* a session to the cited Neo4j+Qdrant graph, not a prerequisite.
+calls over MCP (see `.knowledge/derived/brain-contract.md`). The brain is **demoted to
+experimental, opt-in status** (TASK-079): it carries a real Docker/infra maintenance surface for
+a path no drive ticket has actually needed. The local grep KB (`knowledge/entries/`) is the
+supported default for knowledge-heavy sessions — reach for this command only when you
+specifically want the cited Neo4j+Qdrant graph and accept that footprint, not as a routine
+session-start step.
 
 ## What it does
 
@@ -16,7 +19,7 @@ command is about *upgrading* a session to the cited Neo4j+Qdrant graph, not a pr
 3. Probes health and reports it:
 
    ```
-   node bin/brain-launch.js --health
+   node ${CLAUDE_PLUGIN_ROOT}/dist/brain-launch.cjs --health
    ```
 
    This prints `kb_health` JSON — `{neo4j, qdrant, voyage, ok}`. `ok: true` means hivemind's
@@ -33,5 +36,7 @@ hivemind is running in **grep-fallback** mode, and if the latter, which dependen
 
 - Auth: the brain reuses the Claude Code subscription via the `claude` CLI; `ANTHROPIC_API_KEY`
   is stripped from the spawned environment.
-- Lifecycle: hivemind's brain-client spawns `bin/brain-launch.js` on demand, so the wisearcher
-  path is resolved at runtime rather than hard-coded into a committed `.mcp.json` entry.
+- Lifecycle: hivemind's brain-client spawns `${CLAUDE_PLUGIN_ROOT}/dist/brain-launch.cjs` on
+  demand, so the wisearcher path is resolved at runtime rather than hard-coded into a committed
+  `.mcp.json` entry — this also makes the command work on a plugin install, where no repo-relative
+  `bin/` exists on disk.

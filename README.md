@@ -9,8 +9,6 @@ This README is the five-minute onboarding for a non-technical operator. It
 covers what you need installed, how to start a fresh project, what the wizard
 produces, and what to say to Claude Code for your very first chat.
 
----
-
 ## What this is
 
 Imagine hiring a small, disciplined engineering team that reads the ticket,
@@ -30,19 +28,15 @@ Two ideas drive the whole thing:
 
 You drive all of this from a single Claude Code chat, in plain English.
 
----
-
 ## Two ways to get started
 
-- **Install as a Claude Code plugin** (recommended, no cloning) — the four steps
+- **Install as a Claude Code plugin** (recommended, no cloning) — the steps
   right below.
 - **Clone the repository** and run the wizard inside the clone — see
   *"First-time setup"* further down. Use this to work on the framework itself.
 
 Either way you end up with the same thing: a project with a ticket queue, a
 saved chat memory, and an orchestrator you talk to in plain English.
-
----
 
 ## Install as a Claude Code plugin
 
@@ -84,11 +78,10 @@ message, copy and paste this:
 
 It proposes a ticket and — once you confirm — runs the full workflow: research,
 tests or validation per the tiered policy, implementation, review, then closing
-the ticket. Every later chat works the same way. To update or remove the plugin later, use
-`claude plugin update`, `claude plugin uninstall`, or `claude plugin marketplace
-remove hivemind-marketplace`.
-
----
+the ticket. Every later chat works the same way, or say "run the loop" to have
+it work through several tickets unattended (see *Run the loop* below). To
+update or remove the plugin later, use `claude plugin update`, `claude plugin
+uninstall`, or `claude plugin marketplace remove hivemind-marketplace`.
 
 ## Prerequisites
 
@@ -104,8 +97,6 @@ You need three things on your machine:
 No global npm packages, no Docker, no databases — just plain JavaScript files
 and a small JSON state directory.
 
----
-
 ## First-time setup
 
 In a terminal, from the directory where you keep your projects:
@@ -113,42 +104,54 @@ In a terminal, from the directory where you keep your projects:
 ```bash
 git clone <this-repo-url> my-new-project
 cd my-new-project
+npm install
 node bin/init.js
 ```
 
-That last command starts the intake wizard. It asks you a handful of
-questions — project name, what kind of project it is (web app, CLI tool, or
-library), who it is for, the top use cases, and the stack you want to build
-on. The wizard takes maybe two minutes.
+`npm install` pulls in the wizard's own dependencies (its JSON schema
+validator); skip it and the very next command fails. `node bin/init.js` then
+starts the intake wizard — project name, kind of project, who it is for, top
+use cases, and the stack you want to build on. Two minutes, tops.
 
-If you cloned this repository directly, `node bin/init.js` will notice the
-framework's own historical tickets under `tasks/` and offer to move them out of
-the way so your project starts empty. Press Enter to accept (the default).
-
-Two flags help in edge cases: `node bin/init.js --force` re-runs the intake from
-scratch, and `node bin/init.js --no-archive` skips the history-archive question
-(useful when working on the framework itself).
-
----
+If you cloned this repository directly, the wizard notices its own historical
+tickets under `tasks/` and offers to archive them so your project starts empty
+(press Enter to accept). Two flags help in edge cases: `--force` re-runs the
+intake from scratch, and `--no-archive` skips the history-archive question.
 
 ## What the wizard produces
 
-Whether you ran `/hivemind:init-project` or `node bin/init.js`, the
-wizard writes the same things into your project:
-
-1. **`PROJECT.md`** — a short summary of the project (name, type, use cases,
-   target users, stack). The orchestrator reads it on every chat.
-2. **`.claude/agents/project-context.md`** — a briefing the helpers share. You
-   do not need to read it yourself.
-3. **A small starter backlog** under `tasks/` — a handful of day-one tickets so
-   you have something concrete to point Claude Code at first.
+Whether you ran `/hivemind:init-project` or `node bin/init.js`, the wizard
+writes the same things into your project: a `PROJECT.md` summary (name, type,
+use cases, target users, stack), a helper briefing under `.claude/agents/` you
+never need to read yourself, and a small starter backlog under `tasks/` — a
+handful of day-one tickets so you have something concrete to point Claude Code
+at first.
 
 You will also see a `state/` directory where the framework remembers what it was
 doing between chats — leave it alone; it heals itself. Then start your first chat
 exactly as in *Step 4* above (open Claude Code in the project folder and paste
 the first-message prompt). Every later chat works the same way.
 
----
+## Run the loop
+
+For routine work, drive one ticket at a time as above. When you want the
+orchestrator to work through several tickets toward a goal without repeating
+instructions, tell it to run the loop:
+
+```text
+/hivemind:loop
+```
+
+Give it a **goal** — `label:<name>` (every ticket carrying that label) or
+`keys:<TASK-001,TASK-002,...>` (an explicit list) — and confirm when asked. It
+then repeats the normal per-ticket workflow unattended, pausing automatically
+at five points: before any destructive or irreversible action (closing a
+ticket, pushing, deleting a branch); at a human-observable UAT verdict; when
+scope is genuinely ambiguous; before a release or version bump; and every few
+completed tickets, so you can check in on what shipped. Say "run unattended" to
+pre-authorize the routine pauses (close-on-green-review, orchestrator-verified
+UAT, and the periodic check-ins) while pushes and version bumps stay opt-in.
+Gate-by-gate detail lives in `commands/loop.md`.
 
 ## Day-two operations
 
@@ -162,30 +165,23 @@ A few things you will want to know as you go:
 - **Read the long-form rules**: `CLAUDE.md` at the repo root captures the
   team-wide operating principles.
 
----
-
 ## Preparing a distribution
 
 If you maintain the framework and want to hand someone a clean, clone-ready copy
-(not your working repo with its own tickets and session history), run the
-template-prep step before publishing:
+(not your working repo with its own tickets and session history), run:
 
 ```bash
 node bin/make-template.js --yes
 ```
 
 Without `--yes` it is a dry run that prints what it would change and touches
-nothing. With `--yes` it clears the framework's own tickets and leftover session
-state so the next person starts from a blank backlog, while keeping the reusable
-parts (helper definitions and the `knowledge/` library).
-
-Whoever clones the result must run `npm install` once before `node bin/init.js`
-— the intake wizard depends on packages (such as the JSON schema validator) not
-vendored into the repository.
+nothing. With `--yes` it clears the framework's own tickets and leftover
+session state so the next person starts from a blank backlog, keeping the
+reusable parts (helper definitions and the `knowledge/` library). Whoever
+clones the result must run `npm install` before `node bin/init.js` — same
+dependency as above.
 
 The framework also ships a **kanban task board** — a browser tab showing all tickets in five status columns with drag-and-drop transitions and a new-ticket form. From Claude Code: `/hivemind:task-status`. Local-only (`127.0.0.1`).
-
----
 
 ## Getting help
 
