@@ -8,8 +8,8 @@
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
-      "description": "Stable kebab-case slug; must match filename minus .md."
+      "pattern": "^(?!(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$)[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+      "description": "Stable kebab-case slug; must match filename minus .md. Windows reserved device names (con, prn, aux, nul, com0-9, lpt0-9) are excluded — they are unsafe filenames on Windows regardless of extension."
     },
     "problem": { "type": "string", "minLength": 10, "maxLength": 1000 },
     "symptoms": {

@@ -25,6 +25,11 @@
 //                    (TASK-103 — rotates decisions/subagent_results beyond the
 //                    documented cap into the bundle's archive.jsonl; see
 //                    src/bundle-compaction.js)
+//   drafts-count     --repo-root <path>
+//                    (TASK-111 AC4 — wraps listDraftEntries (src/knowledge.js)
+//                    so a live draftEntryCount can feed consolidationGate at
+//                    Gate 5 instead of the human hand-counting
+//                    knowledge/proposed/; see commands/loop.md's Gate 5.)
 //
 // `--repo-root` may be omitted; it then falls back to CLAUDE_PROJECT_DIR or
 // process.cwd() (src/repo-root.js's existing resolution policy).
@@ -48,12 +53,13 @@ import { readPointer } from '../src/pointer.js';
 import { readBundleSession } from '../src/bundle.js';
 import { compactBundleSession } from '../src/bundle-compaction.js';
 import { TASK_FILENAME_RE } from '../src/task-store.js';
+import { listDraftEntries } from '../src/knowledge.js';
 
 const SUBCOMMANDS = new Set([
   'acquire', 'renew', 'release',
   'get-mode', 'set-mode',
   'checkpoint', 'resume-point', 'landed-commits',
-  'grant-unattended', 'compact-bundle',
+  'grant-unattended', 'compact-bundle', 'drafts-count',
 ]);
 
 // Known single-value flags per subcommand (kebab-case, as typed on the CLI).
@@ -71,6 +77,7 @@ const FLAG_SPEC = {
   'landed-commits': ['--key'],
   'grant-unattended': ['--repo-root'],
   'compact-bundle': ['--repo-root', '--max-decisions', '--max-subagent-results'],
+  'drafts-count': ['--repo-root'],
 };
 
 function kebabToCamel(flag) {
@@ -254,6 +261,10 @@ async function run(subcommand, flags) {
         opts.maxSubagentResults = n;
       }
       return compactBundleSession(opts);
+    }
+    case 'drafts-count': {
+      const drafts = listDraftEntries({ repoRoot });
+      return { draftEntryCount: drafts.length };
     }
     default:
       throw new Error(`unknown subcommand: ${subcommand}`);

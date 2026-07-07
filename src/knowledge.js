@@ -7,18 +7,25 @@
 //                                          drafts are excluded by construction, TASK-105 AC3)
 //   (3) recordKbReuse({ repoRoot, entryId, at })
 //                                        — atomic update of last_seen_at, body preserved
-//   (4) writeKnowledgeEntry({ repoRoot, entry, draft })
+//   (4) writeKnowledgeEntry({ repoRoot, entry, draft, overwrite })
 //                                        — TASK-105 AC1: schema-validated, atomic KB write path.
 //                                          draft (default true) writes knowledge/proposed/<id>.md
 //                                          (unvetted); draft: false writes knowledge/entries/<id>.md
 //                                          (vetted). Mirrors the store's validate-before-write
 //                                          pattern (task-store.js / knowledge-graph.js): the schema
-//                                          check runs BEFORE any disk mutation.
+//                                          check runs BEFORE any disk mutation. TASK-111 AC1: rejects
+//                                          an existing target id with E_KB_EXISTS unless the caller
+//                                          opts in with { overwrite: true }.
 //   (5) listDraftEntries({ repoRoot })   — enumerate knowledge/proposed/ (Gate 5's draftEntryCount
 //                                          input, see src/drive-loop.js's consolidationGate)
+//   (6) promoteDraftEntry({ repoRoot, id })
+//                                        — TASK-111 AC2: one-call promotion — validate + write to
+//                                          knowledge/entries/ + unlink the knowledge/proposed/ copy,
+//                                          write-then-unlink ordered so a crash mid-promotion leaves
+//                                          at worst a harmless duplicate, never a lost draft.
 
 import {
-  readFileSync, readdirSync, existsSync, statSync, mkdirSync,
+  readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync,
 } from 'node:fs';
 import { join } from 'node:path';
 
@@ -210,15 +217,23 @@ export async function recordKbReuse({ repoRoot, entryId, at }) {
  * `draft` (default true) selects the target directory: true writes
  * `knowledge/proposed/<id>.md` (unvetted — excluded entirely from
  * lookupKnowledge, which only ever scans knowledge/entries/); false writes
- * `knowledge/entries/<id>.md` (vetted). Promoting a draft is calling this
- * again with the same entry data and draft: false, then deleting the
- * knowledge/proposed/ copy — see knowledge/schema.md's "Draft entries"
- * section for the full write/promote/discard contract.
+ * `knowledge/entries/<id>.md` (vetted). Prefer `promoteDraftEntry({ repoRoot,
+ * id })` to promote a draft — it wraps this call with draft: false plus the
+ * unlink of the knowledge/proposed/ copy as one atomic-ish, crash-safe step;
+ * see knowledge/schema.md's "Draft entries" section for the full contract.
  *
- * @param {{ repoRoot: string, entry: object, draft?: boolean }} args
+ * TASK-111 AC1: an existing file at the target path is rejected with a typed
+ * E_KB_EXISTS error by default — a repeated draft id would otherwise
+ * silently clobber an unpromoted draft, and draft: false would otherwise
+ * silently clobber an already-vetted entry. Pass `{ overwrite: true }` to
+ * opt in to replacing the existing file.
+ *
+ * @param {{ repoRoot: string, entry: object, draft?: boolean, overwrite?: boolean }} args
  * @returns {Promise<{ id: string, path: string, draft: boolean }>}
  */
-export async function writeKnowledgeEntry({ repoRoot, entry, draft = true }) {
+export async function writeKnowledgeEntry({
+  repoRoot, entry, draft = true, overwrite = false,
+}) {
   if (!repoRoot) throw makeErr('E_KB_ARGS', 'writeKnowledgeEntry: repoRoot is required');
   if (!entry || typeof entry !== 'object') {
     throw makeErr('E_KB_ARGS', 'writeKnowledgeEntry: entry object is required');
@@ -250,6 +265,18 @@ export async function writeKnowledgeEntry({ repoRoot, entry, draft = true }) {
 
   const targetDir = join(repoRoot, 'knowledge', draft ? 'proposed' : 'entries');
   const targetPath = join(targetDir, `${entry.id}.md`);
+
+  // TASK-111 AC1: existence check runs AFTER schema validation (validation
+  // failures never touch disk, per the comment below) but BEFORE any write —
+  // a silent clobber of an unpromoted draft or an already-vetted entry is
+  // exactly the MEDIUM-1 gap this guard closes.
+  if (!overwrite && existsSync(targetPath)) {
+    throw makeErr(
+      'E_KB_EXISTS',
+      `writeKnowledgeEntry: ${targetPath} already exists; pass { overwrite: true } to replace it`,
+    );
+  }
+
   const rendered = matter.stringify(body || '', frontmatter);
 
   // Directory creation happens AFTER validation passes — an invalid entry
@@ -279,6 +306,47 @@ export function listDraftEntries({ repoRoot }) {
   return readdirSync(dir)
     .filter((name) => name.endsWith('.md'))
     .map((name) => ({ id: name.replace(/\.md$/, ''), path: join(dir, name) }));
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              promoteDraftEntry                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Promote a draft (TASK-111 AC2, MEDIUM-2 follow-up): one call replaces the
+ * previous two manual, non-atomic steps (re-write with draft: false, then
+ * hand-delete the knowledge/proposed/ copy via a raw fs mutation outside any
+ * validated path).
+ *
+ * Reads knowledge/proposed/<id>.md, then calls writeKnowledgeEntry with the
+ * same frontmatter + body and draft: false — this reuses AC1's existence
+ * guard, so an already-vetted collision (an entries/<id>.md that already
+ * exists) throws E_KB_EXISTS with NO write and NO unlink. Only once that
+ * write succeeds is the knowledge/proposed/ copy unlinked. This
+ * write-then-unlink order means a crash between the two steps leaves at
+ * worst a harmless duplicate (the entry exists in both directories) —
+ * never a lost draft.
+ *
+ * @param {{ repoRoot: string, id: string }} args
+ * @returns {Promise<{ id: string, path: string }>}
+ */
+export async function promoteDraftEntry({ repoRoot, id }) {
+  if (!repoRoot) throw makeErr('E_KB_ARGS', 'promoteDraftEntry: repoRoot is required');
+  if (!id) throw makeErr('E_KB_ARGS', 'promoteDraftEntry: id is required');
+
+  const draftPath = join(repoRoot, 'knowledge', 'proposed', `${id}.md`);
+  if (!existsSync(draftPath)) {
+    throw makeErr('E_KB_DRAFT_NOT_FOUND', `promoteDraftEntry: no draft found at ${draftPath}`);
+  }
+
+  const raw = readFileSync(draftPath, 'utf8');
+  const parsed = matter(raw);
+  const entry = { ...parsed.data, body: parsed.content };
+
+  const result = await writeKnowledgeEntry({ repoRoot, entry, draft: false });
+  unlinkSync(draftPath);
+
+  return { id, path: result.path };
 }
 
 /* -------------------------------------------------------------------------- */

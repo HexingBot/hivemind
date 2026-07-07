@@ -453,6 +453,7 @@ holder's identity.
 | `resume-point` | `resumePoint()` (loop-checkpoint) | `--repo-root` (reads the active bundle + full task list internally) |
 | `landed-commits` | `ticketHasLandedCommits()` (loop-checkpoint) | `--key` (reads `git log --oneline` output from stdin; no `--repo-root` — does not spawn git or touch the bundle) |
 | `grant-unattended` | `grantUnattended()` (loop-auth) | `--repo-root`, repeatable `--opt-in <switch>` |
+| `drafts-count` | `listDraftEntries()` (knowledge, TASK-111 AC4) | `--repo-root` — feeds `draftEntryCount` into Gate 5's `consolidationGate` |
 
 ### Single-active-session lock requirement
 
@@ -841,12 +842,16 @@ section.
 approves a draft at write time; that already happened, without approval, at
 ticket close. At the consolidation checkpoint (`consolidationGate`,
 `src/drive-loop.js` — see Gate 5 below) the human reviews the batch of files
-under `knowledge/proposed/` and either promotes one (re-run
-`writeKnowledgeEntry({ repoRoot, entry, draft: false })` with the same entry
-data, landing it in `knowledge/entries/`, then delete the
-`knowledge/proposed/<id>.md` copy) or discards it (delete the file). A
-promoted entry linked into the knowledge graph gets graph node id `ke-<slug>`
-per the canonical id shapes above — never a raw filename or ticket key.
+under `knowledge/proposed/` and either promotes one — call
+`promoteDraftEntry({ repoRoot, id })` (`src/knowledge.js`, TASK-111 AC2),
+which validates and writes the draft to `knowledge/entries/` (internally
+`writeKnowledgeEntry({ repoRoot, entry, draft: false })`, so an
+already-vetted id collision throws `E_KB_EXISTS` with nothing touched), then
+only THEN unlinks the `knowledge/proposed/<id>.md` copy — write-then-unlink
+ordered so a crash mid-promotion leaves at worst a duplicate, never a lost
+draft — or discards it (delete the file). A promoted entry linked into the
+knowledge graph gets graph node id `ke-<slug>` per the canonical id shapes
+above — never a raw filename or ticket key.
 
 **KB-first contract, now backed by a real write path (was read-only,
 TASK-035):** `lookupKnowledge` remains the mandatory pre-web-search step;

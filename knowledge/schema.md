@@ -10,7 +10,7 @@ One entry per file under `entries/<id>.md`. Filename slug MUST equal the frontma
 
 ```yaml
 ---
-id: <kebab-case-slug>                         # matches filename minus .md, ^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$
+id: <kebab-case-slug>                         # matches filename minus .md; see schema.json (excludes Windows reserved device names: con, prn, aux, nul, com0-9, lpt0-9)
 problem: >                                    # 1-paragraph statement of the problem (10..1000 chars)
   ...
 symptoms:                                     # array of strings, >= 1
@@ -91,9 +91,13 @@ close.
 drafts one at a time. At the consolidation checkpoint (see `commands/loop.md`'s Gate 5) the human
 reviews the batch of files under `knowledge/proposed/` and either:
 
-- **promotes** one — re-run `writeKnowledgeEntry({ repoRoot, entry, draft: false })` with the same
-  entry data (lands it in `knowledge/entries/`), then delete the `knowledge/proposed/<id>.md` copy;
-  or
+- **promotes** one — call `promoteDraftEntry({ repoRoot, id })` (`src/knowledge.js`, TASK-111 AC2).
+  It reads the draft, validates and writes it to `knowledge/entries/` (internally
+  `writeKnowledgeEntry({ repoRoot, entry, draft: false })`, so an already-vetted id collision
+  throws `E_KB_EXISTS` with nothing touched), and only THEN unlinks the `knowledge/proposed/<id>.md`
+  copy — write-then-unlink ordered so a crash mid-promotion leaves at worst a harmless duplicate,
+  never a lost draft. This replaces the previous two manual, non-atomic steps (re-write, then a raw
+  `fs` delete outside any validated path); or
 - **discards** one — delete the file.
 
 A promoted entry that gets linked into the knowledge graph (`knowledge/graph/graph.json`) mints a
