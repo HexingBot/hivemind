@@ -25,7 +25,7 @@
 <body>
 
 <div style="position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; display:flex; align-items:center; justify-content:center;">
-  <img src="assets/monitor.png" alt="" style="width:min(1150px,94vw); max-width:none; height:auto; opacity:.17; filter:blur(7px); image-rendering:pixelated; animation:bob 8s ease-in-out infinite;">
+  <img id="rotmon" src="assets/monitor/0.png" alt="" style="width:min(1150px,94vw); max-width:none; height:auto; opacity:.24; filter:blur(5px); image-rendering:pixelated; animation:bob 8s ease-in-out infinite;">
 </div>
 <div style="position:fixed; inset:0; z-index:1; pointer-events:none; background:radial-gradient(ellipse 120% 80% at 50% 40%, rgba(5,6,10,0) 40%, rgba(5,6,10,.75) 100%);"></div>
 <div style="position:fixed; inset:0; z-index:2; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0px, rgba(0,0,0,.28) 1px, transparent 1px, transparent 3px); animation:flick 4s infinite;"></div>
@@ -301,6 +301,16 @@ function render() {
 }
 
 function setLang(l) { lang = l; document.documentElement.lang = l; render(); }
+
+// Floating monitor — full-rotation flipbook (8 PixelLab directions, clockwise)
+(function rotateMonitor(){
+  var el = document.getElementById("rotmon");
+  if (!el) return;
+  var frames = [];
+  for (var i = 0; i < 8; i++) { var im = new Image(); im.src = "assets/monitor/" + i + ".png"; frames.push(im.src); }
+  var f = 0;
+  setInterval(function(){ f = (f + 1) % 8; el.src = frames[f]; }, 170);
+})();
 
 render();
 </script>
