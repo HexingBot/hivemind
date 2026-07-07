@@ -29,6 +29,7 @@
     }
   ],
   "created_at": "2026-05-23T00:00:00Z",
-  "updated_at": "2026-06-12T23:40:01.679Z",
-  "jira_key": null
+  "updated_at": "2026-07-07T00:40:00.000Z",
+  "jira_key": null,
+  "source_tier": "T1"
 }

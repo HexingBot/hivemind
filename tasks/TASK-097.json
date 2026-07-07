@@ -1,0 +1,39 @@
+{
+  "key": "TASK-097",
+  "title": "loop: ship dist/loop-ctl.cjs and re-path loop.md/mode.md/SKILL.md via ${CLAUDE_PLUGIN_ROOT} — the flagship command is unexecutable on plugin installs (R2)",
+  "description": "Deep-review sweep #2 (2026-07-06) HIGH finding R2 (F35, adversarially confirmed). commands/loop.md (:26,30,62,255), commands/mode.md (:50), and orchestrator-routing SKILL.md (:396,411,482) reference bare src/session-lock.js / src/operating-mode.js / src/loop-checkpoint.js / src/loop-auth.js paths that do not exist in a plugin-installed user project. Every other command resolves via ${CLAUDE_PLUGIN_ROOT}/dist/*.cjs; no dist bundle exposes the loop helpers (scripts/build-plugin.mjs ENTRYPOINT_NAMES = 6 CLIs, none loop-related). Consequence chain for every plugin user: mode never flips to 'loop', so loopModeCloseGuard (src/close-guard.js:41) no-ops (Gate 1 unarmed), no advisory lock, no crash-resume checkpoints — the entire deterministic loop apparatus depends on model improvisation. Full context: synthesis §R2.",
+  "acceptance_criteria": [
+    "A new dist/loop-ctl.cjs CLI exists, built by npm run build:plugin (added to ENTRYPOINT_NAMES and shipped-bin.json), exposing subcommands wrapping the existing modules: lock acquire/renew/release (session-lock with holder id + stalenessMs), get-mode/set-mode (operating-mode), checkpoint + resume-point (loop-checkpoint), and grant-unattended (loop-auth).",
+    "commands/loop.md, commands/mode.md, and BOTH orchestrator-routing SKILL.md copies invoke loop machinery exclusively via ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs — zero bare src/ path references remain in command/skill docs (grep-verifiable).",
+    "Regression locks cover each subcommand's happy path plus at least one failure path (e.g. E_LOCK_HELD surfaces as a non-zero exit with the holder identity on stdout/stderr).",
+    "An e2e proves plugin-layout operation: invoking the built CLI with cwd set to a temp project (no framework src/) flips the mode and writes a checkpoint into THAT project's state/ bundle.",
+    "dist-parity gate passes with the new bundle set; stale bundle-count prose encountered in touched files is corrected."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "53a96cc",
+    "6e89727",
+    "fd4df2a"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-06T23:58:34.853Z",
+      "body": "CLOSED done — loop iteration 2 of drive goal-sweep2 (auto_close_on_green_review). Review: APPROVE-WITH-FOLLOWUPS at depth FULL (rubric inputs: 9,360+/107- lines across 9 files ≥150; mandatory-FULL surfaces: packaging/dist + loop durable-contract docs), 1 HIGH (record-level only) / 0 MEDIUM / 4 LOW. THE HIGH: second live E2 TIER-AUDIT FIRING (TASK-088 precedent) — orchestrator self-flagged the tests-after-vs-new-bin-source tension in the briefing; the fresh-context reviewer ruled tier misassignment CATEGORICALLY (bin/loop-ctl.js parseFlags/exit-code-mapping/root-resolution = tdd-tier source logic regardless of the thin-wrapper rationale). REMEDY APPLIED ON THE RECORD: verification_tier reclassified tests-after → tdd retroactively (direct field edit — the MCP surface has no tier-edit tool; documented fallback used, guards inapplicable to a non-status field); the three red-green-planted e2e locks ACCEPTED as the test evidence (reviewer independently verified plant #2 is load-bearing: loop-checkpoint.js:57 has no current_ticket guard, the CLI flag-check is the sole protection, and the lock asserts rejection + bundle byte-unchanged); commit-order deviation recorded honestly (feat 53a96cc precedes test fd4df2a — same shape as 088). Zero code changes required. ALL 5 ACs PASS, reviewer re-ran everything independently: test:since 47/47 (non-empty), fast 573/2, test:all 1161/4 re-run (not trusted from hand-off), dist-parity 7-bundle byte-match, SKILL.md copies hash-identical with semantics preserved line-by-line, calibration clean. The loop apparatus is now EXECUTABLE ON PLUGIN INSTALLS: 8 subcommands (lock acquire/renew/release, get/set-mode, checkpoint, resume-point, grant-unattended), proven live incl. bare-project graceful fallback. FOLLOW-UP RIDERS (LOW, next loop-ctl/docs-touching ticket): dup comment block bin/loop-ctl.js:171-182 (baked into dist — rebuild owed on cleanup), dead export :242, dev-repo CLAUDE_PLUGIN_ROOT fallback note in loop.md (natural rider for TASK-102), crash-vs-args exit-code taxonomy :233. Pre-existing shipped-bin report-framework-bug omission deliberately untouched (R24 has its own item)."
+    }
+  ],
+  "created_at": "2026-07-06T23:03:51.229Z",
+  "updated_at": "2026-07-06T23:58:34.853Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

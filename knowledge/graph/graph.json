@@ -128,6 +128,18 @@
       "label": "Session audit logs vs wildcard gitignore"
     },
     {
+      "id": "ke-teammate-envelope-misattribution",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/teammate-envelope-misattribution-verify-against-git.md",
+      "label": "Teammate envelope misattribution: verify identity against git, self-authenticating hand-offs"
+    },
+    {
+      "id": "ke-vacuous-sensor-swallowed-assertion",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/vacuous-sensor-assertion-swallowed-by-product-catch.md",
+      "label": "Vacuous sensor: assertion swallowed by product catch (TASK-101 HIGH class)"
+    },
+    {
       "id": "ke-windows-atomic-rename",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/windows-atomic-rename-not-truly-atomic.md",
@@ -498,6 +510,18 @@
       "type": "task",
       "ref": "tasks/TASK-103.json",
       "label": "bundle hygiene: validate-before-write + compaction/rotation with enforced size sensor (R11+R10+R29)"
+    },
+    {
+      "id": "task-104",
+      "type": "task",
+      "ref": "tasks/TASK-104.json",
+      "label": "knowledge graph: one id convention, one-time migration, loud neighbors + canonical-id sensor (R17)"
+    },
+    {
+      "id": "task-105",
+      "type": "task",
+      "ref": "tasks/TASK-105.json",
+      "label": "knowledge capture: entry-write path + capture step at close + Gate 5 drafts (R16)"
     }
   ],
   "edges": [
@@ -505,6 +529,16 @@
       "from": "ke-claude-headless-bridge",
       "to": "task-050",
       "relation": "learned-in"
+    },
+    {
+      "from": "ke-teammate-envelope-misattribution",
+      "to": "task-101",
+      "relation": "relates-to"
+    },
+    {
+      "from": "ke-vacuous-sensor-swallowed-assertion",
+      "to": "task-101",
+      "relation": "relates-to"
     },
     {
       "from": "skill-graphify",
@@ -823,6 +857,16 @@
     },
     {
       "from": "task-103",
+      "to": "decision-20260706-deep-review-sweep-2-ticket-cut",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-104",
+      "to": "decision-20260706-deep-review-sweep-2-ticket-cut",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-105",
       "to": "decision-20260706-deep-review-sweep-2-ticket-cut",
       "relation": "produced-by"
     }

@@ -1,0 +1,38 @@
+{
+  "key": "TASK-104",
+  "title": "knowledge graph: one id convention, one-time graph.json migration, loud neighbors() on unknown ids + canonical-id sensor (R17)",
+  "description": "Deep-review sweep #2 (2026-07-06) MEDIUM finding R17 (F30, adversarially confirmed) — also fix #2 of the Obsidian-KB evaluation (human ruled 2026-07-06: stay on current format, fix process/data hygiene). Two contradictory live conventions: orchestrator-routing SKILL.md:668,671 mandates TASK-035-style keys + raw ISO decision timestamps; graphify SKILL.md:45-46 mandates slugs (task-035, decision-...). The live graph carries both: 25 TASK-* vs 26 task-* nodes, 12 raw-ISO vs 6 slug decision ids. neighbors() is exact-match with silent [] on unknown ids (src/knowledge-graph.js:325-352) and addNode's dup guard is case-sensitive (:216) — lookups silently miss and closes can mint split-brain duplicates. Full context: synthesis §R17 + artifacts/obsidian-kb-research-2026-07-06.md.",
+  "acceptance_criteria": [
+    "One canonical id convention is chosen and documented identically in BOTH SKILL.md sites (orchestrator-routing close-protocol section and graphify skill) — they no longer contradict.",
+    "A one-time migration normalizes graph.json: all node ids and ALL edge endpoints renamed to the canonical forms; no case-variant duplicate nodes remain; migration is mechanical and committed with before/after counts.",
+    "neighbors() (and addEdge endpoint resolution) fails loudly — warn or typed throw — on ids that don't exist in the graph, instead of silently returning []; addNode's duplicate guard is case-insensitive or normalizes first; red-first specs for both.",
+    "A fast-tier sensor asserts every node id matches the canonical pattern for its type and every edge endpoint resolves to an existing node — red-proven against the pre-migration graph fixture."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06",
+    "kb-process"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "3d77aa6f76337979fd1522567b83d667c59639f7",
+    "243e5e6f327f19e4b6d7429d0519c492511cbe3a"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T04:59:11.609Z",
+      "body": "CLOSED done (loop iteration 9, auto_close_on_green_review re-granted 2026-07-07). R17 + Obsidian-KB process fix #2 shipped: ONE canonical graph-id convention (graphify slug forms: task-<digits>, decision-<YYYYMMDD>-<slug>, skill-<slug>, ke-<slug>) documented via a byte-identical canonical-shapes block across all 4 skill files (both orchestrator-routing and graphify parity pairs), old contradicting language removed and spec-banned; one-time live migration committed (83/65 nodes/edges preserved, 46 ids renamed — 33 task keys + 13 raw-ISO decisions — 0 collisions, 0 drops, TASK-103's 4 archive.jsonl refs preserved verbatim); neighbors() now throws typed UnknownNodeIdError (E_GRAPH_UNKNOWN_ID) instead of silent [], graph-sync catch explicitly scoped, addNode dup guard case-insensitive (rejects, docs match); fast-tier canonical sensor (id patterns + edge-endpoint resolution) red-proven against a frozen pre-migration fixture and permanently locking the live graph. Review depth FULL (rubric: 2426 changed lines; core graph-state tdd logic). Verdict PASS 0H, conditional MEDIUM RESOLVED-DISCARDED by the Orchestrator with evidence (the full dev hand-off contained the complete R3 five-item checklist — the reviewer saw only the excerpt), 6 LOWs. MIGRATION CORRECTNESS independently re-simulated by the reviewer from scratch: output JSON-identical to the committed graph; pre-migration TASK-*/task-* populations covered disjoint ticket numbers — 83→83 is a pure rename, no split-brain pairs existed or survived. Slug-collision ruled LOW: future same-day/same-words collisions fail LOUDLY via the new addNode throw (no silent-loss path); migration keep-first drop is one-time and spec-locked. tdd discipline PASS (module-load red trivially credible; 3 passing-pre-impl e2e specs verified as genuine regression locks, honestly disclosed). Gates (reviewer-reproduced): test:since 126/10 files, fast 676/2, named e2e 42/5 files, dist REBUILT-AND-UNCHANGED verified (loadGraph untouched, tree-shaking claim confirmed, parity 7/7). Orchestrator ops note: close-time graph recipe NOW USES THE NEW CONVENTION (this close mints task-104 → decision-20260706-deep-review-sweep-2-ticket-cut). LOW punch-list riders attached to TASK-105 (same surfaces): L1 unknown-to addEdge spec line, L2 slug-collision guidance sentence in the shared block (lockstep constant), L3 3-line ATX heading nit in all 4 files; L5 pre-existing graphify frontmatter source_tier FLAG (both copies) also rides along. L6 (knowledge/README.md dateless example) ruled moot by the reviewer."
+    }
+  ],
+  "created_at": "2026-07-06T23:06:02.532Z",
+  "updated_at": "2026-07-07T04:59:11.609Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

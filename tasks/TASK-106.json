@@ -1,0 +1,30 @@
+{
+  "key": "TASK-106",
+  "title": "kb_lookup: executable, reproducible KB lookup for the researcher + live recordKbReuse caller (R18)",
+  "description": "Deep-review sweep #2 (2026-07-06) MEDIUM finding R18 (F31+F48, adversarially confirmed) — also fix #3 of the Obsidian-KB evaluation (human ruled 2026-07-06: stay on current format; the grep KB is now the PRIMARY knowledge path post-brain-demotion, so its lookup must be executable, not hand-simulated). agents/researcher.md:5 grants no Bash while :34-41 mandate the weighted scoring algorithm and neighbors/nodesByType queries 'as code' and :22 promises Reviewer-reproducible determinism — in practice the agent hand-emulates via Grep, non-reproducibly. No MCP/CLI tool exposes lookupKnowledge; recordKbReuse (src/knowledge.js:166) is reachable only via the demoted brain client (zero production importers), so last_seen_at — the lookup's tie-breaker — is frozen at authoring time forever, and knowledge/README.md:26's 'updates last_seen_at automatically' is false. Note: if the MCP-server route is chosen, amend the PROJECT.md scope line stating the MCP server only extends ticket CRUD (flagged by the 2026-07-02 review). Full context: synthesis §R18 + artifacts/obsidian-kb-research-2026-07-06.md.",
+  "acceptance_criteria": [
+    "An executable lookup seam exists: either a kb_lookup tool on the hivemind MCP server or a bin/kb-lookup CLI with a scoped Bash grant for the researcher — wrapping lookupKnowledge and invoking recordKbReuse on returned hits; the choice is documented (and PROJECT.md's MCP-scope line amended if the MCP route is taken).",
+    "recordKbReuse thereby gains a live production caller: a lookup that returns hits updates those entries' last_seen_at — red-first spec proving today's frozen last_seen_at, then green through the new seam.",
+    "Both researcher.md copies rewrite the KB-lookup step: call the tool and read its output — no instruction to hand-emulate the scoring algorithm remains; determinism is real because the reviewer can re-run the same invocation.",
+    "knowledge/README.md's last_seen_at claim is corrected to describe the actual mechanism.",
+    "The tool/CLI output includes the scored hits with their ids/paths so a Reviewer can reproduce the exact lookup from the recorded invocation."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06",
+    "kb-process"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-06T23:06:46.509Z",
+  "updated_at": "2026-07-06T23:06:46.509Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

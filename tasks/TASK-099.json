@@ -1,0 +1,40 @@
+{
+  "key": "TASK-099",
+  "title": "ticket writes: single guarded path — rewrite SKILL/CLAUDE workflow steps to MCP tools, arm the board close guard, enforce uat_delegated on uat-only loop closes (R4 + R5 guard leg)",
+  "description": "Deep-review sweep #2 (2026-07-06) HIGH finding R4 (F23+F16) plus the guard leg of R5 (F4), adversarially confirmed. Three canonical prose sites still instruct direct guard-bypassing Edit-to-done — orchestrator-routing SKILL.md:88-90, :97, Workflow step 6 (:138-141), and CLAUDE.md Workflow step 7 (CLAUDE.md never mentions the MCP tools) — contradicting the Ticket-update protocol (SKILL.md:613-617) that exists precisely because hand edits bypass the uat-only done-guard and loop-mode close guard (TASK-082). The third write path half-enforces: src/task-board.js:1370 calls transitionStatus WITHOUT closeGuard, unlike src/mcp-server.js:185,230, so a board POST closes a ticket ignoring auto_close_on_green_review (SKILL.md:616 falsely claims MCP is the 'only' path). And Gate 2 is prose-only: checkUatGuard (src/task-store.js:377) accepts ANY comment authored 'uat' — no code reads uat_delegated_to_orchestrator, so a drifting model with only auto_close granted can self-author a uat comment and close a uat-only ticket past both shipped guards, contradicting SKILL.md:440-444. Full context: synthesis §R4 + §R5.",
+  "acceptance_criteria": [
+    "Both orchestrator-routing SKILL.md copies (Workflow step 6, :88-97 region, Ticket-update protocol) and CLAUDE.md Workflow step 7 name close_task/transition_status/append_comment as THE write path, with direct Edit demoted to an explicitly-labeled degraded fallback — no canonical step instructs a direct Edit-to-done anymore.",
+    "A doc-lock spec asserts the Workflow step text in both SKILL.md copies and CLAUDE.md references the MCP close_task tool (rot-proofing the rewrite).",
+    "src/task-board.js's transitionStatus call passes closeGuard: loopModeCloseGuard — red-first spec proving a board POST to done in loop mode without auto_close_on_green_review is currently accepted, then rejected.",
+    "The close guard is extended for Gate 2: in loop mode, closing a verification_tier uat-only ticket additionally requires loop_auth.uat_delegated_to_orchestrator===true (or the uat comment records an explicit human verdict marker); typed error; red-first spec.",
+    "SKILL.md's 'only path that runs the guards' claim (:616 region) is corrected to match post-fix reality (MCP tools + guarded board endpoint)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "d1e6d92",
+    "bd9f28b",
+    "c43a29a",
+    "676030f"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T01:14:03.429Z",
+      "body": "CLOSED done — loop iteration 4 of drive goal-sweep2 (auto_close_on_green_review), clean APPROVE on cold re-verify after 1 in-band MEDIUM round. THE LAST SWEEP-#2 HIGH IS CLOSED: the ticket-write contract is now a single guarded path. Shipped: (AC1/AC5) both SKILL.md copies + CLAUDE.md step 7 name close_task/transition_status/append_comment as THE write path with direct Edit demoted to a labeled degraded fallback, and the false 'MCP is the only path' claim corrected; (AC2) new tests/ticket-write-path-doc-locks.spec.js (5 locks, red-proven pre-rewrite); (AC3) board POST-to-done now composes loopModeCloseGuard → 403 (red-proven: was 200); (AC4) Gate 2 IN CODE — loop-mode uat-only closes require uat_delegated_to_orchestrator or an explicit human verdict marker; after the M1 fix round the marker fails CLOSED on any recorded FAIL and anchors on the SKILL.md 'Overall result: PASS' convention (red-proven: an Overall-FAIL comment previously auto-closed). Review arc: APPROVE-W-FOLLOWUPS at FULL depth (820 lines, security+shared-state+dist surfaces; 0H/2M/2L; 12-cell guard matrix enumerated, composition order verified, R6 fail-open not widened, dist bundles content-verified to carry the new guard) → in-band round (M1 marker fail-open + L1 mis-anchored lock regex + L2 two matrix cells) → clean APPROVE, reds reproduced at both impl parents. M2 (append_comment author:'uat' fabrication channel) deliberately NOT scope-crept — minted as TASK-108 (tdd/medium, security) with the reviewer's residual nit (\\bfail\\b misses FAILED/failing) recorded there. TDD contract held on both rounds (d1e6d92→bd9f28b, c43a29a→676030f); honest-evidence note: L1/L2 reported as coverage gaps without artificial red. Gates: test:since 103/10 files, fast 596/2, named e2e 49/49, dist-parity green. Reviewer incident disclosed transparently: their scratch worktree removal emptied node_modules via a junction; restored with npm ci, all gates re-run green AFTER restore, zero tracked files affected."
+    }
+  ],
+  "created_at": "2026-07-06T23:04:26.595Z",
+  "updated_at": "2026-07-07T01:14:03.429Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

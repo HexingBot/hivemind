@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-04T23:07:33.767Z",
+  "generated_at": "2026-07-07T05:36:51.008Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -558,6 +558,108 @@
       "title": "Release v0.10.0 — cut the post-0.9.0 drive (TASK-074..094) as a versioned release",
       "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-096",
+      "title": "loop: pass the FULL task list to selectNextTicket — documented listReady pipeline strands every dep-bearing goal (R1)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-097",
+      "title": "loop: ship dist/loop-ctl.cjs and re-path loop.md/mode.md/SKILL.md via ${CLAUDE_PLUGIN_ROOT} — the flagship command is unexecutable on plugin installs (R2)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-098",
+      "title": "calibration: revive the structurally-dead gate — source_tier BLOCKER + schema field + JSON-form extractTier + drop the case-sensitive G3 pre-filter (R3)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-099",
+      "title": "ticket writes: single guarded path — rewrite SKILL/CLAUDE workflow steps to MCP tools, arm the board close guard, enforce uat_delegated on uat-only loop closes (R4 + R5 guard leg)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-100",
+      "title": "loop checkpoint: pre-spawn checkpoint write, counters carried verbatim on 'reset', git-log check before discarding work (R7)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-101",
+      "title": "bug reporter + repo identity: DEFAULT_REPO/README → HexingBot/hivemind, URI-userinfo + _AUTH scrub patterns, confirm gate on the agent filing path (R12)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-102",
+      "title": "onboarding repair: npm install in quickstart, brain.md dist path + experimental framing, \"Run the loop\" in README + generated claude-md routing block (R13 + R14)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-103",
+      "title": "bundle hygiene: validate-before-write in writeBundleSession + S7 compaction/rotation with an enforced size sensor (R11 + R10, coordinate R29)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-104",
+      "title": "knowledge graph: one id convention, one-time graph.json migration, loud neighbors() on unknown ids + canonical-id sensor (R17)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-105",
+      "title": "knowledge capture: entry-write path + capture step at ticket close + Gate 5 emits drafts under auto_consolidate (R16)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-106",
+      "title": "kb_lookup: executable, reproducible KB lookup for the researcher + live recordKbReuse caller (R18)",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-107",
+      "title": "task-store: listReady silently swallows dangling depends_on (same stranding class as TASK-096) + goalStuck @throws JSDoc + tool-contract list_ready doc fix",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-108",
+      "title": "close-guard: narrow the uat-comment fabrication channel — append_comment accepts author:'uat' from any caller in loop mode (Gate 2 residual)",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-109",
+      "title": "document the third import-graph blind spot: computed dynamic imports defeat test:changed AND test:since for src-only changes",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-110",
+      "title": "bound loop_state growth: beta_findings/note accumulation is the residual R10 pattern one level down",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-111",
+      "title": "KB write-path completion: E_KB_EXISTS overwrite guard + atomic promoteDraftEntry + researcher/loop-ctl wiring (TASK-105 review MEDIUMs + punch list)",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-112",
+      "title": "scope OBSERVABILITY.md to generated target-project code — stop per-ticket relitigation in reviews (human ruling 2026-07-07)",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }

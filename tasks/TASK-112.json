@@ -1,0 +1,28 @@
+{
+  "key": "TASK-112",
+  "title": "scope OBSERVABILITY.md to generated target-project code — stop per-ticket relitigation in reviews (human ruling 2026-07-07)",
+  "description": "Human ruling at the 2026-07-07 Gate 5 checkpoint (option: scope to generated projects). Context: .claude/shared/OBSERVABILITY.md mandates OTel spans, but the hivemind repo itself carries zero OpenTelemetry dependencies or instrumentation anywhere, and the standard references manifests (SCREEN_SPECS.md, BLOCK_TASKS.md) that exist only in the vendored Spine skill flow for scaffolded target projects. Three consecutive reviewers (rev-103, rev-104, rev-105) independently flagged and then hand-waived the mismatch as a repo-wide standing deviation. Fix is documentation: state the standard's scope explicitly so reviewers stop relitigating it per ticket.",
+  "acceptance_criteria": [
+    "OBSERVABILITY.md gains an explicit scope statement: it governs code the framework GENERATES for target projects (the impl-* manifest/code-writer flow), NOT the framework's own repo, whose observability convention is structured JSON result envelopes + typed errors with codes.",
+    "The reviewer guidance (agents/reviewer.md + parity copy, or wherever the observability gate is invoked) references the scope so the per-ticket judgment is mechanical.",
+    "UAT: read the amended standard and one reviewer-guidance site; confirm the scope is unambiguous."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "docs",
+    "review-process",
+    "gate5-2026-07-07"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-07T05:36:51.008Z",
+  "updated_at": "2026-07-07T05:36:51.008Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

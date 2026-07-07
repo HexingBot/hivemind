@@ -1,0 +1,28 @@
+{
+  "key": "TASK-110",
+  "title": "bound loop_state growth: beta_findings/note accumulation is the residual R10 pattern one level down",
+  "description": "TASK-103 review LOW-2 (rev-103, 2026-07-07, T1 evidence). bundleStateSchema leaves loop_state free-form (additionalProperties: true); the live loop_state.beta_findings array has accumulated ~8KB of prose across drives and loop_state.note ~1.5KB, with no cap and no rotation — the same unbounded-growth pattern TASK-103 fixed for decisions/subagent_results, one level down. session.json remains 94KB post-compaction largely due to this plus the long handoff_summary. Scope: either cap loop_state fields in the schema (maxLength/maxItems with a compaction path for beta_findings, e.g. rotate into the TASK-103 archive.jsonl with a type tag) or document+sensor a bound. Coordinate with the TASK-103 mechanism rather than inventing a second archive.",
+  "acceptance_criteria": [
+    "loop_state.beta_findings and loop_state.note have an enforced bound (schema cap or fast-tier sensor) that fails red against a synthetic oversized loop_state — red-first spec.",
+    "An overflow path exists that preserves content (rotation into the existing bundle archive with a type tag, or equivalent) — no data loss, append-only.",
+    "The live bundle's current beta_findings are rotated once via the new path on the record; resume-point/get-mode verified intact afterwards.",
+    "Docs: the TASK-103 compaction sections (both SKILL.md copies + state/README.md) gain the loop_state bound — existing doc-lock spec extended, not duplicated."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "bundle-hygiene",
+    "task-103-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-07T04:29:57.886Z",
+  "updated_at": "2026-07-07T04:29:57.886Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

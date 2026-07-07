@@ -1,0 +1,43 @@
+{
+  "key": "TASK-103",
+  "title": "bundle hygiene: validate-before-write in writeBundleSession + S7 compaction/rotation with an enforced size sensor (R11 + R10, coordinate R29)",
+  "description": "Deep-review sweep #2 (2026-07-06) MEDIUM findings R11 (F11+F44) + R10 (F10+F47), adversarially confirmed. (a) src/bundle.js:101-106 stringifies any payload straight to disk; bundleStateSchema is compiled only in tests (which don't exist in consumer projects) while task-store/knowledge-graph/knowledge all validate before write — the bundle is the lone unguarded state file. (b) The live bundle measured 260,742 bytes / 1,084+ lines (decisions ~131KB/80+ entries, subagent_results ~70KB/63 entries, handoff_summary a single 44KB string), violating SKILL.md:55-59's paragraph/~1000-char contract; schema length caps were deliberately removed (src/schemas.js:46-56) with no replacing sensor; every phase-boundary checkpoint rewrites the whole file (4+ per ticket) and RESUME-FIRST burns ~65K tokens per new chat; Read-tool truncation (2000 lines) is ~2 drives away. Coordinate with R29: 12-13 decision graph nodes ref the live session.json (4 via non-resolvable #timestamp fragments) — rotation must keep archived decisions addressable. Full context: synthesis §R10 §R11 §R29.",
+  "acceptance_criteria": [
+    "writeBundleSession validates the payload against bundleStateSchema before atomicWriteFile and throws a typed E_BUNDLE_INVALID carrying ajv error paths — red-first spec; all existing writers stay green.",
+    "Compaction/rotation implemented: session.json retains required fields + mode/loop_auth/loop_state counters + the latest handoff_summary + the most recent N decisions/subagent_results; older entries rotate to an append-only archive file inside the bundle dir (no data loss).",
+    "An enforced size sensor exists (schema maxItems/maxLength or a fast-tier spec) that fails when session.json exceeds the documented caps — red-proven against a synthetic oversized bundle.",
+    "The live bundle is compacted once via the new mechanism on the record; graph decision-node refs remain addressable afterwards (repointed to archived locations or preserved paths — R29 coordination documented).",
+    "RESUME-FIRST documentation (SKILL.md both copies + state/README.md) reflects the compacted layout and the rotation lifecycle."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "29b54a825b5b4d60977199376c03cd8c8bc820c3",
+    "e7b576feeb968d622ca674b1124e34fcb0a6b7d7"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T04:22:03.444Z",
+      "body": "AC4 EXECUTED ON THE RECORD (2026-07-07). Permission chain: dev-103's own attempt at the live-bundle write was denied by its permission classifier; the developer correctly stopped rather than work around it and handed the step back. The Orchestrator surfaced it to the human (AskUserQuestion), who first chose to run it themselves, then explicitly authorized the Orchestrator in their own message (\"you run the commands i authorize\"). Executed via the ticket's own tested mechanism (compactBundleSession) in a single script: (1) compaction — 68 decisions + 48 subagent_results archived to state/sessions/20260524T000000Z-65fa92c6/archive.jsonl (append-only, 172KB); session.json 264,913 → 94,442 bytes, arrays now 15/15 (at the maxItems cap); (2) stale active_task corrected TASK-101 → TASK-103 through the new validated writeBundleSession; (3) R29 graph coordination — 4 decision-node refs with #timestamp fragments repointed from session.json#... to archive.jsonl#... via exact-string substitution with occurrence-count guards (decision-20260612-deep-workflows, decision-20260612-graphify-inhouse, decision-20260612-orchestrator-demotion, decision-20260615-web-console); bare-path refs left per the documented bundle-dir-addressable fallback. VERIFICATION: loop-ctl resume-point → action=resume, TASK-103, phase test, iteration 8, completed_this_run 7 (drive state survived verbatim); get-mode → loop; tests/live-state.spec.js 1/1 green (was the suite's one expected red). Bundle/graph changes remain working-tree (uncommitted) alongside the drive's other state bookkeeping, to land in the drive's bookkeeping commit per existing practice."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T04:29:32.214Z",
+      "body": "CLOSED done (loop iteration 8, auto_close_on_green_review re-granted 2026-07-07). R11+R10+R29 shipped: writeBundleSession now validates against bundleStateSchema before ANY I/O (incl. mkdir) throwing typed E_BUNDLE_INVALID with raw ajv errors — the bundle is no longer the lone unguarded state file; src/bundle-compaction.js (pure partitionMostRecent by-at selection with mostly-sorted counter-example encoded, compactBundleSession I/O, idempotent, append-only archive.jsonl, kept∪archived=original) + loop-ctl compact-bundle subcommand (plugin-install reachable); maxItems:15 enforced in BOTH schema copies with a non-vacuous parity spec, red-proven end-to-end through writeBundleSession; live bundle compacted ON THE RECORD (human-authorized after dev-103's own permission classifier denied the live write and it correctly refused to bypass — full permission chain in the prior ticket comment): 264,913→94,442 bytes, 68+48 entries archived, active_task corrected, 4 graph #at refs repointed, resume-point/get-mode/live-state all verified green; RESUME-FIRST docs updated (both SKILL.md copies sha256-identical + state/README.md) with doc-lock spec. Validation also surfaced a latent fixture bug (operating-mode.spec.js workflow_step 'implement'→'impl', reviewer-confirmed legitimate). Review depth FULL (rubric: 1328 changed lines; surfaces: schema + shared state + dist + core tdd). Verdict APPROVE-W-FOLLOWUPS 0H/0M/4L. SYSTEMIC RULING on cap-vs-writers: NOT a trap — no code writer appends to the capped arrays; over-append via hand-edit fails loudly pre-I/O with one-command recovery; compact-before-append obligation documented. tdd discipline PASS (single control-test pre-impl pass ruled justified, not vacuous). Gates (reviewer-reproduced): test:since 129, fast 630/2, e2e batch 23/23, FULL test:all 1249/0/4 — entire suite green, release-gate-grade signal. Commits 29b54a8+e7b576f. LOWs tracked: L1 E_BUNDLE_INVALID lacks compact-bundle remediation hint (next bundle.js touch); L2 loop_state unbounded growth (beta_findings ~8KB) → minted as follow-up ticket; L3 date-only graph fragment ambiguity (pre-existing, hygiene); L4 OBSERVABILITY.md standard vs zero-OTel repo reality → orchestrator-level decision queued for the Gate 5 checkpoint."
+    }
+  ],
+  "created_at": "2026-07-06T23:05:41.167Z",
+  "updated_at": "2026-07-07T04:29:32.214Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

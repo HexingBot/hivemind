@@ -1,0 +1,44 @@
+{
+  "key": "TASK-102",
+  "title": "onboarding repair: npm install in quickstart, brain.md dist path + experimental framing, \"Run the loop\" in README + generated claude-md routing block (R13 + R14)",
+  "description": "Deep-review sweep #2 (2026-07-06) MEDIUM findings R13 (F25+F26+F49) + R14 (F36+F24), adversarially confirmed. (a) README.md:113-117 instructs clone → cd → node bin/init.js with no npm install; bin/init.js transitively imports ajv (src/task-store.js:34), so the very first onboarding command dies with ERR_MODULE_NOT_FOUND (README:182-184 admits the requirement only in the maintainer section). (b) commands/brain.md:19 runs node bin/brain-launch.js — the ONLY repo-relative command path, broken on plugin installs — and still recommends the TASK-079-demoted brain with no experimental label. (c) README has zero loop/unattended mentions and its first-chat script (:78-87) teaches manual per-ticket confirmation — the product's primary surface is undiscoverable. (d) src/claude-md.js:75-76 hardcodes unconditional 'Tests first' into user-project CLAUDE.md (contradicting the tier policy), twice references state/README.md which init never materializes, and dev-repo CLAUDE.md Principle 4 is unqualified by loop_auth standing grants. Tier is tests-after (not uat-only) because src/claude-md.js is source — its generated-block change gets a regression lock; the human-observable README/commands ACs get the UAT step. Full context: synthesis §R13 §R14.",
+  "acceptance_criteria": [
+    "README First-time setup includes npm install before node bin/init.js (or routes the quickstart through the zero-install dist bundle) — a fresh-clone walkthrough no longer dies with ERR_MODULE_NOT_FOUND.",
+    "commands/brain.md invokes ${CLAUDE_PLUGIN_ROOT}/dist/brain-launch.cjs and frames the brain as experimental opt-in (TASK-079 demotion), no longer recommending it for every knowledge-heavy session.",
+    "README gains a 'Run the loop' section covering goal syntax, the five gates, and the unattended preset; dev-repo CLAUDE.md points at it and Principle 4 is qualified with 'unless a standing loop_auth authorization covers the action'.",
+    "The src/claude-md.js generated routing block reflects the tier policy (no unconditional 'Tests first'), mentions /hivemind:loop, and drops or materializes its state/README.md references — with a regression lock on the generated block.",
+    "UAT script derived from the ACs above is run with the human (or delegated), covering the fresh-clone first command and README discoverability."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "5b78302e5555b748c8a2b3dbdd90c6c5dddaa8b8",
+    "a04a8c9574c61d607abf61fb1fb5d7e31d25fe43",
+    "7ee3e9076f0ba3b4ced003e1883e6bceb66d9dea"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-07T03:50:47.571Z",
+      "body": "UAT run 2026-07-07, delegated to the Orchestrator under the human's standing uat_delegated_to_orchestrator grant (re-stated 2026-07-07). Script derived from ACs, executed against a fresh git clone of a04a8c9 in an isolated scratch dir. Step 1 (AC1 fresh-clone quickstart): expected clone → npm install → node bin/init.js completes without ERR_MODULE_NOT_FOUND; observed README:107 now carries npm install with a why-note, install added 148 packages, node bin/init.js exited 0 (already-initialized one-liner, correct for a dev-repo clone) — PASS, verified by Orchestrator at the human's request. Step 2 (AC2 brain.md): expected experimental/opt-in framing + ${CLAUDE_PLUGIN_ROOT}/dist/brain-launch.cjs invocation; observed experimental-opt-in framing at brain.md:9 citing TASK-079, dist path at :22 (health command) and :39 (lifecycle note), no bin/brain-launch.js reference — PASS, verified by Orchestrator at the human's request. Step 3 (AC3 README discoverability): expected a Run-the-loop section covering goal syntax, five gates, unattended preset; observed section at README:135 with unattended coverage, gate summary, pointer to commands/loop.md, plus first-chat section:82 cross-referencing it — PASS, verified by Orchestrator at the human's request. Step 4 (AC4 generated routing block): expected no unconditional Tests-first, three tiers named, /hivemind:loop mentioned, no state/README.md refs; observed in a freshly scaffolded project's CLAUDE.md (bin/init.js --answers-file --claude-md-consent): 0 Tests-first matches, tdd/tests-after/uat-only 2 mentions each, 1 /hivemind:loop mention, 0 state/README.md refs — PASS, verified by Orchestrator at the human's request. Note: CLAUDE.md generation is consent-gated (--claude-md-consent), by design (TASK-025 channel separation); without the flag init writes PROJECT.md + bundle only. OVERALL: PASS 4/4, every AC with a human-observable surface covered. Review (rev-102, full depth) runs separately; close awaits its verdict."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T03:55:36.353Z",
+      "body": "CLOSED done (loop iteration 7, auto_close_on_green_review re-granted 2026-07-07). R13+R14 onboarding repair shipped: README quickstart gains npm install with rationale (fresh-clone walkthrough live-verified end-to-end — clone + install + init exit 0, no ERR_MODULE_NOT_FOUND); commands/brain.md repointed to ${CLAUDE_PLUGIN_ROOT}/dist/brain-launch.cjs with experimental/opt-in framing per the TASK-079 demotion; README gains the Run-the-loop section (goal syntax, five gates, unattended preset — reviewer cross-checked gate-for-gate against commands/loop.md and UNATTENDED_PRESET); dev-repo CLAUDE.md Principle 4 qualified by standing loop_auth grants + pointer paragraph; src/claude-md.js generated routing block now names all three tiers (no unconditional Tests-first), mentions /hivemind:loop, drops both dead state/README.md refs (dead-link claim independently verified against bin/init.js) — locked by 3 non-vacuous assertions in tests/claude-md-merge.spec.js (statically disproven against 9a22f14 source); dist/init.cjs rebuilt (only bundle embedding claude-md.js, verified). Review depth FULL (rubric: 212 changed lines > 150; surface: packaging/dist). Arc: APPROVE-W-FOLLOWUPS 0H/1M/1L/1N → in-band one-line fix 7ee3e90 (brain.md Lifecycle note falsely attributed a dist spawn to brain-client — truthfulness standard per TASK-086 precedent) → cold-confirm CONFIRMED. Tier-audit: tests-after ruled correctly assigned (content-only source change, lock required at mint per the TASK-088 precedent). UAT (delegated, 2026-07-07): 4/4 PASS recorded in the uat comment — fresh-clone quickstart, brain.md framing, README discoverability, generated CLAUDE.md content. Gates: reviewer-reproduced test:since 10/10, fast tier 624/2, dist-parity + claude-md-init 8/8, expanded e2e 33/33, calibration clean. Tracked LOW (no action): hand-off overstated README churn as pure formatting (30 of 50 removed lines were condensation; project-context.md filename detail dropped). Punch-list residue: none — the brain-client lifecycle claim was resolved in-band this ticket."
+    }
+  ],
+  "created_at": "2026-07-06T23:05:19.751Z",
+  "updated_at": "2026-07-07T03:55:36.353Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

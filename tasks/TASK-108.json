@@ -1,0 +1,35 @@
+{
+  "key": "TASK-108",
+  "title": "close-guard: narrow the uat-comment fabrication channel — append_comment accepts author:'uat' from any caller in loop mode (Gate 2 residual)",
+  "description": "Follow-up minted from the TASK-099 review (rev-099 MEDIUM-2, 2026-07-07). TASK-099 shipped Gate 2 in code (uat-only closes in loop mode require uat_delegated_to_orchestrator or an explicit human verdict marker on the uat comment), but the marker is a textual convention: append_comment (src/mcp-server.js) accepts author:'uat' from ANY caller, so a loop-mode orchestrator can append a convention-format all-PASS uat comment itself and pass Gate 2 with no human involvement. The developer documented this residual honestly (close-guard.js doc comment); the reviewer ruled it in-scope-acceptable for TASK-099 but a gap deserving its own ticket. DESIGN QUESTION (resolve before implementing — candidate narrowings from the review): (a) refuse author:'uat' on append_comment while mode==='loop' (uat comments then only writable in harness mode, i.e. with a human present); (b) require the uat comment to predate the close attempt's loop session (timestamp vs run_started_at); (c) a session-scoped human-interaction attestation. Weigh: (a) is simplest and fail-closed but blocks the legitimate delegated-UAT recording flow DURING a loop (uat_delegated grants exist precisely for that) — the guard must not break the granted-delegation path; (b) is weaker but preserves flows. The chosen design must keep all 12 TASK-099 matrix cells green and must not lock out harness-mode UAT recording. Anchor direction note from the review: newer-delegated-shadows-older-human-PASS currently fails CLOSED — preserve that property.",
+  "acceptance_criteria": [
+    "A design decision among the candidate narrowings (or a better one) is recorded on the ticket with rationale, explicitly analyzing the granted-delegation flow (uat_delegated=true during a loop must still be able to record its delegated PASS) and the harness-mode human flow (unaffected).",
+    "The chosen narrowing is implemented with typed errors and red-first specs proving the fabrication path (loop mode, no delegation grant, self-authored all-PASS uat comment) is now blocked at the seam the design targets.",
+    "All TASK-099 matrix cells stay green (existing close-guard/task-board/mcp-close-task specs unmodified and passing); harness-mode UAT recording is specced unaffected.",
+    "dist/ rebuilt and committed if src/mcp-server.js or src/close-guard.js changed; dist-parity green.",
+    "SKILL.md's Gate 2 documentation (both copies) updated to describe the narrowed channel honestly — including what residual (if any) remains."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "review-followup",
+    "security"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T01:14:18.170Z",
+      "body": "Scope addition from the TASK-099 fix-round re-verify (rev-099, 2026-07-07): the tightened marker's FAIL-rejection uses /\\bfail\\b/i, which does not match \"FAILED\"/\"failing\" — a self-contradictory body (\"Step 2 FAILED ... Overall result: PASS\") would still satisfy the marker. Same textual-convention class as this ticket's core gap; fold the token-widening (fail|failed|failing) into whatever narrowing design is chosen here."
+    }
+  ],
+  "created_at": "2026-07-07T01:04:04.549Z",
+  "updated_at": "2026-07-07T01:14:18.170Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

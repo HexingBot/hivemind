@@ -1,0 +1,30 @@
+{
+  "key": "TASK-111",
+  "title": "KB write-path completion: E_KB_EXISTS overwrite guard + atomic promoteDraftEntry + researcher/loop-ctl wiring (TASK-105 review MEDIUMs + punch list)",
+  "description": "TASK-105 review (rev-105, 2026-07-07, PASS 0H/2M/2L) bundled follow-up. MEDIUM-1 [src/knowledge.js:246-256]: writeKnowledgeEntry has no existence check — a repeated draft id silently clobbers an unpromoted draft, and draft:false silently clobbers an existing VETTED entry; silent loss of an unpromoted draft is the silent-skip class R16 exists to close. MEDIUM-2 [knowledge/schema.md:89-96]: promotion is two manual non-atomic steps (re-write with draft:false, hand-delete the proposed copy) with no helper — the delete is a raw fs mutation outside any validated path; draftsPending overcounts and a stale proposed copy can be re-promoted with stale data (lookup itself unaffected — reads only entries/). Punch list (developer + reviewer endorsed): researcher.md proposed_kb_entry not yet routed through writeKnowledgeEntry/knowledge/proposed/; no loop-ctl wrapper feeds a live draftEntryCount (via listDraftEntries) into consolidationGate; LOW: id pattern admits Windows reserved device names (nul, con, com1...) as filenames; LOW: two redundant ke-slug doc locks (tests/knowledge-capture-docs.spec.js:92-95) can never fail — remove or repoint.",
+  "acceptance_criteria": [
+    "writeKnowledgeEntry rejects an existing target id with typed E_KB_EXISTS by default; explicit overwrite opt-in ({ overwrite: true }) documented — red-first specs for draft-over-draft, vetted-over-vetted, and draft:false-over-vetted.",
+    "promoteDraftEntry({ repoRoot, id }) performs validate + write-to-entries + unlink-proposed as one helper (write-then-unlink ordered so a crash leaves at worst a duplicate, never a loss); red-first specs incl. missing-draft and already-vetted-collision paths; SKILL.md/schema.md promotion recipe re-pointed at the helper.",
+    "researcher.md's proposed_kb_entry offline path routes through writeKnowledgeEntry into knowledge/proposed/ (doc change + any needed doc-lock update).",
+    "loop-ctl gains a drafts-count seam (subcommand or checkpoint field) that feeds listDraftEntries output into consolidationGate's draftEntryCount so Gate 5's most forgettable input is automated; dist rebuilt.",
+    "Windows reserved device names rejected by the id validation (schema or code guard) — red spec with nul/con1 exemplars; the two never-fail ke-slug doc locks removed or made falsifiable."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "kb-process",
+    "task-105-followup",
+    "bundle-hygiene"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-07T05:32:29.403Z",
+  "updated_at": "2026-07-07T05:32:29.403Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

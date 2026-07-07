@@ -1,0 +1,45 @@
+{
+  "key": "TASK-101",
+  "title": "bug reporter + repo identity: DEFAULT_REPO/README → HexingBot/hivemind, URI-userinfo + _AUTH scrub patterns, confirm gate on the agent filing path (R12)",
+  "description": "Deep-review sweep #2 (2026-07-06) MEDIUM finding R12 (F14+F15+F38+F43, adversarially confirmed incl. live scrub reproduction). DEFAULT_REPO='lordiwa/agent-framework' (src/framework-bug-report.js:275, baked into dist/report-framework-bug.cjs:181, echoed in commands/report-framework-bug.md:9) is the pre-rebrand upstream, not this product (origin = HexingBot/hivemind; rebrand commit 79f1bad updated neither) — filing always dead-ends or misroutes, so bugs never reach maintainers; README.md:51-52's install example cites the same stale URL. SECRET_PATTERNS has no URI-userinfo rule and the env-var rule omits _AUTH / bare PASSWORD= — bolt://neo4j:hunter2@db:7687 and NEO4J_AUTH=neo4j/hunter2 pass the scrub verbatim (reproduced live; exactly the shapes the brain seam produces and the skill says to include verbatim). The agent filing path (report-framework-bug.md:23-24) has no human confirm before external egress. Full context: synthesis §R12.",
+  "acceptance_criteria": [
+    "DEFAULT_REPO becomes a single shared constant pointing at HexingBot/hivemind; dist/report-framework-bug.cjs rebuilt; README.md install-example URL corrected; commands/report-framework-bug.md matches.",
+    "Scrub patterns added with red-first specs: URI-userinfo credentials (scheme://user:pass@host — bolt://neo4j:hunter2@db:7687 must scrub) and env forms *_AUTH= and bare PASSWORD= (NEO4J_AUTH=neo4j/hunter2 must scrub); existing scrub specs still pass.",
+    "The agent filing path requires an explicit human confirm-preview of the scrubbed body before any external gh issue create (or is blocked behind a loop-mode gate); the local-file fallback remains confirm-free.",
+    "The misleading fallback cause message (GitHub filing dead-ending due to a wrong repo reported as auth/availability) is corrected to name the actual failure."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "14625b357b456d1bc4dddeb021f0817944b47681",
+    "afea6ec593e76d8871798c6bc7055e92de4aadf1",
+    "63441c45ba10f3c7a36cff6bd88a84fa0461b2bb",
+    "276afadcb5654b6df4428be5125274bdf494ce66",
+    "9a22f14ca00fad60f19a10f14e1b259b8ae277b0"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "reviewer",
+      "at": "2026-07-07T03:21:32.273Z",
+      "body": "Full-depth review (rubric: 206 changed lines > 150; surfaces: security/secret-scrub, dist, core tdd logic) — REQUEST-CHANGES, reviewer-retry 1. Independent gate re-run all green (test:since -- 260ffe8: 86/86; fast tier 620/2; dist-parity 2/2). All four ACs delivered in code/docs; tdd discipline PASS (both test commits precede impl; afea6ec ruled a legitimate test-bug fix, same-or-stricter sensor; red run credible — 86/12/74 reconciles). HIGH (blocker, test-only): tests/framework-bug-report.spec.js:849 AC1 default-repo wiring spec is vacuous — its only assertion lives inside the mocked runner where fileFrameworkBug's inner catch swallows it (empirically proven: it passed while DEFAULT_REPO was still stale; red run showed AC1 x3 not x4). Fix: capture runner --repo arg, assert after await, plus expect(result.filed).toBe('github'). MEDIUM (fix with the HIGH): uri_userinfo regex requires non-empty username, so redis://:hunter2@db:6379 leaks — widen username char-class to *, mirror SKILL.md, rebuild dist. MEDIUM (waived with evidence): R3 checklist WAS present in the developer hand-off with all five per-item outcomes. LOWs tracked for a future hardening ticket: RFC-invalid raw @ / raw / in URI passwords partially leak (doc already discloses best-effort); SKILL.md reference example drifts from real src (outer-catch reason branch, {8,} vs {1,} divergence) — reference doc, not parity-gated. Scope check clean: no commits touch tasks/, state/, knowledge/; no plugin-root parity copy exists for the skill (verified). Minimalism/observability clean; calibration clean; tier-audit consistent (tdd correct)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T03:32:37.448Z",
+      "body": "CLOSED done (loop iteration 6, auto_close_on_green_review re-granted by human 2026-07-07 post-/clear). R12 shipped: DEFAULT_REPO → HexingBot/hivemind as exported shared constant (src + dist rebuilt + README + command doc, repo-wide lordiwa sweep with 5 legitimate upstream-template files deliberately left); SECRET_PATTERNS gained uri_userinfo (scheme-preserving per-pattern replace, empty-username RFC form covered after fix round) and _AUTH/bare-PASSWORD env alternation; agent filing path gated by doc-level confirm-preview (reviewer ruled doc-only ACCEPTABLE — no code entry point exists; doc-locks proven non-vacuous) with local-file fallback confirm-free; fallback reason now names the actual failure per branch. Review depth FULL (rubric: 206 changed lines > 150; surfaces: security/secret-scrub + dist + core tdd). Arc: REQUEST-CHANGES (1 HIGH vacuous AC1 sensor — assertion swallowed by product catch, proven by AC1 x3-not-x4 red count; 1 MEDIUM redis://:hunter2@ empty-username leak) → in-band fix round retry 1 (mutant-plant non-vacuity proof + red-first redis spec) → cold re-verify APPROVE with both findings independently reproduced closed. Gates: test:since 87/87, fast tier 621/2, dist-parity 2/2. tdd discipline held across BOTH rounds (test commits strictly precede impl/fix; afea6ec ruled legitimate same-or-stricter test-bug fix). LOWs tracked for future hardening: RFC-invalid raw @ and / in URI passwords partially leak; SKILL.md reference-sample drift (outer-catch branch, {8,} vs {1,}). PROCESS FINDINGS this ticket: (1) harness message-misattribution — dev-101's hand-off delivered under dev-097's envelope; new convention: hand-offs embed ticket key + latest SHA for content-verifiable identity; (2) third import-graph blind-spot class confirmed by reviewer — computed dynamic imports (pathToFileURL href) invisible to test:changed AND test:since for src-only changes; CLAUDE.md doc follow-up minted. SESSION CONTINUITY: ticket crash-resumed across a /clear via landed-commits gate (resumePoint said reset from stale fetch checkpoint; git-log gate correctly overrode)."
+    }
+  ],
+  "created_at": "2026-07-06T23:05:01.019Z",
+  "updated_at": "2026-07-07T03:32:37.448Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

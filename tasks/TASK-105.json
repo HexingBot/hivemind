@@ -1,0 +1,41 @@
+{
+  "key": "TASK-105",
+  "title": "knowledge capture: entry-write path + capture step at ticket close + Gate 5 emits drafts under auto_consolidate (R16)",
+  "description": "Deep-review sweep #2 (2026-07-06) MEDIUM finding R16 (F29, adversarially confirmed) — also fix #1 of the Obsidian-KB evaluation (human ruled 2026-07-06: stay on current format; the capture-rate failure is process, not format — replace per-entry approval with batched curation). All 3 knowledge entries predate 2026-06-16 with last_seen_at == created_at, against 92+ closed tickets. The ticket-close protocol (SKILL.md:661-676) records only decision→task graph edges — no entry step; the only knowledge hook is Gate 5's consolidation pause, and the unattended preset sets auto_consolidate=true (loop.md:252-257) which skips it with NO substitute action (src/drive-loop.js:198); src/knowledge.js has no entry-write function at all — SKILL.md:728 mandates KB-first lookup, a read contract with no write path. Recurring expensive lessons (the 4x lock pid-identity class, TASK-078's five HIGH classes) never entered the KB. Depends on TASK-104 so new capture writes mint canonical graph ids from day one. Full context: synthesis §R16 + artifacts/obsidian-kb-research-2026-07-06.md.",
+  "acceptance_criteria": [
+    "src/knowledge.js gains a schema-validated, atomic entry-write helper (the KB write path), mirroring the store's validate-before-write pattern — red-first specs including rejection of schema-invalid entries.",
+    "The ticket-close protocol (both SKILL.md copies + CLAUDE.md workflow step) adds a capture step: any reviewer HIGH finding or RC loop on a ticket produces a draft knowledge entry at close, written by the orchestrator WITHOUT per-entry human approval.",
+    "Drafts land in a designated unvetted location/state (e.g. knowledge/proposed/ or a vetted:false frontmatter flag) and the lookup either down-weights or excludes them — the chosen design is recorded as an explicit decision in the entry format docs.",
+    "Gate 5 under auto_consolidate no longer skips knowledge work: the consolidation checkpoint still emits/collects entry drafts, and the human's role is documented as batched promote/discard at consolidation (curator, not scribe).",
+    "The KB-first read contract now points at a real write path: SKILL.md's knowledge sections document when entries get created, by whom, and how promotion works."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06",
+    "kb-process"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-104"
+  ],
+  "linked_commits": [
+    "ff31b6db17bcd017b7d9998df0a9fe73b2bbb777",
+    "e75bdf863d08124c57773936e345ab59e7d58586"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T05:31:59.889Z",
+      "body": "CLOSED done (loop iteration 10, auto_close_on_green_review re-granted 2026-07-07). R16 + Obsidian-KB process fix #1 shipped: writeKnowledgeEntry (Ajv validate strictly before any disk mutation incl. mkdir, atomic temp+rename, path-traversal blocked by the schema slug pattern — reviewer-verified on every code path) + listDraftEntries; drafts land in knowledge/proposed/ (sibling-dir design over vetted:false — lookup excludes drafts BY CONSTRUCTION, zero new hot-path conditionals; decision recorded in schema.md + README); capture step documented in CLAUDE.md step 7 + both SKILL.md copies (reviewer HIGH or RC loop → draft at close, no per-entry approval); consolidationGate structurally incapable of silent knowledge-skip (draftsPending on all three return paths, non-empty reason under auto_consolidate, 3 specs); promotion contract documented (batched at Gate 5, human = curator not scribe, promoted entries mint ke-<slug> canonical ids). Riders folded: addEdge unknown-to lock (delete-the-guard red proof), slug-collision guidance in the lockstep block, heading fix all 4 files, graphify source_tier T2 (calibration FLAG gone). Review depth FULL (691 changed lines; core tdd on src/knowledge.js new trust surface + src/drive-loop.js loop core). Verdict PASS 0H/2M/2L. RULINGS: (a) overwrite semantics MEDIUM — no existence check, draft:false silently clobbers a vetted entry; (b) promotion MEDIUM — two manual non-atomic steps, delete outside any validated path (lookup unaffected, no double-surfacing); (c) AC4 SATISFIED as written — all five gates are orchestrator-invoked per protocol, the seam is structurally loud, the missing live draftEntryCount feed is a LOW wrapper follow-up. Both MEDIUMs + endorsed punch list (researcher proposed_kb_entry routing, loop-ctl draftEntryCount wrapper, Windows reserved-device-name LOW, redundant ke-slug locks LOW) minted as TASK-111. tdd discipline PASS (red mechanically forced — zero pre-impl occurrences of the new symbols; 2-of-19 docs pre-passes reconciled as pre-existing TASK-104 strings). Gates (reviewer-reproduced): test:since 97/7 files, fast 698/2, targeted e2e 22/5, FULL test:all 1332/4/123 files, calibration clean. Commits ff31b6d+e75bdf8. GATE 5 CONSOLIDATION fires at this close (completed_this_run=10, auto_consolidate=false)."
+    }
+  ],
+  "created_at": "2026-07-06T23:06:22.592Z",
+  "updated_at": "2026-07-07T05:31:59.889Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

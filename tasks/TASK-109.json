@@ -1,0 +1,28 @@
+{
+  "key": "TASK-109",
+  "title": "document the third import-graph blind spot: computed dynamic imports defeat test:changed AND test:since for src-only changes",
+  "description": "Found live during TASK-101's fix round and independently confirmed by the reviewer (rev-101, 2026-07-07). tests/framework-bug-report.spec.js:27-31 loads its module under test via `await import(pathToFileURL(join(REPO_ROOT,'src','framework-bug-report.js')).href)` — a runtime-computed specifier vitest's static import graph cannot resolve. Consequence: an uncommitted src-only change selects ZERO specs under `npm run test:changed`, and a COMMITTED src-only change (where the spec file itself is not in the diff range) hits the same blindness under `npm run test:since`. CLAUDE.md's \"Which command, when\" section currently documents only the fs-read blind-spot class (agent/skill parity sensors, doc-lock specs); this is a distinct third class (fs-read, md-only, computed dynamic import). The developer handled it correctly per the existing zero-specs-is-a-failure rule — the gap is purely documentation so future developers/reviewers recognize the class instead of re-diagnosing it.",
+  "acceptance_criteria": [
+    "CLAUDE.md's test-command section (the parenthetical after the command table, or an adjacent note) names the computed-dynamic-import blind-spot class with the TASK-101 example (pathToFileURL(...).href dynamic import), stating explicitly that it defeats BOTH test:changed (uncommitted src-only change) and test:since (committed src-only change when the spec file is outside the diff range).",
+    "The documented compensation recipe: run the affected spec file directly (npx vitest run <spec>) in addition to the mandatory npm test fast tier; zero-specs stays a gate FAILURE to investigate, never a green.",
+    "The reviewer guidance (agents/reviewer.md and its .claude/agents/ parity copy, or the orchestrator-routing skill's gate section — whichever carries the test:since instruction) gains one sentence pointing at the same class so re-verification does not silently under-select."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "docs",
+    "test-infra",
+    "task-101-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-07T03:33:46.605Z",
+  "updated_at": "2026-07-07T03:33:46.605Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

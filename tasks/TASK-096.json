@@ -1,0 +1,37 @@
+{
+  "key": "TASK-096",
+  "title": "loop: pass the FULL task list to selectNextTicket — documented listReady pipeline strands every dep-bearing goal (R1)",
+  "description": "Deep-review sweep #2 (2026-07-06) HIGH finding R1 (F1, adversarially confirmed). commands/loop.md:85-86 pipes listReady() output (todo-only; done deps excluded per src/task-store.js:317-336) into selectNextTicket, whose depsAreDone (src/drive-loop.js:42-49) rejects any ticket whose done dep is absent from the passed array. The \"safe in either case\" comment at src/drive-loop.js:13-14 is false and untested (tests/drive-loop.spec.js:96-113 never composes the two). Result: null ticket + goalStuck=false spins the no-progress counter to maxNoProgress=3 and the loop stops with a misleading \"dependency cycle\" reason; restart hits the same wall. 30+ existing tasks carry depends_on — the product's core flow fails via its own docs. Full context: state/sessions/20260524T000000Z-65fa92c6/artifacts/deep-review-synthesis-2026-07-06.md §R1.",
+  "acceptance_criteria": [
+    "loop.md Step 2 (and any SKILL.md site mirroring the selection pipeline) instructs fetching the FULL task list (all statuses, e.g. readAllTasks/list_todos-equivalent including done tasks) as the input to selectNextTicket; no doc site composes listReady() into selectNextTicket anymore.",
+    "The false 'safe in either case' claim at src/drive-loop.js:13-14 is deleted or rewritten to state the true input contract (full task list including done dependencies).",
+    "A composed spec exists: given a todo ticket whose depends_on are all done, selectNextTicket selects it when passed the full list, and the spec reproduces the stranding (red-run evidence) when passed the listReady-filtered list — encoding the exact failure the docs used to instruct.",
+    "Consider and either implement or explicitly reject (with a comment) a defensive tweak in depsAreDone/selectNextTicket that fails loudly when a depends_on key is absent from the passed array rather than silently rejecting the ticket."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "95e55e8",
+    "1c21e73"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-06T23:28:13.907Z",
+      "body": "CLOSED done — loop iteration 1 of drive goal-sweep2 (auto_close_on_green_review, granted 2026-07-06). Review: APPROVE-WITH-FOLLOWUPS at depth FULL (rubric inputs: 108 changed lines <150 BUT src/drive-loop.js = core tdd-tier mandatory-FULL surface), 0 HIGH / 0 MEDIUM (after resolution) / 2 LOW / 2 NIT. The conditional M1 (was the R3 pre-hand-off checklist present?) RESOLVED by the orchestrator from the raw developer hand-off: the checklist WAS present with all five per-item outcomes (unspecced-path grep, red-green plant captured verbatim, dist n/a verified vs ENTRYPOINT_NAMES, parity n/a verified, calibration n/a) — the reviewer had independently verified all five classes anyway. TDD contract mechanically verified: test commit 95e55e8 strictly precedes impl 1c21e73, touches only the spec, and the reviewer INDEPENDENTLY REPRODUCED the red run from the impl parent's tree (1 failed | 24 passed, failing at the AC4 assertion for the right reason). All 4 ACs PASS. Gates: test:since -- d064986 32/32 (non-zero selection), fast tier 573/2, affected e2e autonomous-drive.spec.js 2/2, calibration exit 0 (3 pre-existing generic FLAGs). AC4 implemented as fail-loudly throw in depsAreDone (absent dep key = throw naming ticket+dep; present-but-not-done = false unchanged); reviewer verified zero dangling depends_on among the live 104 tasks and no production caller passes partial lists. FOLLOW-UPS tracked in TASK-107: L1 listReady's silent dangling-dep swallow (same stranding class, sibling function), L2 goalStuck missing @throws JSDoc, N2 tool-contract.md list_ready doc inaccuracy. N1 (duplicate positive spec) noted for a future consolidation pass — AC-mandated, not a budget violation."
+    }
+  ],
+  "created_at": "2026-07-06T23:03:32.733Z",
+  "updated_at": "2026-07-06T23:28:13.907Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

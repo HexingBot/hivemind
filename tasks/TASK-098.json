@@ -1,0 +1,40 @@
+{
+  "key": "TASK-098",
+  "title": "calibration: revive the structurally-dead gate — source_tier BLOCKER + schema field + JSON-form extractTier + drop the case-sensitive G3 pre-filter (R3)",
+  "description": "Deep-review sweep #2 (2026-07-06) HIGH finding R3 (F17+F18+F50, adversarially confirmed incl. live reproduction). Three compounding defects make the reviewer's mandated calibration gate a false-green: (a) bin/check-calibration.js:53 exits non-zero only on BLOCKERs, and the only per-file BLOCKER rules (tier ceilings, src/calibration.js:108-135) are unreachable when source_tier is missing (calibration.js:94-100 early-returns a FLAG) — knowledge/schema.json (additionalProperties:false, no source_tier property) makes it ILLEGAL for entries to carry the field, and JSON-form fields in tasks/*.json aren't parsed by extractTier; (b) the G3 claim-language sensor is gated by a case-sensitive includes('confirmed') pre-filter (calibration.js:38) making decided/resolved/proven and any capitalized form dead code (verified live: 'We decided to hard-code...' returns []); (c) every knowledge file uniformly FLAGs for missing source_tier — noise that trains the reviewer to ignore the gate. agents/reviewer.md:54,63,76 declares this gate load-bearing with 'Source-tier ceiling → HIGH / BLOCK'. Full context: synthesis §R3.",
+  "acceptance_criteria": [
+    "Missing source_tier on the surfaces the gate is mandated for becomes a BLOCKER (bin/check-calibration.js exits non-zero), not a FLAG — red-first spec proving the current exit-0 behavior, then green.",
+    "knowledge/schema.json gains a source_tier property (enum T1-T4/TX) so entries can legally carry the field; the existing knowledge entries are updated to carry an honest tier.",
+    "extractTier parses the JSON field form used by tasks/*.json (source_tier as a JSON property), with specs.",
+    "The includes('confirmed') pre-filter at src/calibration.js:38 is removed; specs prove 'decided'/'resolved'/'proven' and capitalized forms ('Confirmed', 'Decided') now trigger G3 (red-first for at least one previously-dead word).",
+    "No uniform FLAG wall remains: after the change, a clean repo run of the calibration check produces zero noise findings on knowledge/ (fields present or surface explicitly exempted with rationale)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "e420033",
+    "bc27d90",
+    "be7c674",
+    "2ffd97e"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T00:38:14.639Z",
+      "body": "CLOSED done — loop iteration 3 of drive goal-sweep2 (auto_close_on_green_review), clean APPROVE on cold re-verify after 1 in-band MEDIUM round. The calibration gate is REVIVED: missing source_tier on mandated surfaces (knowledge/entries/*.md + tasks/TASK-*.json) is now a BLOCKER with exit 1; done-tickets grandfathered fail-closed (positive status match required, malformed/missing status = mandated); knowledge/schema.json legally carries source_tier (enum, deferring to .knowledge/meta/SOURCE_TIERS.md as the canonical scale); extractTier parses JSON top-level-only (M1 round closed the quoted/malformed-content spoof vectors — valid-JSON quoted spoof proved non-exploitable even against old code, the REAL vectors were unquoted prose tier + malformed content, both closed); the dead case-sensitive G3 pre-filter is gone (decided/resolved/proven + capitalized forms all live, red-proven); non-mandated marker-bearing docs FLAG (M2 — ceiling reachable on context surfaces without reviving the AC5 noise wall). Review arc: APPROVE-W-FOLLOWUPS (0H/2M/2L, full depth: 194 lines + core-tdd + schema surfaces) → in-band fix round (M1+M2+L1) → clean APPROVE, zero findings remaining, reviewer's L2 fixed as a byproduct. TDD contract held on BOTH rounds (e420033→bc27d90, be7c674→2ffd97e; reviewer cold-reproduced 14 and 4 red failures at each impl parent). Developer integrity note ON THE RECORD: first M1 spec draft was discovered vacuous (JSON.stringify auto-escaping defeated the spoof under old code) and DISCARDED rather than shipped — the anti-vacuity discipline working as designed. Gates: test:since 37/37, fast 591/2, task-calibration e2e 9/9, entries zero findings exit 0. INTENDED FALLOUT: repo-wide exactly one BLOCKER — tasks/TASK-003.json missing source_tier — remediated by the orchestrator immediately after this close (tier assignment is Workflow step 1, orchestrator-owned). Known acceptable noise: 9 FLAGs on src/calibration.js self-scan (marker-constant literals), fires only when scanning the validator itself."
+    }
+  ],
+  "created_at": "2026-07-06T23:04:08.567Z",
+  "updated_at": "2026-07-07T00:38:14.639Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

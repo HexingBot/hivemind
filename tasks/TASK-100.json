@@ -1,0 +1,39 @@
+{
+  "key": "TASK-100",
+  "title": "loop checkpoint: pre-spawn checkpoint write, counters carried verbatim on 'reset', git-log check before discarding work (R7)",
+  "description": "Deep-review sweep #2 (2026-07-06) MEDIUM finding R7 (F3+F5, adversarially confirmed). (a) The documented cadence (loop.md:63-66, SKILL.md:551-553) writes nothing between the fetch-phase checkpoint and the Developer's return — the longest phase, where test:/impl commits land. A mid-spawn crash resumes as in_progress+'fetch' → resumePoint returns 'reset' ('no durable work landed', src/loop-checkpoint.js:40,162-168), flipping the ticket to todo and re-driving it over already-landed commits (duplicate commits, broken red-run TDD evidence). (b) All three 'reset' returns (loop-checkpoint.js:142-147,154-159,162-168) omit iteration/completed_this_run/run_started_at — the very counters 'none'/'resume' carry verbatim to prevent silent zeroing — so a crash on a reset branch restarts the maxIterations and Gate-5 consolidation ceilings. Full context: synthesis §R7.",
+  "acceptance_criteria": [
+    "loop.md and both SKILL.md copies add a mandatory checkpoint write immediately BEFORE the Developer spawn (phase 'test' for tdd / 'impl' otherwise), so a mid-spawn crash resumes at a post-fetch phase instead of falsely resetting.",
+    "All three 'reset' results in src/loop-checkpoint.js carry iteration, completed_this_run, and run_started_at verbatim from loop_state — red-first spec proving today's counter loss on a reset branch, then green.",
+    "The documented reset protocol requires checking git log for commits referencing the ticket key before discarding work; when such commits exist the protocol routes to resume/surface instead of silent reset (documented in loop.md + SKILL.md; helper code if implemented gets specs).",
+    "resumePoint's phase semantics after the new cadence are covered: in_progress at phase 'test'/'impl' with landed commits resumes rather than resets."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "goal-sweep2",
+    "deep-review-2026-07-06"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "9aeb82b",
+    "c2730e2",
+    "c7054df",
+    "260ffe8"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T01:39:47.087Z",
+      "body": "CLOSED done — loop iteration 5 of drive goal-sweep2 (auto_close_on_green_review), clean APPROVE on cold re-verify after 1 in-band round (2M/1L, zero HIGH across both rounds). Crash-resume correctness shipped: (AC1) mandatory pre-Developer-spawn checkpoint (phase test/impl) in loop.md + both SKILL.md copies — a mid-spawn crash now resumes instead of falsely resetting over landed commits; (AC2) all three resumePoint 'reset' branches carry iteration/completed_this_run/run_started_at verbatim (red-proven: previously undefined — ceilings silently zeroed on reset-branch crashes); (AC3) reset protocol gated by a git-log check — ticketHasLandedCommits pure helper + (fix round, option A) a NEW loop-ctl `landed-commits --key` subcommand reading git-log via stdin, so plugin installs get the substring-safety guard (TASK-100 vs TASK-1000) instead of a manual eyeball scan; landed commits despite a reset verdict now surface as Gate-3-shaped ambiguity, never silent reset; (AC4) resume-at-'test' locked (honest never-red disclosure — PRE_COMMIT_PHASES already correct, verified by the reviewer at the impl parent). Fix round also closed the reviewer's cadence-enumeration drift in loop.md (the prose-drift class, caught inside the ticket attacking it) and the case-sensitivity false negative (i flag, red-proven). Review arc: APPROVE-W-FOLLOWUPS at FULL depth (286 lines, core-tdd loop-checkpoint + dist surfaces) → in-band round → clean APPROVE; reviewer's tree-shake finding (helper absent from ALL bundles while shipped docs pointed at src/) verified DEAD — subcommand wired at 3 sites in dist/loop-ctl.cjs, probed live incl. 10MB stdin. TDD contract held both rounds (9aeb82b→c2730e2, c7054df→260ffe8), 7+4 reds all independently reproduced. Gates: test:since 42/42, fast 605/2, named e2e 29/29, dist-parity green, calibration clean. Process note for consolidation: the developer's test:changed run reported zero specs on a real uncommitted diff — live manifestation of synthesis item R23 (zero-specs-green class), already roadmapped."
+    }
+  ],
+  "created_at": "2026-07-06T23:04:43.810Z",
+  "updated_at": "2026-07-07T01:39:47.087Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}

@@ -1,0 +1,26 @@
+{
+  "key": "TASK-107",
+  "title": "task-store: listReady silently swallows dangling depends_on (same stranding class as TASK-096) + goalStuck @throws JSDoc + tool-contract list_ready doc fix",
+  "description": "Follow-up minted from the TASK-096 review (rev-096, APPROVE-WITH-FOLLOWUPS, 2026-07-06). L1: src/task-store.js:330 — listReady treats an unknown depends_on key as unsatisfied, so a ticket with a typo'd dep silently disappears from MCP list_ready output; this is the same silent-stranding class TASK-096 just fixed in drive-loop's depsAreDone (which now throws naming the ticket and missing dep). Align the two: throw or surface loudly. L2: src/drive-loop.js:161-173 — goalStuck's JSDoc lacks @throws even though it can propagate depsAreDone's error when called standalone with a partial list (selectNextTicket documents it). N2: skills/mcp-server/references/tool-contract.md:105 (+ .claude parity copy) says list_ready wraps listTodos while src/mcp-server.js:119 actually wraps listReady — pre-existing drift. NOT part of goal-sweep2 (unlabeled backlog; minting a reviewer follow-up does not expand the human-approved goal).",
+  "acceptance_criteria": [
+    "listReady fails loudly (throw naming ticket + missing dep, mirroring TASK-096's depsAreDone contract) or explicitly surfaces dangling depends_on refs in its result, instead of silently omitting the ticket — red-first spec against the current silent behavior.",
+    "goalStuck's JSDoc documents the propagated throw (@throws) consistently with selectNextTicket's.",
+    "tool-contract.md's list_ready row (both parity copies) matches src/mcp-server.js ground truth (wraps listReady, not listTodos); the references/ parity sensor stays green."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-06T23:28:44.083Z",
+  "updated_at": "2026-07-06T23:28:44.083Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[INFERRED:strong]",
+  "source_tier": "T1"
+}
