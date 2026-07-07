@@ -42,8 +42,22 @@ Each node has four required fields: `id`, `type`, `ref`, `label`.
 | `decision`        | A recorded design decision              | `knowledge/decisions/graph-design.md`  |
 | `skill`           | A skill directory                       | `skills/graphify/SKILL.md`             |
 
-`id` must be unique across all nodes. Use a slug convention such as
-`task-035`, `decision-graph-design`, `skill-graphify`.
+### Canonical id shapes (TASK-104 — the canonical reference, identical to the
+orchestrator-routing skill's close-protocol section; the two sites must never
+contradict)
+
+`id` must be unique across all nodes and match its type's canonical shape:
+
+| node type          | id shape                     | example                                          |
+|--------------------|-------------------------------|---------------------------------------------------|
+| `task`             | `task-<digits>`               | `task-104`                                         |
+| `decision`         | `decision-<YYYYMMDD>-<slug>`  | `decision-20260704-release-v0-10-0-minor-bump`     |
+| `skill`            | `skill-<slug>`                | `skill-graphify`                                   |
+| `knowledge_entry`  | `ke-<slug>`                   | `ke-windows-atomic-rename`                         |
+`<slug>` is lowercase, hyphen-separated, `[a-z0-9-]+` only — never a raw ISO
+timestamp and never an uppercase task key (e.g. `TASK-104`). Derive/validate
+mechanically via `canonicalIdPattern`/`isCanonicalId`/`deriveCanonicalId` in
+`src/graph-id-migration.js` rather than hand-rolling the convention.
 
 ## Edge Relations (typed)
 
@@ -96,9 +110,9 @@ const graph = await loadGraph({ repoRoot });
 
 ### `addNode({ repoRoot, node })`
 
-Add a node to the graph. Validates schema + rejects duplicate `id` before any
-disk write. Creates `knowledge/graph/` on first use. Throws on validation
-failure (zero disk mutation on error).
+Add a node to the graph. Validates schema + rejects a duplicate `id`
+(case-insensitive — TASK-104) before any disk write. Creates `knowledge/graph/`
+on first use. Throws on validation failure (zero disk mutation on error).
 
 ```js
 import { addNode } from './src/knowledge-graph.js';
@@ -158,6 +172,11 @@ Return connected node objects for a given `id`. Deduplicated.
   - omitted (default): bidirectional — all nodes sharing any edge with `id`.
   - `'out'`: nodes reachable by outgoing edges from `id` (`id` is `from`).
   - `'in'`: nodes that have an edge pointing into `id` (`id` is `to`).
+
+Throws `UnknownNodeIdError` (`err.code === 'E_GRAPH_UNKNOWN_ID'`) when `id`
+does not exist in the graph (TASK-104) — no more silent `[]` for a typo'd or
+stale id. Callers that treat a missing id as an expected degradation (e.g.
+`graph-sync.js`'s canonical-first fallback) must catch this explicitly.
 
 ```js
 import { neighbors } from './src/knowledge-graph.js';

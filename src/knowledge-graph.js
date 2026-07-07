@@ -10,6 +10,7 @@
 //   removeEdge({ repoRoot, edge })   → removes a specific edge by (from, to, relation)
 //   neighbors({ repoRoot, id, relation?, direction? }) → connected node objects
 //   nodesByType({ repoRoot, type })  → filtered node array
+//   writeGraph({ repoRoot, graph })  → validates + atomically writes a full graph document (bulk ops)
 //
 // DETERMINISTIC SERIALIZATION:
 //   Nodes are sorted by `id` (lexicographic ascending).
@@ -50,6 +51,13 @@
 //   Single-writer assumption — the orchestrator is the only writer; writes are
 //   read-modify-write without cross-process locking, so concurrent writers
 //   could lose updates (acceptable for this harness, same as task-store).
+//
+// ID CONVENTION (TASK-104):
+//   Node ids follow the canonical shapes documented in src/graph-id-migration.js
+//   and the orchestrator-routing/graphify SKILL.md sites (task-<digits>,
+//   decision-<YYYYMMDD>-<slug>, skill-<slug>, ke-<slug>). neighbors() throws
+//   UnknownNodeIdError on an id absent from the graph instead of silently
+//   returning []; addNode's duplicate-id guard is case-insensitive.
 
 import { readFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -105,6 +113,22 @@ export const GRAPH_SCHEMA = {
     },
   },
 };
+
+/**
+ * Thrown by neighbors() when the requested node id does not exist in the
+ * graph. TASK-104 — replaces the old silent-empty-array behavior; callers
+ * that treat a missing local id as an expected degradation (e.g.
+ * graph-sync.js's canonical-first fallback) must catch this explicitly rather
+ * than rely on ambient [].
+ */
+export class UnknownNodeIdError extends Error {
+  constructor(id) {
+    super(`neighbors: node id "${id}" does not exist in the graph`);
+    this.name = 'UnknownNodeIdError';
+    this.code = 'E_GRAPH_UNKNOWN_ID';
+    this.id = id;
+  }
+}
 
 let _validate = null;
 
@@ -213,8 +237,16 @@ export async function addNode({ repoRoot, node }) {
 
   // Duplicate-id guard — node ids are the graph's primary key; a silent
   // duplicate would corrupt referential-integrity checks and neighbor queries.
-  if (node && node.id !== undefined && graph.nodes.some((n) => n.id === node.id)) {
-    throw new Error(`addNode: node id "${node.id}" already exists in the graph`);
+  // TASK-104: case-insensitive, so "TASK-063" cannot coexist with "task-063"
+  // as split-brain duplicates of the same conceptual entity.
+  if (node && node.id !== undefined) {
+    const wanted = String(node.id).toLowerCase();
+    const dup = graph.nodes.find((n) => String(n.id).toLowerCase() === wanted);
+    if (dup) {
+      throw new Error(
+        `addNode: node id "${node.id}" already exists in the graph (case-insensitive match against "${dup.id}")`,
+      );
+    }
   }
 
   // Build the candidate graph with the new node appended.
@@ -319,12 +351,20 @@ export async function removeEdge({ repoRoot, edge }) {
  * When `relation` is supplied, edges must also match that relation value.
  * Duplicate node ids are deduplicated in the result.
  *
+ * TASK-104: throws UnknownNodeIdError when `id` does not exist as a node in
+ * the graph, instead of silently returning [] — a typo'd or stale id (e.g. a
+ * pre-migration case-variant) is now a loud failure, not a silent miss.
+ *
  * @param {{ repoRoot: string, id: string, relation?: string, direction?: 'out'|'in' }} opts
  * @returns {Promise<Array<{id, type, ref, label}>>}
  */
 export async function neighbors({ repoRoot, id, relation, direction }) {
   const graph = await loadGraph({ repoRoot });
   const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+
+  if (!nodeMap.has(id)) {
+    throw new UnknownNodeIdError(id);
+  }
 
   const connectedIds = new Set();
 
@@ -349,6 +389,21 @@ export async function neighbors({ repoRoot, id, relation, direction }) {
     if (node) result.push(node);
   }
   return result;
+}
+
+/**
+ * Validate and atomically write a full graph document in one shot. Intended
+ * for bulk operations (e.g. the TASK-104 one-time id migration in
+ * scripts/migrate-graph-ids.mjs) that must replace many nodes/edges at once —
+ * addNode/addEdge only support single-item writes. Throws on schema-invalid
+ * input; the on-disk file is never touched on failure.
+ *
+ * @param {{ repoRoot: string, graph: {schema_version: number, nodes: Array, edges: Array} }} opts
+ */
+export async function writeGraph({ repoRoot, graph }) {
+  validateGraph(graph);
+  await mkdir(graphDir(repoRoot), { recursive: true });
+  await atomicWriteFile(graphPath(repoRoot), serializeGraph(graph));
 }
 
 /**

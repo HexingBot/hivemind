@@ -761,19 +761,37 @@ bypasses all three guards above, so the orchestrator must manually verify the
 uat-only, loop-mode Gate 1, and loop-mode Gate 2 preconditions before
 hand-editing a ticket to `done`.
 
-## Recording decision→task edges at ticket close (TASK-035)
+## Recording decision→task edges at ticket close (TASK-035, id convention fixed by TASK-104)
 
 When a ticket is transitioned to `done`, the orchestrator **must** record the
 decisions that shaped the work as typed edges in the knowledge graph
-(`knowledge/graph/graph.json`) via `src/knowledge-graph.js`:
+(`knowledge/graph/graph.json`) via `src/knowledge-graph.js`.
+
+### Canonical id shapes (TASK-104 — the canonical reference, identical to the
+graphify skill's Node Types section; the two sites must never contradict)
+
+| node type          | id shape                     | example                                          |
+|--------------------|-------------------------------|---------------------------------------------------|
+| `task`             | `task-<digits>`               | `task-104`                                         |
+| `decision`         | `decision-<YYYYMMDD>-<slug>`  | `decision-20260704-release-v0-10-0-minor-bump`     |
+| `skill`            | `skill-<slug>`                | `skill-graphify`                                   |
+| `knowledge_entry`  | `ke-<slug>`                   | `ke-windows-atomic-rename`                         |
+`<slug>` is lowercase, hyphen-separated, `[a-z0-9-]+` only — never a raw ISO
+timestamp and never an uppercase task key (e.g. `TASK-104`). Derive/validate
+mechanically via `canonicalIdPattern`/`isCanonicalId`/`deriveCanonicalId` in
+`src/graph-id-migration.js` rather than hand-rolling the convention.
 
 1. For each significant decision recorded in the session bundle's `decisions`
    array, ensure a node of type `decision` exists in the graph (add it with
-   `addNode` if absent; id = the decision's ISO timestamp, ref = the session
-   bundle path, label = a short description of the decision).
+   `addNode` if absent; id = `decision-<YYYYMMDD>-<slug>` derived from the
+   decision's date and a short slug of its description — see
+   `deriveCanonicalId` in `src/graph-id-migration.js` for the exact mechanical
+   rule; ref = the session bundle path, label = a short description of the
+   decision).
 2. Ensure a node of type `task` exists for the ticket being closed (add with
-   `addNode` if absent; id = the task key e.g. `TASK-035`, ref = the task JSON
-   path, label = the ticket title).
+   `addNode` if absent; id = `task-<digits>` e.g. `task-104` — lowercase, NOT
+   the uppercase Jira-style key `TASK-104`; ref = the task JSON path, label =
+   the ticket title).
 3. Call `addEdge` with `{ from: <task-id>, to: <decision-id>, relation: 'produced-by' }`
    — read as "the task's scope was produced by the decision" (use `relates-to`
    instead if the decision influenced but did not directly produce the
