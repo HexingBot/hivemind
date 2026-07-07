@@ -12,12 +12,29 @@
 // Real disk I/O via mkdtemp (mirrors tests/e2e/knowledge-lookup.spec.js), so
 // this lives in the slow/e2e tier per the fast/e2e directory split.
 //
+// TASK-111 AC1/AC2/AC5 (review MEDIUM-1/MEDIUM-2/LOW follow-ups on TASK-105):
+//   AC1 — writeKnowledgeEntry gains an E_KB_EXISTS overwrite guard (default
+//   reject on a repeated target id; explicit { overwrite: true } opt-in).
+//   AC2 — promoteDraftEntry({ repoRoot, id }) is a new one-call helper:
+//   validate + write-to-entries + unlink-proposed, write-then-unlink ordered
+//   so a crash leaves at worst a duplicate, never a loss.
+//   AC5 — the id pattern now rejects Windows reserved device names
+//   (nul/con/prn/aux/com1/lpt1) at the schema level.
+//
 // TESTS-FIRST FAILURE SURFACE:
 //   src/knowledge.js does not export writeKnowledgeEntry or listDraftEntries
 //   yet -> importing them resolves to undefined (same interop as
 //   tests/e2e/knowledge-graph-canonical-ids.spec.js's UnknownNodeIdError case)
 //   -> calling undefined as a function throws "is not a function", a red
 //   failure for the right reason (missing implementation, not a typo).
+//   TASK-111: writeKnowledgeEntry has no existence check yet -> the
+//   E_KB_EXISTS specs fail because the second write silently succeeds
+//   (assertion on the rejected promise fails, and the "preserved" assertion
+//   fails because the file WAS overwritten). promoteDraftEntry does not
+//   exist yet -> importing it resolves to undefined, same "not a function"
+//   red failure. The reserved-device-name ids currently pass schema
+//   validation (the pattern doesn't exclude them yet) -> those specs fail
+//   because writeKnowledgeEntry does NOT reject/throw.
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -27,7 +44,7 @@ import matter from 'gray-matter';
 import { REPO_ROOT } from '../helpers/repoRoot.js';
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
 import {
-  writeKnowledgeEntry, listDraftEntries, lookupKnowledge,
+  writeKnowledgeEntry, listDraftEntries, lookupKnowledge, promoteDraftEntry,
 } from '../../src/knowledge.js';
 
 afterAll(cleanupAll);
@@ -116,6 +133,155 @@ describe('TASK-105 AC1 — writeKnowledgeEntry: schema-validated, atomic write p
 
     const bad = validEntry('Not_A_Valid_Slug');
     await expect(writeKnowledgeEntry({ repoRoot, entry: bad })).rejects.toThrow();
+  });
+});
+
+describe('TASK-111 AC1 — writeKnowledgeEntry: E_KB_EXISTS overwrite guard', () => {
+  // MEDIUM-1 (TASK-105 review): writeKnowledgeEntry had no existence check —
+  // a repeated draft id silently clobbered an unpromoted draft, and
+  // draft:false silently clobbered an existing VETTED entry. AC1 names three
+  // scenarios (draft-over-draft, vetted-over-vetted, draft:false-over-vetted);
+  // the latter two collide on the exact same code path (a second draft:false
+  // write against an already-vetted target id), so they are proven by ONE
+  // test below (`rejects_a_repeated_vetted_id...`) rather than two redundant
+  // specs — see CLAUDE.md's new-test-budget rule against duplicative specs.
+  it('rejects_a_repeated_draft_id_draft_over_draft_with_E_KB_EXISTS_preserving_the_original', async () => {
+    const repoRoot = makeTmpDir('ke-exists-draft-over-draft');
+    seedSchema(repoRoot);
+
+    const original = validEntry('dup-draft-lesson');
+    await writeKnowledgeEntry({ repoRoot, entry: original });
+    const targetPath = join(repoRoot, 'knowledge', 'proposed', 'dup-draft-lesson.md');
+    const before = readFileSync(targetPath, 'utf8');
+
+    const second = validEntry('dup-draft-lesson');
+    second.solution = 'A completely different solution text, at least ten chars.';
+    await expect(writeKnowledgeEntry({ repoRoot, entry: second })).rejects.toMatchObject({
+      code: 'E_KB_EXISTS',
+    });
+
+    expect(readFileSync(targetPath, 'utf8'), 'the original draft must be untouched').toBe(before);
+  });
+
+  it('rejects_a_repeated_vetted_id_vetted_over_vetted_and_draft_false_over_vetted_with_E_KB_EXISTS_preserving_the_original', async () => {
+    const repoRoot = makeTmpDir('ke-exists-vetted-over-vetted');
+    seedSchema(repoRoot);
+
+    const original = validEntry('dup-vetted-lesson');
+    await writeKnowledgeEntry({ repoRoot, entry: original, draft: false });
+    const targetPath = join(repoRoot, 'knowledge', 'entries', 'dup-vetted-lesson.md');
+    const before = readFileSync(targetPath, 'utf8');
+
+    const second = validEntry('dup-vetted-lesson');
+    second.solution = 'Yet another different solution text, ten-plus chars.';
+    await expect(
+      writeKnowledgeEntry({ repoRoot, entry: second, draft: false }),
+    ).rejects.toMatchObject({ code: 'E_KB_EXISTS' });
+
+    expect(readFileSync(targetPath, 'utf8'), 'the vetted entry must be untouched').toBe(before);
+  });
+
+  it('accepts_an_explicit_overwrite_true_opt_in_for_a_repeated_draft_id', async () => {
+    const repoRoot = makeTmpDir('ke-exists-overwrite-draft');
+    seedSchema(repoRoot);
+
+    await writeKnowledgeEntry({ repoRoot, entry: validEntry('overwrite-draft-lesson') });
+    const updated = validEntry('overwrite-draft-lesson');
+    updated.solution = 'The overwritten solution text, definitely ten-plus chars.';
+    await writeKnowledgeEntry({ repoRoot, entry: updated, overwrite: true });
+
+    const targetPath = join(repoRoot, 'knowledge', 'proposed', 'overwrite-draft-lesson.md');
+    const parsed = matter(readFileSync(targetPath, 'utf8'));
+    expect(parsed.data.solution).toBe(updated.solution);
+  });
+
+  it('accepts_an_explicit_overwrite_true_opt_in_for_a_repeated_vetted_id', async () => {
+    const repoRoot = makeTmpDir('ke-exists-overwrite-vetted');
+    seedSchema(repoRoot);
+
+    await writeKnowledgeEntry({ repoRoot, entry: validEntry('overwrite-vetted-lesson'), draft: false });
+    const updated = validEntry('overwrite-vetted-lesson');
+    updated.solution = 'A second overwritten solution text, ten-plus chars.';
+    await writeKnowledgeEntry({
+      repoRoot, entry: updated, draft: false, overwrite: true,
+    });
+
+    const targetPath = join(repoRoot, 'knowledge', 'entries', 'overwrite-vetted-lesson.md');
+    const parsed = matter(readFileSync(targetPath, 'utf8'));
+    expect(parsed.data.solution).toBe(updated.solution);
+  });
+});
+
+describe('TASK-111 AC5 — Windows reserved device names rejected by id validation', () => {
+  it.each(['nul', 'con', 'prn', 'aux', 'com1', 'lpt1'])(
+    'rejects reserved device name "%s" as an entry id',
+    async (reserved) => {
+      const repoRoot = makeTmpDir(`ke-reserved-${reserved}`);
+      seedSchema(repoRoot);
+
+      await expect(
+        writeKnowledgeEntry({ repoRoot, entry: validEntry(reserved) }),
+      ).rejects.toThrow();
+      expect(existsSync(join(repoRoot, 'knowledge', 'proposed', `${reserved}.md`))).toBe(false);
+    },
+  );
+
+  it('accepts an id that merely CONTAINS a reserved word as a substring', async () => {
+    const repoRoot = makeTmpDir('ke-reserved-substring-ok');
+    seedSchema(repoRoot);
+
+    const entry = validEntry('consolidate-fix');
+    const result = await writeKnowledgeEntry({ repoRoot, entry });
+    expect(result.id).toBe('consolidate-fix');
+  });
+});
+
+describe('TASK-111 AC2 — promoteDraftEntry: validate + write-to-entries + unlink-proposed as one helper', () => {
+  it('promotes_a_draft_to_entries_and_removes_the_proposed_copy', async () => {
+    const repoRoot = makeTmpDir('ke-promote-happy');
+    seedSchema(repoRoot);
+
+    await writeKnowledgeEntry({ repoRoot, entry: validEntry('promote-me') });
+    const draftPath = join(repoRoot, 'knowledge', 'proposed', 'promote-me.md');
+    expect(existsSync(draftPath)).toBe(true);
+
+    const result = await promoteDraftEntry({ repoRoot, id: 'promote-me' });
+
+    const entriesPath = join(repoRoot, 'knowledge', 'entries', 'promote-me.md');
+    expect(result.path).toBe(entriesPath);
+    expect(existsSync(entriesPath), 'promoted entry must land in knowledge/entries/').toBe(true);
+    expect(existsSync(draftPath), 'the knowledge/proposed/ copy must be removed').toBe(false);
+  });
+
+  it('throws E_KB_DRAFT_NOT_FOUND for a missing draft and writes nothing', async () => {
+    const repoRoot = makeTmpDir('ke-promote-missing-draft');
+    seedSchema(repoRoot);
+
+    await expect(
+      promoteDraftEntry({ repoRoot, id: 'never-drafted' }),
+    ).rejects.toMatchObject({ code: 'E_KB_DRAFT_NOT_FOUND' });
+    expect(existsSync(join(repoRoot, 'knowledge', 'entries', 'never-drafted.md'))).toBe(false);
+  });
+
+  it('throws E_KB_EXISTS on an already-vetted-collision and does NOT delete the draft (write-then-unlink ordering)', async () => {
+    const repoRoot = makeTmpDir('ke-promote-vetted-collision');
+    seedSchema(repoRoot);
+
+    // A vetted entry with the same id already exists (e.g. promoted earlier
+    // by a different path), AND an unpromoted draft with the same id exists.
+    await writeKnowledgeEntry({ repoRoot, entry: validEntry('already-vetted'), draft: false });
+    await writeKnowledgeEntry({ repoRoot, entry: validEntry('already-vetted') });
+    const draftPath = join(repoRoot, 'knowledge', 'proposed', 'already-vetted.md');
+    expect(existsSync(draftPath)).toBe(true);
+
+    await expect(
+      promoteDraftEntry({ repoRoot, id: 'already-vetted' }),
+    ).rejects.toMatchObject({ code: 'E_KB_EXISTS' });
+
+    // Write-then-unlink ordering: the write failed, so unlink never ran — the
+    // draft is preserved (at worst a caller retries; a crash here never LOSES
+    // the draft, only ever leaves a harmless duplicate scenario).
+    expect(existsSync(draftPath), 'the draft must survive a failed promotion').toBe(true);
   });
 });
 

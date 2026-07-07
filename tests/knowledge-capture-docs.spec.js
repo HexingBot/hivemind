@@ -29,6 +29,7 @@ import { join } from 'node:path';
 
 import { REPO_ROOT } from './helpers/repoRoot.js';
 import { validateTiers } from '../src/calibration.js';
+import { canonicalIdPattern } from '../src/graph-id-migration.js';
 
 const CLAUDE_MD_PATH = join(REPO_ROOT, 'CLAUDE.md');
 const ORCHESTRATOR_SKILL_PATHS = [
@@ -38,6 +39,10 @@ const ORCHESTRATOR_SKILL_PATHS = [
 const GRAPHIFY_SKILL_PATHS = [
   join(REPO_ROOT, '.claude', 'skills', 'graphify', 'SKILL.md'),
   join(REPO_ROOT, 'skills', 'graphify', 'SKILL.md'),
+];
+const RESEARCHER_PATHS = [
+  join(REPO_ROOT, '.claude', 'agents', 'researcher.md'),
+  join(REPO_ROOT, 'agents', 'researcher.md'),
 ];
 const LOOP_MD_PATH = join(REPO_ROOT, 'commands', 'loop.md');
 const SCHEMA_MD_PATH = join(REPO_ROOT, 'knowledge', 'schema.md');
@@ -89,9 +94,43 @@ describe('TASK-105 AC2/AC5 — orchestrator-routing SKILL.md carries a "Knowledg
     expect(/draft: false/.test(text)).toBe(true);
   });
 
-  it.each(ORCHESTRATOR_SKILL_PATHS)('%s: an entry promoted into the graph mints a ke-<slug> id', (path) => {
+  // TASK-111 AC5 (LOW punch-list item): the previous version of this spec
+  // only asserted the literal substring "ke-<slug>" is present in prose — a
+  // hand-authored string checking itself, which can never go red from an
+  // actual code/doc drift (e.g. the canonical pattern changing shape, or the
+  // doc's concrete example becoming malformed). Repointed to extract the
+  // doc's own concrete example id and validate it against the REAL canonical
+  // pattern in src/graph-id-migration.js, so this now fails if either side
+  // drifts from the other.
+  it.each(ORCHESTRATOR_SKILL_PATHS)('%s: the doc\'s concrete ke-<slug> example id matches the real canonical pattern', (path) => {
     const text = load(path);
-    expect(text).toMatch(/ke-<slug>/);
+    const match = text.match(/`(ke-[a-z0-9-]+)`/);
+    expect(match, 'doc must cite a concrete `ke-<slug>` example id (e.g. `ke-windows-atomic-rename`)').not.toBeNull();
+    expect(canonicalIdPattern('knowledge_entry').test(match[1])).toBe(true);
+  });
+
+  it.each(ORCHESTRATOR_SKILL_PATHS)('%s: the promotion recipe names promoteDraftEntry (TASK-111 AC2)', (path) => {
+    const text = load(path);
+    expect(text).toMatch(/promoteDraftEntry\(\{ repoRoot, id \}\)/);
+    expect(text).toMatch(/draft: false/);
+  });
+});
+
+describe('TASK-111 AC3 — researcher.md proposed_kb_entry offline path routes through writeKnowledgeEntry into knowledge/proposed/', () => {
+  it.each(RESEARCHER_PATHS)('%s: names writeKnowledgeEntry and knowledge/proposed/ for the offline draft path', (path) => {
+    const text = load(path);
+    expect(text).toMatch(/writeKnowledgeEntry\(\{ repoRoot, entry, draft: true \}\)/);
+    expect(text).toMatch(/knowledge\/proposed\//);
+  });
+});
+
+describe('TASK-111 AC4 — loop-ctl drafts-count seam is documented at Gate 5', () => {
+  it('commands/loop.md Gate 5 section names the drafts-count subcommand', () => {
+    const text = load(LOOP_MD_PATH);
+    const idx = text.indexOf('### Gate 5');
+    expect(idx, 'Gate 5 section must exist').toBeGreaterThan(-1);
+    const section = text.slice(idx, text.indexOf('\n## ', idx) === -1 ? undefined : text.indexOf('\n## ', idx));
+    expect(section).toMatch(/loop-ctl(\.cjs)? drafts-count/);
   });
 });
 
@@ -118,6 +157,11 @@ describe('TASK-105 AC3 — the draft-vs-vetted design decision is recorded in th
     expect(text).toMatch(/knowledge\/proposed\//);
     expect(/vetted: ?false/i.test(text)).toBe(true);
     expect(/excluded from ranking|excluded.*by construction/i.test(text)).toBe(true);
+  });
+
+  it('knowledge/schema.md promotion recipe names promoteDraftEntry (TASK-111 AC2 — was two manual non-atomic steps)', () => {
+    const text = load(SCHEMA_MD_PATH);
+    expect(text).toMatch(/promoteDraftEntry\(\{ repoRoot, id \}\)/);
   });
 });
 

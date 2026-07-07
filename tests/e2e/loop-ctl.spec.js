@@ -15,6 +15,10 @@
 //         temp project (no framework src/, no --repo-root passed) flips the
 //         mode and writes a checkpoint into THAT project's state/ bundle.
 //
+// TASK-111 AC4 — new `drafts-count` subcommand (wraps listDraftEntries,
+// src/knowledge.js) so Gate 5's consolidationGate draftEntryCount input is
+// CLI-automatable instead of hand-counted.
+//
 // Disk I/O + process spawn -> slow tier: tests/e2e/.
 
 import { describe, it, expect, afterAll } from 'vitest';
@@ -335,6 +339,34 @@ describe('compact-bundle (TASK-103)', () => {
     expect(result.status).not.toBe(0);
     expect(result.json.ok).toBe(false);
     expect(result.json.message).toMatch(/No active session/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-111 AC4 — drafts-count subcommand: wraps listDraftEntries (src/knowledge.js)
+// so an autonomous run can feed a LIVE draftEntryCount into consolidationGate
+// (src/drive-loop.js) at Gate 5 instead of the human counting knowledge/proposed/
+// by hand — the review punch-list's "most forgettable input".
+// ---------------------------------------------------------------------------
+describe('drafts-count (TASK-111 AC4)', () => {
+  it('drafts_count_reports_zero_when_knowledge_proposed_does_not_exist', () => {
+    const root = makeProject();
+    const result = runCli(['drafts-count', '--repo-root', root]);
+    expect(result.status).toBe(0);
+    expect(result.json).toEqual({ ok: true, draftEntryCount: 0 });
+  });
+
+  it('drafts_count_reports_the_live_count_of_md_files_under_knowledge_proposed', () => {
+    const root = makeProject();
+    const proposedDir = join(root, 'knowledge', 'proposed');
+    mkdirSync(proposedDir, { recursive: true });
+    writeFileSync(join(proposedDir, 'draft-one.md'), '---\nid: draft-one\n---\nbody', 'utf8');
+    writeFileSync(join(proposedDir, 'draft-two.md'), '---\nid: draft-two\n---\nbody', 'utf8');
+    writeFileSync(join(proposedDir, 'not-markdown.txt'), 'ignored', 'utf8');
+
+    const result = runCli(['drafts-count', '--repo-root', root]);
+    expect(result.status).toBe(0);
+    expect(result.json).toEqual({ ok: true, draftEntryCount: 2 });
   });
 });
 
