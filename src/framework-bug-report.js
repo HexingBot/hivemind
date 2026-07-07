@@ -46,11 +46,13 @@ const SECRET_PATTERNS = [
   // "PRIVATE KEY", including the empty-string case (plain PKCS#8 "PRIVATE KEY").
   { re: /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )*PRIVATE KEY-----/g, label: 'pem_private_key' },
   // URI-userinfo credentials: scheme://user:pass@host — e.g. a connection
-  // string like bolt://neo4j:hunter2@db:7687. Only the credential portion
-  // (between "://" and "@") is replaced; the captured scheme ($1) is kept so
-  // scheme and host both stay legible for triage.
+  // string like bolt://neo4j:hunter2@db:7687. The username is `*` (not `+`)
+  // because RFC 3986 userinfo allows an empty username, e.g. the common
+  // redis://:password@host form. Only the credential portion (between
+  // "://" and "@") is replaced; the captured scheme ($1) is kept so scheme
+  // and host both stay legible for triage.
   {
-    re: /(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/gi,
+    re: /(\w+:\/\/)[^/\s:@]*:[^/\s@]+@/gi,
     label: 'uri_userinfo',
     replace: (_match, scheme) => `${scheme}${REDACT_PREFIX}:uri_userinfo]@`,
   },

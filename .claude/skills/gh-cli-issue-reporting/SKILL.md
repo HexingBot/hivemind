@@ -128,9 +128,11 @@ const SECRET_PATTERNS = [
   // AWS secret access keys (heuristic: 40 base64 chars after = or space)
   { re: /(?<=AWS_SECRET_ACCESS_KEY[=:\s]["']?)[A-Za-z0-9+/]{40}/g, label: 'aws_secret' },
   // URI-userinfo credentials: scheme://user:pass@host (e.g. a connection
-  // string like bolt://neo4j:hunter2@db:7687). Only the credential portion
-  // is replaced — the captured scheme keeps scheme+host readable.
-  { re: /(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/gi,
+  // string like bolt://neo4j:hunter2@db:7687). Username is `*` (not `+`) —
+  // RFC 3986 userinfo allows an empty username, e.g. redis://:password@host.
+  // Only the credential portion is replaced — the captured scheme keeps
+  // scheme+host readable.
+  { re: /(\w+:\/\/)[^/\s:@]*:[^/\s@]+@/gi,
     label: 'uri_userinfo',
     replace: (_m, scheme) => `${scheme}[REDACTED:uri_userinfo]@` },
   // Bearer / Authorization header values
