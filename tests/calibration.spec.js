@@ -121,6 +121,46 @@ describe('extractTier + validateTiers (ceiling)', () => {
     expect(v).toEqual([]);
   });
 
+  // (M1, review follow-up) extractTier/isExemptTierSurface used content-wide regexes on
+  // *.json mandated surfaces. Note: properly-escaped valid JSON can never contain an
+  // UNESCAPED `"status": "done"` or `"source_tier": "T1"` substring except as the real
+  // top-level field — JSON.stringify backslash-escapes any embedded quote, which already
+  // breaks a naive regex match (verified: a JSON.stringify'd description quoting the
+  // phrase does NOT match the old regex). The actual exploitable shape is malformed/
+  // corrupted content (a bad write, truncation, manual edit) that is NOT valid JSON but
+  // still contains the literal spoof substring — the old regex-only approach still
+  // "matched" it and produced a false exemption / false tier. Fixed by JSON.parse'ing and
+  // reading ONLY the top-level status/source_tier fields of the parsed object; a parse
+  // failure fails closed (not exempt, no tier) rather than falling back to text-scanning.
+  it('does NOT let a spoofed "status": "done" substring in malformed (unparseable) content falsely exempt a ticket (M1)', () => {
+    // Not valid JSON (stray leading text + no closing brace) but contains the literal,
+    // unescaped substring a content-wide regex would mistake for the real status field.
+    const spoofed = 'garbage before { "key": "TASK-503", "status": "done"';
+    expect(isExemptTierSurface('tasks/TASK-503.json', spoofed)).toBe(false);
+    const v = validateTiers('tasks/TASK-503.json', spoofed);
+    expect(v).toHaveLength(1);
+    expect(v[0].severity).toBe('BLOCKER');
+  });
+
+  it('does NOT let a spoofed "source_tier": "T1" substring in malformed (unparseable) content supply a tier (M1)', () => {
+    const spoofed = 'garbage before { "key": "TASK-504", "source_tier": "T1"';
+    expect(extractTier(spoofed)).toBeNull();
+  });
+
+  // (M2, review follow-up) A non-mandated "context" doc carrying epistemic markers but no
+  // source_tier made the tier-ceiling rules unreachable on exactly the surface reviewer.md
+  // names. Fixed: tier-missing + any marker present -> FLAG. Tier-missing + marker-free
+  // stays silent, so AC5's "no uniform FLAG wall" guarantee holds.
+  it('FLAGS a non-mandated context doc carrying an epistemic marker but no source_tier (M2)', () => {
+    const v = validateTiers('context/TECH.md', 'The API caches responses [INFERRED:weak], not yet confirmed.');
+    expect(v).toHaveLength(1);
+    expect(v[0].severity).toBe('FLAG');
+  });
+
+  it('stays silent on a marker-free non-mandated doc — no revived FLAG wall (M2)', () => {
+    expect(validateTiers('README.md', 'Just prose, no markers, no frontmatter.')).toEqual([]);
+  });
+
   it('BLOCKS [EXPLICIT] in a T3 file', () => {
     const v = validateTiers('f.md', 'source_tier: T3\n\nThe value is 5 [EXPLICIT]');
     expect(v.some((x) => x.severity === 'BLOCKER' && /T3 but uses \[EXPLICIT\]/.test(x.rule))).toBe(true);
@@ -187,6 +227,14 @@ describe('AC2 — knowledge/schema.json permits source_tier (currently additiona
     const schema = JSON.parse(readFileSync(join(REPO_ROOT, 'knowledge', 'schema.json'), 'utf8'));
     expect(schema.properties.source_tier, 'knowledge/schema.json must declare a source_tier property').toBeDefined();
     expect(schema.properties.source_tier.enum).toEqual(['T1', 'T2', 'T3', 'T4', 'TX']);
+  });
+
+  // (L1, review follow-up) Two tier vocabularies coexist (this schema's T1/T2=primary-source
+  // summary vs .knowledge/meta/SOURCE_TIERS.md's code-derived-KB table, where T4=external docs).
+  // The description must defer to one canonical scale rather than let them silently disagree.
+  it('defers to .knowledge/meta/SOURCE_TIERS.md as the canonical tier scale', () => {
+    const schema = JSON.parse(readFileSync(join(REPO_ROOT, 'knowledge', 'schema.json'), 'utf8'));
+    expect(schema.properties.source_tier.description).toMatch(/SOURCE_TIERS\.md/);
   });
 });
 
