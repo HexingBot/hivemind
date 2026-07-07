@@ -939,7 +939,7 @@ describe('TASK-101 AC3 — agent filing path requires an explicit human confirm-
 
   it('the confirm gate is scoped to the agent/GitHub path — the local-file fallback stays confirm-free', () => {
     const raw = normalize(readFileSync(CMD_PATH, 'utf8'));
-    expect(raw).toMatch(/local.fallback.{0,60}never requires confirmation|local.fallback.{0,60}confirm.free/i);
+    expect(raw).toMatch(/local-file fallback.{0,60}(never requires confirmation|confirm-free)/i);
   });
 });
 
