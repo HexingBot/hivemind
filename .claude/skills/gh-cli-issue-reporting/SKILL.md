@@ -71,7 +71,7 @@ hanging the command.
 export function ghIssueCreate({ title, body, repo }, runner = defaultRunner) {
   const result = runner('gh', [
     'issue', 'create',
-    '--repo', repo,        // e.g. 'lordiwa/agent-framework'
+    '--repo', repo,        // e.g. 'HexingBot/hivemind'
     '--title', title,
     '--body', body,        // pass body as a single arg; gh handles newlines fine
   ]);
@@ -81,7 +81,7 @@ export function ghIssueCreate({ title, body, repo }, runner = defaultRunner) {
   }
 
   // gh prints the new issue URL as the last non-empty stdout line, e.g.
-  //   https://github.com/lordiwa/agent-framework/issues/42
+  //   https://github.com/HexingBot/hivemind/issues/42
   const url = result.stdout.trim().split('\n').filter(Boolean).at(-1);
   if (!url || !url.startsWith('https://')) {
     throw new Error(`gh issue create returned unexpected output: ${result.stdout}`);
@@ -127,10 +127,17 @@ const SECRET_PATTERNS = [
   { re: /(?:AKIA|ASIA)[A-Z0-9]{16}/g,    label: 'aws_akid' },
   // AWS secret access keys (heuristic: 40 base64 chars after = or space)
   { re: /(?<=AWS_SECRET_ACCESS_KEY[=:\s]["']?)[A-Za-z0-9+/]{40}/g, label: 'aws_secret' },
+  // URI-userinfo credentials: scheme://user:pass@host (e.g. a connection
+  // string like bolt://neo4j:hunter2@db:7687). Only the credential portion
+  // is replaced — the captured scheme keeps scheme+host readable.
+  { re: /(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/gi,
+    label: 'uri_userinfo',
+    replace: (_m, scheme) => `${scheme}[REDACTED:uri_userinfo]@` },
   // Bearer / Authorization header values
   { re: /(?<=(?:Authorization|Bearer)[:\s]+)[A-Za-z0-9\-._~+/]+=*/gi, label: 'bearer_token' },
-  // Env-var assignment patterns: FOO_TOKEN=value, BAR_SECRET="value", BAZ_KEY=value
-  { re: /\b(?:\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL)\s*=\s*["']?[^\s"']{8,}["']?/gi,
+  // Env-var assignment patterns: FOO_TOKEN=value, BAR_SECRET="value", BAZ_KEY=value,
+  // FOO_AUTH=value, and bare PASSWORD=value (e.g. NEO4J_AUTH=neo4j/hunter2)
+  { re: /\b(?:\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL|\w*_AUTH|PASSWORD)\s*=\s*["']?[^\s"']{8,}["']?/gi,
     label: 'env_secret' },
 ];
 
@@ -143,8 +150,10 @@ const SECRET_PATTERNS = [
  */
 export function scrubSecrets(text) {
   let out = text;
-  for (const { re, label } of SECRET_PATTERNS) {
-    out = out.replace(re, `[REDACTED:${label}]`);
+  for (const { re, label, replace } of SECRET_PATTERNS) {
+    // A pattern may supply its own `replace` function to keep a captured
+    // group (e.g. the URI scheme) legible instead of replacing the whole match.
+    out = out.replace(re, replace ?? `[REDACTED:${label}]`);
   }
   return out;
 }
@@ -158,9 +167,9 @@ export function scrubSecrets(text) {
   (plugin version, OS, project name, active session/task key). Do not add a settings
   reader; absence is the defense.
 - Custom prefixes the user's project uses (e.g. `myapp_secret_XYZ`): the `env_secret`
-  regex only covers `_TOKEN`, `_SECRET`, `_KEY`, `_PASSWORD`, `_CREDENTIAL` suffixes.
-  Document this limitation in the command's output so users know to review before
-  submitting.
+  regex only covers `_TOKEN`, `_SECRET`, `_KEY`, `_PASSWORD`, `_CREDENTIAL`, `_AUTH`
+  suffixes and bare `PASSWORD=`. Document this limitation in the command's output
+  so users know to review before submitting.
 - Multiline values split across lines: most patterns are single-line. For env
   assignments that wrap, only the first line is redacted.
 
@@ -264,22 +273,35 @@ export function buildIssueBody({ title, repro, expected, actual,
  * @param {string} opts.body          pre-built, pre-scrubbed issue body
  * @param {string} opts.pluginRoot    CLAUDE_PLUGIN_ROOT
  * @param {string} opts.projectDir    CLAUDE_PROJECT_DIR
- * @param {string} [opts.repo]        default 'lordiwa/agent-framework'
+ * @param {string} [opts.repo]        default DEFAULT_REPO ('HexingBot/hivemind')
  * @param {function} [opts.runner]    spawnSync-compatible injectable
  * @param {function} [opts.fallbackWriter]  (path, content) => void, default fs.writeFileSync
- * @returns {{ filed: 'github'|'local', url?: string, path?: string }}
+ * @returns {{ filed: 'github'|'local', url?: string, path?: string, reason?: string }}
  */
 export async function fileFrameworkBug({
   title, body, pluginRoot, projectDir,
-  repo = 'lordiwa/agent-framework',
+  repo = DEFAULT_REPO,
   runner,
   fallbackWriter,
 }) {
+  // `reason` names the ACTUAL cause of a fallback — gh can be present and
+  // authenticated and still fail `gh issue create` (wrong repo, disabled
+  // issues, etc.), so "not available" / "not authenticated" must not be used
+  // as a blanket explanation for every fallback.
+  let reason;
   const { available, authenticated } = detectGh(runner);
 
-  if (available && authenticated) {
-    const { url } = ghIssueCreate({ title, body, repo }, runner);
-    return { filed: 'github', url };
+  if (!available) {
+    reason = 'gh CLI not found';
+  } else if (!authenticated) {
+    reason = 'gh not authenticated';
+  } else {
+    try {
+      const { url } = ghIssueCreate({ title, body, repo }, runner);
+      return { filed: 'github', url };
+    } catch (err) {
+      reason = err.message;
+    }
   }
 
   // Fallback: write to a local file in the project's .claude/ directory
@@ -294,7 +316,6 @@ export async function fileFrameworkBug({
   });
   writer(filePath, content);
 
-  const reason = !available ? 'gh CLI not found' : 'gh not authenticated';
   return { filed: 'local', path: filePath, reason };
 }
 ```

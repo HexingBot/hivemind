@@ -45,14 +45,24 @@ const SECRET_PATTERNS = [
   // (?:[A-Z]+ )* matches the optional type word(s) (e.g. "RSA ", "ENCRYPTED ") before
   // "PRIVATE KEY", including the empty-string case (plain PKCS#8 "PRIVATE KEY").
   { re: /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )*PRIVATE KEY-----/g, label: 'pem_private_key' },
+  // URI-userinfo credentials: scheme://user:pass@host — e.g. a connection
+  // string like bolt://neo4j:hunter2@db:7687. Only the credential portion
+  // (between "://" and "@") is replaced; the captured scheme ($1) is kept so
+  // scheme and host both stay legible for triage.
+  {
+    re: /(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/gi,
+    label: 'uri_userinfo',
+    replace: (_match, scheme) => `${scheme}${REDACT_PREFIX}:uri_userinfo]@`,
+  },
   // Bearer / Authorization header values — redact the token value that follows.
   // Matches: "Authorization: Bearer <token>", "Authorization: <token>",
   // or standalone "Bearer <token>" lines.
   { re: /(?:Authorization:[^\S\r\n]*(?:Bearer[^\S\r\n]*)?|Bearer[^\S\r\n]+)[A-Za-z0-9\-._~+/]+=*/gi, label: 'bearer_token' },
-  // Env-var assignment patterns: FOO_TOKEN=value, BAR_SECRET="value", etc.
+  // Env-var assignment patterns: FOO_TOKEN=value, BAR_SECRET="value",
+  // FOO_AUTH=value, bare PASSWORD=value, etc.
   // The whole match is replaced unconditionally; no capture group is needed.
   {
-    re: /\b(?:\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL)\s*=\s*["']?[^\s"']{1,}["']?/gi,
+    re: /\b(?:\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL|\w*_AUTH|PASSWORD)\s*=\s*["']?[^\s"']{1,}["']?/gi,
     label: 'env_secret',
   },
 ];
@@ -66,10 +76,12 @@ const SECRET_PATTERNS = [
  */
 export function scrubSecrets(text) {
   let out = text;
-  for (const { re, label } of SECRET_PATTERNS) {
-    // Each pattern uses non-capturing groups only; the whole match is replaced
-    // unconditionally so no prefix leaks into the output.
-    out = out.replace(re, `${REDACT_PREFIX}:${label}]`);
+  for (const { re, label, replace } of SECRET_PATTERNS) {
+    // Most patterns use non-capturing groups only, so the whole match is
+    // replaced unconditionally and no prefix leaks into the output. A pattern
+    // may supply its own `replace` function (e.g. to keep a captured scheme
+    // legible) — see the uri_userinfo entry above.
+    out = out.replace(re, replace ?? `${REDACT_PREFIX}:${label}]`);
   }
   return out;
 }
@@ -272,7 +284,7 @@ export function ghIssueCreate({ title, body, repo }, runner = defaultRunner) {
 // fileFrameworkBug
 // ---------------------------------------------------------------------------
 
-const DEFAULT_REPO = 'lordiwa/agent-framework';
+export const DEFAULT_REPO = 'HexingBot/hivemind';
 
 /**
  * Top-level orchestrator: detect gh, file issue (or fall back to local file).
@@ -282,10 +294,10 @@ const DEFAULT_REPO = 'lordiwa/agent-framework';
  * @param {string} opts.body          pre-built, pre-scrubbed issue body
  * @param {string} opts.pluginRoot    CLAUDE_PLUGIN_ROOT
  * @param {string} opts.projectDir    CLAUDE_PROJECT_DIR
- * @param {string} [opts.repo]        default 'lordiwa/agent-framework'
+ * @param {string} [opts.repo]        default DEFAULT_REPO ('HexingBot/hivemind')
  * @param {function} [opts.runner]    spawnSync-compatible injectable
  * @param {function} [opts.fallbackWriter]  (path, content) => void
- * @returns {Promise<{ filed: 'github'|'local', url?: string, path?: string }>}
+ * @returns {Promise<{ filed: 'github'|'local', url?: string, path?: string, reason?: string }>}
  */
 export async function fileFrameworkBug({
   title,
@@ -296,15 +308,29 @@ export async function fileFrameworkBug({
   runner = defaultRunner,
   fallbackWriter,
 }) {
+  // Names the actual cause of a fallback instead of a blanket
+  // "unavailable/unauthenticated" guess — gh can be present and authenticated
+  // and still fail `gh issue create` (wrong repo, disabled issues, etc.).
+  let reason;
+
   try {
     const { available, authenticated } = detectGh(runner);
 
-    if (available && authenticated) {
-      const { url } = ghIssueCreate({ title, body, repo }, runner);
-      return { filed: 'github', url };
+    if (!available) {
+      reason = 'gh CLI not found';
+    } else if (!authenticated) {
+      reason = 'gh not authenticated';
+    } else {
+      try {
+        const { url } = ghIssueCreate({ title, body, repo }, runner);
+        return { filed: 'github', url };
+      } catch (err) {
+        reason = err.message;
+      }
     }
-  } catch {
-    // gh path failed unexpectedly — fall through to local
+  } catch (err) {
+    // gh detection itself failed unexpectedly — fall through to local
+    reason = err?.message ?? 'gh detection failed unexpectedly';
   }
 
   // Fallback: write to a local file under <projectDir>/.claude/framework-bug-reports/
@@ -322,5 +348,5 @@ export async function fileFrameworkBug({
 
   writer(filePath, content);
 
-  return { filed: 'local', path: filePath };
+  return { filed: 'local', path: filePath, reason };
 }

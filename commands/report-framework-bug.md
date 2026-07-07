@@ -6,22 +6,41 @@ panel_safe: true
 # /hivemind:report-framework-bug
 
 File a bug report **against the hivemind plugin** (not a project ticket).
-The report lands on GitHub at `lordiwa/agent-framework/issues` when the gh CLI is
+The report lands on GitHub at `HexingBot/hivemind/issues` when the gh CLI is
 available and authenticated, or in a local Markdown file under
 `<projectDir>/.claude/framework-bug-reports/` as a durable fallback.
 
 All content is automatically secret-scrubbed (GitHub tokens, Anthropic/OpenAI API
-keys, AWS access key IDs, Bearer headers, and `*_TOKEN`/`*_SECRET`/`*_KEY`/
-`*_PASSWORD` env-var assignments) before any upload. **Review the scrubbed output
-before confirming submission** — the scrubber catches common patterns but cannot
-guarantee coverage of every custom secret format.
+keys, AWS access key IDs, Bearer headers, URI-userinfo credentials such as
+`scheme://user:pass@host`, and `*_TOKEN`/`*_SECRET`/`*_KEY`/`*_PASSWORD`/`*_AUTH`/
+bare `PASSWORD=` env-var assignments) before any upload. **Review the scrubbed
+output before confirming submission** — the scrubber catches common patterns but
+cannot guarantee coverage of every custom secret format.
 
 This command is designed for **two kinds of caller**:
 
 - **A human** typing `/hivemind:report-framework-bug` — gather the details
   conversationally (Step 1), one question at a time.
 - **An agent** invoking this command with the bug details already in hand — skip
-  the dialogue, map the details onto the fields in Step 2, and file immediately.
+  the dialogue, map the details onto the fields in Step 2. **Do not file
+  automatically** — see the confirm gate immediately below.
+
+---
+
+## Agent confirm gate (required before any GitHub egress)
+
+An agent caller MUST present the assembled, scrubbed issue body to the human and
+collect an explicit confirmation (e.g. "yes, file this") before proceeding. Do not
+call `gh issue create` (i.e. do not run Step 2) without that confirmation — the
+scrubber catches common patterns but is not a substitute for human review of
+content that is about to leave the machine.
+
+If no human is available to confirm (e.g. running unattended in loop-mode), treat
+the gate as blocking: do not file on GitHub, and write the report to the local
+fallback only.
+
+This gate applies to the GitHub-filing path only — the local-file fallback never
+requires confirmation, since it never leaves the machine.
 
 ---
 
@@ -65,9 +84,10 @@ The CLI:
 2. Assembles the full issue body from the supplied fields.
 3. Runs `scrubSecrets` on the assembled body.
 4. Detects gh availability and authentication status.
-5. Files the issue on GitHub (`lordiwa/agent-framework`) if gh is available and
+5. Files the issue on GitHub (`HexingBot/hivemind`) if gh is available and
    authenticated; otherwise writes the scrubbed body to a local fallback file.
-6. Prints the issue URL (GitHub path) or the local file path (fallback path).
+6. Prints the issue URL (GitHub path), or the local file path together with the
+   **actual reason** filing didn't happen (fallback path — see Step 3).
 
 ---
 
@@ -75,16 +95,21 @@ The CLI:
 
 **GitHub path** — report the new issue URL to the caller:
 
-> Filed framework bug: https://github.com/lordiwa/agent-framework/issues/NNN
+> Filed framework bug: https://github.com/HexingBot/hivemind/issues/NNN
 
-**Local fallback path** — report the file path and explain why gh was unavailable:
+**Local fallback path** — the CLI's own console output names the specific reason
+filing didn't happen (e.g. `gh CLI not found`, `gh not authenticated`, or the exact
+`gh issue create` error such as a repo-not-found failure). Relay that **specific**
+reason to the caller — do not paraphrase it into a generic "gh unavailable or
+unauthenticated" explanation, since gh can be present and authenticated and still
+fail to file (wrong repo, disabled issues, etc.):
 
-> gh CLI is not available or not authenticated. The scrubbed bug report has been
-> saved to:
+> Could not file on GitHub (`<reason from the CLI output>`). The scrubbed bug
+> report has been saved to:
 > `<projectDir>/.claude/framework-bug-reports/bug-report-<timestamp>.md`
 >
 > To file it on GitHub manually, run:
->   gh issue create --repo lordiwa/agent-framework --title "<title>" --body-file <path>
+>   gh issue create --repo HexingBot/hivemind --title "<title>" --body-file <path>
 > Or authenticate with `gh auth login` and re-run this command.
 
 In either case, remind the caller that the body was secret-scrubbed and they should

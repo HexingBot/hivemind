@@ -37,21 +37,31 @@ var SECRET_PATTERNS = [
   // (?:[A-Z]+ )* matches the optional type word(s) (e.g. "RSA ", "ENCRYPTED ") before
   // "PRIVATE KEY", including the empty-string case (plain PKCS#8 "PRIVATE KEY").
   { re: /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )*PRIVATE KEY-----/g, label: "pem_private_key" },
+  // URI-userinfo credentials: scheme://user:pass@host — e.g. a connection
+  // string like bolt://neo4j:hunter2@db:7687. Only the credential portion
+  // (between "://" and "@") is replaced; the captured scheme ($1) is kept so
+  // scheme and host both stay legible for triage.
+  {
+    re: /(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/gi,
+    label: "uri_userinfo",
+    replace: (_match, scheme) => `${scheme}${REDACT_PREFIX}:uri_userinfo]@`
+  },
   // Bearer / Authorization header values — redact the token value that follows.
   // Matches: "Authorization: Bearer <token>", "Authorization: <token>",
   // or standalone "Bearer <token>" lines.
   { re: /(?:Authorization:[^\S\r\n]*(?:Bearer[^\S\r\n]*)?|Bearer[^\S\r\n]+)[A-Za-z0-9\-._~+/]+=*/gi, label: "bearer_token" },
-  // Env-var assignment patterns: FOO_TOKEN=value, BAR_SECRET="value", etc.
+  // Env-var assignment patterns: FOO_TOKEN=value, BAR_SECRET="value",
+  // FOO_AUTH=value, bare PASSWORD=value, etc.
   // The whole match is replaced unconditionally; no capture group is needed.
   {
-    re: /\b(?:\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL)\s*=\s*["']?[^\s"']{1,}["']?/gi,
+    re: /\b(?:\w+_TOKEN|\w+_SECRET|\w+_KEY|\w+_PASSWORD|\w+_CREDENTIAL|\w*_AUTH|PASSWORD)\s*=\s*["']?[^\s"']{1,}["']?/gi,
     label: "env_secret"
   }
 ];
 function scrubSecrets(text) {
   let out = text;
-  for (const { re, label } of SECRET_PATTERNS) {
-    out = out.replace(re, `${REDACT_PREFIX}:${label}]`);
+  for (const { re, label, replace } of SECRET_PATTERNS) {
+    out = out.replace(re, replace ?? `${REDACT_PREFIX}:${label}]`);
   }
   return out;
 }
@@ -178,7 +188,7 @@ function ghIssueCreate({ title, body, repo }, runner = defaultRunner) {
   }
   return { url };
 }
-var DEFAULT_REPO = "lordiwa/agent-framework";
+var DEFAULT_REPO = "HexingBot/hivemind";
 async function fileFrameworkBug({
   title,
   body,
@@ -188,13 +198,23 @@ async function fileFrameworkBug({
   runner = defaultRunner,
   fallbackWriter
 }) {
+  let reason;
   try {
     const { available, authenticated } = detectGh(runner);
-    if (available && authenticated) {
-      const { url } = ghIssueCreate({ title, body, repo }, runner);
-      return { filed: "github", url };
+    if (!available) {
+      reason = "gh CLI not found";
+    } else if (!authenticated) {
+      reason = "gh not authenticated";
+    } else {
+      try {
+        const { url } = ghIssueCreate({ title, body, repo }, runner);
+        return { filed: "github", url };
+      } catch (err) {
+        reason = err.message;
+      }
     }
-  } catch {
+  } catch (err) {
+    reason = err?.message ?? "gh detection failed unexpectedly";
   }
   const ts = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   const fallbackDir = (0, import_node_path.join)(projectDir, ".claude", "framework-bug-reports");
@@ -208,7 +228,7 @@ ${body}
     (0, import_node_fs.writeFileSync)(p, c, "utf8");
   });
   writer(filePath, content);
-  return { filed: "local", path: filePath };
+  return { filed: "local", path: filePath, reason };
 }
 
 // bin/report-framework-bug.js
@@ -278,7 +298,7 @@ async function main() {
   if (result.filed === "github") {
     console.log(`Filed framework bug on GitHub: ${result.url}`);
   } else {
-    console.log(`gh unavailable/unauthenticated. Bug report saved locally: ${result.path}`);
+    console.log(`Could not file on GitHub (${result.reason}). Bug report saved locally: ${result.path}`);
   }
 }
 var __isEntry = import_meta.url ? Boolean(process.argv[1]) && import_meta.url === (0, import_node_url.pathToFileURL)(process.argv[1]).href : typeof require !== "undefined" && typeof module !== "undefined" && require.main === module;

@@ -105,7 +105,7 @@ async function main() {
     console.log(`Filed framework bug on GitHub: ${result.url}`);
   } else {
     // eslint-disable-next-line no-console
-    console.log(`gh unavailable/unauthenticated. Bug report saved locally: ${result.path}`);
+    console.log(`Could not file on GitHub (${result.reason}). Bug report saved locally: ${result.path}`);
   }
 }
 

@@ -49,7 +49,7 @@ saved chat memory, and an orchestrator you talk to in plain English.
 The quickest way in — you never clone anything. You only need **Claude Code**
 and Node.js 20+ (see *Prerequisites*). Replace `<this-repo-url>` with this
 repository's web address (e.g.
-`https://github.com/lordiwa/agent-framework.git`) or its folder on your machine.
+`https://github.com/HexingBot/hivemind.git`) or its folder on your machine.
 
 ```bash
 # 1. Register the marketplace (once per machine)
