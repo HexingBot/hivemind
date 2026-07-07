@@ -22557,7 +22557,23 @@ var LoopCloseGuardError = class extends Error {
     this.code = "LOOP_CLOSE_GUARD_DENIED";
   }
 };
-async function loopModeCloseGuard({ repoRoot }) {
+var UatDelegationGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UatDelegationGuardError";
+    this.code = "LOOP_UAT_DELEGATION_REQUIRED";
+  }
+};
+var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
+function hasExplicitHumanVerdictMarker(task) {
+  const comments = Array.isArray(task && task.comments) ? task.comments : [];
+  const uatComments = comments.filter((c) => c && c.author === "uat");
+  if (uatComments.length === 0) return false;
+  const last = uatComments[uatComments.length - 1];
+  const body = String(last && last.body || "");
+  return /\bPASS\b/i.test(body) && !DELEGATED_MARKER_RE.test(body);
+}
+async function loopModeCloseGuard({ repoRoot, task }) {
   const mode = await getMode({ repoRoot });
   if (mode !== "loop") return;
   let loopAuth = {};
@@ -22574,6 +22590,13 @@ async function loopModeCloseGuard({ repoRoot }) {
     throw new LoopCloseGuardError(
       "loop mode is active but auto_close_on_green_review has not been granted \u2014 cannot close this task automatically"
     );
+  }
+  if (task && task.verification_tier === "uat-only") {
+    if (loopAuth.uat_delegated_to_orchestrator !== true && !hasExplicitHumanVerdictMarker(task)) {
+      throw new UatDelegationGuardError(
+        `task ${task && task.key || ""} is verification_tier "uat-only" and loop mode is active \u2014 closing it requires loop_auth.uat_delegated_to_orchestrator or an explicit human verdict recorded on the uat comment`
+      );
+    }
   }
 }
 

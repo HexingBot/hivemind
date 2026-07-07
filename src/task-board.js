@@ -20,6 +20,15 @@
 // mapping:
 //   "invalid status"  → 400
 //   "unknown task key"→ 404
+//   uat-only done-guard / loop-mode close guard / loop-mode uat-delegation
+//     guard (UAT_GUARD_REQUIRED / LOOP_CLOSE_GUARD_DENIED /
+//     LOOP_UAT_DELEGATION_REQUIRED, TASK-082 / TASK-099) → 403
+//
+// TASK-099 (AC3) — the status-transition route composes loopModeCloseGuard
+// unconditionally (mirroring src/mcp-server.js), so a board POST to `done` in
+// an unauthorized loop-mode session is rejected the same way the MCP
+// transition_status/close_task tools already reject it, instead of silently
+// closing the ticket.
 //
 // PATH-TRAVERSAL GUARD: the key segment is validated against TASK_FILENAME_RE
 // before any store operation (same guard pattern as the MCP get_task handler).
@@ -48,6 +57,7 @@ import { join } from 'node:path';
 
 import { transitionStatus, createTask, TASK_FILENAME_RE } from './task-store.js';
 import { loadGraph } from './knowledge-graph.js';
+import { loopModeCloseGuard } from './close-guard.js';
 
 // ---------------------------------------------------------------------------
 // Internal: read all task files from tasks/ without any caching.
@@ -1367,14 +1377,31 @@ export function createBoardServer({ repoRoot } = {}) {
         }
 
         try {
-          await transitionStatus({ repoRoot, key: rawKey, status });
+          // TASK-099 (AC3) — loopModeCloseGuard is composed unconditionally,
+          // mirroring src/mcp-server.js's transition_status/close_task tools:
+          // it decides for itself whether loop mode is even active (getMode
+          // defaults to 'harness', a no-op), so this is safe in harness mode
+          // / with no active session and only bites when status === 'done'
+          // AND loop mode is active AND unauthorized.
+          await transitionStatus({
+            repoRoot, key: rawKey, status, closeGuard: loopModeCloseGuard,
+          });
           sendJson(res, 200, { ok: true, key: rawKey, status });
         } catch (err) {
+          const code = err && err.code;
           const msg = (err && err.message) || 'transition failed';
           // Map store errors to HTTP status codes:
           //   "invalid status ..."  → 400
           //   "unknown task key: ..." → 404
-          if (/invalid status/.test(msg)) {
+          //   UAT_GUARD_REQUIRED / LOOP_CLOSE_GUARD_DENIED /
+          //     LOOP_UAT_DELEGATION_REQUIRED (TASK-082 / TASK-099 guards) → 403
+          if (
+            code === 'UAT_GUARD_REQUIRED'
+            || code === 'LOOP_CLOSE_GUARD_DENIED'
+            || code === 'LOOP_UAT_DELEGATION_REQUIRED'
+          ) {
+            sendJson(res, 403, { error: msg });
+          } else if (/invalid status/.test(msg)) {
             sendJson(res, 400, { error: msg });
           } else if (/unknown task key/.test(msg)) {
             sendJson(res, 404, { error: msg });

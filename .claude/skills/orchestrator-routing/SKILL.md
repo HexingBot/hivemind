@@ -85,16 +85,25 @@ command (the project intake wizard) before any other workflow step. If
 
 **Currently:** local JSON files in `tasks/` (one per task, conforming to
 `tasks/schema.json`). To read tasks, use `Read` and `Glob` against `tasks/*.json`.
-To update, use `Edit` against the specific task file, refresh `updated_at` to the
-current UTC ISO-8601 timestamp, then regenerate `tasks/index.json` from the
-per-task files.
+To update, route the write through the MCP task-store tools
+(`close_task`/`transition_status`/`append_comment` — see "Ticket-update
+protocol" below). A direct `Edit` of the task file is a documented, degraded
+fallback only, used when the MCP server is unavailable — it bypasses both
+deterministic close guards (TASK-082).
 
 **Eventually:** Jira via the Atlassian MCP server. The field names match so the
 same workflow applies; only the I/O surface changes.
 
 ## Tools the Orchestrator uses
 
-- **Local task store** (`Read`/`Edit`/`Glob` on `tasks/`) — current ticket source.
+- **MCP task-store tools** (`mcp__plugin_hivemind_hivemind-tasks__*` —
+  `close_task`/`transition_status`/`append_comment`/`create_task`/`get_task`/
+  `list_todos`/`list_ready`) — THE write path for every ticket mutation (see
+  "Ticket-update protocol" below); `Read`/`Glob` on `tasks/` remains the read
+  path.
+- **Local task store fallback** (`Edit` on `tasks/`) — documented, degraded
+  fallback only, used when the MCP server is unavailable; bypasses both
+  deterministic close guards (TASK-082).
 - **Atlassian MCP server** (`mcp__atlassian__*`) — only after migration; same
   field semantics.
 - **GitHub MCP server** (`mcp__github__*`) — read repo state, open/close PRs,
@@ -135,12 +144,17 @@ same workflow applies; only the I/O surface changes.
    and the computed `review_depth` (see "Review depth rubric" below) together with
    the rubric inputs (changed-line count, touched surfaces) that produced it. Block
    on any HIGH-severity finding — loop back to the Developer with the findings.
-6. **Update ticket.** On a clean review, edit `tasks/<KEY>.json` to set
-   `status: done`, append a summary comment naming the review depth and its rubric
-   inputs, append commit SHAs to `linked_commits` and any PR URL to `linked_prs`,
-   refresh `updated_at`, then regenerate `tasks/index.json`. Status transitions
-   during the workflow (`todo → in_progress → in_review → done`, or `→ blocked`)
-   follow the same write pattern.
+6. **Update ticket.** On a clean review, call the `close_task` MCP tool once —
+   it atomically transitions the ticket to `status: done`, appends a summary
+   comment naming the review depth and its rubric inputs, records commit SHAs in
+   `linked_commits` and any PR URL in `linked_prs`, refreshes `updated_at`, and
+   regenerates `tasks/index.json` (see "Ticket-update protocol" below). Status
+   transitions during the workflow (`todo → in_progress → in_review → done`, or
+   `→ blocked`) go through `transition_status`/`append_comment` instead. A
+   direct `Edit` of `tasks/<KEY>.json` is a documented, degraded fallback
+   only — used when the MCP server is unavailable — since it bypasses both
+   deterministic close guards (the uat-only done-guard and the loop-mode close
+   guard, TASK-082).
 7. **Close out the session.** See "Session close-out" above.
 
 ## Delegation protocol
@@ -644,19 +658,29 @@ of the bundle's `workflow_step` enum.
 
 **Route every ticket write through the MCP task-store tools** (`mcp__plugin_hivemind_hivemind-tasks__*`,
 backed by `src/task-store.js` / `src/mcp-server.js`), not direct `Edit` on
-`tasks/<KEY>.json`. The MCP tools are the only path that runs the two
-deterministic mutation-seam guards (TASK-082) — a hand edit bypasses both:
+`tasks/<KEY>.json`. The MCP tools and the kanban board's guarded status
+endpoint (`POST /api/tasks/:key/status`, `src/task-board.js`, TASK-099) both
+compose the three deterministic mutation-seam guards below; a direct hand
+`Edit` of the task file is the only write path that bypasses them:
 
 - **The uat-only done-guard** — a ticket with `verification_tier: "uat-only"`
   cannot transition to `done` without a `comments` entry authored `uat`
   (the recorded UAT verdict). Enforced inside `transitionStatus`/`closeTask`
   before any disk write; surfaces as a typed `UatGuardError`
   (`code: 'UAT_GUARD_REQUIRED'`).
-- **The loop-mode auto-close guard** — while the session's operating mode is
-  `loop`, closing a ticket to `done` requires
+- **The loop-mode auto-close guard (Gate 1)** — while the session's operating
+  mode is `loop`, closing a ticket to `done` requires
   `loop_auth.auto_close_on_green_review === true`; otherwise it's blocked
   with a typed `LoopCloseGuardError` (`code: 'LOOP_CLOSE_GUARD_DENIED'`).
   In `harness` mode (the default) this guard is a no-op.
+- **The loop-mode uat-delegation guard (Gate 2, TASK-099)** — while the
+  session's operating mode is `loop`, closing a `verification_tier:
+  "uat-only"` ticket additionally requires
+  `loop_auth.uat_delegated_to_orchestrator === true`, or the ticket's `uat`
+  comment to carry an explicit human-verdict marker (a bare "PASS" not
+  qualified by "verified by Orchestrator at the human's request" anywhere in
+  the comment); otherwise it's blocked with a typed `UatDelegationGuardError`
+  (`code: 'LOOP_UAT_DELEGATION_REQUIRED'`).
 
 **On a clean review (closing a ticket)**, call the `close_task` tool once —
 it performs the transition, the closing comment, the `linked_commits`/
@@ -679,14 +703,15 @@ mcp__plugin_hivemind_hivemind-tasks__close_task({
 guards as `close_task` whenever its target status is `done` (e.g. a direct
 `transition_status` call to `done` outside `close_task`), and is a no-op for
 any other status. `append_comment` has no `status` argument and never runs
-either guard — it is purely additive and cannot close a ticket by itself.
+any guard — it is purely additive and cannot close a ticket by itself.
 
 **Fallback (documented, not preferred):** if the MCP server is unavailable,
 a direct `Edit` of `tasks/<KEY>.json` following the old six-step pattern
 (set `status`, append the comment, append `linked_commits`/`linked_prs`,
 refresh `updated_at`, regenerate `tasks/index.json`) is acceptable — but it
-bypasses both guards above, so the orchestrator must manually verify the
-uat-only and loop-mode preconditions before hand-editing a ticket to `done`.
+bypasses all three guards above, so the orchestrator must manually verify the
+uat-only, loop-mode Gate 1, and loop-mode Gate 2 preconditions before
+hand-editing a ticket to `done`.
 
 ## Recording decision→task edges at ticket close (TASK-035)
 

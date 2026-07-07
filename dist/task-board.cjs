@@ -7731,7 +7731,7 @@ function resolveRepoRoot(env, cwd) {
 // src/task-board.js
 var import_node_http = __toESM(require("node:http"), 1);
 var import_promises3 = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+var import_node_path6 = require("node:path");
 
 // src/task-store.js
 var import_promises = require("node:fs/promises");
@@ -8160,9 +8160,99 @@ async function loadGraph({ repoRoot }) {
   return JSON.parse(raw);
 }
 
+// src/pointer.js
+var import_node_fs4 = require("node:fs");
+var import_node_path4 = require("node:path");
+function pointerFilePath(repoRoot) {
+  return (0, import_node_path4.join)(repoRoot, "state", "session.json");
+}
+function readPointer(repoRoot) {
+  const p = pointerFilePath(repoRoot);
+  if (!(0, import_node_fs4.existsSync)(p)) return null;
+  return JSON.parse((0, import_node_fs4.readFileSync)(p, "utf8"));
+}
+
+// src/bundle.js
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
+function bundleDirFor(repoRoot, sessionId) {
+  return (0, import_node_path5.join)(repoRoot, "state", "sessions", sessionId);
+}
+function bundleSessionPath(repoRoot, sessionId) {
+  return (0, import_node_path5.join)(bundleDirFor(repoRoot, sessionId), "session.json");
+}
+function readBundleSession(repoRoot, sessionId) {
+  const p = bundleSessionPath(repoRoot, sessionId);
+  return JSON.parse((0, import_node_fs5.readFileSync)(p, "utf8"));
+}
+
+// src/operating-mode.js
+var OPERATING_MODES = ["harness", "loop"];
+async function getMode({ repoRoot }) {
+  try {
+    const pointer = readPointer(repoRoot);
+    if (!pointer || pointer.active_session_id == null) return "harness";
+    const bundle = readBundleSession(repoRoot, pointer.active_session_id);
+    return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
+  } catch (_err) {
+    return "harness";
+  }
+}
+
+// src/close-guard.js
+var LoopCloseGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "LoopCloseGuardError";
+    this.code = "LOOP_CLOSE_GUARD_DENIED";
+  }
+};
+var UatDelegationGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UatDelegationGuardError";
+    this.code = "LOOP_UAT_DELEGATION_REQUIRED";
+  }
+};
+var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
+function hasExplicitHumanVerdictMarker(task) {
+  const comments = Array.isArray(task && task.comments) ? task.comments : [];
+  const uatComments = comments.filter((c) => c && c.author === "uat");
+  if (uatComments.length === 0) return false;
+  const last = uatComments[uatComments.length - 1];
+  const body = String(last && last.body || "");
+  return /\bPASS\b/i.test(body) && !DELEGATED_MARKER_RE.test(body);
+}
+async function loopModeCloseGuard({ repoRoot, task }) {
+  const mode = await getMode({ repoRoot });
+  if (mode !== "loop") return;
+  let loopAuth = {};
+  try {
+    const pointer = readPointer(repoRoot);
+    if (pointer && pointer.active_session_id != null) {
+      const bundle = readBundleSession(repoRoot, pointer.active_session_id);
+      loopAuth = bundle && bundle.loop_auth || {};
+    }
+  } catch (_err) {
+    loopAuth = {};
+  }
+  if (loopAuth.auto_close_on_green_review !== true) {
+    throw new LoopCloseGuardError(
+      "loop mode is active but auto_close_on_green_review has not been granted \u2014 cannot close this task automatically"
+    );
+  }
+  if (task && task.verification_tier === "uat-only") {
+    if (loopAuth.uat_delegated_to_orchestrator !== true && !hasExplicitHumanVerdictMarker(task)) {
+      throw new UatDelegationGuardError(
+        `task ${task && task.key || ""} is verification_tier "uat-only" and loop mode is active \u2014 closing it requires loop_auth.uat_delegated_to_orchestrator or an explicit human verdict recorded on the uat comment`
+      );
+    }
+  }
+}
+
 // src/task-board.js
 async function readAllTasksForBoard(repoRoot) {
-  const tasksDir2 = (0, import_node_path4.join)(repoRoot, "tasks");
+  const tasksDir2 = (0, import_node_path6.join)(repoRoot, "tasks");
   let entries;
   try {
     entries = await (0, import_promises3.readdir)(tasksDir2);
@@ -8173,7 +8263,7 @@ async function readAllTasksForBoard(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises3.readFile)((0, import_node_path4.join)(tasksDir2, name), "utf8");
+    const raw = await (0, import_promises3.readFile)((0, import_node_path6.join)(tasksDir2, name), "utf8");
     out.push(JSON.parse(raw));
   }
   return out;
@@ -9354,11 +9444,19 @@ function createBoardServer({ repoRoot } = {}) {
           return;
         }
         try {
-          await transitionStatus({ repoRoot, key: rawKey, status });
+          await transitionStatus({
+            repoRoot,
+            key: rawKey,
+            status,
+            closeGuard: loopModeCloseGuard
+          });
           sendJson(res, 200, { ok: true, key: rawKey, status });
         } catch (err) {
+          const code = err && err.code;
           const msg = err && err.message || "transition failed";
-          if (/invalid status/.test(msg)) {
+          if (code === "UAT_GUARD_REQUIRED" || code === "LOOP_CLOSE_GUARD_DENIED" || code === "LOOP_UAT_DELEGATION_REQUIRED") {
+            sendJson(res, 403, { error: msg });
+          } else if (/invalid status/.test(msg)) {
             sendJson(res, 400, { error: msg });
           } else if (/unknown task key/.test(msg)) {
             sendJson(res, 404, { error: msg });
