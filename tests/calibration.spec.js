@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   validateMarkers,
   validateMarkerForwarding,
   validateTiers,
   extractTier,
+  isMandatedTierSurface,
+  isExemptTierSurface,
   partition,
   renderViolations,
 } from '../src/calibration.js';
+import { REPO_ROOT } from './helpers/repoRoot.js';
 
 describe('validateMarkers', () => {
   it('flags uncalibrated [INFERRED]', () => {
@@ -28,6 +33,31 @@ describe('validateMarkers', () => {
 
   it('does not flag a "confirmed" claim that carries a marker', () => {
     expect(validateMarkers('f.md', '- The retry limit was confirmed to be 3. [EXPLICIT]')).toEqual([]);
+  });
+
+  // (R3/AC4) The old G3 check pre-filtered on a literal, case-sensitive
+  // `line.includes('confirmed')` before running the case-insensitive claim-language
+  // regex — making 'decided'/'resolved'/'proven' and any capitalized form dead code.
+  // These previously-dead words must now trigger G3 (red-first for each).
+  it('flags an unmarked "decided" list claim (previously dead — no "confirmed" substring)', () => {
+    const v = validateMarkers('f.md', '- We decided to hard-code the retry limit at 3.');
+    expect(v).toHaveLength(1);
+    expect(v[0].rule).toMatch(/no marker/);
+  });
+
+  it('flags an unmarked "resolved" list claim (previously dead)', () => {
+    const v = validateMarkers('f.md', '- The race condition was resolved by adding a lock.');
+    expect(v).toHaveLength(1);
+  });
+
+  it('flags an unmarked "proven" list claim (previously dead)', () => {
+    const v = validateMarkers('f.md', '- The cache invalidation bug was proven to be the root cause.');
+    expect(v).toHaveLength(1);
+  });
+
+  it('flags a capitalized "Confirmed"/"Decided" claim (previously dead — case-sensitive substring check)', () => {
+    expect(validateMarkers('f.md', '- Confirmed the retry limit is 3.')).toHaveLength(1);
+    expect(validateMarkers('f.md', '- Decided to hard-code the retry limit.')).toHaveLength(1);
   });
 });
 
@@ -59,10 +89,36 @@ describe('extractTier + validateTiers (ceiling)', () => {
     expect(extractTier('no tier here')).toBeNull();
   });
 
-  it('FLAGS a missing source_tier', () => {
-    const v = validateTiers('f.md', 'no frontmatter');
+  it('extracts the JSON-form tier used by tasks/*.json (AC3)', () => {
+    expect(extractTier('{\n  "key": "TASK-1",\n  "source_tier": "T1"\n}')).toBe('T1');
+    expect(extractTier('{"source_tier":"T2","status":"todo"}')).toBe('T2');
+    // the schema's own property *definition* (an object, not a value) must not false-match
+    expect(extractTier('{"properties": {"source_tier": {"type": "string"}}}')).toBeNull();
+  });
+
+  it('produces NO finding for a missing tier on a non-mandated surface (AC1 design constraint)', () => {
+    // README.md, commands/*.md, schema docs, etc. never carry source_tier and never will —
+    // a BLOCKER (or even a FLAG) here would make the gate unusable.
+    expect(validateTiers('README.md', 'no frontmatter')).toEqual([]);
+    expect(validateTiers('commands/loop.md', 'no frontmatter')).toEqual([]);
+  });
+
+  it('BLOCKS a missing source_tier on a mandated surface — knowledge entry (AC1, red-first)', () => {
+    const v = validateTiers('knowledge/entries/some-lesson.md', '---\nid: some-lesson\n---\nbody');
     expect(v).toHaveLength(1);
-    expect(v[0].severity).toBe('FLAG');
+    expect(v[0].severity).toBe('BLOCKER');
+    expect(v[0].rule).toMatch(/mandated surface/);
+  });
+
+  it('BLOCKS a missing source_tier on a mandated surface — an active ticket JSON (AC1, red-first)', () => {
+    const v = validateTiers('tasks/TASK-999.json', '{\n  "key": "TASK-999",\n  "status": "todo"\n}');
+    expect(v).toHaveLength(1);
+    expect(v[0].severity).toBe('BLOCKER');
+  });
+
+  it('EXEMPTS a closed ticket (status: done) from the mandate — grandfathered, no finding (AC1/AC5 exemption)', () => {
+    const v = validateTiers('tasks/TASK-005.json', '{\n  "key": "TASK-005",\n  "status": "done"\n}');
+    expect(v).toEqual([]);
   });
 
   it('BLOCKS [EXPLICIT] in a T3 file', () => {
@@ -98,5 +154,53 @@ describe('helpers', () => {
 
   it('renderViolations is friendly when empty', () => {
     expect(renderViolations([])).toMatch(/No calibration violations/);
+  });
+});
+
+describe('isMandatedTierSurface / isExemptTierSurface (AC1 mandate scoping)', () => {
+  it('mandates knowledge entries and ticket JSONs only', () => {
+    expect(isMandatedTierSurface('knowledge/entries/foo.md')).toBe(true);
+    expect(isMandatedTierSurface('tasks/TASK-042.json')).toBe(true);
+    // backslash paths (Windows) must be handled the same as forward-slash
+    expect(isMandatedTierSurface('knowledge\\entries\\foo.md')).toBe(true);
+  });
+
+  it('does NOT mandate unrelated repo surfaces (the design constraint)', () => {
+    expect(isMandatedTierSurface('README.md')).toBe(false);
+    expect(isMandatedTierSurface('commands/loop.md')).toBe(false);
+    expect(isMandatedTierSurface('knowledge/README.md')).toBe(false);
+    expect(isMandatedTierSurface('knowledge/schema.json')).toBe(false);
+    expect(isMandatedTierSurface('tasks/schema.json')).toBe(false);
+    expect(isMandatedTierSurface('tasks/index.json')).toBe(false);
+  });
+
+  it('exempts only closed (status: done) ticket JSONs, with rationale traveling in the code comment', () => {
+    expect(isExemptTierSurface('tasks/TASK-005.json', '{"status": "done"}')).toBe(true);
+    expect(isExemptTierSurface('tasks/TASK-005.json', '{"status": "todo"}')).toBe(false);
+    // knowledge entries carry no exemption — they are living docs, always re-editable
+    expect(isExemptTierSurface('knowledge/entries/foo.md', '---\nstatus: done\n---')).toBe(false);
+  });
+});
+
+describe('AC2 — knowledge/schema.json permits source_tier (currently additionalProperties:false forbids it)', () => {
+  it('schema declares a source_tier enum property', () => {
+    const schema = JSON.parse(readFileSync(join(REPO_ROOT, 'knowledge', 'schema.json'), 'utf8'));
+    expect(schema.properties.source_tier, 'knowledge/schema.json must declare a source_tier property').toBeDefined();
+    expect(schema.properties.source_tier.enum).toEqual(['T1', 'T2', 'T3', 'T4', 'TX']);
+  });
+});
+
+describe('AC5 — real repo run: zero tier/marker noise on knowledge/entries/*.md', () => {
+  it('every committed knowledge entry either carries source_tier or is explicitly exempted', () => {
+    const entriesDir = join(REPO_ROOT, 'knowledge', 'entries');
+    const files = readdirSync(entriesDir).filter((n) => n.endsWith('.md'));
+    expect(files.length, 'expected at least one knowledge entry to scan').toBeGreaterThan(0);
+
+    const noise = files.flatMap((name) => {
+      const path = join('knowledge', 'entries', name);
+      const content = readFileSync(join(entriesDir, name), 'utf8');
+      return [...validateMarkers(path, content), ...validateTiers(path, content)];
+    });
+    expect(noise, `expected zero calibration findings on knowledge/, got:\n${renderViolations(noise)}`).toEqual([]);
   });
 });
