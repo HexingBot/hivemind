@@ -25,7 +25,7 @@ import {
   describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
 import {
-  mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync,
+  mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, mkdirSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -425,5 +425,133 @@ describe('TASK-034 — createBoardServer HTTP surface', () => {
       afterSnap,
       'tasks/ directory must be byte-identical after a 415 rejection',
     ).toEqual(beforeSnap);
+  });
+});
+
+// ===========================================================================
+// TASK-099 AC3 — the status-transition route composes loopModeCloseGuard, so
+// closing a ticket to `done` via the board in an unauthorized loop-mode
+// session is rejected the same way the MCP transition_status/close_task
+// tools already reject it (deep-review R4: this was the third write path
+// that half-enforced TASK-082's guards — a board POST bypassed both).
+// ===========================================================================
+const FIXTURE_TASK_IN_REVIEW = {
+  key: 'TASK-090',
+  title: 'Ticket ready to close',
+  description: 'Fixture for the board close-guard specs.',
+  acceptance_criteria: ['Closes via the board status endpoint.'],
+  status: 'in_review',
+  priority: 'medium',
+  labels: [],
+  assignee: null,
+  depends_on: [],
+  linked_commits: [],
+  linked_prs: [],
+  comments: [],
+  created_at: '2026-07-01T00:00:00Z',
+  updated_at: '2026-07-01T00:00:00Z',
+  jira_key: null,
+  verification_tier: 'tdd',
+};
+
+/** Seed a pointer + active bundle with the given mode/loop_auth under repoRoot. */
+function seedLoopBundle(repoRoot, { mode, loopAuth, sessionId = '20260706T120000Z-b0a2d3c4' } = {}) {
+  writeFileSync(
+    join(repoRoot, 'state', 'session.json'),
+    JSON.stringify({
+      schema_version: 2,
+      active_session_id: sessionId,
+      updated_at: '2026-07-06T12:00:00Z',
+    }, null, 2),
+    'utf8',
+  );
+  const bundleDir = join(repoRoot, 'state', 'sessions', sessionId);
+  mkdirSync(bundleDir, { recursive: true });
+  writeFileSync(
+    join(bundleDir, 'session.json'),
+    JSON.stringify({
+      schema_version: 2,
+      session_id: sessionId,
+      lifecycle_state: 'active',
+      updated_at: '2026-07-06T12:00:00Z',
+      active_task: 'TASK-090',
+      workflow_step: 'update',
+      next_action: 'board close-guard specs',
+      handoff_summary: 'in progress',
+      open_questions: [],
+      blockers: [],
+      decisions: [],
+      subagent_results: [],
+      pending_human_confirmation: null,
+      ...(mode !== undefined ? { mode } : {}),
+      ...(loopAuth !== undefined ? { loop_auth: loopAuth } : {}),
+    }, null, 2),
+    'utf8',
+  );
+}
+
+describe('TASK-099 AC3 — board POST to done composes loopModeCloseGuard', () => {
+  let repoRoot;
+  let server;
+  let baseUrl;
+
+  beforeEach(async () => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'board-closeguard-'));
+    makeRepoSkeleton(repoRoot, { tasks: { 'TASK-090': FIXTURE_TASK_IN_REVIEW } });
+    ({ server, baseUrl } = await startServer(repoRoot));
+  });
+
+  afterEach(async () => {
+    if (server) await closeServer(server);
+    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('POST_to_done_in_unauthorized_loop_mode_is_rejected_and_leaves_disk_unchanged', async () => {
+    seedLoopBundle(repoRoot, { mode: 'loop', loopAuth: {} });
+    const beforeSnap = snapshotTasksDir(repoRoot);
+
+    const res = await fetch(`${baseUrl}/api/tasks/TASK-090/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    expect(
+      res.status,
+      'a close-to-done in unauthorized loop mode must not succeed silently — expected the guard rejection',
+    ).toBe(403);
+
+    const afterSnap = snapshotTasksDir(repoRoot);
+    expect(
+      afterSnap,
+      'tasks/ directory must be byte-identical after the guard rejects the close',
+    ).toEqual(beforeSnap);
+  });
+
+  it('POST_to_done_in_loop_mode_succeeds_once_auto_close_on_green_review_is_true', async () => {
+    seedLoopBundle(repoRoot, { mode: 'loop', loopAuth: { auto_close_on_green_review: true } });
+
+    const res = await fetch(`${baseUrl}/api/tasks/TASK-090/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    expect(res.status, 'authorized loop-mode close must still succeed').toBe(200);
+
+    const after = readTaskFile(repoRoot, 'TASK-090');
+    expect(after.status).toBe('done');
+  });
+
+  it('POST_to_done_in_harness_mode_still_succeeds_with_no_active_session', async () => {
+    // No pointer/bundle seeded at all — getMode defaults to 'harness', so
+    // composing loopModeCloseGuard unconditionally must remain a no-op here.
+    const res = await fetch(`${baseUrl}/api/tasks/TASK-090/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    expect(res.status, 'harness mode / no session must not be affected by composing the guard').toBe(200);
+
+    const after = readTaskFile(repoRoot, 'TASK-090');
+    expect(after.status).toBe('done');
   });
 });

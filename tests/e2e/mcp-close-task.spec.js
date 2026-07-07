@@ -407,4 +407,63 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     expect(readFileSync(taskPath, 'utf8')).toBe(beforeTask);
     expect(readFileSync(indexPath, 'utf8')).toBe(beforeIndex);
   });
+
+  // ---------------------------------------------------------------------------
+  // AC4 (TASK-099) — Gate 2: close_task also enforces the loop-mode
+  // uat-delegation guard (not just Gate 1's auto_close_on_green_review).
+  // close_task is the primary supported close path (SKILL.md's Ticket-update
+  // protocol), so this proves the extended guard reaches it, not just
+  // transition_status.
+  // ---------------------------------------------------------------------------
+  it('close_task_surfaces_the_uat_delegation_guard_when_only_delegated_verification_phrasing_is_recorded_and_delegation_is_not_granted', async () => {
+    seedBundleMode(repoRoot, { mode: 'loop', loopAuth: { auto_close_on_green_review: true } });
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'close_task uat delegation guard',
+        description: 'blocked by Gate 2 (uat delegation)',
+        acceptance_criteria: ['blocked without delegation or a human verdict marker'],
+        priority: 'medium',
+        verification_tier: 'uat-only',
+      },
+    }));
+    const key = created.key;
+
+    // Only delegated-verification phrasing is on record; delegation was not
+    // granted (uat_delegated_to_orchestrator is absent from loopAuth above).
+    await client.callTool({
+      name: 'append_comment',
+      arguments: {
+        key,
+        author: 'uat',
+        body: "Step 1: expected X, observed X, verdict PASS — verified by Orchestrator at the human's request.\nOverall result: PASS.",
+      },
+    });
+
+    const taskPath = join(repoRoot, 'tasks', `${key}.json`);
+    const indexPath = join(repoRoot, 'tasks', 'index.json');
+    const beforeTask = readFileSync(taskPath, 'utf8');
+    const beforeIndex = readFileSync(indexPath, 'utf8');
+
+    let surfaced = false;
+    try {
+      const res = await client.callTool({
+        name: 'close_task',
+        arguments: {
+          key,
+          comment: { author: 'orchestrator', body: 'Shipped.' },
+        },
+      });
+      if (res && res.isError) surfaced = true;
+    } catch {
+      surfaced = true;
+    }
+    expect(surfaced, 'close_task must not close a uat-only task in loop mode on delegated-only phrasing without delegation granted').toBe(true);
+
+    const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+    expect(task.status).toBe('todo');
+    expect(readFileSync(taskPath, 'utf8')).toBe(beforeTask);
+    expect(readFileSync(indexPath, 'utf8')).toBe(beforeIndex);
+  });
 });

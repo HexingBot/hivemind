@@ -231,3 +231,128 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
     expect(after.status).toBe('done');
   });
 });
+
+// ===========================================================================
+// AC4 (TASK-099) — Gate 2: uat-only closes in loop mode additionally require
+// loop_auth.uat_delegated_to_orchestrator OR an explicit human verdict marker
+// on the ticket's uat comment. Gate 1 (auto_close_on_green_review) is held
+// TRUE throughout this section so every case below isolates Gate 2 alone.
+// ===========================================================================
+function makeUatTask(key, comments = []) {
+  return { ...makeTask(key), verification_tier: 'uat-only', comments };
+}
+
+const DELEGATED_UAT_COMMENT = {
+  author: 'uat',
+  at: '2026-07-06T00:00:00Z',
+  body: 'Step 1: expected X, observed X, verdict PASS — verified by Orchestrator at the human\'s request.\nOverall result: PASS.',
+};
+
+const BARE_HUMAN_UAT_COMMENT = {
+  author: 'uat',
+  at: '2026-07-06T00:00:00Z',
+  body: 'Step 1: expected X, observed X, verdict PASS.\nOverall result: PASS.',
+};
+
+describe('AC4 (TASK-099) — loopModeCloseGuard Gate 2: uat-only delegation', () => {
+  it('throws UatDelegationGuardError when uat_delegated_to_orchestrator is not granted and the uat comment shows only delegated-verification phrasing', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-220', [DELEGATED_UAT_COMMENT]);
+
+    let caught;
+    try {
+      await loopModeCloseGuard({ repoRoot: root, task });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatDelegationGuardError);
+    expect(caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+
+  it('resolves when uat_delegated_to_orchestrator is granted, even though the uat comment shows only delegated-verification phrasing', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true, uat_delegated_to_orchestrator: true },
+    });
+    const task = makeUatTask('TASK-221', [DELEGATED_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+
+  it('resolves when uat_delegated_to_orchestrator is not granted but the uat comment carries an explicit human verdict marker (bare PASS, no delegation phrasing)', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-222', [BARE_HUMAN_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+
+  it('does not apply Gate 2 to non-uat-only tickets (tdd-tier ticket with no uat comment closes normally once Gate 1 is satisfied)', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeTask('TASK-223'); // verification_tier: 'tdd', no comments
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+});
+
+// ===========================================================================
+// AC4 (TASK-099) — composition: transitionStatus({..., closeGuard:
+// loopModeCloseGuard}) enforces Gate 2 end-to-end for uat-only tickets.
+// ===========================================================================
+describe('AC4 (TASK-099) — transitionStatus composed with loopModeCloseGuard enforces Gate 2', () => {
+  it('blocks a uat-only close-to-done in loop mode when only delegated-verification phrasing is on the uat comment, and leaves the task file untouched', async () => {
+    const { transitionStatus } = await import(TASK_STORE_URL);
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    makeRepoSkeleton(root, { tasks: { 'TASK-224': makeUatTask('TASK-224', [DELEGATED_UAT_COMMENT]) } });
+    const before = readTaskFileBytes(root, 'TASK-224');
+
+    await expect(
+      transitionStatus({
+        repoRoot: root,
+        key: 'TASK-224',
+        status: 'done',
+        closeGuard: loopModeCloseGuard,
+      }),
+    ).rejects.toBeInstanceOf(UatDelegationGuardError);
+
+    expect(readTaskFileBytes(root, 'TASK-224')).toBe(before);
+  });
+
+  it('allows a uat-only close-to-done in loop mode once the uat comment carries an explicit human verdict marker', async () => {
+    const { transitionStatus } = await import(TASK_STORE_URL);
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    makeRepoSkeleton(root, { tasks: { 'TASK-225': makeUatTask('TASK-225', [BARE_HUMAN_UAT_COMMENT]) } });
+
+    await transitionStatus({
+      repoRoot: root,
+      key: 'TASK-225',
+      status: 'done',
+      closeGuard: loopModeCloseGuard,
+    });
+
+    const after = JSON.parse(readTaskFileBytes(root, 'TASK-225'));
+    expect(after.status).toBe('done');
+  });
+});
