@@ -309,7 +309,7 @@ function setLang(l) { lang = l; document.documentElement.lang = l; render(); }
   var frames = [];
   for (var i = 0; i < 8; i++) { var im = new Image(); im.src = "assets/monitor/" + i + ".png"; frames.push(im.src); }
   var f = 0;
-  setInterval(function(){ f = (f + 1) % 8; el.src = frames[f]; }, 170);
+  setInterval(function(){ f = (f + 1) % 8; el.src = frames[f]; }, 250);
 })();
 
 render();
