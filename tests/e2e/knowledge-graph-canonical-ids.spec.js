@@ -114,4 +114,18 @@ describe('TASK-104 AC3 — addEdge endpoint resolution already fails loudly (reg
       rmSync(repoRoot, { recursive: true, force: true });
     }
   });
+
+  // TASK-105 rider R-a — the sibling unknown-`to` endpoint is guarded by the
+  // same code path (src/knowledge-graph.js addEdge) but had no direct lock.
+  it('addEdge_rejects_when_to_endpoint_is_unknown', async () => {
+    const repoRoot = makeGraphRepo();
+    try {
+      await addNode({ repoRoot, node: { id: 'task-001', type: 'task', ref: 'tasks/TASK-001.json', label: 'x' } });
+      await expect(
+        addEdge({ repoRoot, edge: { from: 'task-001', to: 'task-nonexistent', relation: 'uses' } }),
+      ).rejects.toThrow();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
 });

@@ -31,16 +31,24 @@ const ALL_SKILL_PATHS = [...ORCHESTRATOR_SKILL_PATHS, ...GRAPHIFY_SKILL_PATHS];
 // across all four sites — this is the literal text the Developer inserted
 // into each SKILL.md. If a future edit lets one copy drift, this constant and
 // the file no longer match and the "byte-identical" test below fails.
+//
+// TASK-105 rider R-b — a sentence on the addNode slug-collision remedy was
+// folded into this shared block (updated in lockstep across all four sites,
+// per the same drift-guard this constant already enforces).
 const CANONICAL_SHAPES_BLOCK = `| node type          | id shape                     | example                                          |
 |--------------------|-------------------------------|---------------------------------------------------|
 | \`task\`             | \`task-<digits>\`               | \`task-104\`                                         |
 | \`decision\`         | \`decision-<YYYYMMDD>-<slug>\`  | \`decision-20260704-release-v0-10-0-minor-bump\`     |
 | \`skill\`            | \`skill-<slug>\`                | \`skill-graphify\`                                   |
 | \`knowledge_entry\`  | \`ke-<slug>\`                   | \`ke-windows-atomic-rename\`                         |
+
 \`<slug>\` is lowercase, hyphen-separated, \`[a-z0-9-]+\` only — never a raw ISO
 timestamp and never an uppercase task key (e.g. \`TASK-104\`). Derive/validate
 mechanically via \`canonicalIdPattern\`/\`isCanonicalId\`/\`deriveCanonicalId\` in
-\`src/graph-id-migration.js\` rather than hand-rolling the convention.`;
+\`src/graph-id-migration.js\` rather than hand-rolling the convention. On an
+\`addNode\` slug-collision rejection (the id is already in use), add a
+distinguishing word to the \`<slug>\` rather than reusing or overloading the
+existing id.`;
 
 describe('TASK-104 AC1 — canonical id convention documented identically in both SKILL.md sites', () => {
   it.each(ALL_SKILL_PATHS)('%s: exists', (path) => {

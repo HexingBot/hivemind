@@ -21,6 +21,34 @@ describe('consolidationGate — phase/consolidation hard-stop', () => {
   it('is disabled when consolidateEvery is 0', () => {
     expect(consolidationGate({ completedThisRun: 5, consolidateEvery: 0 }).stop).toBe(false);
   });
+
+  // TASK-105 AC4 — auto_consolidate must no longer silently skip knowledge
+  // work: consolidationGate now accepts draftEntryCount and always reports it
+  // back as draftsPending, whether or not the ticket-count pause itself fires.
+  it('reports draftsPending even when auto_consolidate lifts the ticket-count pause', () => {
+    const result = consolidationGate({
+      completedThisRun: 5, consolidateEvery: 5, autoConsolidate: true, draftEntryCount: 3,
+    });
+    expect(result.stop).toBe(false);
+    expect(result.draftsPending).toBe(3);
+    expect(result.reason).toMatch(/3 knowledge draft/);
+  });
+
+  it('defaults draftsPending to 0 and reason to empty string when there is nothing pending (backward compatible)', () => {
+    const result = consolidationGate({
+      completedThisRun: 5, consolidateEvery: 5, autoConsolidate: true,
+    });
+    expect(result.draftsPending).toBe(0);
+    expect(result.reason).toBe('');
+  });
+
+  it('folds the pending draft count into the reason at a normal (non-auto) checkpoint stop', () => {
+    const result = consolidationGate({ completedThisRun: 5, consolidateEvery: 5, draftEntryCount: 2 });
+    expect(result.stop).toBe(true);
+    expect(result.draftsPending).toBe(2);
+    expect(result.reason).toMatch(/Consolidation checkpoint/);
+    expect(result.reason).toMatch(/2 knowledge draft/);
+  });
 });
 
 describe('loopUntilDry — inner research loop', () => {
