@@ -45,20 +45,32 @@ export class UatDelegationGuardError extends Error {
 // qualified "— verified by Orchestrator at the human's request".
 const DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
 
+// SKILL.md's UAT step 3 ("Record the outcome"): the body must list each
+// step's verdict, "then state the overall result (PASS or FAIL)" — the
+// recorded convention is an "Overall result: PASS|FAIL" line. Anchoring on
+// this line (not a bare PASS anywhere in the body) is what TASK-099 review
+// M1 requires: a per-step "PASS" inside an otherwise-failing UAT (or a
+// "FAIL — but PASS on retry" aside) must not satisfy the marker.
+const OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
+const FAIL_VERDICT_RE = /\bfail\b/i;
+
 /**
  * TASK-099 Gate 2 — a uat-only ticket's `uat` comment carries an "explicit
- * human verdict marker" when its most recent `uat`-authored comment states an
- * overall PASS with NO orchestrator-delegation phrasing anywhere in the body.
- * If the comment shows delegated-verification phrasing anywhere, at least one
- * step was recorded as Orchestrator-verified, so the close still requires
+ * human verdict marker" when its most recent `uat`-authored comment (a) has
+ * no orchestrator-delegation phrasing anywhere in the body, (b) has no FAIL
+ * verdict anywhere in the body (a single failing step means the UAT did not
+ * pass overall, however the body otherwise reads), and (c) states the
+ * overall result as PASS per the SKILL.md recording convention. If the
+ * comment shows delegated-verification phrasing anywhere, at least one step
+ * was recorded as Orchestrator-verified, so the close still requires
  * `uat_delegated_to_orchestrator` to be explicitly granted.
  *
  * This is a textual-convention check, not a cryptographic one: it cannot
  * prove a human actually authored the bare PASS, only that the comment does
- * not itself claim delegated verification. It narrows — it does not
- * eliminate — the prior hole where ANY comment authored 'uat' satisfied the
- * done-guard regardless of content (see the TASK-099 hand-off for the
- * residual-limitation note).
+ * not itself claim delegated verification and does not itself record a
+ * failure. It narrows — it does not eliminate — the prior hole where ANY
+ * comment authored 'uat' satisfied the done-guard regardless of content (see
+ * the TASK-099 hand-off for the residual-limitation note).
  */
 function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
@@ -66,7 +78,9 @@ function hasExplicitHumanVerdictMarker(task) {
   if (uatComments.length === 0) return false;
   const last = uatComments[uatComments.length - 1];
   const body = String((last && last.body) || '');
-  return /\bPASS\b/i.test(body) && !DELEGATED_MARKER_RE.test(body);
+  if (DELEGATED_MARKER_RE.test(body)) return false;
+  if (FAIL_VERDICT_RE.test(body)) return false;
+  return OVERALL_PASS_RE.test(body);
 }
 
 /**

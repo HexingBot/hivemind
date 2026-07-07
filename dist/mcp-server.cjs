@@ -22565,13 +22565,17 @@ var UatDelegationGuardError = class extends Error {
   }
 };
 var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
+var OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
+var FAIL_VERDICT_RE = /\bfail\b/i;
 function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
   const uatComments = comments.filter((c) => c && c.author === "uat");
   if (uatComments.length === 0) return false;
   const last = uatComments[uatComments.length - 1];
   const body = String(last && last.body || "");
-  return /\bPASS\b/i.test(body) && !DELEGATED_MARKER_RE.test(body);
+  if (DELEGATED_MARKER_RE.test(body)) return false;
+  if (FAIL_VERDICT_RE.test(body)) return false;
+  return OVERALL_PASS_RE.test(body);
 }
 async function loopModeCloseGuard({ repoRoot, task }) {
   const mode = await getMode({ repoRoot });

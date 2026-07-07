@@ -677,10 +677,11 @@ compose the three deterministic mutation-seam guards below; a direct hand
   session's operating mode is `loop`, closing a `verification_tier:
   "uat-only"` ticket additionally requires
   `loop_auth.uat_delegated_to_orchestrator === true`, or the ticket's `uat`
-  comment to carry an explicit human-verdict marker (a bare "PASS" not
-  qualified by "verified by Orchestrator at the human's request" anywhere in
-  the comment); otherwise it's blocked with a typed `UatDelegationGuardError`
-  (`code: 'LOOP_UAT_DELEGATION_REQUIRED'`).
+  comment to carry an explicit human-verdict marker: it states an "Overall
+  result: PASS" line per the UAT-recording convention above, has no FAIL
+  verdict anywhere in the body, and is not qualified anywhere by "verified by
+  Orchestrator at the human's request"; otherwise it's blocked with a typed
+  `UatDelegationGuardError` (`code: 'LOOP_UAT_DELEGATION_REQUIRED'`).
 
 **On a clean review (closing a ticket)**, call the `close_task` tool once —
 it performs the transition, the closing comment, the `linked_commits`/
