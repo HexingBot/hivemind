@@ -307,6 +307,121 @@ describe('resumePoint — reset: inconsistent state', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// TASK-100 AC2 — all three 'reset' branches carry iteration/completed_this_run/
+// run_started_at verbatim from loop_state, same restore contract 'none' and
+// 'resume' already honor. Before the fix these three fields were silently
+// dropped on every reset path, restarting maxIterations/consolidation ceilings.
+// ---------------------------------------------------------------------------
+
+describe('resumePoint — TASK-100 AC2: reset carries the run counters verbatim', () => {
+  it('carries counters on reset via a dangling ticket key (missing from task list)', async () => {
+    const { resumePoint } = await import(CHECKPOINT_URL);
+    const bundle = bundleWith({
+      current_ticket: 'TASK-999', phase: 'impl', iteration: 6, completed_this_run: 4, run_started_at: '2026-07-06T10:00:00Z',
+    });
+    const tasks = [task({ key: 'TASK-100', status: 'todo' })];
+    const result = resumePoint({ bundle, tasks });
+    expect(result.action).toBe('reset');
+    expect(result.iteration).toBe(6);
+    expect(result.completed_this_run).toBe(4);
+    expect(result.run_started_at).toBe('2026-07-06T10:00:00Z');
+  });
+
+  it('carries counters on reset via an inconsistent status (todo while still recorded as current)', async () => {
+    const { resumePoint } = await import(CHECKPOINT_URL);
+    const bundle = bundleWith({
+      current_ticket: 'TASK-100', phase: 'impl', iteration: 8, completed_this_run: 5, run_started_at: '2026-07-06T11:00:00Z',
+    });
+    const tasks = [task({ status: 'todo' })];
+    const result = resumePoint({ bundle, tasks });
+    expect(result.action).toBe('reset');
+    expect(result.iteration).toBe(8);
+    expect(result.completed_this_run).toBe(5);
+    expect(result.run_started_at).toBe('2026-07-06T11:00:00Z');
+  });
+
+  it('carries counters on reset via a pre-commit-phase crash (fetch)', async () => {
+    const { resumePoint } = await import(CHECKPOINT_URL);
+    const bundle = bundleWith({
+      current_ticket: 'TASK-100', phase: 'fetch', iteration: 2, completed_this_run: 1, run_started_at: '2026-07-06T12:00:00Z',
+    });
+    const tasks = [task({ status: 'in_progress' })];
+    const result = resumePoint({ bundle, tasks });
+    expect(result.action).toBe('reset');
+    expect(result.iteration).toBe(2);
+    expect(result.completed_this_run).toBe(1);
+    expect(result.run_started_at).toBe('2026-07-06T12:00:00Z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-100 AC4 — the new pre-Developer-spawn checkpoint cadence writes phase
+// 'test' for tdd-tier tickets (in addition to the existing 'impl' coverage).
+// resumePoint's existing PRE_COMMIT_PHASES logic already excludes 'test', so
+// this is a spec-coverage lock, not a behavior change.
+// ---------------------------------------------------------------------------
+
+describe('resumePoint — TASK-100 AC4: resumes at the "test" phase (tdd pre-spawn checkpoint)', () => {
+  it('resumes an in_progress ticket recorded at the test phase, carrying counters over', async () => {
+    const { resumePoint } = await import(CHECKPOINT_URL);
+    const bundle = bundleWith({
+      current_ticket: 'TASK-100', phase: 'test', iteration: 1, completed_this_run: 0, run_started_at: '2026-07-06T13:00:00Z',
+    });
+    const tasks = [task({ status: 'in_progress' })];
+    const result = resumePoint({ bundle, tasks });
+    expect(result.action).toBe('resume');
+    expect(result.ticket.key).toBe('TASK-100');
+    expect(result.phase).toBe('test');
+    expect(result.iteration).toBe(1);
+    expect(result.completed_this_run).toBe(0);
+    expect(result.run_started_at).toBe('2026-07-06T13:00:00Z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-100 AC3 — ticketHasLandedCommits: pure helper the reset protocol uses
+// to check `git log` for commits referencing the ticket key BEFORE discarding
+// work. Takes a git-log string (e.g. `git log --oneline` output) so it stays
+// fast-tier testable without spawning git — the doc protocol feeds it the
+// real git-log output; direct git invocation is an e2e concern, not this
+// module's.
+// ---------------------------------------------------------------------------
+
+describe('ticketHasLandedCommits — TASK-100 AC3: pure git-log scan for a ticket key', () => {
+  it('returns true when a git-log line references the ticket key', async () => {
+    const { ticketHasLandedCommits } = await import(CHECKPOINT_URL);
+    const gitLog = [
+      'a1b2c3d fix(TASK-101): unrelated fix',
+      'e4f5g6h test(TASK-100): add failing spec',
+      'i7j8k9l chore: bump version',
+    ].join('\n');
+    expect(ticketHasLandedCommits({ gitLog, key: 'TASK-100' })).toBe(true);
+  });
+
+  it('returns false when no git-log line references the ticket key', async () => {
+    const { ticketHasLandedCommits } = await import(CHECKPOINT_URL);
+    const gitLog = [
+      'a1b2c3d fix(TASK-101): unrelated fix',
+      'i7j8k9l chore: bump version',
+    ].join('\n');
+    expect(ticketHasLandedCommits({ gitLog, key: 'TASK-100' })).toBe(false);
+  });
+
+  it('does not false-positive on a key that is a substring of another key (TASK-1 vs TASK-100)', async () => {
+    const { ticketHasLandedCommits } = await import(CHECKPOINT_URL);
+    const gitLog = 'a1b2c3d fix(TASK-1000): unrelated fix\ne4f5g6h chore(TASK-10): another';
+    expect(ticketHasLandedCommits({ gitLog, key: 'TASK-100' })).toBe(false);
+  });
+
+  it('returns false for empty/undefined git log or key without throwing', async () => {
+    const { ticketHasLandedCommits } = await import(CHECKPOINT_URL);
+    expect(ticketHasLandedCommits({ gitLog: '', key: 'TASK-100' })).toBe(false);
+    expect(ticketHasLandedCommits({ gitLog: undefined, key: 'TASK-100' })).toBe(false);
+    expect(ticketHasLandedCommits({ gitLog: 'fix(TASK-100): x', key: undefined })).toBe(false);
+  });
+});
+
 describe('resumePoint — purity', () => {
   it('does not mutate the bundle or tasks it is given', async () => {
     const { resumePoint } = await import(CHECKPOINT_URL);
