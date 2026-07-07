@@ -8248,7 +8248,10 @@ function resumePoint({ bundle, tasks }) {
     return {
       action: "reset",
       ticket: { key: current_ticket },
-      reason: `recorded ticket ${current_ticket} was not found in the task list \u2014 dangling checkpoint pointer.`
+      reason: `recorded ticket ${current_ticket} was not found in the task list \u2014 dangling checkpoint pointer.`,
+      iteration,
+      completed_this_run,
+      run_started_at
     };
   }
   if (found.status === "done") {
@@ -8258,14 +8261,20 @@ function resumePoint({ bundle, tasks }) {
     return {
       action: "reset",
       ticket: found,
-      reason: `recorded ticket ${current_ticket} has status '${found.status}', inconsistent with an active checkpoint.`
+      reason: `recorded ticket ${current_ticket} has status '${found.status}', inconsistent with an active checkpoint.`,
+      iteration,
+      completed_this_run,
+      run_started_at
     };
   }
   if (found.status === "in_progress" && PRE_COMMIT_PHASES.includes(phase)) {
     return {
       action: "reset",
       ticket: found,
-      reason: `recorded ticket ${current_ticket} crashed at pre-commit phase '${phase}' \u2014 no durable work landed, resetting to todo.`
+      reason: `recorded ticket ${current_ticket} crashed at pre-commit phase '${phase}' \u2014 no durable work landed, resetting to todo.`,
+      iteration,
+      completed_this_run,
+      run_started_at
     };
   }
   return {

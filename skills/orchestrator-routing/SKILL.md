@@ -592,14 +592,21 @@ writer and a pure decision helper:
 
 - **`loop-ctl.cjs checkpoint --repo-root <repoRoot> --current-ticket <key> --phase <phase> [--iteration <n>] [--completed-this-run <n>] [--run-started-at <iso>]`**
   (wraps `writeLoopCheckpoint`) — call at **every** phase boundary: after
-  ticket selection, after the Developer subagent returns, after the Reviewer
-  subagent returns, and after ticket close. The checkpoint carries
-  `current_ticket`, `phase`, `iteration`, `completed_this_run`, and
-  `run_started_at`. `phase` is validated against `LOOP_PHASES` **before any
-  I/O** (an invalid phase exits non-zero and touches nothing on disk); on
-  success the fields are merged into the bundle's `loop_state` (preserving
-  existing keys like `goal`/`maxIterations`) and `phase` is mapped onto
-  `workflow_step` via `LOOP_PHASES`.
+  ticket selection, **immediately before spawning the Developer subagent**
+  (phase `'test'` for tdd-tier tickets, `'impl'` for all other tiers — TASK-100,
+  mandatory), after the Developer subagent returns, after the Reviewer
+  subagent returns, and after ticket close. The pre-Developer-spawn write
+  closes the gap between the fetch-phase checkpoint and the Developer's
+  return — the longest phase in a ticket's lifecycle, where `test:`/impl
+  commits actually land; without it a mid-spawn crash resumes as
+  in_progress+`'fetch'` and `resumePoint` falsely returns `'reset'` even
+  though commits already landed. The checkpoint carries `current_ticket`,
+  `phase`, `iteration`, `completed_this_run`, and `run_started_at`. `phase` is
+  validated against `LOOP_PHASES` **before any I/O** (an invalid phase exits
+  non-zero and touches nothing on disk); on success the fields are merged into
+  the bundle's `loop_state` (preserving existing keys like
+  `goal`/`maxIterations`) and `phase` is mapped onto `workflow_step` via
+  `LOOP_PHASES`.
 
 - **`loop-ctl.cjs resume-point --repo-root <repoRoot>`** (wraps
   `resumePoint({ bundle, tasks })`, pure and read-only) — reads the active
@@ -611,8 +618,21 @@ writer and a pure decision helper:
     is absent/stale, not the run's progress.
   - `'reset'` — the recorded ticket is stranded (`in_progress` at a
     pre-commit phase, a status inconsistent with an active checkpoint, or a
-    dangling ticket key). Transition the ticket back to `todo` with an
-    explanatory comment, then continue normal selection.
+    dangling ticket key). `iteration`, `completed_this_run`, and
+    `run_started_at` are restored **verbatim** here too (TASK-100 — same
+    restore contract as `'resume'`/`'none'`), so the run's counters do not
+    silently reset just because this ticket was stranded. **Before
+    discarding any work**, check `git log --oneline` for commits referencing
+    the ticket key — e.g. via `ticketHasLandedCommits({ gitLog, key })`
+    (`src/loop-checkpoint.js`, pure, takes the already-captured git-log
+    string so it stays fast-tier testable without spawning git). A landed
+    commit despite a `'reset'` verdict means the checkpoint cadence itself
+    missed a phase transition, not that the ticket is actually stranded — do
+    NOT silently reset; treat it as a Gate 3-shaped ambiguity and surface the
+    reason plus the matching commit(s) to the human instead of guessing
+    whether to resume or discard. Only when `git log` shows no commits for
+    the key does the protocol proceed: transition the ticket back to `todo`
+    with an explanatory comment, then continue normal selection.
   - `'resume'` — `in_progress` at a post-commit phase, or `in_review`
     regardless of phase. Continue the recorded ticket at its recorded phase;
     `iteration`, `completed_this_run`, and `run_started_at` are restored

@@ -61,10 +61,22 @@ prior run of this session crashed mid-ticket:
      iteration/no-progress/consolidation ceilings survive the restart rather
      than silently resetting to zero.
    - **`'reset'`** — the recorded ticket crashed before any commit landed
-     (or its status is otherwise inconsistent with the checkpoint). Transition
-     the ticket back to `todo` via `transition_status`, append an explanatory
-     `append_comment` citing `result.reason`, and continue to normal ticket
-     selection.
+     (or its status is otherwise inconsistent with the checkpoint).
+     `iteration`/`completed_this_run`/`run_started_at` are restored **verbatim**
+     from the result here too (same restore semantics as `'resume'`/`'none'`) —
+     the run's counters must not silently reset just because this ticket was
+     stranded. **Before discarding any work** (TASK-100): run `git log --oneline`
+     and check it for commits referencing the ticket key (e.g. via
+     `ticketHasLandedCommits({ gitLog, key })` from `src/loop-checkpoint.js`).
+     If a landed commit is found despite the `'reset'` verdict, this is
+     evidence the checkpoint cadence itself missed a phase transition, not that
+     the ticket is actually stranded — do NOT silently reset. Treat it as a
+     Gate 3-shaped ambiguity: surface the reason plus the matching commit(s) to
+     the human rather than guessing whether to resume or discard. Only when
+     `git log` shows no commits for the key does the protocol proceed:
+     transition the ticket back to `todo` via `transition_status`, append an
+     explanatory `append_comment` citing `result.reason`, and continue to
+     normal ticket selection.
    - **`'none'`** — no crash evidence (no `current_ticket` recorded, or the
      recorded ticket is already `done`). Start the next iteration with the
      counters restored from `result` (`iteration`, `completed_this_run`,
@@ -111,14 +123,20 @@ while NOT goalSatisfied(tasks, goal)
   // A ready ticket was found — run the standard per-ticket workflow:
   1. Transition ticket to in_progress (transitionStatus)
      -> Renew the session lock (loop-ctl.cjs renew --repo-root <repoRoot>; if the JSON's `renewed` is false, re-acquire)
-  2. Spawn the Developer subagent (IMPL or TDD per verification_tier)
+  2. [MANDATORY, TASK-100] Checkpoint the session bundle at phase 'test' (tdd-tier
+     tickets) or 'impl' (all other tiers), current_ticket = this ticket, BEFORE
+     spawning the Developer. Without this write, a mid-spawn crash resumes as
+     in_progress+'fetch' -> resumePoint returns 'reset' ("no durable work landed")
+     even though test:/impl commits already landed during that spawn — the
+     longest phase in a ticket's lifecycle. This checkpoint closes that gap.
+  3. Spawn the Developer subagent (IMPL or TDD per verification_tier)
      -> Renew the session lock
-  3. Spawn the Reviewer subagent (fresh context, read-only)
+  4. Spawn the Reviewer subagent (fresh context, read-only)
      - On HIGH finding: loop back to Developer (max 2 retries); on third HIGH, surface and break
      -> Renew the session lock
-  4. [HARD-STOP GATE — see below before proceeding to close]
-  5. Checkpoint the session bundle
-  6. Renew the session lock (final renew before the next iteration's selection)
+  5. [HARD-STOP GATE — see below before proceeding to close]
+  6. Checkpoint the session bundle
+  7. Renew the session lock (final renew before the next iteration's selection)
   tasks = readAllTasks({ repoRoot })   // refresh — statuses changed (e.g. this ticket closed to 'done'), which may unblock dependents
   consecutiveNoProgress = 0  // reset on any progress
   iteration += 1

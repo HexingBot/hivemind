@@ -109,6 +109,13 @@ export async function writeLoopCheckpoint({ repoRoot, checkpoint }) {
 //              in_progress/in_review while still recorded as current, or the
 //              ticket key is missing from the task list entirely (dangling
 //              pointer). Includes a non-empty human-readable `reason`.
+//              TASK-100: iteration/completed_this_run/run_started_at are ALSO
+//              carried over verbatim here — same restore contract as 'none'
+//              and 'resume' — so a crash on a reset branch does not silently
+//              restart the maxIterations/consolidation ceilings. Per
+//              commands/loop.md's reset protocol, the caller must additionally
+//              check `git log` for commits referencing the ticket key (see
+//              ticketHasLandedCommits below) before actually discarding work.
 //   'resume' — in_progress at a post-commit phase, or in_review regardless
 //              of phase. iteration/completed_this_run/run_started_at are
 //              copied VERBATIM from loop_state — never defaulted.
@@ -144,6 +151,9 @@ export function resumePoint({ bundle, tasks }) {
       action: 'reset',
       ticket: { key: current_ticket },
       reason: `recorded ticket ${current_ticket} was not found in the task list — dangling checkpoint pointer.`,
+      iteration,
+      completed_this_run,
+      run_started_at,
     };
   }
 
@@ -156,6 +166,9 @@ export function resumePoint({ bundle, tasks }) {
       action: 'reset',
       ticket: found,
       reason: `recorded ticket ${current_ticket} has status '${found.status}', inconsistent with an active checkpoint.`,
+      iteration,
+      completed_this_run,
+      run_started_at,
     };
   }
 
@@ -164,6 +177,9 @@ export function resumePoint({ bundle, tasks }) {
       action: 'reset',
       ticket: found,
       reason: `recorded ticket ${current_ticket} crashed at pre-commit phase '${phase}' — no durable work landed, resetting to todo.`,
+      iteration,
+      completed_this_run,
+      run_started_at,
     };
   }
 
@@ -175,4 +191,28 @@ export function resumePoint({ bundle, tasks }) {
     completed_this_run,
     run_started_at,
   };
+}
+
+// ---------------------------------------------------------------------------
+// ticketHasLandedCommits({ gitLog, key }) → boolean
+//
+// TASK-100 — pure helper backing the reset protocol documented in
+// commands/loop.md and SKILL.md: before the orchestrator discards a stranded
+// ticket on a 'reset' verdict, it must check whether any commit already
+// references the ticket key — a landed commit under a 'reset' verdict means
+// the checkpoint cadence itself missed a phase transition, not that the
+// ticket is actually stranded. PURE and I/O-free so it stays fast-tier
+// testable: it takes the already-captured `git log --oneline` output as a
+// plain string rather than spawning git itself; the caller is responsible for
+// producing that string.
+//
+// Matches `key` as a whole word (`\b`-delimited) so a shorter key is never a
+// false-positive substring match of a longer one (e.g. 'TASK-100' must not
+// match inside 'TASK-1000').
+// ---------------------------------------------------------------------------
+export function ticketHasLandedCommits({ gitLog, key } = {}) {
+  if (!gitLog || !key) return false;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`\\b${escaped}\\b`);
+  return gitLog.split('\n').some((line) => pattern.test(line));
 }
