@@ -7,6 +7,10 @@
 
 const PLAIN_INFERRED = /\[INFERRED\](?!:(strong|weak))/g;
 
+/** (M2) Any epistemic marker family — used to detect a non-mandated "context" doc that
+ * carries markers but no source_tier, so the tier-ceiling rules stay reachable there too. */
+const ANY_EPISTEMIC_MARKER = /\[(EXPLICIT|INFERRED(:strong|:weak)?|ASSUMED|MISSING_INFO)\]/;
+
 /** Per-tier marker ceiling: which markers a file/claim of each source tier may carry. */
 export const TIER_MARKER_CEILING = {
   T1: ['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]'],
@@ -86,16 +90,42 @@ export function validateMarkerForwarding(sourceContent, derivedContent, sourcePa
 }
 
 /**
- * Extract the source_tier (T1..T4/TX) from either YAML frontmatter
- * (`source_tier: T1`) or the JSON-property form used by tasks/*.json
- * (`"source_tier": "T1"`). (AC3) The optional `"` around both the key and
- * the value covers both forms with one pattern; a bare `source_tier` key
- * whose value is an object (e.g. the schema's own property *definition*,
- * `"source_tier": { "type": "string" }`) does not match — the next
- * non-whitespace character after the colon is `{`, not a quote/tier token.
+ * (M1, review follow-up) Parse `content` as a JSON object and return it, or
+ * null if it isn't valid JSON (YAML frontmatter, malformed/corrupted data,
+ * or any non-JSON surface). Used so extractTier/isExemptTierSurface read
+ * ONLY the real top-level field of an actual JSON object, never a
+ * content-wide regex match — a regex can be fooled by a spoof substring
+ * sitting in malformed/corrupted content that never actually parses; a
+ * parse failure must fail closed (no tier, not exempt), not fall back to
+ * text-scanning the raw bytes.
+ */
+function tryParseJsonObject(content) {
+  try {
+    const parsed = JSON.parse(content);
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract the source_tier (T1..T4/TX) from either the JSON-property form
+ * used by tasks/*.json (`"source_tier": "T1"`) or YAML frontmatter
+ * (`source_tier: T1`). (AC3, hardened per M1) When `content` parses as a
+ * JSON object, ONLY its top-level `source_tier` field is authoritative —
+ * this is immune to a spoof value quoted inside a nested string (e.g. a
+ * ticket's own `description`), because valid JSON escapes any embedded
+ * quote, and malformed content that isn't valid JSON never reaches this
+ * branch at all (fails closed to the YAML-regex fallback, which itself
+ * won't match free-floating JSON-ish text). Non-JSON content (markdown
+ * frontmatter) falls through to the line-anchored YAML regex.
  */
 export function extractTier(content) {
-  const match = content.match(/"?source_tier"?\s*:\s*"?(T[1-4X])"?/);
+  const obj = tryParseJsonObject(content);
+  if (obj) {
+    return (typeof obj.source_tier === 'string' && /^T[1-4X]$/.test(obj.source_tier)) ? obj.source_tier : null;
+  }
+  const match = content.match(/^source_tier:\s*(T[1-4X])\s*$/m);
   return match ? match[1] : null;
 }
 
@@ -119,11 +149,18 @@ export function isMandatedTierSurface(filePath) {
  * binds active work (todo/in_progress/in_review/blocked), not the audit
  * trail. Knowledge entries carry no such exemption: they are living docs,
  * always re-editable, so the mandate always applies to them.
+ *
+ * (M1, review follow-up) Reads ONLY the top-level `status` field of the
+ * parsed JSON object — never a content-wide regex — so a ticket's own
+ * `description`/comment `body` can safely discuss another ticket's status
+ * (e.g. "TASK-005 has status: done") without falsely exempting itself.
+ * Unparseable content fails closed: never exempt.
  */
 export function isExemptTierSurface(filePath, content) {
   const p = filePath.replace(/\\/g, '/');
   if (!/(^|\/)tasks\/TASK-[0-9]+\.json$/.test(p)) return false;
-  return /"status"\s*:\s*"done"/.test(content);
+  const obj = tryParseJsonObject(content);
+  return !!obj && obj.status === 'done';
 }
 
 /** Source-tier ceiling: T3/T4 can't be [EXPLICIT], T4 can't be [INFERRED], TX is rejected. */
@@ -137,8 +174,20 @@ export function validateTiers(filePath, content) {
         rule: 'source_tier missing from a mandated surface — add T1/T2/T3/T4/TX or document an exemption',
         severity: 'BLOCKER',
       });
+    } else if (!isMandatedTierSurface(filePath) && ANY_EPISTEMIC_MARKER.test(content)) {
+      // (M2, review follow-up) A non-mandated "context" doc (agents/reviewer.md:54 names
+      // "context" as a calibrated surface) that carries epistemic markers but no
+      // source_tier makes the ceiling rules below unreachable for it — flag it (not
+      // block; the mandate itself is still narrowly scoped to knowledge/tickets). A
+      // marker-free non-mandated doc stays completely silent — AC5's "no uniform FLAG
+      // wall" guarantee only applies to files that never mention calibration at all.
+      violations.push({
+        file: filePath, line: 1, text: '(frontmatter)',
+        rule: 'source_tier missing on a file carrying epistemic markers — tier-ceiling rules are unreachable without it',
+        severity: 'FLAG',
+      });
     }
-    // Non-mandated surfaces produce no finding at all — no uniform FLAG wall (AC5).
+    // Non-mandated, marker-free surfaces produce no finding at all — no uniform FLAG wall (AC5).
     return violations;
   }
 

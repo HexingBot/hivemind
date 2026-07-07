@@ -42,7 +42,7 @@
     "source_tier": {
       "type": "string",
       "enum": ["T1", "T2", "T3", "T4", "TX"],
-      "description": "Authority of the evidence behind this entry (Spine calibration gate). T1/T2 = primary/official source or directly-reproduced behavior; T3 = secondary/community source; T4 = orientation only, never a claim basis; TX = rejected material. Set to the lowest-authority source that materially contributed. See agents/reviewer.md's calibration gate and src/calibration.js."
+      "description": "Authority of the evidence behind this entry (Spine calibration gate). T1/T2 = primary/official source or directly-reproduced behavior; T3 = secondary/community source; T4 = orientation only, never a claim basis; TX = rejected material. Set to the lowest-authority source that materially contributed. See agents/reviewer.md's calibration gate and src/calibration.js. This is a summary only — .knowledge/meta/SOURCE_TIERS.md is the single canonical tier scale; defer to it if the two ever disagree."
     }
   }
 }
