@@ -1,5 +1,7 @@
 # Hivemind
 
+**🐝 Live showcase — <https://hivemind-ef84a.web.app>**
+
 A multi-agent software development team that lives inside your repository. You
 clone it, answer a short intake, and from then on you describe what you want
 in plain language while specialized AI assistants research, write tests, ship
