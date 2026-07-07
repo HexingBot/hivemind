@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-07T13:33:53.185Z",
+  "generated_at": "2026-07-07T13:48:26.739Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -666,6 +666,12 @@
       "title": "KB seam polish: graph-query executability, deterministic top-3 selection, recordKbReuse/promoteDraftEntry hardening, calibration-checker exemption (rev-106 + rev-111 LOWs)",
       "status": "todo",
       "priority": "low"
+    },
+    {
+      "key": "TASK-114",
+      "title": "Release hivemind v0.11.0 — version bump + tag + publish (cuts the goal-sweep2 drive)",
+      "status": "done",
+      "priority": "high"
     }
   ]
 }

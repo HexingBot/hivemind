@@ -1,0 +1,40 @@
+{
+  "key": "TASK-114",
+  "title": "Release hivemind v0.11.0 — version bump + tag + publish (cuts the goal-sweep2 drive)",
+  "description": "Human-approved release (2026-07-07): plugin.json still advertises 0.10.0 while origin/main (d2eac50) is 38 commits ahead of the v0.10.0 tag — the entire goal-sweep2 drive (TASK-096..106, 111, 113 mint) is published code-wise but unreleased version-wise, the exact stale-advertised-version situation that motivated 0.10.0 (TASK-095 precedent). Minor bump under 0.x is correct: new features (kb_lookup MCP tool, dist/loop-ctl.cjs CLI, drafts-count seam, E_KB_EXISTS/promoteDraftEntry write path, calibration-gate revival, single guarded write path, crash-resume hardening, bundle compaction, canonical graph-id migration). This repo IS the marketplace (source ./), so the push+tag IS the publish. Ceremony per 0.10.0: developer two-site bump (.claude-plugin/plugin.json + tests/publish-config.spec.js pin, plus a grep sweep for any other 0.10.0 version site), fresh-context reviewer verify + independent release-gate re-run (npm run test:all), human-approved annotated tag v0.11.0 on the release commit + push.",
+  "acceptance_criteria": [
+    "Version reads 0.11.0 at every version site: .claude-plugin/plugin.json and the tests/publish-config.spec.js pin (grep sweep confirms no other stale 0.10.0 version site), in a single chore(release): v0.11.0 commit.",
+    "Release gate green at the release tier: npm run test:all passes (including publish-config and dist-parity specs) on the release commit.",
+    "Annotated tag v0.11.0 placed on the release commit and pushed to origin together with main (human-approved) — claude plugin update hivemind then sees 0.11.0.",
+    "Ticket closed with a uat comment covering these steps and the release recorded in the session bundle + knowledge graph."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "release"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "c238ba35842892cefea1e426f121ecf0ac1fd3f6"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-07T13:48:08.637Z",
+      "body": "UAT for release v0.11.0 (all steps delegated to the Orchestrator by the human via AskUserQuestion, 2026-07-07 — recorded per the delegation convention).\n\nStep 1 — Version sites read 0.11.0 at .claude-plugin/plugin.json and the tests/publish-config.spec.js pin, no other stale current-version site. Expected: 0.11.0 at both, grep sweep clean. Observed: both sites 0.11.0 in release commit c238ba3 (2 files/2 lines, mirroring the d677106 precedent); dev-114 and rev-114 each ran independent grep sweeps — all remaining 0.10.0 hits historical/inert (task/state records, prior-release graph labels, frozen fixture, package-lock third-party engines fields); README/docs state no plugin version. Verdict: PASS — verified by Orchestrator at the human's request.\n\nStep 2 — Release gate green on the release commit. Expected: npm run test:all fully green incl. publish-config + dist-parity. Observed: rev-114's own run on c238ba3: 124 files passed/1 skipped, 1360 tests passed/4 skipped; publish-config 10/10 with the 0.11.0 pin; dist-parity 7/7 byte-match. Verdict: PASS — verified by Orchestrator at the human's request.\n\nStep 3 — Annotated tag v0.11.0 on c238ba3 pushed to origin together with main (human-approved 2026-07-07). Expected: origin/main = c238ba3, tag on remote. Observed: push d2eac50..c238ba3 main -> main plus new tag v0.11.0 (tag object bccd870); post-push fetch shows main in sync, ls-remote lists refs/tags/v0.11.0. Verdict: PASS — verified by Orchestrator at the human's request.\n\nStep 4 — Publish visible to updaters. Expected: origin's plugin.json advertises 0.11.0. Observed: git show origin/main:.claude-plugin/plugin.json → version 0.11.0 (this repo IS the marketplace, source ./, so the pushed tag+manifest IS the publish; claude plugin update hivemind now sees 0.11.0). Verdict: PASS — verified by Orchestrator at the human's request.\n\nOverall result: PASS (4/4 steps)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-07T13:48:26.739Z",
+      "body": "RELEASED hivemind v0.11.0 (human-approved tag+push). Review depth FULL (release/publish gate — mandatory-full regardless of the 2-file/2-line diff, range d2eac50..c238ba3). Fresh-context reviewer rev-114 verdict: APPROVE, 0H/0M/2L — gate independently re-run on the release commit (test:all 1360/4; publish-config 10/10 on the new pin; dist-parity 7/7 byte-match), independent grep sweep confirmed no missed current-version site, semver ruling: minor bump correct for the drive's content (features + fixes, no breaking change). UAT 4/4 PASS (all steps delegated to Orchestrator by the human — see uat comment). Publish executed: annotated tag v0.11.0 (object bccd870) on release commit c238ba3, pushed with main; origin/main in sync; origin plugin.json advertises 0.11.0 — this repo IS the marketplace, so updaters now see the release. Cuts the entire goal-sweep2 drive (TASK-096..106, TASK-111; 38 commits since v0.10.0). Pre-existing LOWs noted by rev-114, folded into the tracked follow-up backlog: publish-config test name still says 0_1_1 (rename candidate); package.json version inert at 0.0.0 (not an updater-facing site). Tier uat-only per rubric (release ceremony = glue/config), reviewer tier-audit concurred."
+    }
+  ],
+  "created_at": "2026-07-07T13:38:32.405Z",
+  "updated_at": "2026-07-07T13:48:26.739Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

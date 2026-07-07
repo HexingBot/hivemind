@@ -122,6 +122,12 @@
       "label": "Gate 5 batch-2 consolidation ruling (human, 2026-07-07): continue the drive with TASK-106 then TASK-111 then stop; batch bookkeeping pushed; no KB entries this batch; TASK-112 minted for OBSERVABILITY.md scoping"
     },
     {
+      "id": "decision-20260707-release-v0-11-0-minor-bump",
+      "type": "decision",
+      "ref": "state/sessions/20260524T000000Z-65fa92c6/session.json",
+      "label": "Release v0.11.0: minor bump cutting the goal-sweep2 drive (096-106, 111); clean APPROVE, UAT 4/4 delegated, human-approved tag+push"
+    },
+    {
       "id": "ke-claude-headless-bridge",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
@@ -540,6 +546,12 @@
       "type": "task",
       "ref": "tasks/TASK-111.json",
       "label": "KB write-path completion: E_KB_EXISTS overwrite guard + atomic promoteDraftEntry + researcher/loop-ctl wiring"
+    },
+    {
+      "id": "task-114",
+      "type": "task",
+      "ref": "tasks/TASK-114.json",
+      "label": "Release hivemind v0.11.0 - version bump + tag + publish"
     }
   ],
   "edges": [
@@ -896,6 +908,11 @@
     {
       "from": "task-111",
       "to": "decision-20260707-gate5-batch2-continue-106-111-stop",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-114",
+      "to": "decision-20260707-release-v0-11-0-minor-bump",
       "relation": "produced-by"
     }
   ]
