@@ -308,6 +308,101 @@ describe('AC4 (TASK-099) — loopModeCloseGuard Gate 2: uat-only delegation', ()
 });
 
 // ===========================================================================
+// TASK-099 review M1 [src/close-guard.js:69] — the marker must anchor on the
+// SKILL.md "Overall result: PASS|FAIL" recording convention and must reject
+// outright whenever a FAIL verdict appears anywhere in the comment. The
+// pre-fix implementation was a bare /\bPASS\b/i anywhere in the body, which
+// FAILS OPEN: a recorded overall FAIL (or a "FAIL — but PASS on retry" aside)
+// still contained the substring "PASS" and so wrongly satisfied the marker.
+// ===========================================================================
+const OVERALL_FAIL_UAT_COMMENT = {
+  author: 'uat',
+  at: '2026-07-06T00:00:00Z',
+  body: 'Step 1: expected X, observed X, verdict PASS.\nStep 2: expected Y, observed Z, verdict FAIL.\nOverall result: FAIL.',
+};
+
+const FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT = {
+  author: 'uat',
+  at: '2026-07-06T00:00:00Z',
+  body: 'Step 1: expected X, observed X — FAIL, but PASS on retry.\nOverall result: PASS.',
+};
+
+const EMPTY_BODY_UAT_COMMENT = {
+  author: 'uat',
+  at: '2026-07-06T00:00:00Z',
+  body: '',
+};
+
+describe('TASK-099 review M1 — Gate 2 marker anchors on the overall-result line and rejects any FAIL verdict', () => {
+  it('an "Overall result: FAIL" comment does NOT satisfy the marker (blocks, even though a per-step PASS is present)', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-226', [OVERALL_FAIL_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
+  });
+
+  it('a "FAIL — but PASS on retry" aside does NOT satisfy the marker (blocks — any FAIL token anywhere voids it)', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-227', [FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
+  });
+
+  it('a convention-format comment (per-step verdicts + "Overall result: PASS", no FAIL anywhere) still satisfies the marker', async () => {
+    // Same fixture as the BARE_HUMAN_UAT_COMMENT case above — restated here as
+    // the M1 positive control so the fix's red-first run is not solely
+    // negative assertions. Not counted as a separate regression: it exercises
+    // the same allow-path already asserted by
+    // "resolves when uat_delegated_to_orchestrator is not granted but the uat
+    // comment carries an explicit human verdict marker" above.
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-228', [BARE_HUMAN_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+});
+
+// ===========================================================================
+// TASK-099 review L2 [tests/e2e/close-guard.spec.js] — two missing matrix
+// cells.
+// ===========================================================================
+describe('TASK-099 review L2 — Gate 2 matrix: ordering and empty-body cells', () => {
+  it('Gate 1 fires before Gate 2: uat_delegated_to_orchestrator alone (auto_close_on_green_review false) still blocks with LoopCloseGuardError', async () => {
+    const { loopModeCloseGuard, LoopCloseGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { uat_delegated_to_orchestrator: true }, // auto_close_on_green_review absent (falsy)
+    });
+    const task = makeUatTask('TASK-229', [BARE_HUMAN_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(LoopCloseGuardError);
+  });
+
+  it('an empty-body uat comment does not satisfy the marker (blocks)', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-230', [EMPTY_BODY_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
+  });
+});
+
+// ===========================================================================
 // AC4 (TASK-099) — composition: transitionStatus({..., closeGuard:
 // loopModeCloseGuard}) enforces Gate 2 end-to-end for uat-only tickets.
 // ===========================================================================

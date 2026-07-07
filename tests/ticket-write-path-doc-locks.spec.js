@@ -129,8 +129,8 @@ describe('AC1 (TASK-099) — SKILL.md: Ticket source / Tools / Workflow step 6 n
     const section = sliceSection(text, '## Ticket-update protocol');
     expect(section, 'SKILL.md must contain a "## Ticket-update protocol" section').not.toBeNull();
     expect(
-      /is the only path that runs the two/.test(section),
-      'the old "MCP tools are the only path that runs the guards" claim must be gone (the board endpoint runs them too, TASK-099 AC3)',
+      /(?:is|are) the only path that runs the/.test(section),
+      'the old "MCP tools are/is the only path that runs the guards" claim must be gone (the board endpoint runs them too, TASK-099 AC3)',
     ).toBe(false);
     expect(
       /task-board\.js/.test(section),
