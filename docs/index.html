@@ -55,6 +55,7 @@ const T = {
     s3gates: "It only stops at 5 safety gates: before closing or publishing, on UAT verdicts, if scope is ambiguous, before a release, and every few tickets so you can review what shipped.",
     s3auto: "Or, if you're feeling adventurous, you can put it in auto-mode.",
     footer: "Under the hood: specialized agents, a real ticket queue, a graph-backed knowledge base and a local kanban board",
+    btnDonate: "♥ DONATE",
     secCommands: "// THE COMMANDS",
     commands: [
       { label: "THE ONES YOU'LL ALWAYS USE", color: "#ff9a1f", items: [
@@ -115,6 +116,7 @@ const T = {
     s3gates: "Se detiene solo en 5 puntos de seguridad: antes de cerrar o publicar, en verdictos de UAT, si el alcance es ambiguo, antes de un release, y cada pocos tickets para que revises lo que salió.",
     s3auto: "O si te sientes aventurero puedes ponerlo en auto-mode.",
     footer: "Bajo el capó: agentes especializados, cola de tickets real, base de conocimiento con grafo y un tablero kanban local",
+    btnDonate: "♥ DONAR",
     secCommands: "// LOS COMANDOS",
     commands: [
       { label: "LOS QUE USARÁS SIEMPRE", color: "#ff9a1f", items: [
@@ -290,7 +292,8 @@ function render() {
   </section>
 
   <div style="max-width:1080px; margin:52px auto 0; border-top:2px solid #1d2740; padding-top:22px; text-align:center;">
-    <p style="font-size:20px; color:#9fb4d8; margin:0 auto; max-width:760px; line-height:1.45;">${esc(t.footer)} (<span style="color:#ff9a1f;">/hivemind:task-status</span>).</p>
+    <p style="font-size:20px; color:#9fb4d8; margin:0 auto 22px; max-width:760px; line-height:1.45;">${esc(t.footer)} (<span style="color:#ff9a1f;">/hivemind:task-status</span>).</p>
+    <a href="https://www.paypal.com/donate/?business=srparca%40outlook.com&no_recurring=0&item_name=Support+Hivemind&currency_code=USD" target="_blank" rel="noopener noreferrer" style="${PS} font-size:12px; padding:14px 20px; background:#ffb85c; color:#05060a; border:3px solid #ffd39a; box-shadow:4px 4px 0 #7a3d00; display:inline-block;">${esc(t.btnDonate)}</a>
   </div>`;
 }
 
