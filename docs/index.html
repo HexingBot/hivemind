@@ -24,7 +24,6 @@
 </head>
 <body>
 
-<canvas id="bg" style="position:fixed; inset:0; width:100vw; height:100vh; z-index:0; display:block;"></canvas>
 <div style="position:fixed; inset:0; z-index:1; pointer-events:none; background:radial-gradient(ellipse 120% 80% at 50% 40%, rgba(5,6,10,0) 40%, rgba(5,6,10,.75) 100%);"></div>
 <div style="position:fixed; inset:0; z-index:2; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0px, rgba(0,0,0,.28) 1px, transparent 1px, transparent 3px); animation:flick 4s infinite;"></div>
 
@@ -296,41 +295,6 @@ function render() {
 }
 
 function setLang(l) { lang = l; document.documentElement.lang = l; render(); }
-
-// Matrix-rain background
-(function startBg(){
-  const c = document.getElementById("bg");
-  const ctx = c.getContext("2d");
-  const step = 16;
-  let cols, drops;
-  const glyphs = "01ABCDEF0123456789<>/[]{}#*+=$@HIVEMIND01x8f3c".split("");
-  function resize(){
-    c.width = window.innerWidth; c.height = window.innerHeight;
-    cols = Math.floor(c.width / step);
-    drops = new Array(cols).fill(0).map(() => Math.random() * -60);
-  }
-  resize();
-  window.addEventListener("resize", resize);
-  function draw(){
-    ctx.fillStyle = "rgba(5,6,10,0.11)";
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.font = "15px 'VT323', monospace";
-    for (let i = 0; i < cols; i++) {
-      const y = drops[i] * step;
-      const g = glyphs[(Math.random() * glyphs.length) | 0];
-      if (y > 0) {
-        ctx.fillStyle = (i % 2 === 0) ? "#ff9a1f" : "#b07fff";
-        ctx.fillText(g, i * step, y);
-        ctx.fillStyle = (i % 2 === 0) ? "rgba(255,154,31,0.28)" : "rgba(176,127,255,0.26)";
-        ctx.fillText(glyphs[(Math.random() * glyphs.length) | 0], i * step, y - step);
-      }
-      if (y > c.height && Math.random() > 0.975) drops[i] = Math.random() * -20;
-      drops[i] += 0.5 + (i % 3) * 0.12;
-    }
-    requestAnimationFrame(draw);
-  }
-  draw();
-})();
 
 render();
 </script>
