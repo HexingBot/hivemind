@@ -29,7 +29,7 @@ const REPO_ROOT = join(__thisDir, '..');
 // ---------------------------------------------------------------------------
 const MOD_URL = pathToFileURL(join(REPO_ROOT, 'src', 'framework-bug-report.js')).href;
 
-let scrubSecrets, collectContext, buildIssueBody, detectGh, ghIssueCreate, fileFrameworkBug;
+let scrubSecrets, collectContext, buildIssueBody, detectGh, ghIssueCreate, fileFrameworkBug, DEFAULT_REPO;
 
 try {
   const mod = await import(MOD_URL);
@@ -39,6 +39,7 @@ try {
   detectGh = mod.detectGh;
   ghIssueCreate = mod.ghIssueCreate;
   fileFrameworkBug = mod.fileFrameworkBug;
+  DEFAULT_REPO = mod.DEFAULT_REPO;
 } catch {
   // Module not found yet — every test below will fail because the exported
   // names are undefined. That is the correct "right-reason" failure for TDD.
@@ -105,7 +106,7 @@ describe('AC2 — detectGh with authenticated mock runner', () => {
 
 describe('AC2 — ghIssueCreate parses the URL from last non-empty stdout line', () => {
   it('returns the URL from the last non-empty stdout line on success', () => {
-    const mockUrl = 'https://github.com/lordiwa/agent-framework/issues/42';
+    const mockUrl = 'https://github.com/HexingBot/hivemind/issues/42';
     const runner = vi.fn(() => ({
       status: 0,
       stdout: `Creating issue...\n\n${mockUrl}\n`,
@@ -113,7 +114,7 @@ describe('AC2 — ghIssueCreate parses the URL from last non-empty stdout line',
     }));
 
     const result = ghIssueCreate(
-      { title: 'Test bug', body: 'Some body', repo: 'lordiwa/agent-framework' },
+      { title: 'Test bug', body: 'Some body', repo: 'HexingBot/hivemind' },
       runner,
     );
     expect(result.url).toBe(mockUrl);
@@ -131,7 +132,7 @@ describe('AC2 — ghIssueCreate parses the URL from last non-empty stdout line',
 
     expect(() =>
       ghIssueCreate(
-        { title: 'Test bug', body: 'body', repo: 'lordiwa/agent-framework' },
+        { title: 'Test bug', body: 'body', repo: 'HexingBot/hivemind' },
         runner,
       ),
     ).toThrow(/exit 1/);
@@ -140,7 +141,7 @@ describe('AC2 — ghIssueCreate parses the URL from last non-empty stdout line',
 
 describe('AC2 — fileFrameworkBug returns {filed:"github", url} when gh is authed', () => {
   it('files via github and returns the issue URL', async () => {
-    const issueUrl = 'https://github.com/lordiwa/agent-framework/issues/99';
+    const issueUrl = 'https://github.com/HexingBot/hivemind/issues/99';
     const runner = vi.fn((cmd, args) => {
       if (args.includes('--version')) {
         return { status: 0, stdout: 'gh version 2.50.0\n', stderr: '' };
@@ -782,7 +783,7 @@ describe('AC4 — collectContext never reads .claude/settings.json', () => {
 
 describe('AC5 — gh success vs gh-missing are distinguishable results', () => {
   it('gh-success result has url and not path', async () => {
-    const url = 'https://github.com/lordiwa/agent-framework/issues/1';
+    const url = 'https://github.com/HexingBot/hivemind/issues/1';
     const runner = vi.fn((cmd, args) => {
       if (args.includes('--version')) return { status: 0, stdout: 'gh version 2.50.0\n', stderr: '' };
       if (args.includes('auth') && args.includes('status')) return { status: 0, stdout: '', stderr: 'Logged in\n' };
@@ -815,7 +816,7 @@ describe('AC5 — gh success vs gh-missing are distinguishable results', () => {
   });
 
   it('gh-success does not call fallbackWriter; gh-missing does call it', async () => {
-    const successUrl = 'https://github.com/lordiwa/agent-framework/issues/5';
+    const successUrl = 'https://github.com/HexingBot/hivemind/issues/5';
     const authRunner = vi.fn((cmd, args) => {
       if (args.includes('--version')) return { status: 0, stdout: 'gh version 2.50.0\n', stderr: '' };
       if (args.includes('auth') && args.includes('status')) return { status: 0, stdout: '', stderr: 'Logged in\n' };
@@ -832,6 +833,166 @@ describe('AC5 — gh success vs gh-missing are distinguishable results', () => {
 
     expect(successWriter).not.toHaveBeenCalled();
     expect(failWriter).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-101 (R12) — repo identity, URI-userinfo/_AUTH scrub, agent confirm
+// gate, and the misleading fallback-cause message.
+// ---------------------------------------------------------------------------
+
+describe('TASK-101 AC1 — DEFAULT_REPO points at this product, not the pre-rebrand upstream', () => {
+  it('exports DEFAULT_REPO as the single shared constant', () => {
+    expect(DEFAULT_REPO).toBe('HexingBot/hivemind');
+  });
+
+  it('fileFrameworkBug uses DEFAULT_REPO when no repo is supplied', async () => {
+    const runner = vi.fn((cmd, args) => {
+      if (args.includes('--version')) return { status: 0, stdout: 'gh version 2.50.0\n', stderr: '' };
+      if (args.includes('auth') && args.includes('status')) return { status: 0, stdout: '', stderr: 'Logged in\n' };
+      if (args.includes('issue') && args.includes('create')) {
+        // Assert the --repo value gh was invoked with is the new default.
+        const repoIdx = args.indexOf('--repo');
+        expect(args[repoIdx + 1]).toBe('HexingBot/hivemind');
+        return { status: 0, stdout: '\nhttps://github.com/HexingBot/hivemind/issues/1\n', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: '' };
+    });
+
+    await fileFrameworkBug({
+      title: 't', body: 'b', pluginRoot: '/p', projectDir: '/d',
+      runner, fallbackWriter: vi.fn(),
+    });
+  });
+
+  it('README.md install example points at HexingBot/hivemind, not the pre-rebrand upstream', () => {
+    const raw = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+    expect(raw).not.toMatch(/lordiwa\/agent-framework/);
+    expect(raw).toMatch(/HexingBot\/hivemind/);
+  });
+
+  it('commands/report-framework-bug.md references HexingBot/hivemind, not the pre-rebrand upstream', () => {
+    const raw = readFileSync(join(REPO_ROOT, 'commands', 'report-framework-bug.md'), 'utf8');
+    expect(raw).not.toMatch(/lordiwa\/agent-framework/);
+    expect(raw).toMatch(/HexingBot\/hivemind/);
+  });
+});
+
+describe('TASK-101 AC2 — URI-userinfo credential scrub (regression: R12 live repro)', () => {
+  it('scrubs bolt://neo4j:hunter2@db:7687 while keeping scheme and host readable', () => {
+    const input = 'connect with bolt://neo4j:hunter2@db:7687 please';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/hunter2/);
+    expect(out).toMatch(/\[REDACTED/);
+    // Scheme + host stay legible so the report is still useful to a maintainer.
+    expect(out).toMatch(/bolt:\/\//);
+    expect(out).toMatch(/db:7687/);
+  });
+
+  it('scrubs generic scheme://user:pass@host userinfo', () => {
+    const input = 'https://svc:s3cr3tPass@example.com/path';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/s3cr3tPass/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('does not touch a plain URL with no userinfo', () => {
+    const input = 'see https://github.com/HexingBot/hivemind/issues/1';
+    expect(scrubSecrets(input)).toBe(input);
+  });
+});
+
+describe('TASK-101 AC2 — env-var *_AUTH and bare PASSWORD= scrub (regression: R12 live repro)', () => {
+  it('scrubs NEO4J_AUTH=neo4j/hunter2', () => {
+    const input = 'set NEO4J_AUTH=neo4j/hunter2 in the compose file';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/hunter2/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('scrubs a bare PASSWORD= assignment (no prefix)', () => {
+    const input = 'PASSWORD=hunter2hunter2';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/hunter2hunter2/);
+    expect(out).toMatch(/\[REDACTED/);
+  });
+
+  it('still redacts the existing *_PASSWORD= form (regression guard)', () => {
+    const input = 'DB_PASSWORD=hunter2hunter2';
+    const out = scrubSecrets(input);
+    expect(out).not.toMatch(/hunter2hunter2/);
+  });
+});
+
+describe('TASK-101 AC3 — agent filing path requires an explicit human confirm-preview', () => {
+  const CMD_PATH = join(REPO_ROOT, 'commands', 'report-framework-bug.md');
+
+  function normalize(text) {
+    return text.replace(/\s+/g, ' ');
+  }
+
+  it('the agent-caller instructions require presenting the scrubbed body and collecting explicit confirmation before filing', () => {
+    const raw = normalize(readFileSync(CMD_PATH, 'utf8'));
+    expect(raw).toMatch(/present the (assembled|scrubbed).{0,80}confirm/i);
+    expect(raw).toMatch(/do not (call|invoke|file).{0,80}(gh issue create|Step 2).{0,120}without.{0,40}confirmation/i);
+  });
+
+  it('the confirm gate is scoped to the agent/GitHub path — the local-file fallback stays confirm-free', () => {
+    const raw = normalize(readFileSync(CMD_PATH, 'utf8'));
+    expect(raw).toMatch(/local.fallback.{0,60}never requires confirmation|local.fallback.{0,60}confirm.free/i);
+  });
+});
+
+describe('TASK-101 AC4 — fallback reason names the actual failure, not a generic auth/availability guess', () => {
+  it('reason is "gh CLI not found" when gh is absent', async () => {
+    const runner = vi.fn(() => ({ status: 127, stdout: '', stderr: 'command not found: gh' }));
+    const result = await fileFrameworkBug({
+      title: 't', body: 'b', pluginRoot: '/p', projectDir: '/d',
+      runner, fallbackWriter: vi.fn(),
+    });
+    expect(result.filed).toBe('local');
+    expect(result.reason).toMatch(/gh CLI not found/i);
+  });
+
+  it('reason is "gh not authenticated" when gh is present but unauthenticated', async () => {
+    const runner = vi.fn((cmd, args) => {
+      if (args.includes('--version')) return { status: 0, stdout: 'gh version 2.50.0\n', stderr: '' };
+      if (args.includes('auth') && args.includes('status')) return { status: 1, stdout: '', stderr: 'not logged into any GitHub hosts' };
+      return { status: 1, stdout: '', stderr: '' };
+    });
+    const result = await fileFrameworkBug({
+      title: 't', body: 'b', pluginRoot: '/p', projectDir: '/d',
+      runner, fallbackWriter: vi.fn(),
+    });
+    expect(result.filed).toBe('local');
+    expect(result.reason).toMatch(/gh not authenticated/i);
+  });
+
+  it('reason names the ACTUAL ghIssueCreate failure (e.g. wrong repo) instead of a misleading auth/availability guess', async () => {
+    // gh IS available and authenticated — the failure happens at `gh issue create`
+    // itself (e.g. repo not found), which is exactly the R12 misdiagnosis: the
+    // old code funneled this into the generic "gh unavailable/unauthenticated"
+    // fallback message even though gh was neither unavailable nor unauthenticated.
+    const runner = vi.fn((cmd, args) => {
+      if (args.includes('--version')) return { status: 0, stdout: 'gh version 2.50.0\n', stderr: '' };
+      if (args.includes('auth') && args.includes('status')) return { status: 0, stdout: '', stderr: 'Logged in\n' };
+      if (args.includes('issue') && args.includes('create')) {
+        return { status: 1, stdout: '', stderr: "GraphQL: Could not resolve to a Repository with the name 'wrong/repo'." };
+      }
+      return { status: 1, stdout: '', stderr: '' };
+    });
+
+    const result = await fileFrameworkBug({
+      title: 't', body: 'b', pluginRoot: '/p', projectDir: '/d',
+      runner, fallbackWriter: vi.fn(),
+    });
+
+    expect(result.filed).toBe('local');
+    // Must name the real cause...
+    expect(result.reason).toMatch(/Could not resolve to a Repository/);
+    // ...and must NOT misreport it as an availability/auth problem.
+    expect(result.reason).not.toMatch(/gh CLI not found/i);
+    expect(result.reason).not.toMatch(/gh not authenticated/i);
   });
 });
 
