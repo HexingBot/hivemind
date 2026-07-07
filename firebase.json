@@ -1,0 +1,12 @@
+{
+  "hosting": {
+    "site": "hivemind-ef84a",
+    "public": "docs",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "E2E-BRAIN.md"
+    ]
+  }
+}
