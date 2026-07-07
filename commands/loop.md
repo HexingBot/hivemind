@@ -65,9 +65,11 @@ prior run of this session crashed mid-ticket:
      `iteration`/`completed_this_run`/`run_started_at` are restored **verbatim**
      from the result here too (same restore semantics as `'resume'`/`'none'`) —
      the run's counters must not silently reset just because this ticket was
-     stranded. **Before discarding any work** (TASK-100): run `git log --oneline`
-     and check it for commits referencing the ticket key (e.g. via
-     `ticketHasLandedCommits({ gitLog, key })` from `src/loop-checkpoint.js`).
+     stranded. **Before discarding any work** (TASK-100): run
+     `git log --oneline` and pipe it into
+     `loop-ctl.cjs landed-commits --key <ticket-key>` (wraps
+     `ticketHasLandedCommits`, `src/loop-checkpoint.js`) to check it for
+     commits referencing the ticket key — returns `{"ok":true,"hasLandedCommits":<bool>}`.
      If a landed commit is found despite the `'reset'` verdict, this is
      evidence the checkpoint cadence itself missed a phase transition, not that
      the ticket is actually stranded — do NOT silently reset. Treat it as a
@@ -86,8 +88,10 @@ prior run of this session crashed mid-ticket:
 
 `loop-ctl.cjs checkpoint --repo-root <repoRoot> --current-ticket <key> --phase <phase> [--iteration <n>] [--completed-this-run <n>] [--run-started-at <iso>]`
 is the writer half of this contract: call it at **every** phase boundary —
-after ticket selection, after the Developer subagent returns, after the
-Reviewer subagent returns, and after ticket close — passing `--phase` as one of
+after ticket selection, **immediately before spawning the Developer subagent**
+(phase `test` for tdd-tier tickets, `impl` otherwise — TASK-100, mandatory,
+see Step 2 below), after the Developer subagent returns, after the Reviewer
+subagent returns, and after ticket close — passing `--phase` as one of
 the `LOOP_PHASES` keys (`idle`, `fetch`, `research`, `test`, `impl`, `review`,
 `update`). The subcommand maps `phase` onto the bundle's `workflow_step` enum
 via `LOOP_PHASES` and validates it before any I/O (an invalid phase exits

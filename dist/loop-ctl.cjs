@@ -8286,6 +8286,12 @@ function resumePoint({ bundle, tasks }) {
     run_started_at
   };
 }
+function ticketHasLandedCommits({ gitLog, key } = {}) {
+  if (!gitLog || !key) return false;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`\\b${escaped}\\b`, "i");
+  return gitLog.split("\n").some((line) => pattern.test(line));
+}
 
 // src/loop-auth.js
 var LOOP_AUTH_SWITCHES = Object.freeze([
@@ -8473,6 +8479,7 @@ var SUBCOMMANDS = /* @__PURE__ */ new Set([
   "set-mode",
   "checkpoint",
   "resume-point",
+  "landed-commits",
   "grant-unattended"
 ]);
 var FLAG_SPEC = {
@@ -8490,6 +8497,7 @@ var FLAG_SPEC = {
     "--run-started-at"
   ],
   "resume-point": ["--repo-root"],
+  "landed-commits": ["--key"],
   "grant-unattended": ["--repo-root"]
 };
 function kebabToCamel(flag) {
@@ -8534,6 +8542,17 @@ async function readAllTasksForResume(repoRoot) {
     out.push(JSON.parse(raw));
   }
   return out;
+}
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      data += chunk;
+    });
+    process.stdin.on("end", () => resolve(data));
+    process.stdin.on("error", reject);
+  });
 }
 async function readBundleTolerant(repoRoot) {
   const pointer = readPointer(repoRoot);
@@ -8600,6 +8619,11 @@ async function run(subcommand, flags) {
       const bundle = await readBundleTolerant(repoRoot);
       const tasks = await readAllTasksForResume(repoRoot);
       return resumePoint({ bundle, tasks });
+    }
+    case "landed-commits": {
+      if (!flags.key) throw new Error("missing required flag: --key");
+      const gitLog = await readStdin();
+      return { hasLandedCommits: ticketHasLandedCommits({ gitLog, key: flags.key }) };
     }
     case "grant-unattended": {
       const optIns = {};

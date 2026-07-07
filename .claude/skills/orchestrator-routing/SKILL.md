@@ -427,6 +427,7 @@ holder's identity.
 | `set-mode` | `setMode()` (operating-mode) | `--repo-root`, `--mode` |
 | `checkpoint` | `writeLoopCheckpoint()` (loop-checkpoint) | `--repo-root`, `--current-ticket`, `--phase`, `--iteration`, `--completed-this-run`, `--run-started-at` |
 | `resume-point` | `resumePoint()` (loop-checkpoint) | `--repo-root` (reads the active bundle + full task list internally) |
+| `landed-commits` | `ticketHasLandedCommits()` (loop-checkpoint) | `--key` (reads `git log --oneline` output from stdin; no `--repo-root` — does not spawn git or touch the bundle) |
 | `grant-unattended` | `grantUnattended()` (loop-auth) | `--repo-root`, repeatable `--opt-in <switch>` |
 
 ### Single-active-session lock requirement
@@ -622,11 +623,13 @@ writer and a pure decision helper:
     `run_started_at` are restored **verbatim** here too (TASK-100 — same
     restore contract as `'resume'`/`'none'`), so the run's counters do not
     silently reset just because this ticket was stranded. **Before
-    discarding any work**, check `git log --oneline` for commits referencing
-    the ticket key — e.g. via `ticketHasLandedCommits({ gitLog, key })`
-    (`src/loop-checkpoint.js`, pure, takes the already-captured git-log
-    string so it stays fast-tier testable without spawning git). A landed
-    commit despite a `'reset'` verdict means the checkpoint cadence itself
+    discarding any work**, run `git log --oneline` and pipe it into
+    `loop-ctl.cjs landed-commits --key <ticket-key>` (wraps
+    `ticketHasLandedCommits`, `src/loop-checkpoint.js` — pure, takes the
+    already-captured git-log string over stdin so it stays fast-tier
+    testable without the CLI itself spawning git) to check it for commits
+    referencing the ticket key. A landed commit despite a `'reset'` verdict
+    means the checkpoint cadence itself
     missed a phase transition, not that the ticket is actually stranded — do
     NOT silently reset; treat it as a Gate 3-shaped ambiguity and surface the
     reason plus the matching commit(s) to the human instead of guessing

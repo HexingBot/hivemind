@@ -208,11 +208,14 @@ export function resumePoint({ bundle, tasks }) {
 //
 // Matches `key` as a whole word (`\b`-delimited) so a shorter key is never a
 // false-positive substring match of a longer one (e.g. 'TASK-100' must not
-// match inside 'TASK-1000').
+// match inside 'TASK-1000'), and case-insensitively (a commit subject
+// spelling the key lowercase, e.g. 'task-100', must still match — a
+// case-sensitive miss here is exactly the silent reset this helper exists to
+// prevent — TASK-100 review R1/L1).
 // ---------------------------------------------------------------------------
 export function ticketHasLandedCommits({ gitLog, key } = {}) {
   if (!gitLog || !key) return false;
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`\\b${escaped}\\b`);
+  const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
   return gitLog.split('\n').some((line) => pattern.test(line));
 }

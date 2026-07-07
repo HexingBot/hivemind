@@ -16,6 +16,10 @@
 //   checkpoint       --repo-root <path> --current-ticket <key> --phase <phase>
 //                    [--iteration <n>] [--completed-this-run <n>] [--run-started-at <iso>]
 //   resume-point     --repo-root <path>
+//   landed-commits   --key <ticket-key>   (reads `git log --oneline` output from
+//                    stdin — TASK-100: backs the reset protocol's pre-discard
+//                    git-log check; does not spawn git itself, --repo-root not
+//                    needed)
 //   grant-unattended --repo-root <path> [--opt-in <switch>]...
 //
 // `--repo-root` may be omitted; it then falls back to CLAUDE_PROJECT_DIR or
@@ -34,7 +38,7 @@ import { join } from 'node:path';
 import { resolveRepoRoot } from '../src/repo-root.js';
 import { acquire, renew, release } from '../src/session-lock.js';
 import { getMode, setMode } from '../src/operating-mode.js';
-import { writeLoopCheckpoint, resumePoint } from '../src/loop-checkpoint.js';
+import { writeLoopCheckpoint, resumePoint, ticketHasLandedCommits } from '../src/loop-checkpoint.js';
 import { grantUnattended } from '../src/loop-auth.js';
 import { readPointer } from '../src/pointer.js';
 import { readBundleSession } from '../src/bundle.js';
@@ -43,7 +47,7 @@ import { TASK_FILENAME_RE } from '../src/task-store.js';
 const SUBCOMMANDS = new Set([
   'acquire', 'renew', 'release',
   'get-mode', 'set-mode',
-  'checkpoint', 'resume-point',
+  'checkpoint', 'resume-point', 'landed-commits',
   'grant-unattended',
 ]);
 
@@ -59,6 +63,7 @@ const FLAG_SPEC = {
     '--completed-this-run', '--run-started-at',
   ],
   'resume-point': ['--repo-root'],
+  'landed-commits': ['--key'],
   'grant-unattended': ['--repo-root'],
 };
 
@@ -116,6 +121,21 @@ async function readAllTasksForResume(repoRoot) {
     out.push(JSON.parse(raw));
   }
   return out;
+}
+
+/** Read stdin to completion as a utf8 string. Used by `landed-commits`, which
+ * takes its `git log` text over stdin rather than as a CLI arg (a git log can
+ * be arbitrarily long/multi-line — unsafe to pass as a single flag value).
+ * Callers MUST pipe input (e.g. `git log --oneline | loop-ctl landed-commits
+ * --key <key>`); with no pipe attached this waits on stdin's 'end' event. */
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', reject);
+  });
 }
 
 /** Resolve the active bundle, tolerating "no active session" / "bundle dir
@@ -199,6 +219,11 @@ async function run(subcommand, flags) {
       const bundle = await readBundleTolerant(repoRoot);
       const tasks = await readAllTasksForResume(repoRoot);
       return resumePoint({ bundle, tasks });
+    }
+    case 'landed-commits': {
+      if (!flags.key) throw new Error('missing required flag: --key');
+      const gitLog = await readStdin();
+      return { hasLandedCommits: ticketHasLandedCommits({ gitLog, key: flags.key }) };
     }
     case 'grant-unattended': {
       const optIns = {};
