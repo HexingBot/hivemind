@@ -55,6 +55,13 @@ const VALID_DESCRIPTOR = {
       pin: '1.0.0',
       scope: 'project',
       required: 'hard',
+      // TASK-123 — activate_when + install are OPTIONAL descriptor-data
+      // fields (docs/design/addon-packs.md §8.1): activation/exclusion is
+      // expressed as data (this predicate + the fallback field below), not
+      // hardcoded core logic. Predicate EVALUATION is deferred to Phase D/F
+      // — this descriptor only needs to round-trip the strings.
+      activate_when: 'always',
+      install: 'claude plugin add anthropic/frontend-design',
     },
     {
       id: 'firecrawl',
@@ -179,5 +186,103 @@ describe('TASK-115 review fix — resource ids must be unique within a descripto
     expect(result.valid).toBe(false);
     const hit = result.errors.some((e) => (e.instancePath || '').includes('/resources/') && (e.instancePath || '').includes('/id'));
     expect(hit, 'an error must point at a resource id: ' + JSON.stringify(result.errors)).toBe(true);
+  });
+});
+
+// TASK-123 — extend resources[] with two OPTIONAL descriptor-data fields:
+// `activate_when` (an activation predicate over profile variables, e.g.
+// "tier>=MEDIO") and `install` (an install command string). Per
+// docs/design/addon-packs.md §8.1, exclusion/activation is expressed as
+// descriptor DATA (this predicate + the existing `fallback` field), never
+// hardcoded core logic — the resource table is a maintained manifest read at
+// runtime. This ticket ONLY makes the schema accept + round-trip the two
+// fields; predicate EVALUATION is a Phase D/F concern and is explicitly out
+// of scope here (no parser/evaluator is exercised or expected).
+describe('TASK-123 AC1 — resources[] accepts optional activate_when + install', () => {
+  it('accepts_a_resource_with_both_activate_when_and_install', () => {
+    // VALID_DESCRIPTOR.resources[0] (frontend-design) already carries both
+    // fields (AC4 fixture extension); this pins that the whole descriptor
+    // still validates with them present.
+    const result = validatePackDescriptor(VALID_DESCRIPTOR);
+    expect(
+      result.valid,
+      'descriptor with activate_when + install must pass: ' + JSON.stringify(result.errors, null, 2),
+    ).toBe(true);
+    expect(result.errors).toBeNull();
+  });
+
+  it('accepts_a_resource_omitting_both_activate_when_and_install', () => {
+    // resources[1] (firecrawl) carries neither field — backward compatible
+    // with every pre-TASK-123 descriptor/fixture.
+    const ok = clone(VALID_DESCRIPTOR);
+    expect(ok.resources[1].activate_when).toBeUndefined();
+    expect(ok.resources[1].install).toBeUndefined();
+
+    const result = validatePackDescriptor(ok);
+    expect(result.valid, 'resource omitting both fields must still validate: ' + JSON.stringify(result.errors)).toBe(true);
+  });
+});
+
+describe('TASK-123 AC2 — activate_when/install must be non-empty strings when present', () => {
+  it('rejects_an_empty_activate_when', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    bad.resources[0].activate_when = '';
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    const hit = result.errors.some((e) => (e.instancePath || '').includes('/resources/0/activate_when'));
+    expect(hit, 'an error must point at resources/0/activate_when: ' + JSON.stringify(result.errors)).toBe(true);
+  });
+
+  it('rejects_a_non_string_activate_when', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    bad.resources[0].activate_when = 42;
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    const hit = result.errors.some((e) => (e.instancePath || '').includes('/resources/0/activate_when'));
+    expect(hit, 'an error must point at resources/0/activate_when: ' + JSON.stringify(result.errors)).toBe(true);
+  });
+
+  it('rejects_an_empty_install', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    bad.resources[0].install = '';
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    const hit = result.errors.some((e) => (e.instancePath || '').includes('/resources/0/install'));
+    expect(hit, 'an error must point at resources/0/install: ' + JSON.stringify(result.errors)).toBe(true);
+  });
+
+  it('rejects_a_non_string_install', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    bad.resources[0].install = ['not', 'a', 'string'];
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    const hit = result.errors.some((e) => (e.instancePath || '').includes('/resources/0/install'));
+    expect(hit, 'an error must point at resources/0/install: ' + JSON.stringify(result.errors)).toBe(true);
+  });
+});
+
+describe('TASK-123 AC3 — resources[] stays additionalProperties:false for every other key', () => {
+  it('rejects_an_unknown_resource_field_activateWhen_typo', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    delete bad.resources[0].activate_when;
+    bad.resources[0].activateWhen = 'always'; // typo — camelCase, not the real field
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    expect(result.errors, 'an unknown resource field must still be rejected: ' + JSON.stringify(result.errors)).not.toBeNull();
+  });
+
+  it('rejects_an_unknown_resource_field_installl_typo', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    delete bad.resources[0].install;
+    bad.resources[0].installl = 'claude plugin add anthropic/frontend-design'; // typo — extra "l"
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    expect(result.errors, 'an unknown resource field must still be rejected: ' + JSON.stringify(result.errors)).not.toBeNull();
   });
 });
