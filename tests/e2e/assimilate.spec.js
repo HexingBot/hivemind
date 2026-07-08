@@ -45,6 +45,7 @@ afterAll(cleanupAll);
 
 const PERMISSIVE_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'permissive-skill');
 const COPYLEFT_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'copyleft-skill');
+const MALICIOUS_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'malicious-skill');
 const FIXED_NOW = () => '2026-07-08T12:00:00Z';
 const PACK = 'design-power@0.1.0';
 
@@ -371,5 +372,232 @@ describe('no-write-without-approve invariant (human-gate policy)', () => {
         expect(existsSync(join(root, 'integrations.lock.json')), `${label}/${decision} lock`).toBe(false);
       }
     }
+  });
+});
+
+// TASK-122 -- content security gate: an automated pattern scan (src/skill-scan.js)
+// plus an injected security-reviewer verdict now populate the approval package
+// assimilateSkill assembles, and a suspicious verdict blocks the approve write
+// unless the human passes an explicit securityOverride. Trust model unchanged:
+// license/scan/reviewer are all decision-support; the human approve/decline
+// call is still the only write authority (TASK-120's invariant, untouched).
+
+describe('AC1/AC3 -- pending_approval carries scan findings + the (possibly absent) reviewer verdict', () => {
+  it('surfaces categorized scan findings for a skill with risky content, and echoes reviewer as null when not yet supplied', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-scan-pending');
+
+    const result = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('pending_approval');
+    expect(result.reviewer).toBeNull();
+    expect(Array.isArray(result.scan.findings)).toBe(true);
+    const categories = result.scan.findings.map((f) => f.category);
+    expect(categories).toContain('shell-exec');
+    expect(categories).toContain('network-fetch');
+    expect(categories).toContain('env-credential-access');
+    expect(categories).toContain('obfuscated-blob');
+    expect(result.scan.summary.highestSeverity).toBe('high');
+    // Still writes nothing -- scan findings alone are decision support, never a write authority.
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+
+  it('echoes an already-computed reviewer verdict back in the pending_approval payload', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-scan-pending-reviewer');
+
+    const result = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      reviewerVerdict: { verdict: 'suspicious', reasoning: 'instructions attempt to exfiltrate env secrets to a remote host' },
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('pending_approval');
+    expect(result.reviewer).toEqual({ verdict: 'suspicious', reasoning: 'instructions attempt to exfiltrate env secrets to a remote host' });
+  });
+});
+
+describe('AC4 -- a suspicious security-reviewer verdict blocks adoption on approve, pending an explicit override', () => {
+  it('refuses the write with status blocked_security when approve is combined with an un-overridden suspicious verdict', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-blocked-security');
+
+    const result = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'suspicious', reasoning: 'prompt-injection risk: instructs exfil of credentials' },
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('blocked_security');
+    expect(result.reviewer.verdict).toBe('suspicious');
+    // An approve alone cannot override a suspicious content verdict -- NOTHING is written.
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+
+  it('leaves a pre-existing staging dir and lockfile byte-untouched when a later resource is blocked_security', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-blocked-security-byte-untouched');
+
+    // Seed real prior state: one already-approved, unrelated skill.
+    const baseline = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+    expect(baseline.status).toBe('assimilated');
+
+    const lockPath = join(root, 'integrations.lock.json');
+    const ownedSkillPath = join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md');
+    const lockBefore = readFileSync(lockPath, 'utf8');
+    const ownedSkillBefore = readFileSync(ownedSkillPath, 'utf8');
+
+    const blocked = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'suspicious', reasoning: 'prompt-injection risk' },
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      root,
+      now: FIXED_NOW,
+    });
+    expect(blocked.status).toBe('blocked_security');
+
+    // Nothing about the pre-existing, unrelated resource changed -- byte-identical.
+    expect(readFileSync(lockPath, 'utf8')).toBe(lockBefore);
+    expect(readFileSync(ownedSkillPath, 'utf8')).toBe(ownedSkillBefore);
+    // And the blocked resource itself was never staged.
+    expect(existsSync(join(root, 'assimilated-skills', 'malicious-skill'))).toBe(false);
+  });
+
+  it('proceeds and writes once the human passes an explicit securityOverride alongside the same suspicious verdict', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-security-override');
+
+    const result = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'suspicious', reasoning: 'prompt-injection risk: instructs exfil of credentials' },
+      securityOverride: true,
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(result.reviewer.verdict).toBe('suspicious');
+    expect(existsSync(join(root, 'assimilated-skills', 'malicious-skill', 'SKILL.md'))).toBe(true);
+    const lock = JSON.parse(readFileSync(join(root, 'integrations.lock.json'), 'utf8'));
+    expect(lock.resources['skill:malicious-skill']).toBeDefined();
+  });
+
+  it('a safe reviewer verdict proceeds normally on approve, no override needed', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-safe-reviewer');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns, no suspicious instructions' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(result.reviewer).toEqual({ verdict: 'safe', reasoning: 'no risky patterns, no suspicious instructions' });
+  });
+});
+
+describe('AC5 -- end-to-end: license -> scan -> reviewer -> presented package -> human sign-off', () => {
+  it('a declined package (after full package assembly) leaves the tree and lock untouched; a subsequent approve with a safe verdict adopts', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-e2e-signoff');
+
+    // Step 1: dry-run vet assembles the full approval package -- writes nothing.
+    const dryRun = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      reviewerVerdict: { verdict: 'suspicious', reasoning: 'prompt-injection risk' },
+      root,
+      now: FIXED_NOW,
+    });
+    expect(dryRun.status).toBe('pending_approval');
+    expect(dryRun.classification).toBeDefined();
+    expect(dryRun.scan.findings.length).toBeGreaterThan(0);
+    expect(dryRun.reviewer.verdict).toBe('suspicious');
+
+    // Step 2: the human declines the package. Terminal no -- nothing written.
+    const declined = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      decision: 'decline',
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      reviewerVerdict: { verdict: 'suspicious', reasoning: 'prompt-injection risk' },
+      root,
+      now: FIXED_NOW,
+    });
+    expect(declined.status).toBe('declined');
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+
+    // Step 3: a DIFFERENT, benign skill goes through the same full package
+    // assembly and the human approves it -- this is the only path that writes.
+    const approved = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns, no suspicious instructions' },
+      root,
+      now: FIXED_NOW,
+    });
+    expect(approved.status).toBe('assimilated');
+    expect(approved.scan.findings).toEqual([]);
+    expect(existsSync(join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md'))).toBe(true);
+    const lock = JSON.parse(readFileSync(join(root, 'integrations.lock.json'), 'utf8'));
+    expect(lock.resources['skill:permissive-skill']).toBeDefined();
+    // The declined resource from step 2 still never made it to disk.
+    expect(existsSync(join(root, 'assimilated-skills', 'malicious-skill'))).toBe(false);
   });
 });
