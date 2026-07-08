@@ -118,6 +118,16 @@ export function probeSkills(root) {
  * silently per §8, surfaced only as a non-blocking gap. Neither is ever
  * installed/removed/replaced here.
  *
+ * Staged-vs-live (TASK-121): `lock` and `actual` answer two DIFFERENT
+ * questions — the lock says "is this resource recorded/owned" (assimilate
+ * stages a lock entry at approve time, before any materialize), `actual`
+ * says "is this resource live on disk right now" (probeSkills). A desired
+ * skill absent from `actual` is always planned as an install, whether or not
+ * it already has a lock entry — a not-live skill cannot be "replaced", it
+ * has to be installed/materialized first. Only once a skill IS live
+ * (present in `actual`) does the pin comparison decide replace vs no-op.
+ *
+
  * @param {Array<object>} desired - resources[] from a validated pack descriptor.
  * @param {{ resources: Record<string, object> }} lock - integrations.lock.json payload.
  * @param {Record<string, object>} actual - probeSkills(root) output (or equivalent).
@@ -167,11 +177,23 @@ export function plan(desired, lock, actual) {
     const lockEntry = lockResources[id];
     const actualEntry = actualMap[id];
 
-    if (!lockEntry && !actualEntry) {
+    // TASK-121: staged-vs-live, not lock-vs-live. A skill can be recorded in
+    // the lock (assimilate stages a lock entry at approve time,
+    // docs/design/addon-packs-plan.md §7) without ever being materialized
+    // under .claude/skills/ — the applier's install op is what actually
+    // copies it onto disk (src/pack-apply.js). So the gate here is "not live
+    // yet", full stop, regardless of whether the lock already knows about it:
+    // a skill absent from `actual` cannot be "replaced", it has to be
+    // installed/materialized first. This is what closes the TASK-120 review
+    // divergence (lock says installed, disk says absent, and the old
+    // `!lockEntry && !actualEntry` gate would never re-propose the install).
+    if (!actualEntry) {
       install.push({ id, resource });
       continue;
     }
 
+    // actualEntry exists -> the skill IS live; compare pins for a replace,
+    // otherwise it's a genuine steady-state no-op.
     const currentPin = lockEntry ? lockEntry.pin : actualEntry?.provenance?.pin;
     if (currentPin !== undefined && currentPin !== resource.pin) {
       replace.push({ id, resource, from: currentPin, to: resource.pin });
