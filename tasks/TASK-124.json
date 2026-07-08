@@ -1,0 +1,30 @@
+{
+  "key": "TASK-124",
+  "title": "PROJECT.md perfil_proyecto + tier frontmatter (design profile fields)",
+  "description": "Phase E foundation for the Diseño Poderoso design pack. The profile subsystem writes a design profile to PROJECT.md via two frontmatter fields the pack advertises as project_md_contribution = [\"perfil_proyecto\",\"tier\"] (docs/design/addon-packs-plan.md:53, addon-packs.md:137). This ticket adds the CONTAINER + plumbing only — no scoring or question logic (that is the deferred Phase E scoring/interview work, blocked on the design investigation now running). `tier` is a scalar enum LIGERO|MEDIO|COMPLETO (fully specified). `perfil_proyecto` is a structured profile block; because the in-house frontmatter YAML parser rejects nested objects (src/project-md.js parseFrontmatter throws on indentation), it must use the inline-object encoding already used for `agent_models` (SPECIAL_FRONTMATTER_IDS: single-line {k: v, ...}, excluded from the ## Stack section). Its concrete keys are defined later by the Phase E investigation, so model perfil_proyecto as a permissive inline string-map (like agent_models is a map) so filling its keys later needs no further schema/plumbing change. Scope: src/project-md.js (SPECIAL_FRONTMATTER_IDS + render/parse/restore sites) + state/PROJECT.schema.json + tests. Both fields are OPTIONAL — existing projects with neither must be byte-unchanged.",
+  "acceptance_criteria": [
+    "writeProjectMd then readProjectMd round-trips a project whose answers include `tier: \"COMPLETO\"` and a `perfil_proyecto` inline-object block (e.g. {functionality: high, beauty: high, framework: vue}) losslessly — read yields the same tier string and the same perfil_proyecto key/value map that was written.",
+    "`tier` is a top-level scalar frontmatter field in state/PROJECT.schema.json constrained to enum [LIGERO, MEDIO, COMPLETO]; an out-of-enum tier value fails schema validation.",
+    "`perfil_proyecto` uses the SPECIAL_FRONTMATTER_IDS inline-object treatment exactly like agent_models: rendered on a single frontmatter line, parsed back into an object, and excluded unconditionally from the ## Stack section; its schema entry is an object of string values (permissive keys — the concrete profile keys are filled by the later Phase E scoring ticket).",
+    "A project whose answers include NEITHER `tier` nor `perfil_proyecto` (i.e. every existing project) writes and reads exactly as before: no new frontmatter lines emitted, and every existing project-md and PROJECT.schema test still passes unchanged (no regression).",
+    "state/PROJECT.schema.json top-level additionalProperties:false still holds — `tier` and `perfil_proyecto` are the only two newly permitted keys; an unrelated unknown frontmatter key is still rejected."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-e",
+    "schema",
+    "project-md"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-08T19:59:45.596Z",
+  "updated_at": "2026-07-08T19:59:45.596Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

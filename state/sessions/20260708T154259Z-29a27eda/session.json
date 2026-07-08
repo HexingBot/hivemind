@@ -3,10 +3,10 @@
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
   "updated_at": "2026-07-08T18:49:28.605Z",
-  "active_task": null,
-  "workflow_step": "idle",
-  "next_action": "BOTH DEPS DONE (TASK-122 content security gate; TASK-121 planner staged-vs-live). Now BUILD THE DESIGN PACK (\"Diseno Poderoso\", Phases E/F of docs/design/addon-packs-plan.md). Decompose into tickets: (E) intake \"design-heavy?\" question in src/question-library.js + perfil_proyecto/tier frontmatter in src/project-md.js + PROJECT.schema.json; conditional interview (Fase 0-1); pure complexity-scoring fn (Fase 2 -> LIGERO/MEDIO/COMPLETO); (F) the design-power pack descriptor (resources with origin/pin/scope/required, exclusion rules, pipeline steps) conforming to the TASK-115 descriptor schema; the Phase D registration hook so the pack injects its pipeline steps without patching core. The pack adopts design skills THROUGH assimilate (now safe: scan+reviewer+sign-off via TASK-122) and materializes via plan()->applyPlan (now correct for staged skills via TASK-121). START by re-reading docs/design/addon-packs-plan.md Phases D/E/F + docs/design/addon-packs.md §8 (Diseno Poderoso skills group), then restate the decomposition and confirm scope with the human before creating tickets.",
-  "handoff_summary": "Addon-pack Wave 1 shipped (plugin v0.12.0; site live). Deps-first drive COMPLETE: TASK-122 (content security gate for assimilation — src/skill-scan.js pure scanner + assimilate approval-package {license,provenance,scan,reviewer verdict}, adopts ONLY on explicit approve, suspicious injected reviewer verdict blocks unless securityOverride===true) and TASK-121 (planner staged-vs-live: plan() install gate is now !actualEntry, so an assimilate-staged lock-only skill materializes on the next reconcile) both DONE, each a clean full-depth Reviewer APPROVE with no HIGH. Also fixed a pre-existing stale test (publish-config 0.11.0->0.12.0) and repaired a self-inflicted bundle schema violation (decisions summary->decision+rationale). Fast tier fully green (770 passed/2 skipped/0 failed). Next: decompose and build the Diseno Poderoso DESIGN PACK (Phases E/F) — confirm scope with the human first.",
+  "active_task": "TASK-124",
+  "workflow_step": "impl",
+  "next_action": "Building safe foundations for the Diseno Poderoso design pack (human chose 'safe foundations first'). TASK-123 (descriptor schema activate_when/install ext) DONE, clean full-depth APPROVE. NOW building TASK-124 (perfil_proyecto/tier frontmatter, tdd). AFTER 124: present the Phase E design investigation to the human for approval — the deliverable is docs/design/design-profile-spec.md (DRAFT): beauty×functionality axes 0-3, tier rule fHigh&&bHigh->COMPLETO / fHigh||bHigh->MEDIO / else LIGERO, a design_heavy gate + 10-question conditional interview, a pure scoreComplexity(answers) fn, step/resource activation predicates, and 8 open questions (notably #4 no canvas-motion resource, #5 playwright/web-UI predicate inferred). The repo-fit investigator corroborated: an 8-variable profile contract {tier, framework, ui_outside_canvas, motion_required, motion_layer, needs_research, assets, web_ui}, a step×tier matrix (LIGERO=impl+testing; MEDIO=+design-system+polish+reference; COMPLETO=all), and flagged tier can't be a when-gate (needs a post-scoring activation pass) + frontend_framework is web-saas-gated so framework is unset for canvas/other projects. From the approved spec, mint Phase E tickets (scoring fn; design-heavy intake + interview), the Phase D registration hook (open issue #4 hook-API surface needs a design decision first), and Phase F (author design-power descriptor + runtime loader). MCP/plugin resources stay Wave-2 (declared, reported-not-installed).",
+  "handoff_summary": "Diseno Poderoso design-pack build in progress. Deps done earlier (TASK-122 content-security gate, TASK-121 planner staged-vs-live). Human chose 'safe foundations first' + a parallel investigation to design Phase E around beauty×functionality. TASK-123 (descriptor schema: optional resource activate_when/install fields) DONE — clean full-depth Reviewer APPROVE, zero findings. TASK-124 (perfil_proyecto/tier frontmatter) now building. Investigation COMPLETE: docs/design/design-profile-spec.md drafted (axes/tier-rule/10-Q interview/scoreComplexity/activation predicates/8 open Qs) + repo-fit activation model (8-var contract, step×tier matrix). Fast tier green (778 passed/2 skipped) as of TASK-123. NEXT after 124: get human approval on the design-profile spec, then mint Phase E/D/F tickets from it.",
   "open_questions": [
     "none blocking"
   ],
@@ -19,6 +19,18 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T20:10:00.000Z",
+      "summary": "TASK-123 APPROVE (full depth), ZERO findings. Schema adds exactly two optional resource fields (activate_when, install; type:string minLength:1); additionalProperties:false intact (AC3 non-vacuous); no evaluation logic added (deferred Phase D/F); src/pack-descriptor.js unchanged; dist-parity confirmed (not bundled). tdd two-commit + red-run (7 fail for right reason) reproduced.",
+      "task": "TASK-123"
+    },
+    {
+      "agent": "researcher",
+      "at": "2026-07-08T20:05:00.000Z",
+      "summary": "Phase E design investigation (2 parallel lenses). Scoring lens wrote docs/design/design-profile-spec.md (DRAFT): beauty×functionality axes 0-3, tier rule fHigh&&bHigh->COMPLETO/fHigh||bHigh->MEDIO/else LIGERO, design_heavy gate + 10-Q conditional interview, pure scoreComplexity(answers), activation predicates, 8 open Qs (#4 no canvas-motion resource, #5 playwright/web-UI inferred). Repo-fit lens: 8-var contract {tier,framework,ui_outside_canvas,motion_required,motion_layer,needs_research,assets,web_ui}, step×tier matrix, flagged tier can't be a when-gate (needs post-scoring activation pass) + frontend_framework is web-saas-gated. AWAITING HUMAN APPROVAL before minting Phase E tickets.",
+      "task": "phase-e-investigation"
+    },
     {
       "agent": "reviewer",
       "at": "2026-07-08T19:25:00.000Z",
