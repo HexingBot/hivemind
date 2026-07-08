@@ -178,3 +178,97 @@ describe('TASK-045 AC1 — PROJECT.schema.json gains four optional definition fi
     expect(ok).toBe(false);
   });
 });
+
+// =====================================================================
+// TASK-124 — PROJECT.md gains two optional design-profile fields for the
+// Diseño Poderoso pack: `tier` (scalar enum) and `perfil_proyecto` (a
+// permissive inline-object map, encoded/parsed exactly like agent_models).
+// This is the CONTAINER + plumbing only — no scoring/question logic.
+// =====================================================================
+describe('TASK-124 AC2/AC3/AC5 — tier + perfil_proyecto schema shape', () => {
+  it('schema_has_tier_as_optional_enum_scalar', () => {
+    const schema = loadSchema();
+    expect(schema.properties.tier, 'tier must be defined in schema properties').toBeDefined();
+    expect(schema.properties.tier.type).toBe('string');
+    expect(schema.properties.tier.enum).toEqual(['LIGERO', 'MEDIO', 'COMPLETO']);
+    const required = schema.required ?? [];
+    expect(required).not.toContain('tier');
+  });
+
+  it('schema_accepts_valid_tier_value', () => {
+    const schema = loadSchema();
+    const ajv = buildAjv();
+    const validate = ajv.compile(schema);
+
+    const frontmatter = { ...EXISTING_VALID_FRONTMATTER, tier: 'COMPLETO' };
+    expect(
+      validate(frontmatter),
+      'schema must accept a valid tier value — errors: ' + JSON.stringify(validate.errors),
+    ).toBe(true);
+  });
+
+  it('schema_rejects_out_of_enum_tier_value', () => {
+    const schema = loadSchema();
+    const ajv = buildAjv();
+    const validate = ajv.compile(schema);
+
+    const frontmatter = { ...EXISTING_VALID_FRONTMATTER, tier: 'HUGE' };
+    expect(validate(frontmatter)).toBe(false);
+  });
+
+  it('schema_has_perfil_proyecto_as_permissive_object_of_strings', () => {
+    const schema = loadSchema();
+    expect(
+      schema.properties.perfil_proyecto,
+      'perfil_proyecto must be defined in schema properties',
+    ).toBeDefined();
+    expect(schema.properties.perfil_proyecto.type).toBe('object');
+    // Permissive: concrete keys are filled in later by the Phase E scoring
+    // ticket, so any key is allowed as long as the value is a string.
+    expect(schema.properties.perfil_proyecto.additionalProperties).toEqual({ type: 'string' });
+    const required = schema.required ?? [];
+    expect(required).not.toContain('perfil_proyecto');
+  });
+
+  it('schema_accepts_perfil_proyecto_map', () => {
+    const schema = loadSchema();
+    const ajv = buildAjv();
+    const validate = ajv.compile(schema);
+
+    const frontmatter = {
+      ...EXISTING_VALID_FRONTMATTER,
+      perfil_proyecto: { functionality: 'high', beauty: 'high', framework: 'vue' },
+    };
+    expect(
+      validate(frontmatter),
+      'schema must accept a perfil_proyecto map — errors: ' + JSON.stringify(validate.errors),
+    ).toBe(true);
+  });
+
+  it('schema_rejects_non_string_perfil_proyecto_value', () => {
+    const schema = loadSchema();
+    const ajv = buildAjv();
+    const validate = ajv.compile(schema);
+
+    const frontmatter = {
+      ...EXISTING_VALID_FRONTMATTER,
+      perfil_proyecto: { functionality: 5 },
+    };
+    expect(validate(frontmatter)).toBe(false);
+  });
+
+  it('additionalProperties_false_still_holds_with_the_two_new_keys', () => {
+    const schema = loadSchema();
+    expect(schema.additionalProperties).toBe(false);
+
+    const ajv = buildAjv();
+    const validate = ajv.compile(schema);
+    const withUnrelatedUnknown = {
+      ...EXISTING_VALID_FRONTMATTER,
+      tier: 'LIGERO',
+      perfil_proyecto: { functionality: 'low' },
+      an_unrelated_unknown_key: 'nope',
+    };
+    expect(validate(withUnrelatedUnknown)).toBe(false);
+  });
+});
