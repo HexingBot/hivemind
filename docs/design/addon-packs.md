@@ -79,8 +79,11 @@ The design step carries its own trust toggle. The human either runs it **interac
 | Registering an **MCP** (`.mcp.json`, `mcp add`) | **ask** | autonomous |
 | Writing **API keys / credentials** (Firebase, Firecrawl) | **ask** | **still ask** |
 | Publishing / global irreversible ops | **ask** | **still ask** |
+| **Assimilating a third-party skill** | **ask** | **still ask** |
 
 **Invariant:** credentials and publish **never** go autonomous, even under trust — matching the source spec's own credential carve-out, extended so installs are gated too when trust is *not* granted.
+
+**Assimilation never goes autonomous, under any trust grant (locked, TASK-122).** A skill's self-declared frontmatter `license` is decision support, not a safety assurance — it is self-reported by the skill's own author and trivially forgeable, and it says nothing about whether the skill's *instructions* try to exfiltrate secrets or run arbitrary commands. So `hivemind-assimilate-skill` (§7) always assembles a full approval package — license verdict, provenance (origin/pin/integrity), an automated content-security scan, and a security-reviewer subagent verdict — and **no third-party skill ever adopts without an explicit human sign-off**, license classification notwithstanding. `design_pipeline` trust never covers this action; it stays interactive-only in both columns above.
 
 ---
 
@@ -111,6 +114,7 @@ Packs are plugin bundles listed on the Hivemind website. That makes the pack its
 - **Design output has no falsifiable gate** → the design step is inherently `uat-only`. Trust automates the *build*; a **human PASS** still confirms the *result* at the end.
 - **The reconciler is `tdd`-tier** and is the risky code: desired/actual diff, ownership tracking, uninstall safety. "Removed a resource I didn't own" is a data-loss-class bug — failing tests first, per the CLAUDE.md rubric.
 - **Cost ceiling:** design pipelines (research + asset gen + multi-MCP) are token-heavy; under trust+loop they must honor the loop's budget gate.
+- **Skill assimilation is also `tdd`-tier and carries its own mandatory verification gate, independent of the reconciler's.** `hivemind-assimilate-skill` (a `src/assimilate.js` primitive; TASK-120/TASK-122) never runtime-installs a third-party skill — it copies the content in at author/vet time, so the license and content-security decisions have to happen there, not at reconcile time. License classification (permissive/copyleft/unknown) is decision **support only**, computed the same way every time regardless of `decision`, and it is never itself a write authority — a self-declared, forgeable frontmatter license must never be able to auto-adopt. Before any adoption, an automated risky-pattern scan (shell/exec, network/URL fetch, env/credential access, filesystem access outside the skill dir, obfuscated/base64 blobs) and a security-reviewer subagent verdict over the skill's actual instruction text (the prompt-injection risk a pattern scanner alone cannot catch) are assembled into one approval package alongside the license verdict and provenance. **No third-party skill ever auto-adopts on any of these signals** — only an explicit human sign-off (`decision: 'approve'`) writes anything, and a `suspicious` reviewer verdict blocks even that approve unless the human also passes an explicit override.
 
 ---
 
