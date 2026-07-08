@@ -1,0 +1,33 @@
+{
+  "key": "TASK-125",
+  "title": "Design-profile subsystem: scoreComplexity + interview + deriveProfileFields (Phase E)",
+  "description": "Implement the Phase E profile subsystem per the human-approved docs/design/design-profile-spec.md, as a SELF-CONTAINED pack-owned pure module (e.g. src/design-profile.js). It MUST NOT patch core intake (src/question-library.js stays unchanged) — live injection into the wizard is Phase D's registration hook, keeping the pack decoupled per addon-packs.md §5. Exports: (1) DESIGN_PROFILE_QUESTIONS — the unconditional `design_heavy` gate (enum yes/no) + the 10-question conditional interview from spec §3, each object matching the engine shape {id,type,prompt,enum?,required?,when?(answers)} with forward-only `when` predicates (the engine has no lookahead). (2) scoreComplexity(answers) → {tier, score, axes:{functionality,beauty}, activations:{...}} exactly per spec §4 — bucketScreens(≤2/≤7/≤20/>20 → 0/1/2/3), DESIGN_AMBITION_SCORE {utilitarian:0,tidy:1,branded:2,signature:3}, the stakes==real floor (F≥1), and the CANONICAL tier gate fHigh&&bHigh→COMPLETO / fHigh||bHigh→MEDIO / else LIGERO (score=F+B is descriptive only, never the gate); plus the derived activations (framework, is_canvas, ui_outside_canvas, motion_required, motion_layer, needs_research, assets, assets_list). (3) deriveProfileFields(answers) → {tier, perfil_proyecto} shaped for the TASK-124 frontmatter, where perfil_proyecto is a flat map of comma/brace-free scalar values (safe for the inline-object encoder). Pure/deterministic, no I/O. This also discharges the carried TASK-124 LOW (perfil_proyecto inline-value comma safety) at the pack boundary. Activation predicates for pipeline steps and §8 resources follow spec §5.1/§5.2 exactly, including the §8.1 canvas-gating exclusion.",
+  "acceptance_criteria": [
+    "scoreComplexity reproduces ALL 6 worked examples in spec §4 exactly (tier + score + axes), including the design_heavy=no short-circuit (LIGERO/score 0/all activations false) and the tie-break pair 6a/6b (same score 3, both MEDIO, opposite axis composition F2B1 vs F1B2).",
+    "The tier gate is proven to be the fHigh&&bHigh / fHigh||bHigh / else rule and NOT the additive score: a test asserts two inputs with equal score can land in the same tier via different axis compositions, and that no code path uses `score` as the tier decision.",
+    "Pipeline-step activation matches spec §5.1: reference/implementation/testing ON whenever design_heavy; art-direction and polish ON iff beauty>=2; design-system ON iff functionality>=2; research/motion/assets ON iff their own activation flag holds (tier-independent). Verified by a table-driven test.",
+    "§8 resource activation matches spec §5.2 exactly: frontend-design (any tier), ui-ux-pro-max (tier!==LIGERO), shadcn-vue (framework==vue && ui_outside_canvas), shadcn/ui (framework==react && ui_outside_canvas), gsap (motion_required && motion_layer!==canvas), firecrawl (needs_research), openart (COMPLETO && assets), playwright (COMPLETO && ui_outside_canvas); and the §8.1 canvas exclusion holds (ui_outside_canvas==false disables shadcn-vue, shadcn/ui, and playwright). Table-driven test covering canvas and non-canvas projects.",
+    "DESIGN_PROFILE_QUESTIONS passes runQuestionnaire's own config validation (unique ids, valid types) and every `when` references only earlier-listed answers: an engine-driven test with a scripted prompter confirms design_heavy=no skips all 10 interview questions, and the doubly-gated questions (ui_outside_canvas, motion_layer) fire only when BOTH their gates hold.",
+    "deriveProfileFields(answers) returns {tier, perfil_proyecto} with tier in {LIGERO,MEDIO,COMPLETO} and perfil_proyecto a flat map whose every value is a comma/brace-free scalar; a round-trip through writeProjectMd + readProjectMd (the TASK-124 fields) preserves tier and every perfil_proyecto entry. deriveProfileFields throws loudly if any value it would emit contains a comma/brace (discharging the carried TASK-124 LOW) rather than producing a value that mis-parses.",
+    "src/question-library.js is byte-unchanged (no core intake patching); a code comment in the new module records that live wizard injection is deferred to the Phase D registration hook."
+  ],
+  "status": "in_review",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-e",
+    "profile"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-124"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-08T20:29:27.592Z",
+  "updated_at": "2026-07-08T20:40:00.685Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-08T20:24:18.343Z",
+  "generated_at": "2026-07-08T20:40:00.685Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -731,6 +731,12 @@
       "key": "TASK-124",
       "title": "PROJECT.md perfil_proyecto + tier frontmatter (design profile fields)",
       "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-125",
+      "title": "Design-profile subsystem: scoreComplexity + interview + deriveProfileFields (Phase E)",
+      "status": "in_review",
       "priority": "high"
     }
   ]
