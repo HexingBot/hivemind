@@ -93,6 +93,18 @@ describe('AC1 — integrations-lock.schema.json shape', () => {
     const lock = makeLock({ 'x:y': entry });
     expect(validate(lock)).toBe(false);
   });
+
+  it('rejects_a_truncated_integrity_digest', () => {
+    // TASK-119 (carried LOW from TASK-118 review): the pattern used to accept
+    // any length of hex ([0-9a-f]+); tightened to exactly 64 chars so a
+    // truncated sha256 digest is caught at write time, not silently stored.
+    const schema = loadSchema();
+    const validate = buildAjv().compile(schema);
+    const entry = makeEntry(['design-power@0.1.0']);
+    entry.integrity = 'sha256:' + 'a'.repeat(63); // one char short of a full digest
+    const lock = makeLock({ 'skill:shadcn-vue': entry });
+    expect(validate(lock)).toBe(false);
+  });
 });
 
 // ===========================================================================
