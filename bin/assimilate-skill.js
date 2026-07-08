@@ -15,10 +15,20 @@
 //   --pin <sha>            recorded provenance pin (default: `git rev-parse HEAD` in the clone)
 //   --decision <verdict>   'approve' | 'decline' — re-invoke with this after an awaiting_human verdict
 //   --root <path>          repo root to write assimilated-skills/ + integrations.lock.json into (default: cwd)
-//   --github-owner <name>  \ repo coordinates for detectLicense's GitHub Licenses API fallback step
-//   --github-repo <name>   /
+//   --github-owner <name>  \ repo coordinates for detectLicense's GitHub Licenses API fallback step;
+//   --github-repo <name>   / auto-derived from --url when it's a github.com URL and these are omitted.
+//
+// TASK-120 UAT-bounce gaps B + C:
+//   B — the clone root is always forwarded to assimilateSkill as `repoRoot`
+//       (distinct from `source`, the --subdir skill dir), so a LICENSE file
+//       that lives at the repo root rather than inside the skill's own
+//       subdir is still found by detectLicense's repoRoot fallback.
+//   C — a real, minimal, UNAUTHENTICATED GitHub Licenses API fetcher is
+//       wired here (bin glue only — kept out of unit/e2e tests, which stay
+//       network-free via an injected stub).
 
 import { execFileSync } from 'node:child_process';
+import { request } from 'node:https';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,6 +54,51 @@ function parseArgs(argv) {
   return out;
 }
 
+// Best-effort {owner, repo} extraction from an https or ssh github.com URL
+// (github.com/owner/repo, .../owner/repo.git, git@github.com:owner/repo.git).
+// A repo name that itself contains a literal '.' (rare) won't match here --
+// use --github-owner/--github-repo explicitly for that case.
+function parseGithubCoords(url) {
+  const m = /github\.com[/:]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/i.exec(url || '');
+  return m ? { owner: m[1], repo: m[2] } : null;
+}
+
+// Minimal unauthenticated GET https://api.github.com/repos/{owner}/{repo}/license.
+// Matches detectLicense's injected fetchGithubLicense contract: resolves the
+// parsed JSON body on 200, or null on any non-200/network/parse failure (a
+// 404/private-repo/rate-limit response is "no signal", never fatal).
+function fetchGithubLicense(owner, repo) {
+  return new Promise((resolve) => {
+    const req = request(
+      {
+        hostname: 'api.github.com',
+        path: `/repos/${owner}/${repo}/license`,
+        method: 'GET',
+        headers: { 'User-Agent': 'hivemind-assimilate-skill', Accept: 'application/vnd.github+json' },
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          resolve(null);
+          return;
+        }
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve(null);
+          }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.end();
+  });
+}
+
 export async function main(argv) {
   const args = parseArgs(argv);
   if (!args.url || !args.resourceId || !args.pack) {
@@ -55,15 +110,21 @@ export async function main(argv) {
     execFileSync('git', ['clone', '--quiet', args.url, cloneDir]);
     const pin = args.pin || execFileSync('git', ['rev-parse', 'HEAD'], { cwd: cloneDir, encoding: 'utf8' }).trim();
 
+    const github = (args.githubOwner && args.githubRepo)
+      ? { owner: args.githubOwner, repo: args.githubRepo }
+      : parseGithubCoords(args.url);
+
     const result = await assimilateSkill({
       source: args.subdir ? join(cloneDir, args.subdir) : cloneDir,
       resourceId: args.resourceId,
       pack: args.pack,
       origin: args.origin || args.url,
       pin,
+      repoRoot: cloneDir,
       decision: args.decision,
       root: args.root || process.cwd(),
-      github: args.githubOwner && args.githubRepo ? { owner: args.githubOwner, repo: args.githubRepo } : undefined,
+      github: github || undefined,
+      fetch: github ? fetchGithubLicense : undefined,
     });
 
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

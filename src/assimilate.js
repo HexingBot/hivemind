@@ -107,6 +107,12 @@ function appendProvenanceBlock(text, fields) {
  *   needed on the proceed path (never required to reach an awaiting_human/
  *   declined verdict, which write nothing).
  * @param {string} [opts.pin] - pinned commit SHA or exact version; same as origin.
+ * @param {string} [opts.repoRoot] - the SOURCE skill's clone/repo root, when
+ *   `source` is a subdirectory of a larger checkout (e.g. bin/assimilate-skill.js's
+ *   --subdir). Forwarded to detectLicense as its `repoRoot` fallback dir (distinct
+ *   from `source`/skillDir) so a LICENSE file that lives at the clone root, not
+ *   inside the skill's own subdir, is still found. Omit when `source` IS the repo
+ *   root (no --subdir) -- detectLicense already checks skillDir first either way.
  * @param {'approve'|'decline'} [opts.decision] - human verdict on a
  *   copyleft/unknown license. Absent is treated as "not yet decided"
  *   (status: awaiting_human); 'decline' is a terminal no (status: declined).
@@ -133,6 +139,7 @@ export async function assimilateSkill(opts) {
     pack,
     origin,
     pin,
+    repoRoot,
     decision,
     github,
     fetch: fetchGithubLicense,
@@ -147,7 +154,7 @@ export async function assimilateSkill(opts) {
     throw new Error(`assimilateSkill: no ${SKILL_FILENAME} found at "${source}"`);
   }
 
-  const license = await detectLicense({ skillDir: source, github, fetchGithubLicense });
+  const license = await detectLicense({ skillDir: source, repoRoot, github, fetchGithubLicense });
   const classification = classifyLicense(license.spdx_id);
 
   const base = {

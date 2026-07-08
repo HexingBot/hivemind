@@ -4,7 +4,7 @@
 // Real disk I/O throughout (fixture skill dirs, owned-copy writes, the
 // lockfile) so this suite lives entirely in the slow tier. No network: the
 // two fixture skills under tests/fixtures/skills/ carry their own LICENSE
-// files, so detectLicense's chain resolves at step 2 (license-file) without
+// files, so detectLicense's chain resolves at step 3 (license-file) without
 // ever reaching the GitHub API step.
 //
 // AC1 — a known-permissive fixture skill assimilates with NO human prompt:
@@ -17,9 +17,15 @@
 //   resourceId (no spurious install/remove) -> remove -> orphan cleanup.
 // AC5 — every result carries the provenance fields; integrity is a real
 //   sha256:<64hex> over the source content.
+//
+// Gap B (TASK-120 UAT-bounce) — assimilateSkill forwards opts.repoRoot to
+// detectLicense as a fallback dir distinct from `source`/skillDir, so a
+// --subdir source (source is a subdirectory of a larger clone) still finds a
+// LICENSE file that lives at the clone root rather than inside the skill's
+// own subdir.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { PROD } from '../helpers/fixtures.js';
@@ -140,6 +146,75 @@ describe('AC2 — a copyleft skill requires an explicit human decision', () => {
     expect(existsSync(join(root, 'assimilated-skills', 'copyleft-skill', 'SKILL.md'))).toBe(true);
     const lock = JSON.parse(readFileSync(join(root, 'integrations.lock.json'), 'utf8'));
     expect(lock.resources['skill:copyleft-skill'].owners).toEqual([PACK]);
+  });
+});
+
+describe('Gap B — repoRoot forwarding: a LICENSE at the clone root is still found for a --subdir source', () => {
+  it('detects the license via detectLicense\'s repoRoot fallback and assimilates', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+
+    // Simulates `bin/assimilate-skill.js --subdir skills/gsap-core`: the
+    // skill itself carries no license signal of its own, but the clone root
+    // (a sibling of the skill subdir, not an ancestor the skill controls)
+    // carries a LICENSE file.
+    const cloneRoot = makeTmpDir('asm-repo-root-license-clone');
+    const skillSubdir = join(cloneRoot, 'skills', 'gsap-core');
+    mkdirSync(skillSubdir, { recursive: true });
+    writeFileSync(
+      join(skillSubdir, 'SKILL.md'),
+      '---\nname: gsap-core\ndescription: A demo skill with no local license signal.\n---\n\n# GSAP Core\n',
+    );
+    writeFileSync(join(cloneRoot, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Example\n');
+
+    const root = makeTmpDir('asm-repo-root-license-project');
+
+    const result = await assimilateSkill({
+      source: skillSubdir,
+      repoRoot: cloneRoot,
+      resourceId: 'gsap-core',
+      pack: PACK,
+      origin: 'github.com/example/gsap-skills',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('license-file');
+    expect(result.source_path).toBe(join(cloneRoot, 'LICENSE'));
+    expect(existsSync(join(root, 'assimilated-skills', 'gsap-core', 'SKILL.md'))).toBe(true);
+  });
+
+  it('without repoRoot, the same skill (no license signal of its own) gates on a human decision', async () => {
+    // Regression lock for the bug this gap fixes: omitting repoRoot means
+    // detectLicense never sees the clone-root LICENSE at all.
+    const { assimilateSkill } = await import(PROD.assimilate);
+
+    const cloneRoot = makeTmpDir('asm-repo-root-license-clone-omitted');
+    const skillSubdir = join(cloneRoot, 'skills', 'gsap-core');
+    mkdirSync(skillSubdir, { recursive: true });
+    writeFileSync(
+      join(skillSubdir, 'SKILL.md'),
+      '---\nname: gsap-core\ndescription: A demo skill with no local license signal.\n---\n\n# GSAP Core\n',
+    );
+    writeFileSync(join(cloneRoot, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Example\n');
+
+    const root = makeTmpDir('asm-repo-root-license-project-omitted');
+
+    const result = await assimilateSkill({
+      source: skillSubdir,
+      // repoRoot intentionally omitted.
+      resourceId: 'gsap-core',
+      pack: PACK,
+      origin: 'github.com/example/gsap-skills',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('awaiting_human');
+    expect(result.spdx_id).toBeNull();
   });
 });
 
