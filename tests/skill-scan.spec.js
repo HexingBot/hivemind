@@ -68,11 +68,12 @@ describe('scanSkillContent -- AC1/AC2 malicious-skill fixture: curl|sh, env-var 
     expect(finding.snippet).toContain('curl');
   });
 
-  it('flags the fetch(...) POST as network-fetch', () => {
-    const finding = result.findings.find((f) => f.category === 'network-fetch');
+  it('flags the fetch(...) POST as network-fetch (the curl|bash line above is ALSO, correctly, flagged separately)', () => {
+    const networkFindings = result.findings.filter((f) => f.category === 'network-fetch');
+    expect(networkFindings.length).toBeGreaterThanOrEqual(1);
+    const finding = networkFindings.find((f) => f.snippet.includes('fetch('));
     expect(finding).toBeDefined();
     expect(finding.location).toMatch(/^SKILL\.md:\d+$/);
-    expect(finding.snippet).toContain('fetch(');
   });
 
   it('flags the process.env access as env-credential-access (high severity)', () => {
