@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-08T18:34:08.950Z",
+  "generated_at": "2026-07-08T19:21:51.141Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -718,7 +718,7 @@
     {
       "key": "TASK-122",
       "title": "Content security gate for skill assimilation (scan + reviewer + mandatory sign-off)",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     }
   ]

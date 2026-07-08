@@ -10,7 +10,7 @@
     "End-to-end (UAT): assimilating a real skill runs fetch -> license -> scan -> reviewer -> presented package -> human sign-off, and nothing is written until the human approves; a declined package leaves the tree and lock untouched.",
     "docs/design/addon-packs.md §4 and §7 are updated to state: license is decision-support only, a content security review is mandatory and license-independent, and no third-party skill auto-adopts without human sign-off."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "addon-packs",
@@ -22,11 +22,23 @@
   "depends_on": [
     "TASK-120"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "cc28e39",
+    "64083e6",
+    "7130b1d",
+    "fd9226c",
+    "dc393d3"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T19:21:51.141Z",
+      "body": "Closed on a clean Reviewer APPROVE (fresh-context, full depth). Review depth = FULL; rubric inputs: diff touches the security surface (new src/skill-scan.js + src/assimilate.js content-security gate) and core tdd-tier logic (mandatory-FULL surfaces), changed-lines well over 150. tdd two-commit discipline verified: test commits (cc28e39, 64083e6) strictly precede impl (7130b1d) + docs (fd9226c); red-run independently reproduced at the impl parent (module genuinely absent). All 6 ACs satisfied; the no-write-without-approve (AC3) and suspicious-blocks-without-override (AC4) invariants were confirmed in the code, not just tests, with non-vacuous byte-untouched sensors. No scan/reviewer leakage into the persisted lock/provenance. Gate green: 767 fast passed/2 skipped, assimilate+skill-scan e2e 33 passed; dist-parity clean; no TASK-120 regression.\n\nPost-approval hardening: the review's LOW finding (securityOverride truthiness) was fixed in dc393d3 — gate now requires strict boolean true (securityOverride !== true), with a red-green regression test asserting a truthy non-boolean 'no' still yields blocked_security with tree+lock untouched. Accepted without a second full-reviewer spawn: it is a verbatim application of the gating review's own recommendation on a one-line change, backed by a proven non-vacuous regression test.\n\nKnowledge capture (TASK-105): not triggered — clean first-pass APPROVE, no HIGH finding and no REQUEST-CHANGES loop.\n\nSecurity-reviewer runtime seam: src/assimilate.js stays LLM/network-free by design. The safe|suspicious verdict is an INJECTED input ({verdict, reasoning}) + securityOverride; the Orchestrator spawns the real security-reviewer subagent on fetched content (incl. instruction text, for prompt-injection) at assimilate time and passes the verdict back. This is what the design pack's live-adoption path (Diseño Poderoso) now depends on.\n\nUnrelated fix landed alongside (not linked to this ticket): 7bda594 chore bumps tests/publish-config.spec.js EXPECTED_VERSION 0.11.0 -> 0.12.0 to match plugin.json, restoring a green fast tier (was pre-existing-red on main from the v0.12.0 bump in 531cdf4)."
+    }
+  ],
   "created_at": "2026-07-08T18:20:52.925Z",
-  "updated_at": "2026-07-08T18:20:52.925Z",
+  "updated_at": "2026-07-08T19:21:51.141Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
