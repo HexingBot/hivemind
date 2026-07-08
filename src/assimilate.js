@@ -27,13 +27,41 @@
 // (permissive/copyleft/unknown) is decision SUPPORT surfaced in the
 // payload, never itself a write authority — a self-reported "permissive"
 // finding must never be able to auto-adopt.
+//
+// CONTENT SECURITY GATE (TASK-122, locked 2026-07-08): license is NOT a
+// safety assurance — a self-declared frontmatter license is forgeable, and
+// says nothing about whether the skill's *instructions* try to exfiltrate
+// secrets or run arbitrary commands. Every pending_approval/blocked_security
+// payload additionally carries:
+//   - `scan` — src/skill-scan.js's structured findings over the skill's own
+//     content (pure, sync, LLM-free pattern scan: shell-exec, network-fetch,
+//     env-credential-access, filesystem-access-outside-skill, obfuscated-blob).
+//     Decision SUPPORT only — findings alone never auto-block an approve.
+//   - `reviewer` — an INJECTED verdict, `opts.reviewerVerdict` (shape
+//     `{ verdict: 'safe'|'suspicious', reasoning }`), echoed back verbatim, or
+//     `null` if the caller hasn't run that step yet.
+//
+// SECURITY REVIEW BOUNDARY: this module never spawns anything and stays
+// LLM-free, matching the license/scan decision-support-only invariant above.
+// Producing `reviewerVerdict` is ORCHESTRATOR glue at runtime — the
+// Orchestrator spawns a security-reviewer subagent that reads the fetched
+// skill's actual content INCLUDING its instruction text (the prompt-injection
+// risk a code scanner cannot catch), and passes the resulting verdict back in
+// on the next call. On `decision: 'approve'`, a `reviewerVerdict.verdict ===
+// 'suspicious'` WITHOUT an explicit `opts.securityOverride: true` refuses the
+// write (`status: 'blocked_security'`) — an approve alone can never override
+// a suspicious content verdict. Absent a reviewerVerdict at all, approve
+// proceeds unblocked (the Orchestrator is responsible for always running the
+// reviewer step before calling approve in real usage; this module only
+// enforces the case where a verdict WAS supplied and says suspicious).
 
-import { existsSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, relative, sep } from 'node:path';
 
 import { detectLicense, classifyLicense } from './license-detect.js';
 import { readLock, writeLock, addOwner } from './integrations-lock.js';
 import { hashDir } from './pack-apply.js';
+import { scanSkillContent } from './skill-scan.js';
 
 const SKILL_FILENAME = 'SKILL.md';
 const DEFAULT_STAGING_SUBDIR = 'assimilated-skills';
@@ -105,6 +133,56 @@ function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
   };
 }
 
+const SCAN_IGNORED_DIRS = new Set(['node_modules', '.git']);
+const SCAN_MAX_FILE_BYTES = 1_000_000; // generous cap; scanning is line-based text matching, not binary analysis
+
+// Same shape as license-detect.js's walkFiles -- small, local, and not worth
+// sharing a dependency over (Ponytail rung 1: no second caller yet).
+function walkSkillFiles(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (SCAN_IGNORED_DIRS.has(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkSkillFiles(full));
+    else if (entry.isFile()) out.push(full);
+  }
+  return out;
+}
+
+// Scans the skill's own SKILL.md as the primary text, plus every other file
+// in `source` (references/*.md, etc.) via scanSkillContent's `files` option.
+// Unreadable/oversized/non-utf8 files are skipped rather than failing the
+// whole assimilate call -- a scan gap is surfaced as fewer findings, never a
+// thrown error blocking the human from even seeing the rest of the package.
+function computeSkillScan(source, sourceSkillPath) {
+  const mainText = readFileSync(sourceSkillPath, 'utf8');
+  const otherFiles = [];
+  for (const full of walkSkillFiles(source)) {
+    if (full === sourceSkillPath) continue;
+    let size;
+    try {
+      size = statSync(full).size;
+    } catch {
+      continue;
+    }
+    if (size > SCAN_MAX_FILE_BYTES) continue;
+    let content;
+    try {
+      content = readFileSync(full, 'utf8');
+    } catch {
+      continue;
+    }
+    otherFiles.push({ path: relative(source, full).split(sep).join('/'), content });
+  }
+  return scanSkillContent(mainText, { location: SKILL_FILENAME, files: otherFiles });
+}
+
 /**
  * Assimilate a third-party skill: run the license-detection decision-support
  * chain, then EITHER return a pending_approval/declined review payload
@@ -152,11 +230,25 @@ function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
  *   Created fresh (schema_version 1, empty resources) if it doesn't exist yet.
  * @param {'hard'|'soft'} [opts.required] - the lock entry's required tier,
  *   default 'soft'.
- * @returns {Promise<object>} `{ status: 'pending_approval'|'declined'|'assimilated', id, spdx_id, classification, ... }`.
+ * @param {{verdict: 'safe'|'suspicious', reasoning: string}} [opts.reviewerVerdict]
+ *   - the security-reviewer subagent's verdict over the skill's content
+ *   INCLUDING its instruction text (the Orchestrator's job to produce — see
+ *   the CONTENT SECURITY GATE note above). Echoed back as `reviewer` in every
+ *   status. Absent -> `reviewer: null`, and approve is NOT blocked by this
+ *   check (only an explicit 'suspicious' verdict blocks).
+ * @param {boolean} [opts.securityOverride] - explicit human override that
+ *   allows `decision: 'approve'` to proceed despite a 'suspicious'
+ *   `reviewerVerdict`. Default false. Has no effect otherwise.
+ * @returns {Promise<object>} `{ status: 'pending_approval'|'declined'|'blocked_security'|'assimilated', id, spdx_id, classification, scan, reviewer, ... }`.
  *   A `pending_approval` payload additionally carries `origin`, `pin`,
  *   `integrity`, `assimilated_at`, and `provenance_preview` (the exact
- *   provenance-block text an `approve` would write) — everything a human
- *   needs to decide, computed WITHOUT writing anything.
+ *   provenance-block text an `approve` would write), plus `scan` (structured
+ *   risky-pattern findings, src/skill-scan.js) and `reviewer` (the injected
+ *   verdict, or null) — everything a human needs to decide, computed WITHOUT
+ *   writing anything. A `blocked_security` payload (only reachable via
+ *   `decision: 'approve'` + a 'suspicious' `reviewerVerdict` with no
+ *   `securityOverride`) carries the same `scan`/`reviewer` fields and also
+ *   writes NOTHING — an approve alone can never override a suspicious verdict.
  */
 export async function assimilateSkill(opts) {
   const {
@@ -173,6 +265,8 @@ export async function assimilateSkill(opts) {
     root = process.cwd(),
     lockPath = join(root, 'integrations.lock.json'),
     required = 'soft',
+    reviewerVerdict = null,
+    securityOverride = false,
   } = opts;
 
   const sourceSkillPath = join(source, SKILL_FILENAME);
@@ -199,7 +293,10 @@ export async function assimilateSkill(opts) {
     // No decision yet, for ANY classification (permissive included) -- write
     // NOTHING, but compute + return everything an approve would commit, so
     // the human reviewing this has the real numbers, not a placeholder.
+    // TASK-122: the approval package also carries the content-security scan
+    // and the (possibly not-yet-computed) reviewer verdict.
     const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
+    const scan = computeSkillScan(source, sourceSkillPath);
     return {
       ...base,
       status: 'pending_approval',
@@ -208,10 +305,27 @@ export async function assimilateSkill(opts) {
       integrity: fields.integrity,
       assimilated_at: fields.assimilated_at,
       provenance_preview: buildProvenanceBlock(fields),
+      scan,
+      reviewer: reviewerVerdict,
     };
   }
 
-  // decision === 'approve' -- the ONLY path that writes, for ANY classification.
+  // decision === 'approve' -- for ANY classification, but TASK-122's content
+  // security gate can still refuse the write: a 'suspicious' reviewerVerdict
+  // without an explicit securityOverride blocks here, before anything is
+  // touched on disk. Scan findings ALONE never block -- they're surfaced for
+  // the human, same as license classification.
+  const scan = computeSkillScan(source, sourceSkillPath);
+  if (reviewerVerdict?.verdict === 'suspicious' && !securityOverride) {
+    return {
+      ...base,
+      status: 'blocked_security',
+      scan,
+      reviewer: reviewerVerdict,
+      reason: 'security-reviewer verdict is suspicious; an explicit securityOverride is required to proceed',
+    };
+  }
+
   const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
 
   const ownedDir = join(root, DEFAULT_STAGING_SUBDIR, resourceId);
@@ -256,5 +370,7 @@ export async function assimilateSkill(opts) {
     integrity: fields.integrity,
     assimilated_at: fields.assimilated_at,
     owners: lock.resources[id].owners,
+    scan,
+    reviewer: reviewerVerdict,
   };
 }

@@ -21,6 +21,14 @@
 //   --root <path>          repo root to write assimilated-skills/ + integrations.lock.json into (default: cwd)
 //   --github-owner <name>  \ repo coordinates for detectLicense's GitHub Licenses API fallback step;
 //   --github-repo <name>   / auto-derived from --url when it's a github.com URL and these are omitted.
+//   --reviewer-verdict <v>    'safe' | 'suspicious' — the security-reviewer subagent's
+//                             verdict (TASK-122; the Orchestrator runs that subagent
+//                             separately, over this same source dir, and passes its
+//                             verdict back in on the next invocation).
+//   --reviewer-reasoning <s>  free-text reasoning accompanying --reviewer-verdict.
+//   --security-override       explicit human override allowing --decision approve to
+//                             proceed despite a 'suspicious' --reviewer-verdict; without
+//                             it, that combination refuses the write (status: blocked_security).
 //
 // TASK-120 UAT-bounce gaps B + C:
 //   B — the clone root is always forwarded to assimilateSkill as `repoRoot`
@@ -43,17 +51,25 @@ import { assimilateSkill } from '../src/assimilate.js';
 const FLAGS_WITH_VALUE = new Set([
   '--url', '--resource-id', '--pack', '--subdir', '--origin', '--pin',
   '--decision', '--root', '--github-owner', '--github-repo',
+  '--reviewer-verdict', '--reviewer-reasoning',
 ]);
+// TASK-122: the only boolean (no-value) flag -- presence alone means true.
+const BOOLEAN_FLAGS = new Set(['--security-override']);
 
-/** Parse `--flag-name value` pairs into a camelCase-keyed object. */
+/** Parse `--flag-name value` pairs (and bare boolean flags) into a camelCase-keyed object. */
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
+    const key = flag.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (BOOLEAN_FLAGS.has(flag)) {
+      out[key] = true;
+      continue;
+    }
     if (!FLAGS_WITH_VALUE.has(flag)) throw new Error(`unknown flag: ${flag}`);
     const value = argv[++i];
     if (value === undefined) throw new Error(`flag ${flag} requires a value`);
-    out[flag.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
+    out[key] = value;
   }
   return out;
 }
@@ -118,6 +134,14 @@ export async function main(argv) {
       ? { owner: args.githubOwner, repo: args.githubRepo }
       : parseGithubCoords(args.url);
 
+    // TASK-122: --reviewer-verdict is how the Orchestrator hands this CLI the
+    // security-reviewer subagent's verdict from a prior run (that subagent
+    // itself is not spawned from here -- see src/assimilate.js's SECURITY
+    // REVIEW BOUNDARY note).
+    const reviewerVerdict = args.reviewerVerdict
+      ? { verdict: args.reviewerVerdict, reasoning: args.reviewerReasoning || '' }
+      : undefined;
+
     const result = await assimilateSkill({
       source: args.subdir ? join(cloneDir, args.subdir) : cloneDir,
       resourceId: args.resourceId,
@@ -129,6 +153,8 @@ export async function main(argv) {
       root: args.root || process.cwd(),
       github: github || undefined,
       fetch: github ? fetchGithubLicense : undefined,
+      reviewerVerdict,
+      securityOverride: args.securityOverride === true,
     });
 
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
