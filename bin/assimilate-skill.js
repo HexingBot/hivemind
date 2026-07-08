@@ -13,7 +13,11 @@
 //   --subdir <path>        skill's SKILL.md location within the clone (default: clone root)
 //   --origin <string>      recorded provenance origin (default: --url)
 //   --pin <sha>            recorded provenance pin (default: `git rev-parse HEAD` in the clone)
-//   --decision <verdict>   'approve' | 'decline' — re-invoke with this after an awaiting_human verdict
+//   --decision <verdict>   'approve' | 'decline' — every run defaults to a dry-run vet
+//                          (status: pending_approval, writes nothing); re-invoke with
+//                          --decision approve to actually adopt. HUMAN-GATE POLICY: no
+//                          classification, not even permissive, ever auto-adopts without
+//                          this explicit flag.
 //   --root <path>          repo root to write assimilated-skills/ + integrations.lock.json into (default: cwd)
 //   --github-owner <name>  \ repo coordinates for detectLicense's GitHub Licenses API fallback step;
 //   --github-repo <name>   / auto-derived from --url when it's a github.com URL and these are omitted.

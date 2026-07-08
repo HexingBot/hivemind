@@ -7,13 +7,22 @@
 // files, so detectLicense's chain resolves at step 3 (license-file) without
 // ever reaching the GitHub API step.
 //
-// AC1 — a known-permissive fixture skill assimilates with NO human prompt:
-//   owned copy under assimilated-skills/<id>/ with a provenance block, and a
-//   lock entry recording the pack as owner.
-// AC2 — a copyleft fixture skill returns awaiting_human/declined and writes
-//   NOTHING; only an explicit `decision: 'approve'` unblocks the proceed path.
-// AC3/AC4 — E2E: assimilate -> materialize into .claude/skills/<id>/ via the
-//   reconcile applier -> probeSkills' id lines up with assimilate's
+// HUMAN-GATE POLICY (locked, 2026-07-08): NO skill ever adopts without an
+// explicit `decision: 'approve'` — not even a permissive one. A call without
+// it is a dry-run vet: nothing written, a `pending_approval` payload
+// returned with everything an approve would commit (integrity, provenance
+// preview). `decision: 'decline'` is a terminal no. Classification is
+// decision support, never a write authority.
+//
+// AC1 — a known-permissive fixture skill: WITHOUT decision:'approve' ->
+//   pending_approval, writes NOTHING; WITH decision:'approve' -> owned copy
+//   under assimilated-skills/<id>/ with a provenance block, and a lock entry
+//   recording the pack as owner.
+// AC2 — a copyleft fixture skill: same shape (pending_approval by default,
+//   declined on decision:'decline', assimilated only on decision:'approve') —
+//   proving the gate is universal, not classification-dependent.
+// AC3/AC4 — E2E: assimilate (approved) -> materialize into .claude/skills/<id>/
+//   via the reconcile applier -> probeSkills' id lines up with assimilate's
 //   resourceId (no spurious install/remove) -> remove -> orphan cleanup.
 // AC5 — every result carries the provenance fields; integrity is a real
 //   sha256:<64hex> over the source content.
@@ -39,15 +48,43 @@ const COPYLEFT_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'copylef
 const FIXED_NOW = () => '2026-07-08T12:00:00Z';
 const PACK = 'design-power@0.1.0';
 
-describe('AC1 — a known-permissive skill assimilates with no human prompt', () => {
-  it('writes the owned copy with a provenance block and records a lock owner edge', async () => {
+describe('AC1 — a known-permissive skill still requires an explicit approve to write anything', () => {
+  it('without decision, returns pending_approval and writes nothing', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);
-    const root = makeTmpDir('asm-permissive');
+    const root = makeTmpDir('asm-permissive-pending');
 
     const result = await assimilateSkill({
       source: PERMISSIVE_FIXTURE,
       resourceId: 'permissive-skill',
       pack: PACK,
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('pending_approval');
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.classification).toBe('permissive');
+    // Everything an approve would commit is already computed for review...
+    expect(result.integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.assimilated_at).toBe('2026-07-08T12:00:00Z');
+    expect(result.provenance_preview).toContain('## Sources & provenance (hivemind)');
+    expect(result.provenance_preview).toContain('- spdx_id: MIT');
+    // ...but NOTHING is written.
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+
+  it('with decision: approve, writes the owned copy with a provenance block and records a lock owner edge', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-permissive-approved');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
       origin: 'github.com/example/permissive-skill',
       pin: 'abc123',
       root,
@@ -82,8 +119,8 @@ describe('AC1 — a known-permissive skill assimilates with no human prompt', ()
   });
 });
 
-describe('AC2 — a copyleft skill requires an explicit human decision', () => {
-  it('returns awaiting_human and writes nothing when no decision is given', async () => {
+describe('AC2 — a copyleft skill requires the same explicit approve — the gate is universal, not classification-dependent', () => {
+  it('returns pending_approval and writes nothing when no decision is given', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);
     const root = makeTmpDir('asm-copyleft-pending');
 
@@ -97,11 +134,15 @@ describe('AC2 — a copyleft skill requires an explicit human decision', () => {
       now: FIXED_NOW,
     });
 
-    expect(result.status).toBe('awaiting_human');
+    expect(result.status).toBe('pending_approval');
     expect(result.spdx_id).toBe('GPL-3.0-only');
     expect(result.classification).toBe('copyleft');
     expect(result.detected_via).toBe('license-file');
     expect(typeof result.source_path).toBe('string');
+    // Copyleft/unknown carries the same computed-preview shape as permissive —
+    // the ONLY difference is the classification/gate reason, not the payload shape.
+    expect(result.integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.provenance_preview).toContain('- spdx_id: GPL-3.0-only');
 
     expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
     expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
@@ -150,7 +191,7 @@ describe('AC2 — a copyleft skill requires an explicit human decision', () => {
 });
 
 describe('Gap B — repoRoot forwarding: a LICENSE at the clone root is still found for a --subdir source', () => {
-  it('detects the license via detectLicense\'s repoRoot fallback and assimilates', async () => {
+  it('detects the license via detectLicense\'s repoRoot fallback and assimilates once approved', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);
 
     // Simulates `bin/assimilate-skill.js --subdir skills/gsap-core`: the
@@ -173,6 +214,7 @@ describe('Gap B — repoRoot forwarding: a LICENSE at the clone root is still fo
       repoRoot: cloneRoot,
       resourceId: 'gsap-core',
       pack: PACK,
+      decision: 'approve',
       origin: 'github.com/example/gsap-skills',
       pin: 'abc123',
       root,
@@ -186,7 +228,7 @@ describe('Gap B — repoRoot forwarding: a LICENSE at the clone root is still fo
     expect(existsSync(join(root, 'assimilated-skills', 'gsap-core', 'SKILL.md'))).toBe(true);
   });
 
-  it('without repoRoot, the same skill (no license signal of its own) gates on a human decision', async () => {
+  it('without repoRoot, the same skill (no license signal of its own) can only reach pending_approval as unknown', async () => {
     // Regression lock for the bug this gap fixes: omitting repoRoot means
     // detectLicense never sees the clone-root LICENSE at all.
     const { assimilateSkill } = await import(PROD.assimilate);
@@ -213,12 +255,13 @@ describe('Gap B — repoRoot forwarding: a LICENSE at the clone root is still fo
       now: FIXED_NOW,
     });
 
-    expect(result.status).toBe('awaiting_human');
+    expect(result.status).toBe('pending_approval');
     expect(result.spdx_id).toBeNull();
+    expect(result.classification).toBe('unknown');
   });
 });
 
-describe('AC3/AC4 — end-to-end: assimilate -> materialize -> id-space integration -> orphan cleanup', () => {
+describe('AC3/AC4 — end-to-end: assimilate (approved) -> materialize -> id-space integration -> orphan cleanup', () => {
   it('reconciles cleanly through materialize, a no-spurious-op steady state, and orphan removal', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);
     const { probeSkills, plan } = await import(PROD.packReconcile);
@@ -239,6 +282,7 @@ describe('AC3/AC4 — end-to-end: assimilate -> materialize -> id-space integrat
       source: PERMISSIVE_FIXTURE,
       resourceId: 'permissive-skill',
       pack: PACK,
+      decision: 'approve',
       origin: resourceDescriptor.origin,
       pin: resourceDescriptor.pin,
       root,
@@ -297,5 +341,35 @@ describe('AC3/AC4 — end-to-end: assimilate -> materialize -> id-space integrat
     expect(existsSync(join(root, '.claude', 'skills', 'permissive-skill'))).toBe(false);
     const finalLock = JSON.parse(readFileSync(lockPath, 'utf8'));
     expect(finalLock.resources['skill:permissive-skill']).toBeUndefined();
+  });
+});
+
+describe('no-write-without-approve invariant (human-gate policy)', () => {
+  it('holds across every classification: only decision: "approve" ever writes to disk or the lock', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+
+    for (const [label, source, expectedClassification] of [
+      ['permissive', PERMISSIVE_FIXTURE, 'permissive'],
+      ['copyleft', COPYLEFT_FIXTURE, 'copyleft'],
+    ]) {
+      for (const decision of [undefined, 'decline']) {
+        const root = makeTmpDir(`asm-invariant-${label}-${decision ?? 'absent'}`);
+
+        const result = await assimilateSkill({
+          source,
+          resourceId: `${label}-skill`,
+          pack: PACK,
+          decision,
+          origin: 'github.com/example/skill',
+          pin: 'abc123',
+          root,
+          now: FIXED_NOW,
+        });
+
+        expect(result.status, `${label}/${decision}`).not.toBe('assimilated');
+        expect(existsSync(join(root, 'assimilated-skills')), `${label}/${decision} staging dir`).toBe(false);
+        expect(existsSync(join(root, 'integrations.lock.json')), `${label}/${decision} lock`).toBe(false);
+      }
+    }
   });
 });

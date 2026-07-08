@@ -2,7 +2,9 @@
 // TASK-120 — hivemind-assimilate-skill workflow (docs/design/addon-packs-plan.md
 // §7 assimilation, §12 license-detection spec). This is the actual v1
 // assimilation primitive the four prior Wave-1 modules were built to compose:
-//   - src/license-detect.js    — detectLicense / classifyLicense: the human gate.
+//   - src/license-detect.js    — detectLicense / classifyLicense: decision
+//     support only (see the human-gate policy note below) — never itself a
+//     write authority.
 //   - src/integrations-lock.js — readLock/writeLock/addOwner: ownership edges.
 //   - src/pack-reconcile.js    — probeSkills's PROVISIONAL provenance-block
 //     parser; assimilateSkill is the block's actual writer. The format below
@@ -13,18 +15,18 @@
 //     into the live .claude/skills/<id>/ tree; assimilateSkill only ever
 //     writes the OWNED staging copy, never the live dir directly.
 //
-// Flow: read the skill at `source` (a local directory — a fixture dir in
-// tests, a pre-cloned checkout in real runs; no network happens here) ->
-// detectLicense -> classifyLicense. permissive -> proceed automatically.
-// copyleft | unknown -> return `awaiting_human` and write NOTHING, unless the
-// caller re-invokes with an explicit `decision: 'approve'`; a declined or
-// absent decision is always a strict no-op on disk and on the lock.
-//
-// On proceed: copy `source` into `assimilated-skills/<resourceId>/`
-// (clean-replace via rmSync+cpSync, mirroring pack-apply's executeInstall fix
-// — TASK-119 review's carried LOW — so re-assimilating the same id is
-// idempotent), re-scope the copied SKILL.md's frontmatter description,
-// append the provenance block, and record a lock entry + ownership edge.
+// HUMAN-GATE POLICY (locked, 2026-07-08): NO skill ever adopts without an
+// explicit human sign-off — not even a permissive one. Every call without
+// `decision: 'approve'` is a dry-run vet: it reads the skill at `source`,
+// runs detectLicense/classifyLicense, computes what integrity/provenance
+// WOULD be, and returns a `pending_approval` review payload — WRITING
+// NOTHING. `decision: 'decline'` is a terminal no (status: declined),
+// equally a no-write. Only `decision: 'approve'` performs the actual write
+// (copy into assimilated-skills/<resourceId>/, re-scope the description,
+// append the provenance block, record the lock entry). Classification
+// (permissive/copyleft/unknown) is decision SUPPORT surfaced in the
+// payload, never itself a write authority — a self-reported "permissive"
+// finding must never be able to auto-adopt.
 
 import { existsSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -88,10 +90,27 @@ function appendProvenanceBlock(text, fields) {
   return `${base}\n${buildProvenanceBlock(fields)}`;
 }
 
+// Shared by the pending_approval preview and the real write: both need the
+// exact same integrity hash (over the UNMODIFIED source, before any
+// description-tag/provenance-block rewrite) and the exact same clock read,
+// so a human reviewing a pending_approval payload sees the real values an
+// approve would commit -- not a second, possibly-different computation.
+function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
+  return {
+    origin,
+    pin,
+    spdx_id,
+    integrity: `sha256:${hashDir(source)}`,
+    assimilated_at: now(),
+  };
+}
+
 /**
- * Assimilate a third-party skill: license-gate it, then (once cleared) copy
- * it into the owned `assimilated-skills/<resourceId>/` staging dir with a
- * re-scoped description and a provenance block, and record it in
+ * Assimilate a third-party skill: run the license-detection decision-support
+ * chain, then EITHER return a pending_approval/declined review payload
+ * (default — writes nothing) OR, only with an explicit `decision: 'approve'`,
+ * copy it into the owned `assimilated-skills/<resourceId>/` staging dir with
+ * a re-scoped description and a provenance block, and record it in
  * integrations.lock.json under the calling pack's ownership.
  *
  * @param {object} opts
@@ -104,8 +123,9 @@ function appendProvenanceBlock(text, fields) {
  *   space once materialized into .claude/skills/<resourceId>/).
  * @param {string} opts.pack - owning pack-id@version edge, e.g. "design-power@0.1.0".
  * @param {string} [opts.origin] - vendor/repo the skill came from; only
- *   needed on the proceed path (never required to reach an awaiting_human/
- *   declined verdict, which write nothing).
+ *   needed on the approve path (never required to reach a pending_approval/
+ *   declined verdict, which write nothing — though it's echoed into the
+ *   pending_approval preview too, since that's what an approve would commit).
  * @param {string} [opts.pin] - pinned commit SHA or exact version; same as origin.
  * @param {string} [opts.repoRoot] - the SOURCE skill's clone/repo root, when
  *   `source` is a subdirectory of a larger checkout (e.g. bin/assimilate-skill.js's
@@ -113,10 +133,12 @@ function appendProvenanceBlock(text, fields) {
  *   from `source`/skillDir) so a LICENSE file that lives at the clone root, not
  *   inside the skill's own subdir, is still found. Omit when `source` IS the repo
  *   root (no --subdir) -- detectLicense already checks skillDir first either way.
- * @param {'approve'|'decline'} [opts.decision] - human verdict on a
- *   copyleft/unknown license. Absent is treated as "not yet decided"
- *   (status: awaiting_human); 'decline' is a terminal no (status: declined).
- *   Either way nothing is written; only 'approve' unblocks the proceed path.
+ * @param {'approve'|'decline'} [opts.decision] - the human's verdict. HUMAN-GATE
+ *   POLICY: this is the ONLY thing that can trigger a write, for ANY
+ *   classification (including permissive) — a license finding is decision
+ *   support, never a write authority. Absent -> status 'pending_approval'
+ *   (not yet decided); 'decline' -> status 'declined' (a terminal no); either
+ *   way nothing is written. Only 'approve' performs the write.
  * @param {{owner: string, repo: string}} [opts.github] - repo coordinates
  *   forwarded to detectLicense's GitHub Licenses API step.
  * @param {Function} [opts.fetch] - injected GitHub Licenses API transport,
@@ -130,7 +152,11 @@ function appendProvenanceBlock(text, fields) {
  *   Created fresh (schema_version 1, empty resources) if it doesn't exist yet.
  * @param {'hard'|'soft'} [opts.required] - the lock entry's required tier,
  *   default 'soft'.
- * @returns {Promise<object>} `{ status: 'assimilated'|'awaiting_human'|'declined', id, spdx_id, ... }`.
+ * @returns {Promise<object>} `{ status: 'pending_approval'|'declined'|'assimilated', id, spdx_id, classification, ... }`.
+ *   A `pending_approval` payload additionally carries `origin`, `pin`,
+ *   `integrity`, `assimilated_at`, and `provenance_preview` (the exact
+ *   provenance-block text an `approve` would write) — everything a human
+ *   needs to decide, computed WITHOUT writing anything.
  */
 export async function assimilateSkill(opts) {
   const {
@@ -165,26 +191,37 @@ export async function assimilateSkill(opts) {
     source_path: license.source_path,
   };
 
-  if (classification !== 'permissive' && decision !== 'approve') {
-    // Copyleft/unknown, without an explicit approval yet -- write NOTHING.
-    // 'decline' is a terminal no; an absent decision is "not yet decided" --
-    // both leave the tree and lock untouched, which is the guarantee under test.
-    return { ...base, status: decision === 'decline' ? 'declined' : 'awaiting_human' };
+  if (decision !== 'approve') {
+    if (decision === 'decline') {
+      // Terminal no -- write NOTHING. No preview needed; the caller already said no.
+      return { ...base, status: 'declined' };
+    }
+    // No decision yet, for ANY classification (permissive included) -- write
+    // NOTHING, but compute + return everything an approve would commit, so
+    // the human reviewing this has the real numbers, not a placeholder.
+    const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
+    return {
+      ...base,
+      status: 'pending_approval',
+      origin: fields.origin,
+      pin: fields.pin,
+      integrity: fields.integrity,
+      assimilated_at: fields.assimilated_at,
+      provenance_preview: buildProvenanceBlock(fields),
+    };
   }
 
-  // Proceed: permissive auto-OK, or copyleft/unknown carrying an explicit approval.
-  const integrity = `sha256:${hashDir(source)}`;
-  const assimilated_at = now();
+  // decision === 'approve' -- the ONLY path that writes, for ANY classification.
+  const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
 
   const ownedDir = join(root, DEFAULT_STAGING_SUBDIR, resourceId);
   mkdirSync(dirname(ownedDir), { recursive: true });
   rmSync(ownedDir, { recursive: true, force: true }); // clean-replace: re-assimilate is idempotent
   cpSync(source, ownedDir, { recursive: true });
 
-  const provenanceFields = { origin, pin, spdx_id: license.spdx_id, integrity, assimilated_at };
   const ownedSkillPath = join(ownedDir, SKILL_FILENAME);
   const original = readFileSync(ownedSkillPath, 'utf8');
-  const rescoped = appendProvenanceBlock(tagDescriptionForHivemind(original), provenanceFields);
+  const rescoped = appendProvenanceBlock(tagDescriptionForHivemind(original), fields);
   writeFileSync(ownedSkillPath, rescoped, 'utf8');
 
   const id = `skill:${resourceId}`;
@@ -197,13 +234,13 @@ export async function assimilateSkill(opts) {
   }
   lock.resources[id] = {
     kind: 'skill',
-    origin,
-    pin,
-    integrity,
+    origin: fields.origin,
+    pin: fields.pin,
+    integrity: fields.integrity,
     scope: 'project',
     owners: [],
     required,
-    installed_at: assimilated_at,
+    installed_at: fields.assimilated_at,
     install_method: 'assimilated',
     verified: 'unsigned',
   };
@@ -214,10 +251,10 @@ export async function assimilateSkill(opts) {
     ...base,
     status: 'assimilated',
     path: ownedDir,
-    origin,
-    pin,
-    integrity,
-    assimilated_at,
+    origin: fields.origin,
+    pin: fields.pin,
+    integrity: fields.integrity,
+    assimilated_at: fields.assimilated_at,
     owners: lock.resources[id].owners,
   };
 }
