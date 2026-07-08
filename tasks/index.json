@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-08T19:21:51.141Z",
+  "generated_at": "2026-07-08T19:46:24.604Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -712,7 +712,7 @@
     {
       "key": "TASK-121",
       "title": "Planner: materialize a staged-but-not-live skill (lock/disk divergence)",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {

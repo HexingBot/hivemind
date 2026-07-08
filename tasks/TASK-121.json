@@ -8,7 +8,7 @@
     "An end-to-end test drives assimilate -> plan() -> applyPlan and confirms plan() itself (not a hand-constructed install op) triggers the first materialize into .claude/skills/<id>/.",
     "The lock/disk divergence described in the TASK-120 review can no longer occur: after assimilate, a reconcile pass makes lock and live state consistent."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "addon-packs",
@@ -21,11 +21,20 @@
     "TASK-118",
     "TASK-120"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "68be9c8",
+    "ad657e0"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T19:46:24.604Z",
+      "body": "Closed on a clean Reviewer APPROVE (fresh-context, full depth). Review depth = FULL; rubric input: diff touches core tdd-tier reconciler logic (src/pack-reconcile.js), a mandatory-FULL surface the assimilate/materialize pipeline depends on. tdd two-commit discipline confirmed: test commit 68be9c8 strictly precedes fix ad657e0; red-run independently reproduced at the impl parent (staged-but-not-live skill fell through to a no-op under the old !lockEntry && !actualEntry gate). Fix: plan()'s install gate is now 'not live' (!actualEntry) rather than 'neither in lock nor live', so a skill staged by assimilate (lock entry written, not yet under .claude/skills/) is materialized on the next reconcile; the live-path pin-compare/no-op branch is unchanged (AC2 no-regression, pinned by a non-vacuous full-equality assertion). The replace->install semantic shift (a staged-but-not-live pin mismatch is now install, not replace — you cannot replace what is not on disk) was reviewed as LEGITIMATE, not a laundered assertion: each updated existing spec added a matching actual entry to keep testing the genuinely-live case, and the staged case is explicitly covered by a new test. AC3/AC4 e2e drives assimilate(approve)->probeSkills->plan()->applyPlan with plan()'s OWN output (hand-built-op workaround removed), then a second reconcile pass asserts a clean no-op steady state — divergence resolved. Orphan-removal pass (TASK-118 HIGH) untouched. dist-parity: src/pack-reconcile.js is not transitively imported by any bundled entrypoint — no dist rebuild needed (independently confirmed). Gate green: fast tier 770 passed/2 skipped/0 failed, pack-reconcile + assimilate e2e 21 passed. Knowledge capture (TASK-105): not triggered (clean first-pass APPROVE, no HIGH, no RC loop).\n\nProcess note: the review flagged a MEDIUM that was the orchestrator's OWN live session bundle failing bundle.schema.json (decisions[0] used a 'summary' key; schema requires decision+rationale, additionalProperties:false) — not caused by this ticket's diff. Repaired by the orchestrator (decisions[0] now uses decision+rationale) and re-verified green; committed with this close."
+    }
+  ],
   "created_at": "2026-07-08T17:23:39.417Z",
-  "updated_at": "2026-07-08T17:23:39.417Z",
+  "updated_at": "2026-07-08T19:46:24.604Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }

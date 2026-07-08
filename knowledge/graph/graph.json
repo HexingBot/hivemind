@@ -560,6 +560,12 @@
       "label": "Release hivemind v0.11.0 - version bump + tag + publish"
     },
     {
+      "id": "task-121",
+      "type": "task",
+      "ref": "tasks/TASK-121.json",
+      "label": "Planner: materialize a staged-but-not-live skill (lock/disk divergence)"
+    },
+    {
       "id": "task-122",
       "type": "task",
       "ref": "tasks/TASK-122.json",
@@ -926,6 +932,11 @@
       "from": "task-114",
       "to": "decision-20260707-release-v0-11-0-minor-bump",
       "relation": "produced-by"
+    },
+    {
+      "from": "task-121",
+      "to": "decision-20260708-license-not-safety-content-review-gate",
+      "relation": "relates-to"
     },
     {
       "from": "task-122",
