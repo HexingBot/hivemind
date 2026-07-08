@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hivemind.local/state/pack-descriptor.schema.json",
+  "title": "PackDescriptor",
+  "description": "Declarative shape of a Hivemind addon pack (docs/design/addon-packs.md §8). A pack is data: an intake trigger, an optional profiling interview, the resources (skills/mcp/plugins) it wires up with ownership metadata, the loop_auth gate scopes it introduces, and the pipeline steps it injects via the core registration hook. Wave-1 scope is descriptor validation only — the reconciler that acts on this data is a separate ticket.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "version",
+    "core_compat",
+    "trigger",
+    "project_md_contribution",
+    "profile",
+    "resources",
+    "gate_scopes",
+    "pipeline"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable pack identifier, e.g. 'design-power'."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable pack name."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Pack version (semver-exact recommended, not enforced here)."
+    },
+    "core_compat": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Compat range against the core registration hook API (addon-packs.md §5)."
+    },
+    "trigger": {
+      "type": "object",
+      "description": "Intake condition that activates the pack. Shape is pack-defined (addon-packs.md §8); kept loose here since Wave 1 only validates the descriptor envelope."
+    },
+    "project_md_contribution": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "PROJECT.md frontmatter keys this pack writes (the 'intent' side of the reconciler, addon-packs.md §2)."
+    },
+    "profile": {
+      "type": "object",
+      "description": "Optional profiling interview + complexity scoring (addon-packs.md §8). Shape is pack-defined."
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "origin", "pin", "scope", "required"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Resource id, unique within this descriptor. Referenced by other resources' `fallback`."
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["skill", "mcp", "plugin"]
+          },
+          "origin": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Origin allowlist entry, e.g. 'vendor/repo-or-registry' (addon-packs-plan.md §2)."
+          },
+          "pin": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact commit SHA or semver — never a range (addon-packs-plan.md §2)."
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["project", "user"]
+          },
+          "required": {
+            "type": "string",
+            "enum": ["hard", "soft"],
+            "description": "hard = blocks the loop on failure; soft = degrade and report (addon-packs.md §2.3)."
+          },
+          "fallback": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of another resource in this same descriptor's resources[] to fall back to when this one is soft-unavailable (addon-packs-plan.md §8). Validated as a semantic reference by the validator, not by this schema alone."
+          }
+        }
+      }
+    },
+    "gate_scopes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "loop_auth scopes this pack introduces (addon-packs.md §4)."
+    },
+    "pipeline": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Pipeline steps injected via the core registration hook (addon-packs.md §5)."
+    }
+  }
+}
