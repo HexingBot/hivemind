@@ -8683,6 +8683,14 @@ var PROJECT_schema_default = {
     preview_mode: {
       type: "string",
       enum: ["web", "process"]
+    },
+    tier: {
+      type: "string",
+      enum: ["LIGERO", "MEDIO", "COMPLETO"]
+    },
+    perfil_proyecto: {
+      type: "object",
+      additionalProperties: { type: "string" }
     }
   }
 };
@@ -8701,8 +8709,8 @@ var BODY_SECTIONS = [
   { id: "scope_in", heading: "Scope (in)", bullets: true },
   { id: "scope_out", heading: "Scope (out)", bullets: true }
 ];
-var FRONTMATTER_IDS = /* @__PURE__ */ new Set(["project_name", "project_type"]);
-var SPECIAL_FRONTMATTER_IDS = /* @__PURE__ */ new Set(["agent_models"]);
+var FRONTMATTER_IDS = /* @__PURE__ */ new Set(["project_name", "project_type", "tier"]);
+var SPECIAL_FRONTMATTER_IDS = /* @__PURE__ */ new Set(["agent_models", "perfil_proyecto"]);
 var MODEL_ALIASES = /* @__PURE__ */ new Set(["sonnet", "opus", "haiku", "fable", "inherit"]);
 var FULL_MODEL_ID_RE = /^claude-[a-z0-9-]+$/;
 var VALID_AGENT_NAMES = /* @__PURE__ */ new Set(["reviewer", "developer", "researcher"]);
@@ -8761,6 +8769,13 @@ function renderProjectMd(answers, createdAt) {
   if (answers.agent_models && typeof answers.agent_models === "object" && Object.keys(answers.agent_models).length > 0) {
     const mapStr = Object.entries(answers.agent_models).map(([k, v]) => `${k}: ${v}`).join(", ");
     fmLines.push(`agent_models: {${mapStr}}`);
+  }
+  if (answers.tier !== void 0 && answers.tier !== null && answers.tier !== "") {
+    fmLines.push(`tier: ${answers.tier}`);
+  }
+  if (answers.perfil_proyecto && typeof answers.perfil_proyecto === "object" && Object.keys(answers.perfil_proyecto).length > 0) {
+    const profileStr = Object.entries(answers.perfil_proyecto).map(([k, v]) => `${k}: ${v}`).join(", ");
+    fmLines.push(`perfil_proyecto: {${profileStr}}`);
   }
   fmLines.push("---", "");
   const out = [...fmLines, `# ${name}`, ""];
@@ -8881,6 +8896,10 @@ function parseProjectMd(text) {
   if (frontmatter.agent_models !== void 0 && frontmatter.agent_models !== null && typeof frontmatter.agent_models === "object" && Object.keys(frontmatter.agent_models).length > 0) {
     answers.agent_models = frontmatter.agent_models;
   }
+  if (frontmatter.tier !== void 0) answers.tier = frontmatter.tier;
+  if (frontmatter.perfil_proyecto !== void 0 && frontmatter.perfil_proyecto !== null && typeof frontmatter.perfil_proyecto === "object" && Object.keys(frontmatter.perfil_proyecto).length > 0) {
+    answers.perfil_proyecto = frontmatter.perfil_proyecto;
+  }
   for (const sec of BODY_SECTIONS) {
     const block = sections.get(sec.heading);
     if (block === void 0) continue;
@@ -8939,7 +8958,7 @@ function parseFrontmatter(fmLines) {
   return out;
 }
 function coerceFrontmatterScalar(raw, fieldName) {
-  if (fieldName === "agent_models" && raw.startsWith("{") && raw.endsWith("}")) {
+  if (SPECIAL_FRONTMATTER_IDS.has(fieldName) && raw.startsWith("{") && raw.endsWith("}")) {
     const inner = raw.slice(1, -1).trim();
     if (inner.length === 0) return {};
     const result = {};
@@ -8947,7 +8966,7 @@ function coerceFrontmatterScalar(raw, fieldName) {
       const colonIdx = pair.indexOf(":");
       if (colonIdx === -1) {
         throw new Error(
-          `PROJECT.md frontmatter agent_models entry ${JSON.stringify(pair.trim())} is missing a colon \u2014 expected the form {agent: model, ...}`
+          `PROJECT.md frontmatter ${fieldName} entry ${JSON.stringify(pair.trim())} is missing a colon \u2014 expected the form {key: value, ...}`
         );
       }
       const k = pair.slice(0, colonIdx).trim();

@@ -74,6 +74,14 @@
     "preview_mode": {
       "type": "string",
       "enum": ["web", "process"]
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["LIGERO", "MEDIO", "COMPLETO"]
+    },
+    "perfil_proyecto": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
     }
   }
 }

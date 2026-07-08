@@ -83,14 +83,19 @@ const BODY_SECTIONS = [
 
 // Frontmatter answer ids are written into YAML rather than the body. Everything
 // not in BODY_SECTIONS and not in this set lands in the `## Stack` section.
-const FRONTMATTER_IDS = new Set(['project_name', 'project_type']);
+// TASK-124 — `tier` is a plain optional scalar (LIGERO|MEDIO|COMPLETO), same
+// treatment as project_name/project_type but written only when present.
+const FRONTMATTER_IDS = new Set(['project_name', 'project_type', 'tier']);
 
 // Keys that receive dedicated lossless encoding in the frontmatter rather than
 // being written into the Stack body section. They are excluded from the Stack
 // key loop UNCONDITIONALLY (TASK-036 review ruling 1b: agent_models is NEVER
 // emitted to or parsed from the Stack section — frontmatter is its only home,
 // so a stale Stack line can never shadow a frontmatter map).
-const SPECIAL_FRONTMATTER_IDS = new Set(['agent_models']);
+// TASK-124 — `perfil_proyecto` (Diseño Poderoso design profile) reuses the
+// exact same inline-object treatment as agent_models: single frontmatter
+// line, parsed back to an object, never a Stack bullet.
+const SPECIAL_FRONTMATTER_IDS = new Set(['agent_models', 'perfil_proyecto']);
 
 // Valid model aliases and pattern for full model IDs (mirrors PROJECT.schema.json).
 const MODEL_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'fable', 'inherit']);
@@ -205,6 +210,24 @@ function renderProjectMd(answers, createdAt) {
       .map(([k, v]) => `${k}: ${v}`)
       .join(', ');
     fmLines.push(`agent_models: {${mapStr}}`);
+  }
+
+  // TASK-124 — tier: an optional plain scalar frontmatter line, only
+  // written when present (schema constrains the enum; this module is
+  // plumbing-only and does not validate the value).
+  if (answers.tier !== undefined && answers.tier !== null && answers.tier !== '') {
+    fmLines.push(`tier: ${answers.tier}`);
+  }
+
+  // TASK-124 — perfil_proyecto: same inline-object treatment as agent_models
+  // (see comment above). Values must contain no commas or braces — the
+  // parser does a naive split on the same assumption as agent_models.
+  if (answers.perfil_proyecto && typeof answers.perfil_proyecto === 'object' &&
+      Object.keys(answers.perfil_proyecto).length > 0) {
+    const profileStr = Object.entries(answers.perfil_proyecto)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ');
+    fmLines.push(`perfil_proyecto: {${profileStr}}`);
   }
 
   fmLines.push('---', '');
@@ -383,6 +406,15 @@ function parseProjectMd(text) {
       Object.keys(frontmatter.agent_models).length > 0) {
     answers.agent_models = frontmatter.agent_models;
   }
+  // TASK-124 — restore tier (plain scalar) and perfil_proyecto (inline-object
+  // map, same absent-stays-absent rule as agent_models).
+  if (frontmatter.tier !== undefined) answers.tier = frontmatter.tier;
+  if (frontmatter.perfil_proyecto !== undefined &&
+      frontmatter.perfil_proyecto !== null &&
+      typeof frontmatter.perfil_proyecto === 'object' &&
+      Object.keys(frontmatter.perfil_proyecto).length > 0) {
+    answers.perfil_proyecto = frontmatter.perfil_proyecto;
+  }
 
   for (const sec of BODY_SECTIONS) {
     const block = sections.get(sec.heading);
@@ -473,12 +505,13 @@ function parseFrontmatter(fmLines) {
 }
 
 function coerceFrontmatterScalar(raw, fieldName) {
-  // TASK-036 — Inline object map: {key: value, key: value} used exclusively
-  // for the agent_models frontmatter key. Parsing is simple (values are
-  // identifiers/model-IDs with no commas or braces), so a naive split is safe.
-  // A pair without a colon throws loudly (matching parseFrontmatter's
-  // strictness) rather than dropping silently.
-  if (fieldName === 'agent_models' && raw.startsWith('{') && raw.endsWith('}')) {
+  // TASK-036 — Inline object map: {key: value, key: value}. Originally used
+  // exclusively for agent_models; TASK-124 reuses the identical treatment
+  // for perfil_proyecto (both are SPECIAL_FRONTMATTER_IDS). Parsing is
+  // simple (values are identifiers/model-IDs/profile tags with no commas or
+  // braces), so a naive split is safe. A pair without a colon throws loudly
+  // (matching parseFrontmatter's strictness) rather than dropping silently.
+  if (SPECIAL_FRONTMATTER_IDS.has(fieldName) && raw.startsWith('{') && raw.endsWith('}')) {
     const inner = raw.slice(1, -1).trim();
     if (inner.length === 0) return {};
     const result = {};
@@ -486,8 +519,8 @@ function coerceFrontmatterScalar(raw, fieldName) {
       const colonIdx = pair.indexOf(':');
       if (colonIdx === -1) {
         throw new Error(
-          `PROJECT.md frontmatter agent_models entry ${JSON.stringify(pair.trim())} ` +
-          'is missing a colon — expected the form {agent: model, ...}',
+          `PROJECT.md frontmatter ${fieldName} entry ${JSON.stringify(pair.trim())} ` +
+          `is missing a colon — expected the form {key: value, ...}`,
         );
       }
       const k = pair.slice(0, colonIdx).trim();
