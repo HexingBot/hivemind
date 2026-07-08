@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hivemind — Skills &amp; Packs</title>
+<meta name="description" content="The skills and capability packs that make up Hivemind: assimilate (safe adoption of third-party skills), the Diseño Poderoso design pack, and the core orchestration skills — explained in depth.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { margin: 0; padding: 0; background: #05060a; overflow-x: hidden; }
+  ::selection { background: #ff9a1f; color: #05060a; }
+  a { color: #b07fff; text-decoration: none; }
+  a:hover { color: #ff9a1f; }
+  ::-webkit-scrollbar { width: 12px; }
+  ::-webkit-scrollbar-track { background: #0a0d16; }
+  ::-webkit-scrollbar-thumb { background: #ff9a1f; border: 2px solid #0a0d16; }
+  body { font-family: 'VT323', monospace; color: #cfe3ff; font-size: 20px; line-height: 1.5; }
+  .wrap { position: relative; z-index: 3; max-width: 980px; margin: 0 auto; padding: 0 20px 80px; }
+  .ps { font-family: 'Press Start 2P', monospace; line-height: 1.6; }
+  h1.ps { font-size: clamp(20px, 4.5vw, 34px); color: #fff; margin: 0 0 10px; }
+  h2.ps { font-size: clamp(15px, 3vw, 20px); color: #ff9a1f; margin: 0 0 14px; }
+  h3.ps { font-size: 13px; color: #ffd39a; margin: 0 0 8px; }
+  .kick { font-family:'Press Start 2P',monospace; font-size: 11px; color:#8bd6ff; letter-spacing:1px; }
+  p { margin: 0 0 16px; color: #cfe3ff; }
+  .muted { color: #9fb4d8; }
+  section { border-top: 2px solid #1d2740; padding-top: 26px; margin-top: 40px; }
+  .card { background: #0a0d16; border: 2px solid #1d2740; padding: 20px 22px; margin: 16px 0; }
+  .card.hot { border-color: #7a3d00; background: linear-gradient(180deg,#120c05,#0a0d16); }
+  .tag { display:inline-block; font-family:'Press Start 2P',monospace; font-size:9px; padding:5px 8px; border:2px solid; margin:0 6px 6px 0; }
+  .t-new { color:#05060a; background:#ffb85c; border-color:#ffd39a; }
+  .t-design { color:#05060a; background:#b07fff; border-color:#d3b9ff; }
+  .t-core { color:#8bd6ff; border-color:#2b4a66; }
+  .t-plan { color:#ffb85c; border-color:#7a3d00; }
+  pre { background:#05060a; border:2px solid #1d2740; padding:14px 16px; overflow-x:auto; font-family:'VT323',monospace; font-size:17px; color:#8bd6ff; margin:14px 0; }
+  code { color:#ff9a1f; }
+  ul { margin:0 0 16px; padding-left:22px; } li { margin:4px 0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+  .pill { font-family:'Press Start 2P',monospace; font-size:10px; color:#ff9a1f; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:22px 0 8px; flex-wrap:wrap; }
+  .btn { font-family:'Press Start 2P',monospace; font-size:11px; padding:12px 16px; background:#0d1220; color:#cfe3ff; border:3px solid #2b4a66; display:inline-block; box-shadow:4px 4px 0 #061019; }
+  .btn:hover { background:#ff9a1f; color:#05060a; border-color:#ffd39a; }
+  .flow { font-family:'VT323',monospace; font-size:18px; color:#cfe3ff; }
+  .flow b { color:#ffb85c; }
+  .note { border-left:4px solid #ff9a1f; padding:6px 0 6px 14px; color:#9fb4d8; margin:14px 0; }
+  .safe { color:#7fe0a0; } .warn { color:#ff9a1f; }
+</style>
+</head>
+<body>
+<div style="position:fixed; inset:0; z-index:2; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0px, rgba(0,0,0,.22) 1px, transparent 1px, transparent 3px);"></div>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <a class="btn" href="index.html">◀ HOME</a>
+    <span class="kick">HIVEMIND // SKILLS &amp; PACKS</span>
+  </div>
+
+  <header style="padding:24px 0 8px;">
+    <div class="kick" style="color:#ffb85c;">// THE TOOLBOX</div>
+    <h1 class="ps">Skills &amp; Capability Packs</h1>
+    <p class="muted" style="max-width:720px;">Hivemind is a small orchestration core plus a set of <b style="color:#cfe3ff;">skills</b> — focused playbooks the agents load only when relevant — and <b style="color:#cfe3ff;">capability packs</b>, optional add-ons a project installs on demand. This page explains the newest ones in depth: <span class="pill">assimilate</span>, the <span class="pill" style="color:#b07fff;">design pack</span>, and the core skills underneath.</p>
+  </header>
+
+  <!-- ASSIMILATE -->
+  <section id="assimilate">
+    <span class="tag t-new">NEW · WAVE 1</span>
+    <h2 class="ps">assimilate — adopt a third-party skill, safely</h2>
+    <p>The skills ecosystem is full of useful third-party skills — but pulling someone else's instructions into your agent is a supply-chain decision. <b style="color:#cfe3ff;">Assimilate</b> is the pipeline that lets Hivemind adopt an external skill <span class="warn">without ever trusting it blindly</span>. Instead of installing from the internet at run time, it <b style="color:#cfe3ff;">vendors</b> a pinned, vetted copy you own — so an upstream repo changing, disappearing, or turning malicious later has zero effect on you.</p>
+
+    <div class="card hot">
+      <h3 class="ps">The gate — nothing lands without your sign-off</h3>
+      <p class="flow">
+        <b>fetch</b> a pinned copy &nbsp;→&nbsp;
+        <b>license</b> (from the real LICENSE text or the GitHub API — never a self-declared label) &nbsp;→&nbsp;
+        <b>pattern scan</b> (shell / network / credential access / obfuscation) &nbsp;→&nbsp;
+        <b>reviewer</b> reads the actual content, including its instructions, for prompt-injection &nbsp;→&nbsp;
+        <b class="warn">YOU approve</b> &nbsp;→&nbsp;
+        <b>adopt</b> (owned copy + provenance + integrity hash recorded)
+      </p>
+      <p class="muted" style="margin-bottom:0;">No approval → <span class="safe">nothing is written.</span> This is a hard invariant, proven by test: no code path adopts a skill or records it without an explicit approval — not even a permissively-licensed one.</p>
+    </div>
+
+    <h3 class="ps">Why a license is not a safety signal</h3>
+    <p>A permissive license (MIT, Apache-2.0, …) only removes the <em>legal</em> blocker to vendoring — it says nothing about whether the code or instructions are safe. And a <code>license: MIT</code> line in a skill's own metadata is just editable text anyone can type. So in Hivemind, license is <b style="color:#cfe3ff;">decision-support on a review card</b>, never a trigger to adopt. Classification comes only from matched license <em>text</em> or GitHub's own detection; the safety decision is a separate, mandatory content review plus a human yes.</p>
+
+    <h3 class="ps">Two-stage: own, then activate</h3>
+    <p>Assimilation writes the vetted copy to a staging area you own (<code>assimilated-skills/&lt;id&gt;/</code>) with a provenance block — origin, pinned commit, SPDX id, a <code>sha256</code> integrity hash, and a timestamp. A separate <b style="color:#cfe3ff;">reconciler</b> then materializes it into the live <code>.claude/skills/</code>, and can cleanly remove it later. Ownership is tracked as edges, so a skill shared by two packs is never deleted while either still needs it.</p>
+
+    <pre># vet a skill (dry run — reads &amp; classifies, writes nothing)
+node bin/assimilate-skill.js \
+  --url https://github.com/greensock/gsap-skills \
+  --subdir skills/gsap-core --resource-id gsap-core \
+  --pack design-power@0.1.0
+
+# → { spdx_id:"MIT", detected_via:"license-file",
+#     status:"pending_approval", integrity:"sha256:…" }
+#   nothing written until you add --decision approve</pre>
+    <p class="note">Status: the adoption mechanism, license detection, ownership, and the human-gate are shipped (Wave 1). The content <b>pattern-scan + reviewer</b> layer is the next ticket — until it lands, assimilate runs as a safe <em>vet &amp; stage</em> tool that never adopts without you.</p>
+  </section>
+
+  <!-- DESIGN PACK -->
+  <section id="design">
+    <span class="tag t-design">CAPABILITY PACK</span><span class="tag t-plan">IN DESIGN</span>
+    <h2 class="ps">Diseño Poderoso — the design pack</h2>
+    <p>The first capability pack: an <b style="color:#cfe3ff;">interview-driven design engine</b>. Before generating anything, it profiles the project, scores its complexity, and activates <em>only</em> the design resources that project actually needs — in the right order.</p>
+
+    <div class="card">
+      <h3 class="ps">Five phases</h3>
+      <p class="flow">
+        <b>0 · base questions</b> (what is it, for whom, how visually powerful, stack) →
+        <b>1 · conditional questions</b> (only what's relevant — canvas? motion? references? research?) →
+        <b>2 · complexity score</b> → tier <span class="pill">LIGERO</span> / <span class="pill">MEDIO</span> / <span class="pill">COMPLETO</span> →
+        <b>3 · toolset selection</b> (art direction, design system, components, motion, assets, testing) →
+        <b>4 · pipeline</b> runs the chosen steps in canonical order.
+      </p>
+    </div>
+
+    <p>It's built for a <span class="muted">Vue + Vite + Phaser + Firebase</span> stack and knows the sharp edges: shadcn/ui is React-only so Vue projects route to <b style="color:#cfe3ff;">shadcn-vue</b>; on a Phaser game the UI skills apply only to the HTML/DOM layer (HUD, menus, overlays), never the canvas render; and the interview short-circuits when the project is simple, to avoid question fatigue.</p>
+
+    <h3 class="ps">Safe by construction</h3>
+    <p>Every design resource the pack wants to bring in — skills like GSAP, MCP servers like shadcn-vue or Playwright — flows through the same <b style="color:#cfe3ff;">assimilate</b> gate above. The pack proposes the toolset; a human still signs off on any install. Skills adopt now; MCP servers are a planned Wave 2 (they carry an extra restart/approval seam).</p>
+    <p class="muted">Read the full design: <a href="https://github.com/HexingBot/hivemind/blob/main/docs/design/addon-packs.md">addon-pack architecture</a> · <a href="https://github.com/HexingBot/hivemind/blob/main/docs/design/addon-packs-plan.md">v1 build strategy</a>.</p>
+  </section>
+
+  <!-- CORE SKILLS -->
+  <section id="core">
+    <span class="tag t-core">CORE</span>
+    <h2 class="ps">The core skills</h2>
+    <p>These load automatically or on demand as the orchestrator works a ticket. Each is a focused playbook — a few hundred tokens up front, deeper detail pulled in only when needed.</p>
+
+    <div class="grid">
+      <div class="card"><h3 class="ps">orchestrator-routing</h3><p class="muted">The non-negotiable session-resume contract and the full operating manual for the orchestrator: delegation protocol, developer spawn modes, reviewer isolation, the UAT procedure, ticket-update protocol, and the verification-tier rubric. Loads at the start of every chat.</p></div>
+      <div class="card"><h3 class="ps">the impl-* manifests (Spine)</h3><p class="muted">Six language-agnostic blueprints generated before code on core tickets — API contracts, block tasks, component catalog, project structure, screen specs, state schemas — plus <b style="color:#cfe3ff;">manifest-verifier</b>, the deterministic cross-manifest coverage gate.</p></div>
+      <div class="card"><h3 class="ps">deep-research</h3><p class="muted">A four-lens research sweep (official docs, real-world examples, community pitfalls, alternatives) fanned out in parallel with schema-validated claims, then synthesized and critiqued for completeness.</p></div>
+      <div class="card"><h3 class="ps">deep-review</h3><p class="muted">Multi-agent adversarial review for release gates and large diffs: four dimensions (AC-compliance, correctness, security, test-adequacy), each finding then adversarially verified before it counts.</p></div>
+      <div class="card"><h3 class="ps">graphify</h3><p class="muted">Build, query, and inspect the project knowledge graph — nodes and edges under <code>knowledge/graph/</code>, visualized via the board's <code>/graph</code> view.</p></div>
+      <div class="card"><h3 class="ps">mcp-server</h3><p class="muted">How to build, bundle, register, and test a minimal stdio MCP server in Node with the official SDK — the pattern behind Hivemind's own task server and any new one.</p></div>
+      <div class="card"><h3 class="ps">tech-training-template</h3><p class="muted">When the researcher meets an unfamiliar stack, it copies this template to author a reusable skill — so the whole crew is &ldquo;trained&rdquo; on the new tech cheaply.</p></div>
+      <div class="card"><h3 class="ps">context-monitor</h3><p class="muted">The statusline/hook contract for context-window monitoring, snapshotting, and pause/resume handoffs — how long sessions stay coherent across compaction.</p></div>
+    </div>
+  </section>
+
+  <section style="text-align:center;">
+    <p class="kick" style="color:#8bd6ff;">// GET IT</p>
+    <p class="muted">Skills and packs ship with the plugin.</p>
+    <pre style="text-align:left; max-width:640px; margin:14px auto;">claude plugin marketplace add https://github.com/HexingBot/hivemind.git
+claude plugin install hivemind@hivemind-marketplace
+# already installed? update to the latest:
+/hivemind:update</pre>
+    <a class="btn" href="index.html">◀ BACK TO HOME</a>
+  </section>
+
+</div>
+</body>
+</html>
