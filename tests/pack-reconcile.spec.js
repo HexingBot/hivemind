@@ -97,6 +97,26 @@ describe('AC2 — orphaned + soft lock resources go to remove; still-owned orpha
 
     expect(result.remove).toEqual([]);
   });
+
+  it('a_soft_orphan_still_in_the_desired_set_is_not_removed (TASK-118 review HIGH)', () => {
+    // Regression lock: §2 is "desired vs actual" — owners-empty alone is not
+    // enough to remove. A lock entry with owners:[] (orphaned by whichever
+    // pack dropped it) that is STILL in the CURRENT desired set is being
+    // re-adopted, not discarded. Before the fix, this landed in `remove`
+    // while the desired-side pass simultaneously treated it as a pins-match
+    // no-op — self-contradictory, and the applier (TASK-119) would delete a
+    // wanted skill.
+    const desired = [{ id: 're-adopted', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' }];
+    const lock = makeLock({
+      'skill:re-adopted': makeLockEntry({ pin: 'v1', owners: [], required: 'soft' }),
+    });
+
+    const result = plan(desired, lock, {});
+
+    expect(result.remove).toEqual([]);
+    expect(result.install).toEqual([]);
+    expect(result.replace).toEqual([]);
+  });
 });
 
 describe('AC3 — pin drift goes to replace; matching pins are a no-op', () => {

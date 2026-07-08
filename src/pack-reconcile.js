@@ -51,6 +51,11 @@ function walkSkillFiles(dir) {
 // origin, pin, spdx_id, integrity, assimilated_at). Format is a flat bullet
 // list of `- key: value` lines under the heading, up to the next heading or
 // EOF. Absent heading -> undefined (not every skill is assimilated).
+//
+// PROVISIONAL: TASK-118 landed before the block's actual writer (TASK-120,
+// hivemind-assimilate-skill). This parser's expected shape is this ticket's
+// best guess, not a locked contract — when TASK-120 lands, reconcile this
+// parser against whatever format its writer actually emits (or vice versa).
 function parseProvenance(text) {
   const idx = text.indexOf(PROVENANCE_HEADING);
   if (idx === -1) return undefined;
@@ -118,6 +123,15 @@ export function probeSkills(root) {
  * @param {Record<string, object>} actual - probeSkills(root) output (or equivalent).
  * @returns {{ install: object[], remove: object[], replace: object[], report: object[] }}
  */
+// Contract this function relies on: plan() never mutates `lock`/`actual` (a
+// pure diff, read-only); removal candidacy is the conjunction of THREE
+// conditions — not-desired AND owners-empty AND soft. Dropping any one of
+// the three is a correctness bug, not a style choice: not-desired alone
+// would remove something another edge still needs (that's owners-empty's
+// job); owners-empty alone would remove something the CURRENT reconcile
+// still wants re-adopted (a still-desired orphan is being re-claimed, not
+// discarded — that's this fix, TASK-118 review HIGH); soft alone ignores
+// the hard/trust-mode gate below.
 export function plan(desired, lock, actual) {
   const install = [];
   const remove = [];
@@ -127,6 +141,14 @@ export function plan(desired, lock, actual) {
   const desiredList = Array.isArray(desired) ? desired : [];
   const lockResources = (lock && lock.resources) || {};
   const actualMap = actual || {};
+
+  // Collected up front so the orphan-removal pass below can check "is this
+  // lock entry still wanted by the CURRENT desired set" — without it, a
+  // soft skill re-adopted by the desired set but still showing owners:[]
+  // (orphaned by whichever pack dropped it, not yet re-owned) would be
+  // removed by the second pass in the same tick the first pass treats it as
+  // a pins-match no-op. Data-loss class, review HIGH.
+  const desiredSkillIds = new Set();
 
   for (const resource of desiredList) {
     if (!resource) continue;
@@ -141,6 +163,7 @@ export function plan(desired, lock, actual) {
     }
 
     const id = `skill:${resource.id}`;
+    desiredSkillIds.add(id);
     const lockEntry = lockResources[id];
     const actualEntry = actualMap[id];
 
@@ -156,12 +179,16 @@ export function plan(desired, lock, actual) {
     // else: pins match (or there's no recorded pin to compare) -> no-op.
   }
 
-  // Orphan removal only ever walks the lock's OWN keys (never a desired-set
-  // id) — isOrphaned() in src/integrations-lock.js throws UnknownResourceIdError
-  // on an id absent from lock.resources, so this mirrors that contract even
-  // though we inline the owners-empty check here to stay fs/lock-object-free.
+  // Orphan removal only ever walks the lock's OWN keys (never blindly trusts
+  // a desired-set id) — isOrphaned() in src/integrations-lock.js throws
+  // UnknownResourceIdError on an id absent from lock.resources, so this
+  // mirrors that contract even though we inline the owners-empty check here
+  // to stay fs/lock-object-free. §2's rule is "desired vs actual", so a
+  // lock entry that's STILL in the current desired set is never a removal
+  // candidate, regardless of its (possibly stale) owners[] state.
   for (const [id, entry] of Object.entries(lockResources)) {
     if (!entry || entry.kind !== 'skill') continue; // Wave 1 scope
+    if (desiredSkillIds.has(id)) continue; // still wanted -> never a removal candidate
     const owners = Array.isArray(entry.owners) ? entry.owners : [];
     const orphaned = owners.length === 0;
     if (orphaned && entry.required === 'soft') {
