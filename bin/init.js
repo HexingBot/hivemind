@@ -34,6 +34,8 @@ import { readPointer } from '../src/pointer.js';
 import { runQuestionnaire } from '../src/question-engine.js';
 import { buildIntakeQuestions, parseAgentModelsAnswer } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
+import { collectPackQuestions, applyProjectMdContributions } from '../src/pack-hooks.js';
+import { loadActivePacks } from '../src/pack-loader.js';
 import { generateProjectContext, applyAgentModels, applyDeveloperPermissions } from '../src/agent-generator.js';
 import { seedBacklog } from '../src/backlog-seeder.js';
 import { generateUseCaseSuite } from '../src/use-case-specs.js';
@@ -477,7 +479,15 @@ function normalizeAgentModelsAnswer(answers) {
  */
 async function runWizardAndWriteProjectMd({
   repoRoot, sessionId, prompter, now, suppliedAnswers, skipConfirm,
+  packDescriptors = [], packModules = {},
 }) {
+  // TASK-128 — minimal pack-loading seam (src/pack-loader.js): bind admitted
+  // descriptors (src/pack-registry.js's resolveActivePacks) to their pack
+  // modules. Default (no packDescriptors/packModules supplied by any caller)
+  // is a strict no-op — activePacks is [] and both TASK-127 collectors below
+  // are additive/off-by-default in that case (AC2).
+  const { activePacks } = loadActivePacks({ descriptors: packDescriptors, moduleRegistry: packModules });
+
   let answers;
   if (suppliedAnswers) {
     // Non-interactive: use the supplied answers verbatim. Validated by the
@@ -485,8 +495,11 @@ async function runWizardAndWriteProjectMd({
     answers = suppliedAnswers;
   } else {
     const persistTo = intakePath(repoRoot, sessionId);
+    // TASK-128 — seam 1: append active-pack questions after core questions
+    // (src/pack-hooks.js#collectPackQuestions). Zero active packs returns
+    // coreQuestions unchanged.
     ({ answers } = await runQuestionnaire({
-      questions: buildIntakeQuestions(),
+      questions: collectPackQuestions(buildIntakeQuestions(), activePacks),
       prompter,
       persistTo,
       now,
@@ -516,6 +529,10 @@ async function runWizardAndWriteProjectMd({
       return { aborted: true };
     }
   }
+  // TASK-128 — seam 2: merge active-pack PROJECT.md contributions
+  // (src/pack-hooks.js#applyProjectMdContributions) before the write. Zero
+  // active packs returns a shallow copy of `answers`, deep-equal to the input.
+  answers = applyProjectMdContributions(activePacks, answers);
   await writeProjectMd({ repoRoot, answers, now });
   // TASK-013 — emit the per-project agent briefing alongside PROJECT.md.
   // The in-memory `answers` are passed through so the generator doesn't have
@@ -676,6 +693,14 @@ async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConse
  *   the Bash-tool-compatible mode the /init-project slash command relies on
  *   (TASK-024). The already_initialized guard still short-circuits even with
  *   answers supplied, so a re-run is idempotent (it never clobbers PROJECT.md).
+ * @param {object[]} [opts.packDescriptors] - TASK-128: candidate addon-pack
+ *   descriptors (src/pack-descriptor.js shape) to resolve via
+ *   src/pack-registry.js. Defaults to [] — no production caller supplies this
+ *   yet (Phase F owns the real design-power descriptor + its discovery
+ *   convention); tests inject a fixture pack here.
+ * @param {object} [opts.packModules] - TASK-128: map of descriptor id -> pack
+ *   module ({questions?, deriveProjectMd?}), consumed by src/pack-hooks.js.
+ *   Defaults to {}.
  * @returns {Promise<{state: 'already_initialized'|'forced'|'resumed'|'created', projectMdPath: string, sessionId: string|null}>}
  */
 export async function runInit({
@@ -684,6 +709,8 @@ export async function runInit({
   repoRoot,
   now = () => new Date().toISOString(),
   answers = null,
+  packDescriptors = [],
+  packModules = {},
 }) {
   const parsed = parseArgs(argv);
 
@@ -812,6 +839,7 @@ export async function runInit({
     const { sessionId } = await startSession({ repoRoot });
     const wResult = await runWizardAndWriteProjectMd({
       repoRoot, sessionId, prompter, now, suppliedAnswers: answers, skipConfirm,
+      packDescriptors, packModules,
     });
     if (wResult && wResult.aborted) {
       // eslint-disable-next-line no-console
@@ -849,6 +877,7 @@ export async function runInit({
       const sessionId = pointer.active_session_id;
       const wResult = await runWizardAndWriteProjectMd({
         repoRoot, sessionId, prompter, now, suppliedAnswers: answers, skipConfirm,
+        packDescriptors, packModules,
       });
       if (wResult && wResult.aborted) {
         // eslint-disable-next-line no-console
@@ -882,6 +911,7 @@ export async function runInit({
   const { sessionId } = await startSession({ repoRoot });
   const wResult = await runWizardAndWriteProjectMd({
     repoRoot, sessionId, prompter, now, suppliedAnswers: answers, skipConfirm,
+    packDescriptors, packModules,
   });
   if (wResult && wResult.aborted) {
     // eslint-disable-next-line no-console

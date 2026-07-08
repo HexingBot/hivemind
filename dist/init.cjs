@@ -4028,7 +4028,7 @@ var require_core = __commonJS({
         uriResolver
       };
     }
-    var Ajv2 = class {
+    var Ajv3 = class {
       constructor(opts = {}) {
         this.schemas = {};
         this.refs = {};
@@ -4398,9 +4398,9 @@ var require_core = __commonJS({
         }
       }
     };
-    Ajv2.ValidationError = validation_error_1.default;
-    Ajv2.MissingRefError = ref_error_1.default;
-    exports2.default = Ajv2;
+    Ajv3.ValidationError = validation_error_1.default;
+    Ajv3.MissingRefError = ref_error_1.default;
+    exports2.default = Ajv3;
     function checkOptions(checkOpts, options, msg, log = "error") {
       for (const key in checkOpts) {
         const opt = key;
@@ -7538,7 +7538,7 @@ var require_ajv = __commonJS({
     var draft7MetaSchema = require_json_schema_draft_07();
     var META_SUPPORT_DATA = ["/properties"];
     var META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
-    var Ajv2 = class extends core_1.default {
+    var Ajv3 = class extends core_1.default {
       _addVocabularies() {
         super._addVocabularies();
         draft7_1.default.forEach((v) => this.addVocabulary(v));
@@ -7557,11 +7557,11 @@ var require_ajv = __commonJS({
         return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
       }
     };
-    exports2.Ajv = Ajv2;
-    module2.exports = exports2 = Ajv2;
-    module2.exports.Ajv = Ajv2;
+    exports2.Ajv = Ajv3;
+    module2.exports = exports2 = Ajv3;
+    module2.exports.Ajv = Ajv3;
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.default = Ajv2;
+    exports2.default = Ajv3;
     var validate_1 = require_validate();
     Object.defineProperty(exports2, "KeywordCxt", { enumerable: true, get: function() {
       return validate_1.KeywordCxt;
@@ -7680,12 +7680,12 @@ var require_dist = __commonJS({
     var fastName = new codegen_1.Name("fastFormats");
     var formatsPlugin = (ajv, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats3(ajv, opts, formats_1.fullFormats, fullName);
+        addFormats4(ajv, opts, formats_1.fullFormats, fullName);
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats3(ajv, list, formats, exportName);
+      addFormats4(ajv, list, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -7697,7 +7697,7 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats3(ajv, list, fs, exportName) {
+    function addFormats4(ajv, list, fs, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
@@ -9029,6 +9029,301 @@ function parseStackValue(raw) {
   return raw;
 }
 
+// src/pack-hooks.js
+function collectPackQuestions(coreQuestions, activePacks) {
+  if (!Array.isArray(activePacks) || activePacks.length === 0) {
+    return coreQuestions;
+  }
+  const seenIds = new Set(coreQuestions.map((q) => q.id));
+  const combined = [...coreQuestions];
+  for (const pack of activePacks) {
+    const packId = pack && pack.descriptor && pack.descriptor.id;
+    const questions = pack && pack.module && pack.module.questions || [];
+    for (const q of questions) {
+      if (seenIds.has(q.id)) {
+        throw new Error(
+          `collectPackQuestions: pack "${packId}" question id "${q.id}" collides with an existing question id (a core question, or a question already contributed by an earlier active pack) \u2014 pack question ids must be unique`
+        );
+      }
+      seenIds.add(q.id);
+      combined.push(q);
+    }
+  }
+  return combined;
+}
+function applyProjectMdContributions(activePacks, answers) {
+  const merged = { ...answers };
+  if (!Array.isArray(activePacks) || activePacks.length === 0) {
+    return merged;
+  }
+  for (const pack of activePacks) {
+    const descriptor = pack && pack.descriptor || {};
+    const packId = descriptor.id;
+    const deriveFn = pack && pack.module && pack.module.deriveProjectMd;
+    if (typeof deriveFn !== "function") continue;
+    const result = deriveFn(answers) || {};
+    const allowed = new Set(
+      Array.isArray(descriptor.project_md_contribution) ? descriptor.project_md_contribution : []
+    );
+    const offending = Object.keys(result).filter((key) => !allowed.has(key));
+    if (offending.length > 0) {
+      throw new Error(
+        `applyProjectMdContributions: pack "${packId}" derived key(s) ${JSON.stringify(offending)} outside its declared project_md_contribution ${JSON.stringify([...allowed])} \u2014 refusing to merge any field from this pack (all-or-nothing isolation)`
+      );
+    }
+    Object.assign(merged, result);
+  }
+  return merged;
+}
+
+// src/pack-descriptor.js
+var import__2 = __toESM(require__(), 1);
+var import_ajv_formats2 = __toESM(require_dist(), 1);
+
+// state/pack-descriptor.schema.json
+var pack_descriptor_schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://hivemind.local/state/pack-descriptor.schema.json",
+  title: "PackDescriptor",
+  description: "Declarative shape of a Hivemind addon pack (docs/design/addon-packs.md \xA78). A pack is data: an intake trigger, an optional profiling interview, the resources (skills/mcp/plugins) it wires up with ownership metadata, the loop_auth gate scopes it introduces, and the pipeline steps it injects via the core registration hook. Wave-1 scope is descriptor validation only \u2014 the reconciler that acts on this data is a separate ticket.",
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "name",
+    "version",
+    "core_compat",
+    "trigger",
+    "project_md_contribution",
+    "profile",
+    "resources",
+    "gate_scopes",
+    "pipeline"
+  ],
+  properties: {
+    id: {
+      type: "string",
+      minLength: 1,
+      description: "Stable pack identifier, e.g. 'design-power'."
+    },
+    name: {
+      type: "string",
+      minLength: 1,
+      description: "Human-readable pack name."
+    },
+    version: {
+      type: "string",
+      minLength: 1,
+      description: "Pack version (semver-exact recommended, not enforced here)."
+    },
+    core_compat: {
+      type: "string",
+      minLength: 1,
+      description: "Compat range against the core registration hook API (addon-packs.md \xA75)."
+    },
+    trigger: {
+      type: "object",
+      description: "Intake condition that activates the pack. Shape is pack-defined (addon-packs.md \xA78); kept loose here since Wave 1 only validates the descriptor envelope."
+    },
+    project_md_contribution: {
+      type: "array",
+      items: { type: "string" },
+      description: "PROJECT.md frontmatter keys this pack writes (the 'intent' side of the reconciler, addon-packs.md \xA72)."
+    },
+    profile: {
+      type: "object",
+      description: "Optional profiling interview + complexity scoring (addon-packs.md \xA78). Shape is pack-defined."
+    },
+    resources: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "kind", "origin", "pin", "scope", "required"],
+        properties: {
+          id: {
+            type: "string",
+            minLength: 1,
+            description: "Resource id, unique within this descriptor. Referenced by other resources' `fallback`."
+          },
+          kind: {
+            type: "string",
+            enum: ["skill", "mcp", "plugin"]
+          },
+          origin: {
+            type: "string",
+            minLength: 1,
+            description: "Origin allowlist entry, e.g. 'vendor/repo-or-registry' (addon-packs-plan.md \xA72)."
+          },
+          pin: {
+            type: "string",
+            minLength: 1,
+            description: "Exact commit SHA or semver \u2014 never a range (addon-packs-plan.md \xA72)."
+          },
+          scope: {
+            type: "string",
+            enum: ["project", "user"]
+          },
+          required: {
+            type: "string",
+            enum: ["hard", "soft"],
+            description: "hard = blocks the loop on failure; soft = degrade and report (addon-packs.md \xA72.3)."
+          },
+          fallback: {
+            type: "string",
+            minLength: 1,
+            description: "Id of another resource in this same descriptor's resources[] to fall back to when this one is soft-unavailable (addon-packs-plan.md \xA78). Validated as a semantic reference by the validator, not by this schema alone."
+          },
+          activate_when: {
+            type: "string",
+            minLength: 1,
+            description: "OPTIONAL activation predicate over profile variables, e.g. 'tier>=MEDIO' or 'framework==vue && ui_outside_canvas' (addon-packs.md \xA78.1). Activation/exclusion is descriptor DATA -- this predicate plus `fallback` above -- never hardcoded core logic. TASK-123 only validates this as a non-empty string and round-trips it; predicate EVALUATION is deferred to the Phase D/F layer and is out of scope here."
+          },
+          install: {
+            type: "string",
+            minLength: 1,
+            description: "OPTIONAL install command string for this resource, e.g. 'claude plugin add anthropic/frontend-design' (addon-packs.md \xA78). Data only -- no command is executed by this schema or by validatePackDescriptor."
+          }
+        }
+      }
+    },
+    gate_scopes: {
+      type: "array",
+      items: { type: "string" },
+      description: "loop_auth scopes this pack introduces (addon-packs.md \xA74)."
+    },
+    pipeline: {
+      type: "array",
+      items: { type: "string" },
+      description: "Pipeline steps injected via the core registration hook (addon-packs.md \xA75)."
+    }
+  }
+};
+
+// src/pack-descriptor.js
+var __ajv = new import__2.default({ allErrors: true, strict: false });
+(0, import_ajv_formats2.default)(__ajv);
+var __validate = __ajv.compile(pack_descriptor_schema_default);
+function validatePackDescriptor(obj) {
+  const ok = __validate(obj);
+  const errors = ok ? [] : [...__validate.errors];
+  if (obj && Array.isArray(obj.resources)) {
+    const knownIds = new Set(
+      obj.resources.map((resource) => resource && resource.id).filter((id) => typeof id === "string")
+    );
+    const idCounts = /* @__PURE__ */ new Map();
+    for (const resource of obj.resources) {
+      if (resource && typeof resource.id === "string") {
+        idCounts.set(resource.id, (idCounts.get(resource.id) || 0) + 1);
+      }
+    }
+    obj.resources.forEach((resource, index) => {
+      if (resource && typeof resource.id === "string" && idCounts.get(resource.id) > 1) {
+        errors.push({
+          instancePath: `/resources/${index}/id`,
+          message: `duplicate resource id "${resource.id}" \u2014 resource ids must be unique within a descriptor`
+        });
+      }
+    });
+    obj.resources.forEach((resource, index) => {
+      if (!resource || typeof resource.fallback !== "string") return;
+      if (resource.fallback === resource.id) {
+        errors.push({
+          instancePath: `/resources/${index}/fallback`,
+          message: `must reference another resource id, not itself (got "${resource.fallback}")`
+        });
+      } else if (!knownIds.has(resource.fallback)) {
+        errors.push({
+          instancePath: `/resources/${index}/fallback`,
+          message: `must reference an existing resource id in the same descriptor (got "${resource.fallback}")`
+        });
+      }
+    });
+  }
+  return { valid: errors.length === 0, errors: errors.length ? errors : null };
+}
+
+// src/pack-registry.js
+var HOOK_API_VERSION = "1.0.0";
+function parseVersionParts(version) {
+  const parts = String(version).trim().split(".").map((p) => Number.parseInt(p, 10));
+  const [major, minor, patch] = parts;
+  return [major || 0, minor || 0, patch || 0];
+}
+function compareVersions(a, b) {
+  const pa = parseVersionParts(a);
+  const pb = parseVersionParts(b);
+  for (let i = 0; i < 3; i += 1) {
+    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  }
+  return 0;
+}
+var RANGE_PATTERN = /^\s*(>=|<=|>|<|=)?\s*(\d+(?:\.\d+){0,2})\s*$/;
+function satisfiesCoreCompat(range, version) {
+  if (typeof range !== "string") return false;
+  const match = RANGE_PATTERN.exec(range);
+  if (!match) return false;
+  const [, operator = "=", target] = match;
+  const cmp = compareVersions(version, target);
+  switch (operator) {
+    case ">=":
+      return cmp >= 0;
+    case ">":
+      return cmp > 0;
+    case "<=":
+      return cmp <= 0;
+    case "<":
+      return cmp < 0;
+    case "=":
+      return cmp === 0;
+    default:
+      return false;
+  }
+}
+function describeSkip(descriptor) {
+  return descriptor && typeof descriptor.id === "string" ? descriptor.id : "<unknown>";
+}
+function resolveActivePacks(descriptors, hookApiVersion = HOOK_API_VERSION) {
+  const candidates = Array.isArray(descriptors) ? descriptors : [];
+  const active = [];
+  const skipped = [];
+  for (const descriptor of candidates) {
+    const packId = describeSkip(descriptor);
+    const validation = validatePackDescriptor(descriptor);
+    if (!validation.valid) {
+      skipped.push({
+        pack_id: packId,
+        reason: `invalid descriptor: ${JSON.stringify(validation.errors)}`
+      });
+      continue;
+    }
+    if (!satisfiesCoreCompat(descriptor.core_compat, hookApiVersion)) {
+      skipped.push({
+        pack_id: packId,
+        reason: `core_compat "${descriptor.core_compat}" is not satisfied by HOOK_API_VERSION "${hookApiVersion}"`
+      });
+      continue;
+    }
+    active.push(descriptor);
+  }
+  active.sort((a, b) => {
+    if (a.id < b.id) return -1;
+    if (a.id > b.id) return 1;
+    return 0;
+  });
+  return { active, skipped };
+}
+
+// src/pack-loader.js
+function loadActivePacks({ descriptors = [], moduleRegistry = {}, hookApiVersion } = {}) {
+  const { active, skipped } = hookApiVersion === void 0 ? resolveActivePacks(descriptors) : resolveActivePacks(descriptors, hookApiVersion);
+  const activePacks = active.map((descriptor) => ({
+    descriptor,
+    module: moduleRegistry[descriptor.id] || {}
+  }));
+  return { activePacks, skipped };
+}
+
 // src/agent-generator.js
 var import_node_fs8 = require("node:fs");
 var import_node_path6 = require("node:path");
@@ -9356,8 +9651,8 @@ var import_node_path8 = require("node:path");
 var import_promises2 = require("node:fs/promises");
 var import_node_fs9 = require("node:fs");
 var import_node_path7 = require("node:path");
-var import__2 = __toESM(require__(), 1);
-var import_ajv_formats2 = __toESM(require_dist(), 1);
+var import__3 = __toESM(require__(), 1);
+var import_ajv_formats3 = __toESM(require_dist(), 1);
 
 // tasks/schema.json
 var schema_default = {
@@ -9478,9 +9773,9 @@ var schema_default = {
 // src/task-store.js
 var PRIORITIES = ["low", "medium", "high", "critical"];
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
-var __ajv = new import__2.default({ allErrors: true, strict: false });
-(0, import_ajv_formats2.default)(__ajv);
-var __validateTask = __ajv.compile(schema_default);
+var __ajv2 = new import__3.default({ allErrors: true, strict: false });
+(0, import_ajv_formats3.default)(__ajv2);
+var __validateTask = __ajv2.compile(schema_default);
 function validateTaskOrThrow(task) {
   const ok = __validateTask(task);
   if (ok) return;
@@ -10545,15 +10840,18 @@ async function runWizardAndWriteProjectMd({
   prompter,
   now,
   suppliedAnswers,
-  skipConfirm
+  skipConfirm,
+  packDescriptors = [],
+  packModules = {}
 }) {
+  const { activePacks } = loadActivePacks({ descriptors: packDescriptors, moduleRegistry: packModules });
   let answers;
   if (suppliedAnswers) {
     answers = suppliedAnswers;
   } else {
     const persistTo = intakePath(repoRoot, sessionId);
     ({ answers } = await runQuestionnaire({
-      questions: buildIntakeQuestions(),
+      questions: collectPackQuestions(buildIntakeQuestions(), activePacks),
       prompter,
       persistTo,
       now
@@ -10567,6 +10865,7 @@ async function runWizardAndWriteProjectMd({
       return { aborted: true };
     }
   }
+  answers = applyProjectMdContributions(activePacks, answers);
   await writeProjectMd({ repoRoot, answers, now });
   await generateProjectContext({ repoRoot, answers, now });
   try {
@@ -10636,7 +10935,9 @@ async function runInit({
   prompter,
   repoRoot,
   now = () => (/* @__PURE__ */ new Date()).toISOString(),
-  answers = null
+  answers = null,
+  packDescriptors = [],
+  packModules = {}
 }) {
   const parsed = parseArgs(argv);
   if (answers) {
@@ -10700,7 +11001,9 @@ async function runInit({
       prompter,
       now,
       suppliedAnswers: answers,
-      skipConfirm
+      skipConfirm,
+      packDescriptors,
+      packModules
     });
     if (wResult2 && wResult2.aborted) {
       console.log("Init cancelled \u2014 no changes written.");
@@ -10730,7 +11033,9 @@ async function runInit({
         prompter,
         now,
         suppliedAnswers: answers,
-        skipConfirm
+        skipConfirm,
+        packDescriptors,
+        packModules
       });
       if (wResult2 && wResult2.aborted) {
         console.log("Init cancelled \u2014 no changes written.");
@@ -10755,7 +11060,9 @@ async function runInit({
     prompter,
     now,
     suppliedAnswers: answers,
-    skipConfirm
+    skipConfirm,
+    packDescriptors,
+    packModules
   });
   if (wResult && wResult.aborted) {
     console.log("Init cancelled \u2014 no changes written.");
