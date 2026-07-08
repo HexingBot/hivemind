@@ -1,0 +1,31 @@
+{
+  "key": "TASK-121",
+  "title": "Planner: materialize a staged-but-not-live skill (lock/disk divergence)",
+  "description": "Follow-up from the TASK-120 review (MEDIUM). The assimilate workflow writes a lockfile entry at stage time (per addon-packs-plan.md §7). But src/pack-reconcile.js plan()'s install branch is `!lockEntry && !actualEntry`, so a skill that is IN the lock but NOT live under .claude/skills/ is treated as a no-op and never materialized by plan() alone. Net divergence: after a permissive assimilate with no materialize, the lock claims installed while .claude/skills/<id>/ is absent, and plan() will never propose the install. This blocks driving 'assimilate -> reconcile -> materialize' via plan() in the integrated loop. Fix belongs in the reconciler model (staged-vs-live distinction), not in assimilate. Options: (a) plan() proposes install/materialize when desired && not in actual(live) regardless of lock presence; or (b) introduce an explicit staged vs active state so materialize is derivable. Coordinate with the eventual assimilate->adopt loop wiring.",
+  "acceptance_criteria": [
+    "plan(desired, lock, actual) proposes an install/materialize for a skill that IS in the lock (staged by assimilate) but NOT present in actual (probeSkills of .claude/skills), when it is in the desired set.",
+    "A skill that is both in the lock AND live (actual) remains a steady-state no-op (no regression to the existing AC4 behavior).",
+    "An end-to-end test drives assimilate -> plan() -> applyPlan and confirms plan() itself (not a hand-constructed install op) triggers the first materialize into .claude/skills/<id>/.",
+    "The lock/disk divergence described in the TASK-120 review can no longer occur: after assimilate, a reconcile pass makes lock and live state consistent."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "wave-1.1",
+    "reconciler",
+    "follow-up"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-118",
+    "TASK-120"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-08T17:23:39.417Z",
+  "updated_at": "2026-07-08T17:23:39.417Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

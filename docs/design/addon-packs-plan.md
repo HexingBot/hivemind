@@ -111,7 +111,7 @@ Phases C–G become subsequent waves once the core is green.
 
 1. Fetches an external skill (repo/URL/path) and **shows the human its source** for review.
 2. **Vets** it: origin against the allowlist, a scan for risky patterns, and — new — **license detection** (see below).
-3. Copies it into `.claude/skills/<scoped-name>/`, **re-scoping the frontmatter** (description tagged for Hivemind) and appending a **`## Sources & provenance (hivemind)`** section: source origin, pinned commit SHA, SPDX license, `sha256` integrity, `assimilated_at`.
+3. Writes the owned copy to the staging dir `assimilated-skills/<resource-id>/` (dir name == the bare resource id), **re-scoping the frontmatter** (description tagged for Hivemind) and appending a **`## Sources & provenance (hivemind)`** section: source origin, pinned commit SHA, SPDX license, `sha256` integrity, `assimilated_at`. The reconcile **applier** later materializes this owned copy into the live `.claude/skills/<resource-id>/` (two-stage model: assimilate = own+vet; applier = activate). *(Implemented this way in TASK-119/120; the earlier single-stage wording was corrected after the TASK-120 review.)*
 4. Records it in `integrations.lock.json` with an `owners` edge and `verified` tier.
 
 This is exactly the pattern the existing **vendored Spine skills** (`skills/impl-*/SKILL.md`) already follow by hand — assimilation just makes it a repeatable, provenance-recording workflow.

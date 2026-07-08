@@ -8,7 +8,7 @@
     "E2E: assimilate one real permissive skill from the design-doc group, reconcile it in, then remove it and verify the skill directory is gone and the lock entry is orphaned/removed (orphan cleanup).",
     "A UAT script covers (1) permissive auto-path, (2) copyleft human-gate path, (3) removal/orphan-cleanup, each with a PASS/FAIL step."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "high",
   "labels": [
     "addon-packs",
@@ -20,11 +20,29 @@
     "TASK-117",
     "TASK-119"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "b1bd366",
+    "76ace36",
+    "ecaf6b4",
+    "ca12112",
+    "1b0b9f1",
+    "1b66c77"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-08T18:33:55.203Z",
+      "body": "UAT — hivemind-assimilate-skill workflow (human-gate policy). Human signed off (PASS) on 2026-07-08; steps 3-4 delegated to the Orchestrator at the human's request.\n\nStep 1 (AC1) — Skill returns a review card (license + provenance) and writes nothing without approval. Expected: pending_approval + no files/lock. Observed: live run of GSAP gsap-core (github.com/greensock/gsap-skills, subdir skills/gsap-core) returned spdx_id=MIT, detected_via=license-file, status=pending_approval, integrity=sha256:b891...542; no assimilated-skills/ dir, no integrations.lock.json written. Verdict: PASS.\n\nStep 2 (AC2) — Copyleft/unknown gated, nothing written. Observed: pre-fix GSAP run (classification unknown) returned awaiting_human/pending, wrote nothing; copyleft fixture E2E green; invariant sweep {permissive,copyleft}x{absent,decline} all no-write. Verdict: PASS.\n\nStep 3 (AC3) — Approve -> materialize into .claude/skills/ then remove -> orphan cleanup. Observed: fixture E2E (assimilate w/ approve -> plan -> applyPlan -> remove -> cleanup) green. Verified by Orchestrator at the human's request. Verdict: PASS.\n\nStep 4 (AC4) — probeSkills + plan() ids line up after materialize. Observed: fixture E2E green (post-materialize plan yields no spurious install/remove). Verified by Orchestrator at the human's request. Verdict: PASS.\n\nStep 5 (AC5) — Integrity is a real sha256 + 64-hex over source. Observed: live GSAP integrity sha256:b891c9ed...529a542 (64 hex) over the source content. Verdict: PASS.\n\nAC1 amendment: original wording (\"assimilates without prompt\") superseded by the human-gate policy locked 2026-07-08 — no skill auto-adopts; permissive returns pending_approval. All 5 ACs PASS under the new gate.\n\nOverall: PASS. The UAT bounce (real GSAP run) surfaced 3 license-detection gaps + the license-is-not-safety insight; fixes landed and the human-gate policy (no auto-adopt, content review + sign-off always) was adopted. Actual adoption of real skills deferred to TASK-122 (content security scan + reviewer)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T18:34:08.950Z",
+      "body": "Closed on UAT PASS (human sign-off 2026-07-08) after a full-depth code review (rev-120 APPROVE) plus a UAT-bounce RC cycle. Review depth = FULL. The live UAT on a real skill (GSAP) bounced the ticket once: safety held perfectly (fail-closed, nothing written) but detection missed a legitimately-MIT skill, surfacing 3 gaps fixed in ecaf6b4 (Gap B repoRoot LICENSE-text forwarding + Gap C unauthenticated GitHub fetcher) and a reverted forgeable-frontmatter attempt (dda86e4/f1e22c8 -> ca12112/1b0b9f1). A human policy decision then removed the permissive auto-adopt path entirely (1b66c77): NO skill adopts without an explicit approve, for any classification; license is decision-support only. Delta re-review APPROVE, no HIGH/MEDIUM; the no-write-without-approve invariant is proven by a non-vacuous {permissive,copyleft}x{absent,decline} sweep. Gate GREEN: npm test 751 passed/2 skipped; assimilate e2e 9 passed. Carried follow-ups: TASK-121 (planner staged-vs-live divergence), TASK-122 (content security scan + reviewer + mandatory sign-off), and a trivial stale test-header comment (license-file is step 2). Knowledge draft written for the license-is-not-safety lesson."
+    }
+  ],
   "created_at": "2026-07-08T16:10:12.943Z",
-  "updated_at": "2026-07-08T17:02:22.326Z",
+  "updated_at": "2026-07-08T18:34:08.950Z",
   "jira_key": null,
   "verification_tier": "tests-after"
 }

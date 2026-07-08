@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-08T17:02:22.326Z",
+  "generated_at": "2026-07-08T18:34:08.950Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -706,7 +706,19 @@
     {
       "key": "TASK-120",
       "title": "hivemind-assimilate-skill workflow + end-to-end proof",
-      "status": "in_progress",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-121",
+      "title": "Planner: materialize a staged-but-not-live skill (lock/disk divergence)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-122",
+      "title": "Content security gate for skill assimilation (scan + reviewer + mandatory sign-off)",
+      "status": "todo",
       "priority": "high"
     }
   ]

@@ -1,0 +1,32 @@
+{
+  "key": "TASK-122",
+  "title": "Content security gate for skill assimilation (scan + reviewer + mandatory sign-off)",
+  "description": "Human policy decision from the TASK-120 UAT: license is NOT a safety assurance, and a self-declared frontmatter license is forgeable. Every third-party skill must pass a content security review, independent of license, before adoption, and NOTHING adopts without explicit human sign-off. Builds on TASK-120's assimilate workflow (which after its fix returns pending_approval and writes only on approve). This ticket adds the safety layers that populate the approval package. Scope: (1) an automated risky-pattern scan module over the fetched skill content; (2) a security-reviewer subagent step, orchestrator-driven, that reads the actual content INCLUDING the skill's instructions (prompt-injection is the key skill-specific risk a code scanner cannot catch) and returns a safe/suspicious verdict with reasoning; (3) the orchestrated flow that assembles license + provenance + scan findings + reviewer verdict and requires explicit human approval to adopt. Trust model: license/scan/reviewer are all decision-support; the human is the gate. Update docs/design/addon-packs.md §4 (trust boundary) and §7 (assimilation) to enshrine 'no auto-adopt; content review + sign-off always'.",
+  "acceptance_criteria": [
+    "A skill content pattern-scan module (e.g. src/skill-scan.js) returns structured findings for risky patterns: shell/exec invocation, network/URL fetch, env/credential/filesystem access outside the skill dir, and base64/obfuscated/binary blobs; each finding carries a category, a location, and a severity.",
+    "The scan is exercised by tests over fixtures: a benign doc-only skill yields no findings; a skill containing (e.g.) a curl|sh, an env-var exfil, and a base64 blob yields the corresponding categorized findings.",
+    "The assimilation flow assembles an approval package {license verdict, provenance (origin/pin/integrity), scan findings, security-reviewer verdict} and adopts ONLY on explicit human approval; there is NO code path that writes an assimilated skill or lock entry without an explicit approve (verified by test).",
+    "A security-reviewer step reads the fetched skill content including its instruction text and returns a safe|suspicious verdict with reasoning; a suspicious verdict blocks adoption pending an explicit human override.",
+    "End-to-end (UAT): assimilating a real skill runs fetch -> license -> scan -> reviewer -> presented package -> human sign-off, and nothing is written until the human approves; a declined package leaves the tree and lock untouched.",
+    "docs/design/addon-packs.md §4 and §7 are updated to state: license is decision-support only, a content security review is mandatory and license-independent, and no third-party skill auto-adopts without human sign-off."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "wave-1",
+    "security",
+    "assimilate"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-120"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-08T18:20:52.925Z",
+  "updated_at": "2026-07-08T18:20:52.925Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
