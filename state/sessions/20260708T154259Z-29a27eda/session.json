@@ -3,12 +3,14 @@
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
   "updated_at": "2026-07-08T18:49:28.605Z",
-  "active_task": "TASK-124",
-  "workflow_step": "impl",
-  "next_action": "Building safe foundations for the Diseno Poderoso design pack (human chose 'safe foundations first'). TASK-123 (descriptor schema activate_when/install ext) DONE, clean full-depth APPROVE. NOW building TASK-124 (perfil_proyecto/tier frontmatter, tdd). AFTER 124: present the Phase E design investigation to the human for approval — the deliverable is docs/design/design-profile-spec.md (DRAFT): beauty×functionality axes 0-3, tier rule fHigh&&bHigh->COMPLETO / fHigh||bHigh->MEDIO / else LIGERO, a design_heavy gate + 10-question conditional interview, a pure scoreComplexity(answers) fn, step/resource activation predicates, and 8 open questions (notably #4 no canvas-motion resource, #5 playwright/web-UI predicate inferred). The repo-fit investigator corroborated: an 8-variable profile contract {tier, framework, ui_outside_canvas, motion_required, motion_layer, needs_research, assets, web_ui}, a step×tier matrix (LIGERO=impl+testing; MEDIO=+design-system+polish+reference; COMPLETO=all), and flagged tier can't be a when-gate (needs a post-scoring activation pass) + frontend_framework is web-saas-gated so framework is unset for canvas/other projects. From the approved spec, mint Phase E tickets (scoring fn; design-heavy intake + interview), the Phase D registration hook (open issue #4 hook-API surface needs a design decision first), and Phase F (author design-power descriptor + runtime loader). MCP/plugin resources stay Wave-2 (declared, reported-not-installed).",
-  "handoff_summary": "Diseno Poderoso design-pack build in progress. Deps done earlier (TASK-122 content-security gate, TASK-121 planner staged-vs-live). Human chose 'safe foundations first' + a parallel investigation to design Phase E around beauty×functionality. TASK-123 (descriptor schema: optional resource activate_when/install fields) DONE — clean full-depth Reviewer APPROVE, zero findings. TASK-124 (perfil_proyecto/tier frontmatter) now building. Investigation COMPLETE: docs/design/design-profile-spec.md drafted (axes/tier-rule/10-Q interview/scoreComplexity/activation predicates/8 open Qs) + repo-fit activation model (8-var contract, step×tier matrix). Fast tier green (778 passed/2 skipped) as of TASK-123. NEXT after 124: get human approval on the design-profile spec, then mint Phase E/D/F tickets from it.",
+  "active_task": null,
+  "workflow_step": "idle",
+  "next_action": "Both design-pack safe foundations DONE (TASK-123 descriptor schema activate_when/install ext; TASK-124 perfil_proyecto/tier frontmatter) — each a clean full-depth APPROVE, no HIGH. AWAITING HUMAN DECISION: present the Phase E design investigation to the human for approval — the deliverable is docs/design/design-profile-spec.md (DRAFT): beauty×functionality axes 0-3, tier rule fHigh&&bHigh->COMPLETO / fHigh||bHigh->MEDIO / else LIGERO, a design_heavy gate + 10-question conditional interview, a pure scoreComplexity(answers) fn, step/resource activation predicates, and 8 open questions (notably #4 no canvas-motion resource, #5 playwright/web-UI predicate inferred). The repo-fit investigator corroborated: an 8-variable profile contract {tier, framework, ui_outside_canvas, motion_required, motion_layer, needs_research, assets, web_ui}, a step×tier matrix (LIGERO=impl+testing; MEDIO=+design-system+polish+reference; COMPLETO=all), and flagged tier can't be a when-gate (needs a post-scoring activation pass) + frontend_framework is web-saas-gated so framework is unset for canvas/other projects. From the approved spec, mint Phase E tickets (scoring fn; design-heavy intake + interview), the Phase D registration hook (open issue #4 hook-API surface needs a design decision first), and Phase F (author design-power descriptor + runtime loader). MCP/plugin resources stay Wave-2 (declared, reported-not-installed).",
+  "handoff_summary": "Diseno Poderoso design-pack: both safe foundations landed. Deps done earlier (TASK-122 content-security gate, TASK-121 planner staged-vs-live). TASK-123 (descriptor schema: optional resource activate_when/install fields) and TASK-124 (perfil_proyecto/tier frontmatter, dist/init.cjs rebuilt) both DONE — clean full-depth Reviewer APPROVEs, zero/no-HIGH findings. Phase E design investigation COMPLETE and presented to the human: docs/design/design-profile-spec.md (DRAFT — beauty×functionality axes 0-3, tier rule, design_heavy gate + 10-Q interview, pure scoreComplexity fn, activation predicates, 8 open Qs) corroborated by a repo-fit activation model (8-var contract, step×tier matrix). Fast tier green (785 passed/2 skipped; test:all 1485). Currently PAUSED for the human to review the design-profile spec + decide the Phase D hook-API design + Phase E/F ticket plan. A carried LOW: add a loud-throw regression lock for perfil_proyecto inline-value commas when the Phase E scoring ticket defines its keys.",
   "open_questions": [
-    "none blocking"
+    "Human to approve/adjust docs/design/design-profile-spec.md (esp. open Q#4 no canvas-motion resource, Q#5 playwright/web-UI predicate inferred, 1:1 axis weighting, uncalibrated tier thresholds).",
+    "Phase D registration-hook API surface is an open design question (addon-packs.md open issue #4) — needs a design decision before building the hook.",
+    "frontend_framework is web-saas-gated so `framework` is unset for canvas/other design projects — Phase E must add a design-interview framework question or relax that gate."
   ],
   "blockers": [],
   "decisions": [
@@ -19,6 +21,12 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T20:45:00.000Z",
+      "summary": "TASK-124 APPROVE (full depth), no HIGH. perfil_proyecto/tier frontmatter wired symmetrically render/parse/restore via SPECIAL_FRONTMATTER_IDS (agent_models precedent); AC4 backward-compat non-vacuous (absent->no lines, no Stack leak); tier enum rejects out-of-enum; dist/init.cjs rebuild independently confirmed fresh via test:all dist-parity (only init.cjs changed). 1 MEDIUM = checklist-not-relayed (process, dev did state it); 1 LOW = comma-in-value parser edge (tracked to Phase E scoring ticket).",
+      "task": "TASK-124"
+    },
     {
       "agent": "reviewer",
       "at": "2026-07-08T20:10:00.000Z",

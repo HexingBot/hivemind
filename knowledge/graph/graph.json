@@ -582,6 +582,12 @@
       "type": "task",
       "ref": "tasks/TASK-123.json",
       "label": "Extend pack-descriptor schema: resource activate_when + install fields"
+    },
+    {
+      "id": "task-124",
+      "type": "task",
+      "ref": "tasks/TASK-124.json",
+      "label": "PROJECT.md perfil_proyecto + tier frontmatter (design profile fields)"
     }
   ],
   "edges": [
@@ -957,6 +963,11 @@
     },
     {
       "from": "task-123",
+      "to": "decision-20260708-design-pack-foundations-first",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-124",
       "to": "decision-20260708-design-pack-foundations-first",
       "relation": "produced-by"
     }

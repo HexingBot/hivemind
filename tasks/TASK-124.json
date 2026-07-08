@@ -9,7 +9,7 @@
     "A project whose answers include NEITHER `tier` nor `perfil_proyecto` (i.e. every existing project) writes and reads exactly as before: no new frontmatter lines emitted, and every existing project-md and PROJECT.schema test still passes unchanged (no regression).",
     "state/PROJECT.schema.json top-level additionalProperties:false still holds — `tier` and `perfil_proyecto` are the only two newly permitted keys; an unrelated unknown frontmatter key is still rejected."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "addon-packs",
@@ -20,11 +20,20 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "cd91860",
+    "eceda79"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T20:24:18.343Z",
+      "body": "Closed on a clean Reviewer APPROVE (fresh-context, full depth). Review depth = FULL; rubric inputs: diff modifies state/PROJECT.schema.json (schema) AND dist/init.cjs (packaging/dist) — both mandatory-FULL surfaces. tdd two-commit discipline confirmed: test cd91860 strictly precedes feat eceda79; red-run reproduced independently at the impl parent (8 specs fail for the right reason — tier lands in ## Stack, round-trip returns undefined). All 5 ACs satisfied with non-vacuous sensors: AC4 backward-compat asserts the rendered output contains NEITHER key when absent (not just no-throw); AC2 asserts schema rejects an out-of-enum tier; perfil_proyecto wired symmetrically across render/parse(coerceFrontmatterScalar)/restore via SPECIAL_FRONTMATTER_IDS, excluded from ## Stack, schema is a permissive object of string values (keys deferred to the Phase E scoring ticket). STALE-DIST class cleared independently: npm run test:all dist-parity gate byte-matches the committed dist/init.cjs against a fresh build of all 7 bundles, and only init.cjs changed. Gate green: fast 785 passed/2 skipped; test:all 1485 passed/4 skipped. Reviewer MEDIUM (pre-hand-off checklist not relayed to the reviewer) is a process-visibility note, not a code defect — the Developer DID state the full 5-item R3 checklist in its hand-off (all five classes clean), which the Reviewer independently re-verified. Reviewer LOW (perfil_proyecto inline-value comma/brace constraint at parity with agent_models, documented, fails loudly on a bare comma) is NON-BLOCKING and tracked into the future Phase E scoring ticket that defines perfil_proyecto's concrete keys — it can add the loud-throw regression lock alongside real keys. Knowledge capture (TASK-105): not triggered (clean first-pass APPROVE, no HIGH, no RC loop). Both design-pack safe foundations (TASK-123 schema ext, TASK-124 frontmatter) now landed."
+    }
+  ],
   "created_at": "2026-07-08T19:59:45.596Z",
-  "updated_at": "2026-07-08T19:59:45.596Z",
+  "updated_at": "2026-07-08T20:24:18.343Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
