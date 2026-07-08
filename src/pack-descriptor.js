@@ -7,10 +7,15 @@
 //   1. Pure JSON-schema shape (state/pack-descriptor.schema.json), covering
 //      unknown resource.kind/scope, missing required top-level fields, and
 //      resource.required outside {hard, soft}.
-//   2. A semantic check ajv cannot express: resource.fallback, when present,
-//      must reference another resource id declared in the SAME descriptor
-//      (addon-packs-plan.md §8's fallback field) — a dangling fallback is
-//      rejected here, appended to the same errors array ajv would return.
+//   2. Semantic checks ajv cannot express, appended to the same errors array
+//      ajv would return:
+//      - resource.fallback, when present, must reference ANOTHER resource id
+//        declared in the SAME descriptor (addon-packs-plan.md §8's fallback
+//        field) — both a dangling fallback and a self-referencing fallback
+//        (a resource falling back to itself) are rejected.
+//      - resource ids must be unique within a descriptor — a duplicate id is
+//        ambiguous for the fallback check above and for any downstream
+//        consumer that treats resource.id as a unique key.
 
 import Ajv from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
@@ -44,12 +49,33 @@ export function validatePackDescriptor(obj) {
         .map((resource) => resource && resource.id)
         .filter((id) => typeof id === 'string'),
     );
+
+    // Duplicate resource ids are ambiguous both for the fallback check below
+    // and for any downstream consumer keying off resource.id. Every resource
+    // sharing a duplicated id is flagged, not just the second occurrence.
+    const idCounts = new Map();
+    for (const resource of obj.resources) {
+      if (resource && typeof resource.id === 'string') {
+        idCounts.set(resource.id, (idCounts.get(resource.id) || 0) + 1);
+      }
+    }
     obj.resources.forEach((resource, index) => {
-      if (
-        resource
-        && typeof resource.fallback === 'string'
-        && !knownIds.has(resource.fallback)
-      ) {
+      if (resource && typeof resource.id === 'string' && idCounts.get(resource.id) > 1) {
+        errors.push({
+          instancePath: `/resources/${index}/id`,
+          message: `duplicate resource id "${resource.id}" — resource ids must be unique within a descriptor`,
+        });
+      }
+    });
+
+    obj.resources.forEach((resource, index) => {
+      if (!resource || typeof resource.fallback !== 'string') return;
+      if (resource.fallback === resource.id) {
+        errors.push({
+          instancePath: `/resources/${index}/fallback`,
+          message: `must reference another resource id, not itself (got "${resource.fallback}")`,
+        });
+      } else if (!knownIds.has(resource.fallback)) {
         errors.push({
           instancePath: `/resources/${index}/fallback`,
           message: `must reference an existing resource id in the same descriptor (got "${resource.fallback}")`,

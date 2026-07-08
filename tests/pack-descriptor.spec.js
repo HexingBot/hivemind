@@ -10,9 +10,14 @@
 //        field, and a resource.required outside {hard, soft}.
 // AC3 — resource.fallback, when present, must reference another resource id
 //        declared in the same descriptor; a dangling fallback is rejected.
-//        This is a semantic check beyond pure JSON-schema.
+//        This is a semantic check beyond pure JSON-schema. A fallback that
+//        references its OWN resource id is also rejected — "another" resource
+//        id, per AC3's wording, excludes self (TASK-115 review MEDIUM fix).
 // AC4 — covered by the tests below: one valid-descriptor acceptance plus at
-//        least the four rejection cases from AC2 plus the AC3 dangling case.
+//        least the four rejection cases from AC2 plus the AC3 dangling and
+//        self-fallback cases. Resource ids must also be unique within a
+//        descriptor (review LOW fix) — a duplicate id is rejected, since
+//        downstream (and the fallback check itself) treats ids as unique keys.
 //
 // Pure logic, no disk I/O beyond reading the schema file itself — fast tier.
 
@@ -149,10 +154,30 @@ describe('TASK-115 AC3 — dangling fallback is rejected (semantic check)', () =
     expect(hit, 'an error must point at resources/1/fallback: ' + JSON.stringify(result.errors)).toBe(true);
   });
 
-  it('accepts_a_fallback_that_references_an_existing_resource_id', () => {
-    // Sanity check: VALID_DESCRIPTOR's fallback ("frontend-design") already
-    // resolves to an existing resource id, and must not be flagged.
-    const result = validatePackDescriptor(VALID_DESCRIPTOR);
-    expect(result.valid).toBe(true);
+  it('rejects_a_fallback_that_references_its_own_resource_id', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    // "firecrawl" falls back to itself — not "another" resource id (AC3).
+    bad.resources[1].fallback = bad.resources[1].id;
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    const hit = result.errors.some((e) => (e.instancePath || '').includes('/resources/1/fallback'));
+    expect(hit, 'an error must point at resources/1/fallback for a self-fallback: ' + JSON.stringify(result.errors)).toBe(true);
+  });
+});
+
+describe('TASK-115 review fix — resource ids must be unique within a descriptor', () => {
+  it('rejects_duplicate_resource_ids', () => {
+    const bad = clone(VALID_DESCRIPTOR);
+    bad.resources[1].id = bad.resources[0].id;
+    // Drop the fallback so this test isolates the duplicate-id check from the
+    // fallback check (a fallback referencing a now-duplicated id is a
+    // separate concern the two checks don't need to entangle).
+    delete bad.resources[1].fallback;
+
+    const result = validatePackDescriptor(bad);
+    expect(result.valid).toBe(false);
+    const hit = result.errors.some((e) => (e.instancePath || '').includes('/resources/') && (e.instancePath || '').includes('/id'));
+    expect(hit, 'an error must point at a resource id: ' + JSON.stringify(result.errors)).toBe(true);
   });
 });
