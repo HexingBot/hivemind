@@ -98,6 +98,18 @@ const PACK_ANSWERS = {
   assets_required: 'icons-custom, illustrations',
 };
 
+// runQuestionnaire coerces raw prompter strings per the question's declared
+// `type` (src/question-engine.js#validateAndCoerce) before answers ever reach
+// a pack's deriveProjectMd — 'number' becomes a real Number, 'multi' becomes
+// a trimmed string[]. Mirror that coercion here so the "expected" value we
+// compute directly from PACK_ANSWERS matches what the live wizard actually
+// hands deriveProfileFields, rather than the raw scripted strings.
+const PACK_ANSWERS_COERCED = {
+  ...PACK_ANSWERS,
+  estimated_screens: Number(PACK_ANSWERS.estimated_screens),
+  assets_required: PACK_ANSWERS.assets_required.split(',').map((s) => s.trim()),
+};
+
 function resolvePackId(promptText) {
   for (const [id, fragment] of Object.entries(PACK_PROMPT_SIGNATURES)) {
     if (promptText.includes(fragment)) return id;
@@ -166,7 +178,7 @@ describe('AC1 — active fixture pack: questions asked, fields round-trip', () =
     expect(asked).not.toContain('ui_outside_canvas');
 
     const { answers, frontmatter } = await readProjectMd({ repoRoot: repoDir });
-    const expected = deriveProfileFields(PACK_ANSWERS);
+    const expected = deriveProfileFields(PACK_ANSWERS_COERCED);
 
     expect(frontmatter.tier).toBe(expected.tier);
     expect(answers.tier).toBe(expected.tier);
