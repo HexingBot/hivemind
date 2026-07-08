@@ -88,8 +88,10 @@ function walkAllFiles(dir) {
 
 // Content hash of what was installed (the lock entry's `integrity` field) —
 // every file's relative path and bytes feed one sha256, so a changed file OR
-// a changed file layout changes the digest.
-function hashDir(dir) {
+// a changed file layout changes the digest. Exported (TASK-120) so
+// src/assimilate.js hashes the pre-copy source directory with the exact same
+// algorithm, rather than a second hand-rolled copy of it.
+export function hashDir(dir) {
   const relPaths = walkAllFiles(dir)
     .map((f) => relative(dir, f).split(sep).join('/'))
     .sort();
@@ -115,6 +117,11 @@ function executeInstall(lock, op, { root, sourceRoot, owner }) {
 
   const liveDir = liveSkillDir(root, bareId);
   mkdirSync(dirname(liveDir), { recursive: true });
+  // TASK-120 (carried LOW from the TASK-119 review): cpSync alone MERGES into
+  // a pre-existing live dir, so a stale file that the new owned source no
+  // longer carries would survive a re-materialize. Clean-replace first so
+  // re-materialize is idempotent.
+  rmSync(liveDir, { recursive: true, force: true });
   cpSync(sourceDir, liveDir, { recursive: true });
 
   lock.resources[id] = {

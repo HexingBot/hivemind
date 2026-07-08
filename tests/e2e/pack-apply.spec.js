@@ -95,6 +95,39 @@ describe('AC1 — install materializes the owned source and records a lock entry
 
     expect(result.report).toEqual([]);
   });
+
+  it('clean_replaces_a_stale_pre_existing_live_dir_instead_of_merging_into_it', async () => {
+    // TASK-120 (carried LOW from the TASK-119 review): cpSync alone MERGES
+    // into a pre-existing live dir, so a re-materialize would leave behind a
+    // file the new owned source no longer carries. Assert the stale file is
+    // gone after applyPlan, not just that the new file landed.
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-install-clean-replace');
+    const sourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(sourceRoot, 'foo', '# Foo v2\nRe-assimilated foo skill.\n');
+    const liveDir = join(root, '.claude', 'skills', 'foo');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Foo v1\nStale live copy.\n');
+    writeFileSync(join(liveDir, 'stale-file.txt'), 'no longer part of the owned source\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {});
+
+    const plan = {
+      install: [{
+        id: 'skill:foo',
+        resource: { id: 'foo', kind: 'skill', origin: 'github.com/example/skills', pin: 'v2', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    await applyPlan({ plan, lockPath, root, owner: 'design-power@0.1.0', sourceRoot });
+
+    expect(readFileSync(join(liveDir, 'SKILL.md'), 'utf8')).toBe('# Foo v2\nRe-assimilated foo skill.\n');
+    expect(existsSync(join(liveDir, 'stale-file.txt'))).toBe(false);
+  });
 });
 
 describe('AC2 — remove deletes an orphaned live dir and drops the lock entry', () => {
