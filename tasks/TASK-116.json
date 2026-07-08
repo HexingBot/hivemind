@@ -1,0 +1,35 @@
+{
+  "key": "TASK-116",
+  "title": "integrations.lock.json schema + atomic store with ownership edges",
+  "description": "Wave-1 contract: the reconciler lockfile. JSON schema per docs/design/addon-packs-plan.md §2, with read/write via src/atomic-write.js atomicWriteFile and ownership-edge helpers. Ownership is an owners[] array of pack-id@version edges, NOT a counter (Nix reachability model) — safe removal falls out of 'owners empty'. Entry fields: kind, origin, pin, integrity, scope, owners[], required, installed_at, install_method, verified.",
+  "acceptance_criteria": [
+    "A JSON schema for integrations.lock.json exists; readLock()/writeLock() round-trip a lockfile and writeLock() uses atomicWriteFile.",
+    "addOwner(lock,id,owner) and dropOwner(lock,id,owner) mutate the owners array; isOrphaned(lock,id) returns true iff owners is empty.",
+    "Data-loss regression lock: a resource owned by two packs, after dropOwner for one pack, remains present with a one-element owners array and isOrphaned=false.",
+    "dropOwner of the last owner leaves the entry present but isOrphaned=true (physical removal is the applier's job, not the store's)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "wave-1"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "b423893",
+    "1ab1553"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T16:26:59.220Z",
+      "body": "Closed on a clean full-depth review (rev-116). Review depth = FULL; rubric inputs: small changed-line count + few touched surfaces (one new src module + schema + fast/e2e specs + additive fixtures.js line), escalated to full because the ownership/removal logic is data-loss-class. Verdict APPROVE, no HIGH/MEDIUM. Verified: tier discipline held (test b423893 precedes impl 1ab1553); data-loss regression (two-owners-drop-one) is real and pins all three facets (entry present, survivor owner intact, isOrphaned=false); atomic-write assertion genuine (O_CREAT|O_EXCL + rename); UnknownResourceIdError is a defensible fail-loud contract (mirrors UnknownNodeIdError). Gate GREEN: npm test 739 passed/2 skipped; e2e integrations-lock 2 passed. Non-blocking LOWs carried forward: (a) tighten schema integrity pattern to require 64-hex length, and (b) coordination — TASK-118 planner must pass ids drawn from lock.resources keys so isOrphaned never receives an unknown id where a boolean is expected; both folded into the TASK-118/119 briefs. No knowledge-capture draft (clean first-pass, no HIGH, no RC loop)."
+    }
+  ],
+  "created_at": "2026-07-08T16:09:23.783Z",
+  "updated_at": "2026-07-08T16:26:59.220Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

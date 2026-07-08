@@ -1,16 +1,16 @@
 ---
 id: windows-atomic-rename-not-truly-atomic
 problem: >
-  Node's `fs.rename` on Windows is not strictly atomic when the
-  destination file already exists. Internally it uses `MoveFileEx` with
-  the replace-existing flag, which is a multi-step operation rather than
-  a single atomic swap. A crash mid-operation can leave the target
-  missing while the source temp file still exists on disk.
+  Node's `fs.rename` on Windows is not strictly atomic when the destination file
+  already exists. Internally it uses `MoveFileEx` with the replace-existing
+  flag, which is a multi-step operation rather than a single atomic swap. A
+  crash mid-operation can leave the target missing while the source temp file
+  still exists on disk.
 symptoms:
-  - "EBUSY on rename"
-  - "ERR_FS_RENAME_NONEXISTENT or similar partial-state failures"
-  - "Target file briefly missing after a crash"
-  - "Antivirus or backup software holding a handle on the freshly-closed tmp"
+  - EBUSY on rename
+  - ERR_FS_RENAME_NONEXISTENT or similar partial-state failures
+  - Target file briefly missing after a crash
+  - Antivirus or backup software holding a handle on the freshly-closed tmp
 solution: >
   Use the same-directory temp-and-rename recipe and combine it with an
   orphan-tmp sweep on the next read:
@@ -29,15 +29,19 @@ solution: >
      the target is missing or unparseable, promote the newest valid
      orphan via rename.
 
-  This gives "last writer wins" semantics on the field set, which is
-  what users expect.
-
-tags: [windows, atomic-write, filesystem, node]
-projects: [hivemind]
-created_at: "2026-05-25T00:00:00Z"
-last_seen_at: "2026-05-25T00:00:00Z"
+  This gives "last writer wins" semantics on the field set, which is what users
+  expect.
+tags:
+  - windows
+  - atomic-write
+  - filesystem
+  - node
+projects:
+  - hivemind
+created_at: '2026-05-25T00:00:00Z'
+last_seen_at: '2026-07-08T15:49:39.547Z'
 source_urls:
-  - "https://github.com/jprichardson/node-fs-extra/issues/835"
+  - 'https://github.com/jprichardson/node-fs-extra/issues/835'
 supersedes: []
 superseded_by: null
 source_tier: T3

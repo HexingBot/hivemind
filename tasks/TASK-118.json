@@ -1,0 +1,39 @@
+{
+  "key": "TASK-118",
+  "title": "Skills env-probe + reconcile planner (pure)",
+  "description": "Wave-1 reconciler core (skills only; MCP probe deferred to Wave 2). probeSkills() enumerates installed skills by globbing .claude/skills/**/SKILL.md. plan(desired, lock, actual) is a PURE function returning {install, remove, replace, report}, applying the ownership and hard/soft rules from docs/design/addon-packs-plan.md §2/§8. No filesystem or network I/O inside plan().",
+  "acceptance_criteria": [
+    "probeSkills(root) returns a normalized map of installed skills (id -> {path, provenance?}) from the glob; assimilated copies under .claude/skills are found.",
+    "plan() puts a desired-but-absent skill in install; a lock resource that is orphaned (owners empty after the active pack drops its edge) and soft goes in remove; a still-owned orphan is NOT in remove.",
+    "A desired resource whose pin differs from the lock/actual goes to replace; matching pins are a no-op.",
+    "A hard-required resource that would fail is surfaced in report with a blocking flag; plan() performs no filesystem or network I/O (verified by test)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "wave-1"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-115",
+    "TASK-116"
+  ],
+  "linked_commits": [
+    "02e86be",
+    "ad2cfe9",
+    "48c2f18"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T16:48:33.499Z",
+      "body": "Closed on a full-depth review (rev-118) after one RC loop that fixed a HIGH. Review depth = FULL; rubric inputs: small changed-line count + few touched surfaces (one new src module + fast/e2e specs + additive fixtures line), escalated to full because plan() is the reconcile decision engine feeding TASK-119/120. HIGH (data-loss class): the orphan remove pass keyed on owners.length===0 alone, ignoring the desired set — a soft skill still desired but with empty owners could be marked for removal while the desired pass called it a no-op, so TASK-119 would delete a wanted skill. Fixed in 48c2f18 with a desiredSkillIds guard (removal candidacy = not-desired AND owners-empty AND soft) + a genuine desired-intersect-orphan regression test (planted red against pre-fix code). Tier discipline held (test 02e86be precedes impl ad2cfe9; fix 48c2f18 test+impl as a regression check). Gate GREEN: npm test 750 passed/2 skipped; e2e pack-reconcile 4/4. Carried forward to TASK-119/120: MEDIUM ID-scheme coupling — the assimilated skill dir name must equal the bare resource id (or record a mapping), plus a probeSkills->plan integration test. Knowledge draft written per TASK-105 (HIGH-finding trigger)."
+    }
+  ],
+  "created_at": "2026-07-08T16:09:46.076Z",
+  "updated_at": "2026-07-08T16:48:33.499Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

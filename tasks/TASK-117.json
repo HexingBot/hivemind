@@ -1,0 +1,36 @@
+{
+  "key": "TASK-117",
+  "title": "Skill license-detection + classification module",
+  "description": "Wave-1: the assimilate gate's license step. Implements the detection fallback chain and permissive/copyleft/unknown classification from docs/design/addon-packs-plan.md §12. Hand-rolled, zero new runtime deps (add spdx-expression-parse later only if compound expressions become common). Feeds the assimilate workflow, which records the SPDX id in the provenance block and pauses for a human decision on copyleft/unknown.",
+  "acceptance_criteria": [
+    "normalizeLicenseString(raw) maps common spellings ('MIT License','Apache 2.0','Apache License 2.0') and deprecated GPL/LGPL/AGPL aliases to canonical SPDX ids.",
+    "classifyLicense(spdxId) returns 'permissive' for {MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,CC0-1.0,Unlicense,0BSD}, 'copyleft' for the GPL/AGPL/LGPL families (both -only and -or-later), and 'unknown' for everything else (MPL-2.0, LicenseRef-*, null).",
+    "Compound expressions: 'MIT OR Apache-2.0' classifies permissive; 'MIT AND GPL-3.0-only' classifies as copyleft/gate.",
+    "detectLicense(source) implements the 6-step fallback chain (SPDX header -> LICENSE file -> GitHub API -> package.json -> README -> none); when nothing is found it returns spdx_id=null classified unknown ('all rights reserved'), never permissive.",
+    "Every detection result carries {spdx_id, detected_via, source_path, checked_at}."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "wave-1"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "c555452",
+    "8ebb322"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T16:27:22.755Z",
+      "body": "Closed on a clean full-depth review (rev-117). Review depth = FULL; rubric inputs: small changed-line count + few touched surfaces (one new src module + fast/e2e specs), escalated to full because license classification is a supply-chain/legal gate where false-permissive is the dangerous error. Verdict PASS, no HIGH/MEDIUM. Verified: tier discipline held (test c555452 precedes impl 8ebb322; red independently reproduced at 8ebb322^); the false-permissive direction is provably closed (null/unknown/AND-with-copyleft/GitHub-other/NOASSERTION/404/malformed-package.json all resolve to unknown or copyleft, never permissive); GitHub step network-free in tests (injected fetcher). Gate GREEN: npm test 739 passed/2 skipped; e2e license-detect 6 passed. Non-blocking LOWs carried to the TASK-120 assimilate-gate work: (a) make the NOASSERTION guard case-insensitive; (b) the §12 'ambiguous' cross-source bucket is unimplemented (safe — all non-permissive outcomes gate identically); (c) observability belongs at the gate caller + injected fetcher. No knowledge-capture draft (clean first-pass, no HIGH, no RC loop)."
+    }
+  ],
+  "created_at": "2026-07-08T16:09:34.350Z",
+  "updated_at": "2026-07-08T16:27:22.755Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-07T13:48:26.739Z",
+  "generated_at": "2026-07-08T17:02:22.326Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -671,6 +671,42 @@
       "key": "TASK-114",
       "title": "Release hivemind v0.11.0 — version bump + tag + publish (cuts the goal-sweep2 drive)",
       "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-115",
+      "title": "Addon-pack descriptor schema + validator",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-116",
+      "title": "integrations.lock.json schema + atomic store with ownership edges",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-117",
+      "title": "Skill license-detection + classification module",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-118",
+      "title": "Skills env-probe + reconcile planner (pure)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-119",
+      "title": "Reconcile applier for skills + atomic lock commit",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-120",
+      "title": "hivemind-assimilate-skill workflow + end-to-end proof",
+      "status": "in_progress",
       "priority": "high"
     }
   ]

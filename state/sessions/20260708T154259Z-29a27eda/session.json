@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "session_id": "20260708T154259Z-29a27eda",
+  "lifecycle_state": "active",
+  "updated_at": "2026-07-08T17:02:20.276Z",
+  "active_task": "TASK-120",
+  "workflow_step": "impl",
+  "next_action": "Implement TASK-120 (dev-120). Then run the UAT step: assimilate a real permissive skill (auto path) and GSAP/UI-UX-Pro-Max (copyleft/unknown human-gate path), collect PASS/FAIL per AC. Carry LOW from 119: clean-replace (rmSync before copy) on re-materialize.",
+  "handoff_summary": "Wave-1: TASK-115/116/117/118/119 all DONE (115 and 118 each needed one RC loop -> 2 knowledge drafts). Building the FINALE TASK-120: hivemind-assimilate-skill workflow (tests-after + UAT) that assimilates a 3rd-party skill (fetch->license-detect->gate->scope+provenance->write assimilated-skills/<id>/->lock), proven by a fixture-based E2E and then a live UAT on the Diseno-Poderoso skills group (GSAP / permissive skill). No GitHub token; license API unauth + file fallbacks.",
+  "open_questions": [
+    "none blocking"
+  ],
+  "blockers": [],
+  "decisions": [],
+  "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T16:31:34.971Z",
+      "summary": "TASK-115 APPROVE after 1 RC loop (self-fallback+id-uniqueness fixed)",
+      "task": "TASK-115"
+    },
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T16:31:34.971Z",
+      "summary": "TASK-116 APPROVE clean (data-loss regression real)",
+      "task": "TASK-116"
+    },
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T16:31:34.971Z",
+      "summary": "TASK-117 PASS clean (false-permissive path proven closed)",
+      "task": "TASK-117"
+    }
+  ],
+  "pending_human_confirmation": null
+}

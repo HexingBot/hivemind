@@ -1,0 +1,36 @@
+{
+  "key": "TASK-115",
+  "title": "Addon-pack descriptor schema + validator",
+  "description": "First contract of the addon-pack subsystem (Wave 1). Define the JSON schema for a pack descriptor and a validatePackDescriptor() that enforces it. A pack is data conforming to this schema; the design-power pack is authored against it in a later wave. See docs/design/addon-packs-plan.md §8/§11 and docs/design/addon-packs.md §8. Descriptor fields: id, name, version, core_compat, trigger, project_md_contribution, profile, resources[] (id, kind[skill|mcp|plugin], origin, pin, scope[project|user], required[hard|soft], fallback?), gate_scopes[], pipeline[]. No behavior beyond validation. Schema inlined for esbuild bundling like state/PROJECT.schema.json.",
+  "acceptance_criteria": [
+    "A JSON schema file for the pack descriptor exists and is loaded by the validator (inlined for esbuild bundling like PROJECT.schema.json).",
+    "validatePackDescriptor(obj) returns ok for a valid sample design-power descriptor and reports the offending field for each of: unknown resource.kind, unknown resource.scope, a missing required top-level field, and a resource whose required is not in {hard,soft}.",
+    "resource.fallback, when present, must reference another resource id in the same descriptor; a dangling fallback is rejected.",
+    "Tests cover a valid-descriptor acceptance plus at least the four rejection cases above."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "wave-1"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "dcfeaa2",
+    "2dd7dfd",
+    "3127a8a"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T16:29:45.827Z",
+      "body": "Closed on a full-depth review (rev-115) after one RC loop. Review depth = FULL; rubric inputs: small changed-line count + few touched surfaces (one new src module + schema + fast-tier spec), escalated to full because this is the base descriptor contract TASK-118/120 consume. Initial verdict APPROVE-with-MEDIUM; one RC loop fixed the MEDIUM (self-referencing fallback was silently accepted, against AC3 'another resource id') plus two LOWs (enforce resource-id uniqueness; remove a redundant test). Re-review of the fix commit APPROVE, no new findings. Tier discipline held throughout (test dcfeaa2 precedes impl 2dd7dfd; RC fix 3127a8a added failing tests first). Gate GREEN: npm test 740 passed/2 skipped; pack-descriptor spec 10/10. Knowledge-capture draft written to knowledge/proposed/ per TASK-105 (RC-loop trigger)."
+    }
+  ],
+  "created_at": "2026-07-08T16:09:06.574Z",
+  "updated_at": "2026-07-08T16:29:45.827Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

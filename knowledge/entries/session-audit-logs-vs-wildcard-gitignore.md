@@ -2,34 +2,38 @@
 id: session-audit-logs-vs-wildcard-gitignore
 problem: >
   A wildcard `*.log` line in the project-level `.gitignore` silently ignores
-  audit logs that the harness expects to commit and replay, such as a
-  session bundle's append-only `lifecycle.log`. The files exist on disk
-  and the code reads them fine, but `git status` shows nothing and a fresh
-  clone has no record of the lifecycle history.
+  audit logs that the harness expects to commit and replay, such as a session
+  bundle's append-only `lifecycle.log`. The files exist on disk and the code
+  reads them fine, but `git status` shows nothing and a fresh clone has no
+  record of the lifecycle history.
 symptoms:
-  - "git status shows no changes after writing lifecycle.log"
-  - "Bundle directory committed but lifecycle.log missing on a fresh clone"
-  - "git check-ignore -v <path> points at the *.log rule"
-  - "Cross-machine bundle round-trip works locally but loses history after push/pull"
+  - git status shows no changes after writing lifecycle.log
+  - Bundle directory committed but lifecycle.log missing on a fresh clone
+  - git check-ignore -v <path> points at the *.log rule
+  - >-
+    Cross-machine bundle round-trip works locally but loses history after
+    push/pull
 solution: >
-  Add an explicit un-ignore line below the wildcard so the rule survives
-  but the audit-log file does not. In `.gitignore`:
+  Add an explicit un-ignore line below the wildcard so the rule survives but the
+  audit-log file does not. In `.gitignore`:
 
-  ```
-  *.log
-  !state/sessions/**/lifecycle.log
-  ```
+  ``` *.log !state/sessions/**/lifecycle.log ```
 
   Verify with `git check-ignore -v state/sessions/<id>/lifecycle.log` — the
-  command should print nothing (or the un-ignore rule), not the wildcard.
-  Treat any append-only audit-log file shipped inside a self-contained
-  bundle the same way; the wildcard is for transient build/debug logs,
-  not for files the harness considers source of truth.
-
-tags: [git, gitignore, audit-log, bundle, portability]
-projects: [hivemind]
-created_at: "2026-05-25T00:00:00Z"
-last_seen_at: "2026-05-25T00:00:00Z"
+  command should print nothing (or the un-ignore rule), not the wildcard. Treat
+  any append-only audit-log file shipped inside a self-contained bundle the same
+  way; the wildcard is for transient build/debug logs, not for files the harness
+  considers source of truth.
+tags:
+  - git
+  - gitignore
+  - audit-log
+  - bundle
+  - portability
+projects:
+  - hivemind
+created_at: '2026-05-25T00:00:00Z'
+last_seen_at: '2026-07-08T15:49:39.540Z'
 supersedes: []
 superseded_by: null
 source_tier: T1
