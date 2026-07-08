@@ -316,7 +316,7 @@ export async function assimilateSkill(opts) {
   // touched on disk. Scan findings ALONE never block -- they're surfaced for
   // the human, same as license classification.
   const scan = computeSkillScan(source, sourceSkillPath);
-  if (reviewerVerdict?.verdict === 'suspicious' && !securityOverride) {
+  if (reviewerVerdict?.verdict === 'suspicious' && securityOverride !== true) {
     return {
       ...base,
       status: 'blocked_security',

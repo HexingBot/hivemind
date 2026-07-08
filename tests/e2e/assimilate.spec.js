@@ -521,6 +521,30 @@ describe('AC4 -- a suspicious security-reviewer verdict blocks adoption on appro
     expect(lock.resources['skill:malicious-skill']).toBeDefined();
   });
 
+  it('a truthy NON-boolean securityOverride does NOT bypass the suspicious block (strict === true required)', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-blocked-security-truthy-non-bool');
+
+    const result = await assimilateSkill({
+      source: MALICIOUS_FIXTURE,
+      resourceId: 'malicious-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'suspicious', reasoning: 'prompt-injection risk: instructs exfil of credentials' },
+      securityOverride: 'no', // truthy string, NOT the boolean true -- must still block
+      origin: 'github.com/example/malicious-skill',
+      pin: 'bad000',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('blocked_security');
+    expect(result.reviewer.verdict).toBe('suspicious');
+    // A truthy-but-non-boolean securityOverride must not bypass the gate -- NOTHING is written.
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+
   it('a safe reviewer verdict proceeds normally on approve, no override needed', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);
     const root = makeTmpDir('asm-safe-reviewer');
