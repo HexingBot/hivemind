@@ -3,15 +3,10 @@
 // (docs/design/addon-packs-plan.md §12). Hand-rolled SPDX table and matcher,
 // zero new runtime deps: the closed ~20-id set here doesn't justify a lib.
 // Add spdx-expression-parse later only if compound expressions beyond a
-// simple two-term OR/AND show up in practice. The skill-frontmatter step
-// (TASK-120 UAT-bounce addition) DOES use gray-matter for real YAML
-// parsing -- not a new dep, already used elsewhere (src/knowledge.js) and
-// already bundled by esbuild, and hand-rolling frontmatter-YAML parsing here
-// would just be a worse gray-matter.
+// simple two-term OR/AND show up in practice.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import matter from 'gray-matter';
 
 // Permissive allowlist (auto-OK). This is an allowlist for permissive, not a
 // denylist for copyleft -- anything not listed here (including copyleft ids
@@ -114,10 +109,9 @@ export function classifyLicense(spdxId) {
   return 'unknown';
 }
 
-// --- detectLicense: 7-step fallback chain (stop at first hit) --------------
+// --- detectLicense: 6-step fallback chain (stop at first hit) --------------
 
 const SPDX_HEADER_RE = /SPDX-License-Identifier:\s*([^\r\n]+)/i;
-const SKILL_FILENAME = 'SKILL.md';
 const LICENSE_FILENAMES = ['LICENSE', 'COPYING', 'LICENSE.md'];
 const IGNORED_DIRS = new Set(['node_modules', '.git']);
 const MAX_SCANNED_FILE_BYTES = 65536; // SPDX headers live in small text/source files
@@ -208,7 +202,7 @@ function findSpdxHeaderInDir(dir) {
   return null;
 }
 
-/** Step 3: nearest LICENSE/COPYING/LICENSE.md in a single directory. */
+/** Step 2: nearest LICENSE/COPYING/LICENSE.md in a single directory. */
 function findLicenseFile(dir) {
   if (!dir || !existsSync(dir)) return null;
   for (const name of LICENSE_FILENAMES) {
@@ -220,46 +214,7 @@ function findLicenseFile(dir) {
   return null;
 }
 
-// Same shape tolerance as extractPackageJsonLicense below (plain string, or
-// an npm-style {type: '...'} object) -- a skill's SKILL.md frontmatter is
-// author-written YAML, not a validated schema, so both spellings show up.
-function extractFrontmatterLicense(data) {
-  if (!data) return null;
-  if (typeof data.license === 'string') return data.license;
-  if (data.license && typeof data.license.type === 'string') return data.license.type;
-  return null;
-}
-
-/**
- * Step 2: the skill's own SKILL.md frontmatter `license:` field -- the most
- * authoritative skill-native signal, so it's ranked right after the SPDX
- * header and before a repo-wide LICENSE file (a skill's own declared license
- * beats a LICENSE file it doesn't control, e.g. a monorepo's root license).
- * Malformed YAML or a missing/absent frontmatter fence both fall through to
- * `null` -- not every third-party skill author writes valid frontmatter, and
- * this step is an ADDITIONAL signal, never the only one.
- */
-function findSkillFrontmatterLicense(skillDir) {
-  if (!skillDir) return null;
-  const skillPath = join(skillDir, SKILL_FILENAME);
-  if (!existsSync(skillPath) || !statSync(skillPath).isFile()) return null;
-  let raw;
-  try {
-    raw = readFileSync(skillPath, 'utf8');
-  } catch {
-    return null;
-  }
-  let parsed;
-  try {
-    parsed = matter(raw);
-  } catch {
-    return null; // malformed frontmatter YAML -- fall through, don't throw
-  }
-  const license = extractFrontmatterLicense(parsed.data);
-  return license ? { path: skillPath, raw: license } : null;
-}
-
-/** Step 4: GitHub Licenses API, via an injected fetcher (undefined => skipped, no network). */
+/** Step 3: GitHub Licenses API, via an injected fetcher (undefined => skipped, no network). */
 async function detectFromGithubApi(github, fetchGithubLicense) {
   let body;
   try {
@@ -272,7 +227,6 @@ async function detectFromGithubApi(github, fetchGithubLicense) {
   return id;
 }
 
-/** Step 5: `license` field in the nearest package.json. */
 function extractPackageJsonLicense(pkg) {
   if (!pkg) return null;
   if (typeof pkg.license === 'string') return pkg.license;
@@ -281,7 +235,7 @@ function extractPackageJsonLicense(pkg) {
   return null;
 }
 
-/** Step 6: the content of a README.md "License" heading's section, or null. */
+/** Step 5: the content of a README.md "License" heading's section, or null. */
 function extractReadmeLicenseSection(text) {
   const lines = text.split(/\r?\n/);
   const headingRe = /^(#{1,6})\s*license\b/i;
@@ -306,19 +260,18 @@ function extractReadmeLicenseSection(text) {
 }
 
 /**
- * Detect a skill's license via the 7-step fallback chain (stop at first hit):
+ * Detect a skill's license via the 6-step fallback chain (stop at first hit):
  *   1. SPDX-License-Identifier header in the skill's own files.
- *   2. `license:` field in the skill's own SKILL.md frontmatter (TASK-120).
- *   3. Nearest LICENSE/COPYING/LICENSE.md (skill subdir before repo root).
- *   4. GitHub Licenses API (only if `github` + `fetchGithubLicense` are given).
- *   5. `license` field in the nearest package.json.
- *   6. "License" section in README.md.
- *   7. None found -- unknown, "all rights reserved", never permissive.
+ *   2. Nearest LICENSE/COPYING/LICENSE.md (skill subdir before repo root).
+ *   3. GitHub Licenses API (only if `github` + `fetchGithubLicense` are given).
+ *   4. `license` field in the nearest package.json.
+ *   5. "License" section in README.md.
+ *   6. None found -- unknown, "all rights reserved", never permissive.
  *
  * @param {object} source
  * @param {string} [source.skillDir] - absolute path to the skill's own subdirectory
  * @param {string} [source.repoRoot] - absolute path to the repo root
- * @param {{owner: string, repo: string}} [source.github] - repo coordinates for step 4
+ * @param {{owner: string, repo: string}} [source.github] - repo coordinates for step 3
  * @param {(owner: string, repo: string) => Promise<{license: {spdx_id: string}}|null>} [source.fetchGithubLicense]
  *   - injected transport for the GitHub Licenses API; undefined skips the step (no network)
  * @returns {Promise<{spdx_id: string|null, detected_via: string, source_path: string|null, checked_at: string}>}
@@ -334,14 +287,7 @@ export async function detectLicense(source = {}) {
     return { spdx_id: normalizeLicenseString(headerHit.spdxRaw), detected_via: 'spdx-header', source_path: headerHit.path, checked_at };
   }
 
-  // 2. The skill's own SKILL.md frontmatter `license:` field -- skill-native,
-  // so it beats a repo-wide LICENSE file (step 3) the skill doesn't control.
-  const frontmatterHit = findSkillFrontmatterLicense(skillDir);
-  if (frontmatterHit) {
-    return { spdx_id: normalizeLicenseString(frontmatterHit.raw), detected_via: 'skill-frontmatter', source_path: frontmatterHit.path, checked_at };
-  }
-
-  // 3. Nearest LICENSE/COPYING/LICENSE.md -- skill subdir before repo root.
+  // 2. Nearest LICENSE/COPYING/LICENSE.md -- skill subdir before repo root.
   for (const dir of dirs) {
     const licenseHit = findLicenseFile(dir);
     if (!licenseHit) continue;
@@ -349,7 +295,7 @@ export async function detectLicense(source = {}) {
     if (id) return { spdx_id: normalizeLicenseString(id), detected_via: 'license-file', source_path: licenseHit.path, checked_at };
   }
 
-  // 4. GitHub Licenses API (repo-hosted sources only; skipped without an injected fetcher).
+  // 3. GitHub Licenses API (repo-hosted sources only; skipped without an injected fetcher).
   if (github?.owner && github?.repo && typeof fetchGithubLicense === 'function') {
     const id = await detectFromGithubApi(github, fetchGithubLicense);
     if (id) {
@@ -362,7 +308,7 @@ export async function detectLicense(source = {}) {
     }
   }
 
-  // 5. `license` field in the nearest package.json.
+  // 4. `license` field in the nearest package.json.
   for (const dir of dirs) {
     const pkgPath = join(dir, 'package.json');
     if (!existsSync(pkgPath)) continue;
@@ -376,7 +322,7 @@ export async function detectLicense(source = {}) {
     if (raw) return { spdx_id: normalizeLicenseString(raw), detected_via: 'package.json', source_path: pkgPath, checked_at };
   }
 
-  // 6. "License" section in README.md.
+  // 5. "License" section in README.md.
   for (const dir of dirs) {
     const readmePath = join(dir, 'README.md');
     if (!existsSync(readmePath)) continue;
@@ -386,6 +332,6 @@ export async function detectLicense(source = {}) {
     if (id) return { spdx_id: normalizeLicenseString(id), detected_via: 'readme', source_path: readmePath, checked_at };
   }
 
-  // 7. None found -- unknown / all-rights-reserved. Never assume permissive.
+  // 6. None found -- unknown / all-rights-reserved. Never assume permissive.
   return { spdx_id: null, detected_via: 'none', source_path: null, checked_at };
 }
