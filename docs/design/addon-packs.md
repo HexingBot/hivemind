@@ -172,6 +172,7 @@ A pack is **data** conforming to a descriptor schema. Design becomes one such fi
 - **shadcn/ui is React-only** → route to **shadcn-vue** when `framework == vue` (same registry/MCP).
 - **Phaser/canvas** projects: UI skills apply only to the **HTML/DOM layer** (HUD, menus, overlays), never the canvas render. When `ui_outside_canvas == false`, disable shadcn-vue, DOM polish, and DOM Playwright.
 - **Exclusion rules** and the **maintenance note** (commands/prices drift fast) → the resource table is a **maintained manifest/KB entry read at runtime**, not hardcoded logic.
+- **TASK-123**: `activate_when` (activation predicate) and `install` (install command) are now OPTIONAL `resources[]` schema fields (`state/pack-descriptor.schema.json`) — activation/exclusion is descriptor **data** (this predicate + the `fallback` field), not hardcoded core logic; predicate **evaluation** is deferred to the Phase D/F layer.
 
 ---
 

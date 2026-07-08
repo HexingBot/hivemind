@@ -90,6 +90,16 @@
             "type": "string",
             "minLength": 1,
             "description": "Id of another resource in this same descriptor's resources[] to fall back to when this one is soft-unavailable (addon-packs-plan.md §8). Validated as a semantic reference by the validator, not by this schema alone."
+          },
+          "activate_when": {
+            "type": "string",
+            "minLength": 1,
+            "description": "OPTIONAL activation predicate over profile variables, e.g. 'tier>=MEDIO' or 'framework==vue && ui_outside_canvas' (addon-packs.md §8.1). Activation/exclusion is descriptor DATA -- this predicate plus `fallback` above -- never hardcoded core logic. TASK-123 only validates this as a non-empty string and round-trips it; predicate EVALUATION is deferred to the Phase D/F layer and is out of scope here."
+          },
+          "install": {
+            "type": "string",
+            "minLength": 1,
+            "description": "OPTIONAL install command string for this resource, e.g. 'claude plugin add anthropic/frontend-design' (addon-packs.md §8). Data only -- no command is executed by this schema or by validatePackDescriptor."
           }
         }
       }
