@@ -293,30 +293,28 @@ describe('AC3/AC4 — end-to-end: assimilate (approved) -> materialize -> id-spa
     // Not yet live -- assimilate only ever writes the OWNED staging copy.
     expect(probeSkills(root)).toEqual({});
 
-    // Materialize: staging copy -> live .claude/skills/ tree. NOTE: the
-    // install op is constructed directly here (the same convention
-    // tests/e2e/pack-apply.spec.js already uses), not derived by calling
-    // plan() against the lock assimilate just wrote -- assimilate's own lock
-    // entry (recorded at stage time, per its ticket contract) already makes
-    // plan() see a matching-pin lockEntry and treat the resource as a no-op,
-    // since plan()'s current model doesn't distinguish "recorded, not yet
-    // live" from "recorded and live". That's a pre-existing planner nuance
-    // outside this ticket's scope -- flagged to the reconciler owner rather
-    // than patched here.
-    await applyPlan({
-      plan: { install: [{ id: 'skill:permissive-skill', resource: resourceDescriptor }], remove: [], replace: [], report: [] },
-      lockPath,
-      root,
-      owner: PACK,
-    });
+    // TASK-121 -- the divergence this ticket closes: assimilate already wrote
+    // a matching-pin lock entry (owners: [PACK]) at stage time, but the skill
+    // is still absent from `actual` (probeSkills). plan() itself -- not a
+    // hand-constructed install op -- must still propose the materialize: a
+    // staged-but-not-live skill is never a no-op.
+    const lockAfterAssimilate = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const actualBeforeInstall = probeSkills(root);
+    const firstPlan = plan([resourceDescriptor], lockAfterAssimilate, actualBeforeInstall);
+    expect(firstPlan.install).toEqual([{ id: 'skill:permissive-skill', resource: resourceDescriptor }]);
+    expect(firstPlan.replace).toEqual([]);
+    expect(firstPlan.remove).toEqual([]);
+
+    // Materialize using plan()'s own output.
+    await applyPlan({ plan: firstPlan, lockPath, root, owner: PACK });
 
     const liveSkillPath = join(root, '.claude', 'skills', 'permissive-skill', 'SKILL.md');
     expect(existsSync(liveSkillPath)).toBe(true);
 
-    // AC4 -- id-space integration: probeSkills' `skill:<reldir>` id (reldir
-    // is flat = resourceId) lines up with assimilate's `skill:<resourceId>`,
-    // so re-planning with it in `desired` against the now-live actual state
-    // yields NO spurious install/remove.
+    // AC4 -- a second reconcile pass confirms the divergence is fully
+    // resolved: id-space integration (probeSkills' `skill:<reldir>` lines up
+    // with assimilate's `skill:<resourceId>`) plus the now-live actual state
+    // together yield a clean, no-spurious-op steady state.
     const lockAfterInstall = JSON.parse(readFileSync(lockPath, 'utf8'));
     const actual = probeSkills(root);
     expect(Object.keys(actual)).toEqual(['skill:permissive-skill']);

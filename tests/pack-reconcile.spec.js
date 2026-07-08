@@ -12,6 +12,19 @@
 //   AC4 — a hard-required resource that would fail (out-of-scope kind, Wave 1
 //     is skills-only) is surfaced in report with a blocking flag; plan()
 //     performs no filesystem or network I/O.
+//
+// TASK-121 — closes the staged-but-not-live divergence (TASK-120 review
+// MEDIUM): a skill present in the lock (staged by assimilate) but absent from
+// `actual` (probeSkills — not yet materialized under .claude/skills) is now
+// proposed for install regardless of lock presence, since a not-live skill
+// cannot be "replaced" — it must first be installed/materialized. This is a
+// legitimate semantic shift for two of the AC3 tests below (a lock entry with
+// no corresponding `actual` entry used to fall through to a pin comparison
+// and land in replace/no-op; it now short-circuits to install before that
+// comparison ever runs) — both were updated to pass a matching `actual` entry
+// so they keep testing the genuinely-live steady state they were written for,
+// and the staged-but-not-live cases they used to (incidentally) cover are now
+// their own tests under the "AC1/TASK-121" describe block below.
 
 import { describe, it, expect, vi } from 'vitest';
 
@@ -106,12 +119,18 @@ describe('AC2 — orphaned + soft lock resources go to remove; still-owned orpha
     // while the desired-side pass simultaneously treated it as a pins-match
     // no-op — self-contradictory, and the applier (TASK-119) would delete a
     // wanted skill.
+    //
+    // TASK-121: this skill is also LIVE (matching `actual` entry supplied)
+    // so the desired-side pass stays a genuine no-op rather than tripping the
+    // new staged-but-not-live install gate — that combination is covered
+    // separately below.
     const desired = [{ id: 're-adopted', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' }];
     const lock = makeLock({
       'skill:re-adopted': makeLockEntry({ pin: 'v1', owners: [], required: 'soft' }),
     });
+    const actual = { 'skill:re-adopted': { path: '/wherever/SKILL.md' } };
 
-    const result = plan(desired, lock, {});
+    const result = plan(desired, lock, actual);
 
     expect(result.remove).toEqual([]);
     expect(result.install).toEqual([]);
@@ -119,14 +138,18 @@ describe('AC2 — orphaned + soft lock resources go to remove; still-owned orpha
   });
 });
 
-describe('AC3 — pin drift goes to replace; matching pins are a no-op', () => {
+describe('AC3 — pin drift goes to replace; matching pins are a no-op (skill is LIVE in both cases)', () => {
   it('a_desired_pin_that_differs_from_the_lock_pin_is_replaced', () => {
+    // TASK-121: `actual` now carries a matching live entry so this exercises
+    // the genuinely-live replace path (a not-live skill with a pin mismatch
+    // is covered separately below, and is an install, not a replace).
     const desired = [{ id: 'shadcn-vue', kind: 'skill', origin: 'x', pin: 'v2', scope: 'project', required: 'soft' }];
     const lock = makeLock({
       'skill:shadcn-vue': makeLockEntry({ pin: 'v1', owners: ['design-power@0.1.0'] }),
     });
+    const actual = { 'skill:shadcn-vue': { path: '/wherever/SKILL.md' } };
 
-    const result = plan(desired, lock, {});
+    const result = plan(desired, lock, actual);
 
     expect(result.replace).toHaveLength(1);
     expect(result.replace[0]).toMatchObject({ id: 'skill:shadcn-vue', from: 'v1', to: 'v2' });
@@ -134,17 +157,73 @@ describe('AC3 — pin drift goes to replace; matching pins are a no-op', () => {
   });
 
   it('a_matching_pin_is_a_no_op', () => {
+    // TASK-121: `actual` now carries a matching live entry — see the
+    // AC2/TASK-121 regression describe block below for this same shape
+    // asserted against the full plan() output.
     const desired = [{ id: 'shadcn-vue', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' }];
     const lock = makeLock({
       'skill:shadcn-vue': makeLockEntry({ pin: 'v1', owners: ['design-power@0.1.0'] }),
     });
+    const actual = { 'skill:shadcn-vue': { path: '/wherever/SKILL.md' } };
 
-    const result = plan(desired, lock, {});
+    const result = plan(desired, lock, actual);
 
     expect(result.install).toEqual([]);
     expect(result.replace).toEqual([]);
     expect(result.remove).toEqual([]);
     expect(result.report).toEqual([]);
+  });
+});
+
+describe('AC1/TASK-121 — a skill staged in the lock but NOT live is proposed for install, never left a no-op', () => {
+  it('a_desired_skill_with_a_matching_pin_lock_entry_but_absent_from_actual_is_installed', () => {
+    // The exact TASK-120 review divergence: assimilate stages a lock entry
+    // at approve time but never touches .claude/skills/. Before this fix,
+    // `!lockEntry && !actualEntry` was false (lockEntry present) so this fell
+    // through to the pin comparison and landed as a no-op — plan() would
+    // never again propose materializing it.
+    const desired = [{ id: 'staged-thing', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' }];
+    const lock = makeLock({
+      'skill:staged-thing': makeLockEntry({ pin: 'v1', owners: ['design-power@0.1.0'] }),
+    });
+
+    const result = plan(desired, lock, {});
+
+    expect(result.install).toEqual([{ id: 'skill:staged-thing', resource: desired[0] }]);
+    expect(result.replace).toEqual([]);
+    expect(result.remove).toEqual([]);
+  });
+
+  it('a_desired_skill_staged_in_the_lock_with_a_pin_mismatch_but_absent_from_actual_is_installed_not_replaced', () => {
+    // Legitimate semantic shift (per the ticket): staged-but-not-live with a
+    // pin mismatch used to be a `replace`; it is now an `install` — you
+    // cannot replace a skill that was never materialized on disk.
+    const desired = [{ id: 'staged-thing', kind: 'skill', origin: 'x', pin: 'v2', scope: 'project', required: 'soft' }];
+    const lock = makeLock({
+      'skill:staged-thing': makeLockEntry({ pin: 'v1', owners: ['design-power@0.1.0'] }),
+    });
+
+    const result = plan(desired, lock, {});
+
+    expect(result.install).toEqual([{ id: 'skill:staged-thing', resource: desired[0] }]);
+    expect(result.replace).toEqual([]);
+  });
+});
+
+describe('AC2/TASK-121 — a skill present in BOTH lock and actual with a matching pin remains a steady-state no-op', () => {
+  it('a_lock_entry_and_a_live_actual_entry_with_the_same_pin_produce_no_ops_at_all', () => {
+    // Regression lock: the not-live install gate must never fire once a
+    // skill IS live — no false-positive re-install of an already-materialized,
+    // steady-state skill.
+    const desired = [{ id: 'shadcn-vue', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' }];
+    const lock = makeLock({
+      'skill:shadcn-vue': makeLockEntry({ pin: 'v1', owners: ['design-power@0.1.0'] }),
+    });
+    const actual = { 'skill:shadcn-vue': { path: '/wherever/SKILL.md' } };
+
+    const result = plan(desired, lock, actual);
+
+    expect(result).toEqual({ install: [], remove: [], replace: [], report: [] });
   });
 });
 
