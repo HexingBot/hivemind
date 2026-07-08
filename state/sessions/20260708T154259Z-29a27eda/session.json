@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
-  "lifecycle_state": "active",
-  "updated_at": "2026-07-08T17:02:20.276Z",
-  "active_task": "TASK-120",
-  "workflow_step": "impl",
-  "next_action": "Implement TASK-120 (dev-120). Then run the UAT step: assimilate a real permissive skill (auto path) and GSAP/UI-UX-Pro-Max (copyleft/unknown human-gate path), collect PASS/FAIL per AC. Carry LOW from 119: clean-replace (rmSync before copy) on re-materialize.",
-  "handoff_summary": "Wave-1: TASK-115/116/117/118/119 all DONE (115 and 118 each needed one RC loop -> 2 knowledge drafts). Building the FINALE TASK-120: hivemind-assimilate-skill workflow (tests-after + UAT) that assimilates a 3rd-party skill (fetch->license-detect->gate->scope+provenance->write assimilated-skills/<id>/->lock), proven by a fixture-based E2E and then a live UAT on the Diseno-Poderoso skills group (GSAP / permissive skill). No GitHub token; license API unauth + file fallbacks.",
+  "lifecycle_state": "paused",
+  "updated_at": "2026-07-08T18:49:28.605Z",
+  "active_task": null,
+  "workflow_step": "idle",
+  "next_action": "BUILD THE DESIGN PACK (\"Diseno Poderoso\", Phases E/F of docs/design/addon-packs-plan.md): decompose into tickets — (E) intake \"design-heavy?\" question in src/question-library.js + perfil_proyecto/tier frontmatter in src/project-md.js + PROJECT.schema.json; conditional interview (Fase 0-1); pure complexity-scoring fn (Fase 2 -> LIGERO/MEDIO/COMPLETO); (F) the design-power pack descriptor (resources with origin/pin/scope/required, exclusion rules, pipeline steps) conforming to the TASK-115 descriptor schema; the registration hook (Phase D) so the pack injects its pipeline steps without patching core. NOTE the design pack adopts design skills THROUGH assimilate, so it depends on TASK-122 (content security scan + reviewer + sign-off) being built first for any real adoption. Also open: TASK-121 (planner staged-vs-live). Start by restating this plan and confirming scope with the human before creating tickets.",
+  "handoff_summary": "Addon-pack Wave 1 COMPLETE, shipped & deployed (plugin v0.12.0; site incl. docs/skills.html live at hivemind-ef84a.web.app). Assimilate pipeline works as a SAFE VET (nothing adopts without explicit sign-off; license is decision-support only, not a safety gate). PAUSED by the human to /clear and return to build the Diseno Poderoso DESIGN PACK (currently spec-only, not runnable).",
   "open_questions": [
     "none blocking"
   ],
