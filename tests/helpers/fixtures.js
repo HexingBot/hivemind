@@ -183,6 +183,7 @@ export const PROD = Object.freeze({
   questionEngine: prodUrl('question-engine.js'),
   questionLibrary: prodUrl('question-library.js'),
   projectMd: prodUrl('project-md.js'),
+  integrationsLock: prodUrl('integrations-lock.js'),
   claudeMd: prodUrl('claude-md.js'),
   agentGenerator: prodUrl('agent-generator.js'),
   backlogSeeder: prodUrl('backlog-seeder.js'),

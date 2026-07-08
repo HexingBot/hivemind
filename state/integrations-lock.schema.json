@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hivemind.local/state/integrations-lock.schema.json",
+  "title": "IntegrationsLock",
+  "description": "Reconciler lockfile for the addon-pack subsystem (docs/design/addon-packs-plan.md §2). Ownership is tracked as owners[] EDGES (pack-id@version strings), not a counter — the Nix reachability model. A resource is safe to remove only when owners is empty; that decision and the physical removal both belong to the applier, never to this store.",
+  "type": "object",
+  "required": ["schema_version", "resources"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "resources": {
+      "type": "object",
+      "description": "Keyed by resource id, e.g. \"mcp:firecrawl\", \"skill:shadcn-vue\".",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "kind",
+          "origin",
+          "pin",
+          "integrity",
+          "scope",
+          "owners",
+          "required",
+          "installed_at",
+          "install_method",
+          "verified"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "enum": ["mcp", "skill", "plugin"] },
+          "origin": { "type": "string", "minLength": 1, "description": "vendor/repo-or-registry the resource came from." },
+          "pin": { "type": "string", "minLength": 1, "description": "commit-sha or exact semver — never a range." },
+          "integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]+$", "description": "Content hash of what was installed." },
+          "scope": { "type": "string", "enum": ["project", "user"] },
+          "owners": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "pack-id@version edges. Empty ⇒ safe to remove (Nix reachability model, not a counter)."
+          },
+          "required": { "type": "string", "enum": ["hard", "soft"] },
+          "installed_at": { "type": "string", "format": "date-time" },
+          "install_method": { "type": "string", "minLength": 1 },
+          "verified": { "type": "string", "enum": ["signed", "unsigned", "unknown"] }
+        }
+      }
+    }
+  }
+}
