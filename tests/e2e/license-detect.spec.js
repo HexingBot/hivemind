@@ -1,7 +1,11 @@
 // tests/e2e/license-detect.spec.js
 // TASK-117 AC4 -- detectLicense's file-based fallback chain (real disk I/O via
-// makeTmpDir): SPDX header -> LICENSE file (skill subdir before repo root) ->
-// package.json -> README "License" section. Maps docs/design/addon-packs-plan.md §12.
+// makeTmpDir): SPDX header -> skill frontmatter `license:` -> LICENSE file
+// (skill subdir before repo root) -> package.json -> README "License" section.
+// Maps docs/design/addon-packs-plan.md §12. The skill-frontmatter step is a
+// TASK-120 UAT-bounce addition (gsap-core's SKILL.md declares `license: MIT`
+// in frontmatter -- the most authoritative skill-native signal, absent from
+// the original TASK-117 chain).
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -30,6 +34,49 @@ describe('detectLicense -- SPDX header step (wins over repo-root LICENSE)', () =
     expect(result.detected_via).toBe('spdx-header');
     expect(result.source_path).toBe(join(skillDir, 'SKILL.md'));
     expect(Object.keys(result).sort()).toEqual(['checked_at', 'detected_via', 'source_path', 'spdx_id']);
+  });
+});
+
+describe('detectLicense -- skill frontmatter `license:` step (skill-native, beats a repo-wide LICENSE)', () => {
+  it('detects the license from the skill\'s own SKILL.md frontmatter', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-frontmatter');
+    writeFileSync(join(repoRoot, 'LICENSE'), 'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n');
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: my-skill\nlicense: MIT\n---\n\n# My Skill\n');
+
+    const result = await detectLicense({ skillDir, repoRoot });
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('skill-frontmatter');
+    expect(result.source_path).toBe(join(skillDir, 'SKILL.md'));
+  });
+
+  it('falls through to the LICENSE-file step when SKILL.md has no license field', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-frontmatter-absent');
+    writeFileSync(join(repoRoot, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Acme\n');
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: my-skill\n---\n\n# My Skill\nno license field here\n');
+
+    const result = await detectLicense({ skillDir, repoRoot });
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('license-file');
+  });
+
+  it('falls through to the LICENSE-file step when SKILL.md has no frontmatter fence at all', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-frontmatter-none');
+    writeFileSync(join(repoRoot, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Acme\n');
+    writeFileSync(join(skillDir, 'SKILL.md'), '# My Skill\nno frontmatter here at all\n');
+
+    const result = await detectLicense({ skillDir, repoRoot });
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('license-file');
+  });
+
+  it('falls through gracefully when SKILL.md has malformed frontmatter YAML', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-frontmatter-malformed');
+    writeFileSync(join(repoRoot, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Acme\n');
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: my-skill\nlicense: [unterminated\n---\n# My Skill\n');
+
+    const result = await detectLicense({ skillDir, repoRoot });
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('license-file');
   });
 });
 
