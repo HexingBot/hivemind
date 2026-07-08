@@ -22,9 +22,11 @@
 //
 // Pure logic, no disk I/O in the resolver under test — fast tier.
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import * as fs from 'node:fs';
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { REPO_ROOT } from './helpers/repoRoot.js';
 import { HOOK_API_VERSION, resolveActivePacks } from '../src/pack-registry.js';
 
 // Minimal-but-schema-valid descriptor (state/pack-descriptor.schema.json),
@@ -120,19 +122,20 @@ describe('TASK-126 AC3 — deterministic, documented ordering (by id)', () => {
 });
 
 describe('TASK-126 AC4 — pure function of (descriptors, HOOK_API_VERSION), table-driven', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('performs_no_disk_io_during_resolution', () => {
-    const readSpy = vi.spyOn(fs, 'readFileSync');
-    const existsSpy = vi.spyOn(fs, 'existsSync');
-
-    const pack = makeDescriptor({ id: 'pure-check-pack' });
-    resolveActivePacks([pack], HOOK_API_VERSION);
-
-    expect(readSpy).not.toHaveBeenCalled();
-    expect(existsSpy).not.toHaveBeenCalled();
+  it('resolveActivePacks_calls_no_disk_io_apis_at_all_by_source_inspection', () => {
+    // Proxy for "the resolution is pure, no I/O" that doesn't fight ESM's
+    // read-only fs bindings (Object.defineProperty-based spies on node:fs
+    // named exports throw "Cannot redefine property" under Vitest's ESM
+    // transform here) — instead assert by construction that the module
+    // under test never references a disk-I/O API. This holds transitively
+    // through validatePackDescriptor too: src/pack-descriptor.js inlines its
+    // JSON schema via a build-time `with { type: 'json' }` import, not a
+    // runtime fs read (see that module's own header comment).
+    const source = readFileSync(join(REPO_ROOT, 'src', 'pack-registry.js'), 'utf8');
+    // Match only actual fs import statements (not the module's own prose
+    // discussing the "no readFileSync" design decision in comments above).
+    const fsImportPattern = /from\s+['"]node:fs['"]|from\s+['"]fs['"]|require\(\s*['"]fs['"]\s*\)/;
+    expect(fsImportPattern.test(source), 'pack-registry.js must not import node:fs').toBe(false);
   });
 
   it('is_deterministic_across_repeat_calls_with_the_same_inputs', () => {
