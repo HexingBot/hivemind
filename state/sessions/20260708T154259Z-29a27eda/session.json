@@ -1,19 +1,31 @@
 {
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
-  "lifecycle_state": "active",
-  "updated_at": "2026-07-08T18:49:28.605Z",
-  "active_task": "TASK-125",
-  "workflow_step": "review",
-  "next_action": "RESUME HERE (paused for a context flush at ~36%). TASK-125 (Phase E design-profile subsystem) Developer work is DONE and COMMITTED but NOT yet reviewed. Ticket status = in_review. NEXT STEP: spawn the reviewer subagent (fresh context, review_depth=FULL — new core tdd-tier logic module) on diff range f75ff94..HEAD, commits ff11dfd (test) + 9dbbff1 (impl); verify tdd two-commit + red-run, and that src/design-profile.js faithfully implements docs/design/design-profile-spec.md §1-§5 (6 worked examples, tier-gate-not-score, §5.1 step + §5.2 resource activation incl canvas exclusion, engine-driven when-ordering, deriveProfileFields comma-guard + round-trip, question-library.js untouched). On clean APPROVE: close_task TASK-125 (linked_commits ff11dfd,9dbbff1), add graph node task-125 + produced-by edge to decision-20260708-design-pack-foundations-first, update bundle. THEN Phase D (registration hook — open issue #4 API surface needs a design decision first) then Phase F (author design-power descriptor + runtime loader). Design-power resources: frontend-design/ui-ux-pro-max/shadcn-vue/gsap are skill/assimilate path (Wave 1); firecrawl/openart/playwright are MCP/plugin (Wave 2, declared-but-reported-only). Prior next_action below. --- Both design-pack safe foundations DONE (TASK-123 descriptor schema activate_when/install ext; TASK-124 perfil_proyecto/tier frontmatter) — each a clean full-depth APPROVE, no HIGH. AWAITING HUMAN DECISION: present the Phase E design investigation to the human for approval — the deliverable is docs/design/design-profile-spec.md (DRAFT): beauty×functionality axes 0-3, tier rule fHigh&&bHigh->COMPLETO / fHigh||bHigh->MEDIO / else LIGERO, a design_heavy gate + 10-question conditional interview, a pure scoreComplexity(answers) fn, step/resource activation predicates, and 8 open questions (notably #4 no canvas-motion resource, #5 playwright/web-UI predicate inferred). The repo-fit investigator corroborated: an 8-variable profile contract {tier, framework, ui_outside_canvas, motion_required, motion_layer, needs_research, assets, web_ui}, a step×tier matrix (LIGERO=impl+testing; MEDIO=+design-system+polish+reference; COMPLETO=all), and flagged tier can't be a when-gate (needs a post-scoring activation pass) + frontend_framework is web-saas-gated so framework is unset for canvas/other projects. From the approved spec, mint Phase E tickets (scoring fn; design-heavy intake + interview), the Phase D registration hook (open issue #4 hook-API surface needs a design decision first), and Phase F (author design-power descriptor + runtime loader). MCP/plugin resources stay Wave-2 (declared, reported-not-installed).",
-  "handoff_summary": "PAUSED for a context flush (~36%). Diseno Poderoso design pack: deps done (TASK-122 content-security gate, TASK-121 planner staged-vs-live); both safe foundations done (TASK-123 descriptor schema activate_when/install ext; TASK-124 perfil_proyecto/tier frontmatter) — all clean full-depth APPROVEs. Phase E spec docs/design/design-profile-spec.md was human-APPROVED as-is (beauty×functionality axes 0-3; tier rule fHigh&&bHigh->COMPLETO / fHigh||bHigh->MEDIO / else LIGERO; design_heavy gate + 10-Q interview; pure scoreComplexity; activation predicates). TASK-125 built src/design-profile.js (DESIGN_PROFILE_QUESTIONS + scoreComplexity + deriveProfileFields, pure, pack-owned, NO core intake patching — question-library.js untouched; live wizard injection deferred to Phase D hook; discharged the carried TASK-124 comma-guard LOW). Developer DONE + committed (ff11dfd test, 9dbbff1 impl; fast tier 802 passed/2 skipped; no dist rebuild — module not bundled yet). AWAITING the TASK-125 reviewer (see next_action). Remaining pack work after 125: Phase D registration hook (API surface = open issue #4, needs a design decision) then Phase F (design-power descriptor + runtime loader).",
+  "lifecycle_state": "paused",
+  "updated_at": "2026-07-09T03:52:55.151Z",
+  "active_task": null,
+  "workflow_step": "idle",
+  "next_action": "DEPLOYED. Diseño Poderoso design-power pack (TASK-125..133) shipped in plugin v0.13.0 and pushed to origin/main. This deploy session: promoted all 4 knowledge/proposed drafts to knowledge/entries/ + added 4 knowledge_entry graph nodes (learned-in edge to task-125); accepted the FP-2 product-data ratifications as documented in packs/design-power/README.md (gsap dropped, openart omitted, frontend-design pin kept provisional per human); bumped plugin.json + publish-config.spec.js to 0.13.0; added the ui-ux-pro-max MIT attribution to NOTICE.md; committed orchestrator state in 5 logical commits (release/knowledge/tasks/vendored-skill/session) and pushed. Release gate green at deploy (test:all 1575 passed/4 skipped, dist-parity clean). Open follow-ups (not blocking): Wave-2 mcp/plugin appliers (reconciler is skills-only), a provenance-consistency fix (lock integrity over staged copy vs source), and a runtime gate for the vendored skill Python scripts.",
+  "handoff_summary": "Design-power pack COMPLETE, CLOSED, and DEPLOYED in plugin v0.13.0 (pushed to origin/main). Full arc TASK-125..133 done; ui-ux-pro-max vendored + harness-loadable. At deploy the orchestrator curated knowledge (4 drafts promoted + graph-noded), ratified FP-2 product data, bumped both version locations, added MIT attribution, and pushed 5 logical commits. No pending curation. Idle/awaiting next goal.",
   "open_questions": [
     "Human to approve/adjust docs/design/design-profile-spec.md (esp. open Q#4 no canvas-motion resource, Q#5 playwright/web-UI predicate inferred, 1:1 axis weighting, uncalibrated tier thresholds).",
-    "Phase D registration-hook API surface is an open design question (addon-packs.md open issue #4) — needs a design decision before building the hook.",
-    "frontend_framework is web-saas-gated so `framework` is unset for canvas/other design projects — Phase E must add a design-interview framework question or relax that gate."
+    "Phase F: resource pins/origins for frontend-design/ui-ux-pro-max/shadcn-vue/gsap/firecrawl/openart/playwright — external facts needing a human decision before the production design-power descriptor can be authored (uat-only per §7).",
+    "Phase F: the on-disk pack discovery convention (where a project's active descriptors+modules live, wired into loadActivePacks' params) was explicitly deferred by TASK-128 and must be decided.",
+    "frontend_framework is web-saas-gated so `framework` is unset for canvas/other design projects — a design-interview framework question or a relaxed gate is still open (Phase E carryover).",
+    "Assimilate path (frontend-design/ui-ux-pro-max/shadcn-vue/gsap as skills) requires explicit per-skill human sign-off via src/assimilate.js — not liftable by any loop switch; the human must be in the loop for each adoption."
   ],
   "blockers": [],
   "decisions": [
+    {
+      "at": "2026-07-09T00:20:00.000Z",
+      "decision": "Phase F scope (design-power pack usable end-to-end): discovery = Option C (design-power ships as an always-loaded first-party candidate; its one unconditional design_heavy gate question self-gates everything else). Product-data calls: DROP gsap from resources[] (kind enum is skill|mcp|plugin; gsap is a plain npm lib -> added as a project dep by the impl pipeline step, not a Claude resource); OMIT openart (no trustworthy pin exists; schema requires pin minLength 1 -> not fabricated; documented as manual OAuth connect); KEEP frontend-design as a Wave-2 plugin resource (TUI-install-only, not acted on by the reconciler) with an honestly-marked pin for human ratification. Researched pins used verbatim for the acted-upon resources: ui-ux-pro-max sha 12b486b..., shadcn/ui 4.13.0, shadcn-vue 2.7.4, firecrawl 3.22.3, playwright 0.0.77. Decomposed into TASK-129 (FP-1 bundle+wire, tdd), TASK-130 (FP-2 descriptor, uat-only), TASK-131 (FP-3 desired-set resolver, tdd), TASK-132 (FP-4 reconcile orchestrator, tdd), TASK-133 (FP-5 assimilate adopt ui-ux-pro-max, uat-only, HUMAN-GATED). FP-1..4 buildable autonomously under the unattended preset; FP-5 hits the unliftable assimilate approve gate and stops for human sign-off. Graph: decision-20260708-phase-f-scope-pins-discovery; each FP task edges produced-by it at close.",
+      "rationale": "Phase F investigator memo (read-only research + repo map). Reconciler is skills-only today (mcp/plugin are declared-not-acted-on Wave-2), so end-to-end for Phase F = profiling + the one skill resource (ui-ux-pro-max) reconciled, with mcp resources honestly reported not installed. Option C is minimal + fully tdd-testable and honors the spec's unconditional-gate-question design. gsap/openart/frontend-design decisions avoid fabricating external facts the schema would otherwise force. The assimilate approve gate (decision-20260708-license-not-safety-content-review-gate) is architecturally unliftable, so FP-5 is the single hard human stop; the Orchestrator may still assemble the approval package (fetch+scan+security-reviewer verdict) autonomously before surfacing."
+    },
+    {
+      "at": "2026-07-08T21:35:00.000Z",
+      "decision": "Phase D pack registration hook (addon-packs.md open issue #4) adopts Option C (hybrid): the pack DESCRIPTOR is the declarative allowlist (project_md_contribution, core_compat, gate_scopes) and a thin pack MODULE supplies named PURE exports (questions, deriveProjectMd) that core invokes only for declared surfaces, asserting derived keys ⊆ project_md_contribution. Scope is MINIMAL — intake questions + PROJECT.md block only; pipeline-step and gate-scope injection deferred to loop integration. Decomposed into tdd tickets TASK-126/127/128. Graph: decision-20260708-phase-d-hybrid-hook-minimal-scope; each Phase D task edges produced-by it at close.",
+      "rationale": "Investigation grounded in the real intake path (runWizardAndWriteProjectMd bin/init.js:478) found two ~30-line-apart seams in one file. Option A (pure declarative) can't carry Phase E's function `when`/`validate` predicates or scoreComplexity without inventing a DSL that would rewrite src/design-profile.js; Option B (function registry) discards the descriptor allowlist that makes isolation statically checkable. Option C consumes Phase E's named pure exports unchanged and matches the codebase's existing descriptor-vs-module split. Pipeline steps have no consumer in the init path and gate_scopes need a runtime allowlist-merge over the frozen LOOP_AUTH_SWITCHES — neither is needed to write a profile to PROJECT.md, so both are deferred."
+    },
     {
       "at": "2026-07-08T19:30:00.000Z",
       "decision": "License is decision-support only, not a safety gate: every third-party skill needs a mandatory, license-independent content security review (automated scan + security-reviewer verdict) and NO auto-adopt without explicit human sign-off (TASK-122). Graph: task-122 produced-by decision-20260708-license-not-safety-content-review-gate.",
@@ -21,6 +33,30 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T21:58:00.000Z",
+      "summary": "TASK-128 APPROVE (FULL; core intake bin/init.js + dist). Wired both seams via new src/pack-loader.js (descriptor<->module by id, default empty=no-op). AC1 fixture pack binds REAL Phase E exports, tier+perfil_proyecto round-trip; AC2 non-vacuous byte-identical off-by-default lock; AC3 exactly 1 source deletion (seam-1 line) + additive threading, question-library.js byte-unchanged; AC4 only dist/init.cjs changed, dist-parity green. SCRUTINIZED middle test-commit 29ff36c (expected-value change = laundering shape): adjudicated LEGITIMATE — reproduced RED at impl parent, traced question-engine coercion (number->Number, multi->string[]), corrected expected matches SPEC not impl. test:all 1538 passed/4 skip. 0 HIGH/0 MED/2 LOW. Production descriptor + discovery convention correctly deferred to Phase F. Closed.",
+      "task": "TASK-128"
+    },
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T21:32:00.000Z",
+      "summary": "TASK-127 APPROVE (FULL). src/pack-hooks.js: collectPackQuestions appends after core with pack-attributed id-collision guard (earlier than engine dup-throw); applyProjectMdContributions asserts derived keys ⊆ descriptor.project_md_contribution BEFORE merge (all-or-nothing, load-bearing isolation invariant), non-vacuous via rogue-pack stub; zero-pack no-ops; pure + exercised against REAL DESIGN_PROFILE_QUESTIONS/deriveProfileFields. ActivePack {descriptor,module} adapter binds Option C allowlist to code. tdd two-commit + red-run verified. Gate 14 passed / 829 fast tier. 0 HIGH/0 MED/1 LOW. Closed.",
+      "task": "TASK-127"
+    },
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T21:00:00.000Z",
+      "summary": "TASK-126 APPROVE (FULL). src/pack-registry.js: HOOK_API_VERSION=1.0.0 + pure resolver admitting a pack IFF core_compat satisfied, excluding LOUDLY via skip-report {pack_id,reason}; validatePackDescriptor before admission; deterministic id-order; empty->zero-pack path. Internal semver comparator correct across in-use forms and FAILS CLOSED on malformed ranges (no silent admit) — no HIGH. Skip-report consistent with pack-apply precedent. tdd two-commit + red-run verified. Gate 13 passed / 815 fast tier. 0 HIGH/0 MED/2 LOW. Closed.",
+      "task": "TASK-126"
+    },
+    {
+      "agent": "reviewer",
+      "at": "2026-07-08T21:05:00.000Z",
+      "summary": "TASK-125 APPROVE (FULL depth; inputs ~1008 changed lines + new core tdd-tier logic surface). Verified spec fidelity in-code vs docs/design/design-profile-spec.md §1-§5/§8: all 6 worked examples reproduce (incl design_heavy=no short-circuit + 6a/6b tie-break); tier gate is fHigh&&bHigh/fHigh||bHigh/else, score=F+B descriptive-only (static-source guard test non-vacuous); §5.1 step + §5.2/§8 resource activation incl §8.1 canvas exclusion; DESIGN_PROFILE_QUESTIONS passes runQuestionnaire validation with forward-only when; deriveProfileFields comma/brace guard throws (discharges TASK-124 LOW); round-trip preserves tier+perfil_proyecto; question-library.js byte-unchanged. tdd two-commit verified (ff11dfd<9dbbff1), red-run reproduced independently. Gate: test:since -- f75ff94 = 565 passed/1 skip; npm test = 802 passed/2 skip. Findings: 1 HIGH (calibration source_tier missing on task file — Orchestrator fixed with source_tier: T2, no code loop-back), 0 MEDIUM, 1 LOW (benign test overlap). CLOSED.",
+      "task": "TASK-125"
+    },
     {
       "agent": "developer",
       "at": "2026-07-08T21:20:00.000Z",
@@ -70,5 +106,14 @@
       "task": "TASK-117"
     }
   ],
-  "pending_human_confirmation": null
+  "pending_human_confirmation": null,
+  "mode": "harness",
+  "loop_auth": {
+    "auto_close_on_green_review": true,
+    "uat_delegated_to_orchestrator": true,
+    "auto_consolidate": true,
+    "auto_push_after_close": false,
+    "auto_version_bump_on_milestone": false
+  },
+  "loop_state": null
 }
