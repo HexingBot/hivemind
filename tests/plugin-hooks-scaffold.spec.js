@@ -1,5 +1,12 @@
 // tests/plugin-hooks-scaffold.spec.js
 // TASK-009 — Plugin-level SessionStart re-pin hook registration.
+// TASK-138 — updated to the canonical nested hook schema (matcher + nested
+// "hooks" array of {type, command}), matching the Claude Code plugin hook
+// format documented at https://code.claude.com/docs/en/plugins.md
+// ('Migrate hooks'). The previous version of this spec asserted the old
+// flat shape (SessionStart entries carrying type/command directly), which
+// is the exact shape that caused the "Hook load failed: expected record,
+// received undefined at path [\"hooks\"]" bug — see TASK-138.
 //
 // The plugin must ship a hooks/hooks.json that registers a SessionStart hook
 // running `node ${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs`.
@@ -7,7 +14,8 @@
 //
 // AC map (TASK-009 AC1 — plugin hook registration):
 //   - hooks/hooks.json must exist at the plugin root.
-//   - It must declare a SessionStart hook with a command referencing repin.mjs.
+//   - It must declare a top-level "hooks" object with a SessionStart hook
+//     whose nested hooks[] contains a command referencing repin.mjs.
 //   - The command must use ${CLAUDE_PLUGIN_ROOT} (not a baked absolute path).
 //   - If plugin.json has a "hooks" reference, it must point to hooks/hooks.json.
 
@@ -19,6 +27,22 @@ import { REPO_ROOT } from './helpers/repoRoot.js';
 
 const HOOKS_JSON_PATH = join(REPO_ROOT, 'hooks', 'hooks.json');
 const PLUGIN_JSON_PATH = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
+
+// Locate the repin.mjs command entry inside the canonical nested schema:
+// { hooks: { SessionStart: [ { matcher, hooks: [ {type, command} ] } ] } }
+function findRepinCommandEntry(fileJson) {
+  const sessionStartHooks = fileJson?.hooks?.SessionStart;
+  if (!Array.isArray(sessionStartHooks)) return { sessionStartHooks, repinHook: undefined };
+  for (const entry of sessionStartHooks) {
+    const nested = entry?.hooks;
+    if (!Array.isArray(nested)) continue;
+    const found = nested.find(
+      (h) => h && typeof h.command === 'string' && h.command.includes('repin.mjs'),
+    );
+    if (found) return { sessionStartHooks, repinHook: found, matcher: entry.matcher };
+  }
+  return { sessionStartHooks, repinHook: undefined, matcher: undefined };
+}
 
 // ---------------------------------------------------------------------------
 // hooks/hooks.json must exist and be valid JSON
@@ -38,44 +62,40 @@ describe('hooks/hooks.json existence and structure', () => {
     expect(() => JSON.parse(raw), 'hooks/hooks.json must be valid JSON').not.toThrow();
   });
 
-  it('hooks/hooks.json must declare at least one SessionStart hook', () => {
+  it('hooks/hooks.json must declare a top-level "hooks" object with at least one SessionStart hook', () => {
     expect(existsSync(HOOKS_JSON_PATH)).toBe(true);
-    const hooks = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
-    const sessionStartHooks = hooks.SessionStart;
+    const fileJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
+    expect(
+      fileJson.hooks && typeof fileJson.hooks === 'object' && !Array.isArray(fileJson.hooks),
+      'hooks/hooks.json must have a top-level "hooks" object (record)',
+    ).toBe(true);
+
+    const sessionStartHooks = fileJson.hooks.SessionStart;
     expect(
       Array.isArray(sessionStartHooks),
-      'hooks.json must have a SessionStart array',
+      'hooks.hooks.SessionStart must be an array',
     ).toBe(true);
     expect(
       sessionStartHooks.length,
-      'hooks.json must have at least one SessionStart entry',
+      'hooks.hooks.SessionStart must have at least one entry',
     ).toBeGreaterThan(0);
   });
 
   it('the SessionStart hook command must reference repin.mjs', () => {
     expect(existsSync(HOOKS_JSON_PATH)).toBe(true);
-    const hooks = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
-    const sessionStartHooks = hooks.SessionStart;
+    const fileJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
+    const { sessionStartHooks, repinHook } = findRepinCommandEntry(fileJson);
     expect(Array.isArray(sessionStartHooks)).toBe(true);
-
-    const repinHook = sessionStartHooks.find(
-      (h) => h && typeof h.command === 'string' && h.command.includes('repin.mjs'),
-    );
     expect(
       repinHook,
-      'SessionStart must include a hook command referencing repin.mjs',
+      'SessionStart must include a nested hook command referencing repin.mjs',
     ).toBeDefined();
   });
 
   it('the repin hook command must use ${CLAUDE_PLUGIN_ROOT} (not a baked absolute path)', () => {
     expect(existsSync(HOOKS_JSON_PATH)).toBe(true);
-    const hooks = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
-    const sessionStartHooks = hooks.SessionStart;
-    expect(Array.isArray(sessionStartHooks)).toBe(true);
-
-    const repinHook = sessionStartHooks.find(
-      (h) => h && typeof h.command === 'string' && h.command.includes('repin.mjs'),
-    );
+    const fileJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
+    const { repinHook } = findRepinCommandEntry(fileJson);
     expect(repinHook).toBeDefined();
 
     // Must use ${CLAUDE_PLUGIN_ROOT} — the variable IS expanded in plugin-level hooks.json.
@@ -98,27 +118,21 @@ describe('hooks/hooks.json existence and structure', () => {
 
   it('the SessionStart repin hook must have a broad matcher (startup|resume|clear|compact)', () => {
     expect(existsSync(HOOKS_JSON_PATH)).toBe(true);
-    const hooks = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
-    const sessionStartHooks = hooks.SessionStart;
-    expect(Array.isArray(sessionStartHooks)).toBe(true);
-
-    const repinHook = sessionStartHooks.find(
-      (h) => h && typeof h.command === 'string' && h.command.includes('repin.mjs'),
-    );
+    const fileJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf8'));
+    const { repinHook, matcher } = findRepinCommandEntry(fileJson);
     expect(repinHook).toBeDefined();
 
     // The matcher must cover at least session startup (startup or startup|resume).
     // A missing matcher means "fires on all events" which is also acceptable.
-    if (repinHook.matcher !== undefined) {
+    if (matcher !== undefined) {
       // If matcher is set, it should cover at least startup events.
       // We accept any matcher string that includes 'startup' or covers broadly.
       // This is a soft assertion: either no matcher (fires always) or one that
       // includes startup/resume coverage.
-      const m = repinHook.matcher;
-      const coversStartup = m.includes('startup') || m.includes('resume') || m === '';
+      const coversStartup = matcher.includes('startup') || matcher.includes('resume') || matcher === '';
       expect(
         coversStartup,
-        `matcher "${m}" should cover startup/resume events for a re-pin hook`,
+        `matcher "${matcher}" should cover startup/resume events for a re-pin hook`,
       ).toBe(true);
     }
   });
