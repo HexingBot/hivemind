@@ -15,7 +15,12 @@
 // AC2 — with NO active packs, writeProjectMd output is byte-identical to the
 //        pre-hook shape (additive, off-by-default) — a deep-equal-of-
 //        frontmatter regression lock, plus a byte-identical PROJECT.md
-//        comparison between "params omitted" and "params explicitly empty".
+//        comparison between two explicit-opt-out runs. TASK-129 changed what
+//        "params omitted" means (bin/init.js now defaults to the built-in
+//        design-power pack, src/builtin-packs.js) — that default-loaded
+//        behavior is covered by tests/e2e/init-builtin-design-power.spec.js;
+//        the zero-packs case here now requires an EXPLICIT
+//        packDescriptors:[]/packModules:{} override.
 // AC3 — the two seams call ONLY the TASK-127 collectors: proven functionally
 //        by asserting the exact pack-attributed error strings from
 //        src/pack-hooks.js surface through runInit (a parallel/duplicated
@@ -33,6 +38,13 @@ import { PROD } from '../helpers/fixtures.js';
 import { REPO_ROOT } from '../helpers/repoRoot.js';
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
 import { makeScriptedPrompter, webSaasAnswers } from '../helpers/scripted-prompter.js';
+// TASK-129 — the pack-question prompt signatures + scripted answers moved to
+// a shared helper (tests/helpers/design-power-prompter.js) once
+// tests/e2e/init-builtin-design-power.spec.js needed the same fixtures for
+// the built-in (always-loaded) default pack path.
+import {
+  makePackAwarePrompter, PACK_ANSWERS, PACK_ANSWERS_COERCED,
+} from '../helpers/design-power-prompter.js';
 
 afterAll(cleanupAll);
 
@@ -64,76 +76,6 @@ const FIXTURE_DESCRIPTOR = {
   gate_scopes: [],
   pipeline: [],
 };
-
-// Distinctive substrings from src/design-profile.js's DESIGN_PROFILE_QUESTIONS
-// prompts (kept in sync manually, mirroring tests/helpers/scripted-prompter.js's
-// own PROMPT_SIGNATURES convention).
-const PACK_PROMPT_SIGNATURES = {
-  design_heavy: 'visual, human-facing interface',
-  estimated_screens: 'distinct user-facing screens',
-  stakes: 'deployment reality',
-  design_ambition: 'visual bar does this need to hit',
-  ui_framework: 'Which framework renders the UI',
-  has_canvas_render: 'canvas/game-engine surface',
-  ui_outside_canvas: 'DOM UI (HUD, menus',
-  motion_required: 'real animation/motion work',
-  motion_layer: 'Where does that motion primarily live',
-  needs_research: 'competitive/visual reference research',
-  assets_required: 'custom visual assets',
-};
-
-// A design_heavy='yes' answer set that exercises the motion_layer branch but
-// NOT ui_outside_canvas (has_canvas_render='no' skips it) — proves the
-// forward-only `when` gating survives injection after core questions.
-const PACK_ANSWERS = {
-  design_heavy: 'yes',
-  estimated_screens: '10',
-  stakes: 'real',
-  design_ambition: 'branded',
-  ui_framework: 'react',
-  has_canvas_render: 'no',
-  motion_required: 'yes',
-  motion_layer: 'dom',
-  needs_research: 'need-research',
-  assets_required: 'icons-custom, illustrations',
-};
-
-// runQuestionnaire coerces raw prompter strings per the question's declared
-// `type` (src/question-engine.js#validateAndCoerce) before answers ever reach
-// a pack's deriveProjectMd — 'number' becomes a real Number, 'multi' becomes
-// a trimmed string[]. Mirror that coercion here so the "expected" value we
-// compute directly from PACK_ANSWERS matches what the live wizard actually
-// hands deriveProfileFields, rather than the raw scripted strings.
-const PACK_ANSWERS_COERCED = {
-  ...PACK_ANSWERS,
-  estimated_screens: Number(PACK_ANSWERS.estimated_screens),
-  assets_required: PACK_ANSWERS.assets_required.split(',').map((s) => s.trim()),
-};
-
-function resolvePackId(promptText) {
-  for (const [id, fragment] of Object.entries(PACK_PROMPT_SIGNATURES)) {
-    if (promptText.includes(fragment)) return id;
-  }
-  return null;
-}
-
-function makePackAwarePrompter(coreAnswers) {
-  const core = makeScriptedPrompter(coreAnswers);
-  const askedPackIds = [];
-  const prompter = async (ctx) => {
-    const packId = resolvePackId(ctx.prompt);
-    if (packId !== null) {
-      askedPackIds.push(packId);
-      if (!Object.prototype.hasOwnProperty.call(PACK_ANSWERS, packId)) {
-        throw new Error(`init-pack-hook.spec.js: no scripted pack answer for "${packId}"`);
-      }
-      return PACK_ANSWERS[packId];
-    }
-    return core(ctx);
-  };
-  prompter.askedPackIds = () => askedPackIds;
-  return prompter;
-}
 
 // ===========================================================================
 // AC1 — active fixture pack drives real Phase-E scoring end-to-end.
@@ -188,9 +130,19 @@ describe('AC1 — active fixture pack: questions asked, fields round-trip', () =
 
 // ===========================================================================
 // AC2 — zero active packs: additive, off-by-default.
+//
+// TASK-129 note: prior to TASK-129, OMITTING packDescriptors/packModules was
+// itself the zero-active-packs case (bin/init.js's own defaults were [] / {}).
+// TASK-129 changed bin/init.js's defaults to the built-in design-power
+// candidate (src/builtin-packs.js) — see
+// tests/e2e/init-builtin-design-power.spec.js for that new default-loaded
+// behavior end-to-end. The zero-active-packs case below is now reached only
+// via an EXPLICIT packDescriptors:[]/packModules:{} override, which still
+// fully opts out (including the built-in pack) and remains
+// additive/off-by-default exactly as before.
 // ===========================================================================
-describe('AC2 — zero active packs: additive, off-by-default', () => {
-  it('no_active_packs_produces_no_pack_fields_or_prompts', async () => {
+describe('AC2 — zero active packs (explicit opt-out): additive, off-by-default', () => {
+  it('explicit_empty_pack_params_produce_no_pack_fields_or_prompts', async () => {
     const { runInit } = await import(PROD.init);
     const { readProjectMd } = await import(PROD.projectMd);
 
@@ -199,12 +151,15 @@ describe('AC2 — zero active packs: additive, off-by-default', () => {
       project_name: 'no-pack-project',
     }));
 
-    // No packDescriptors/packModules supplied at all — the default (no-op) path.
+    // Explicit opt-out — TASK-129 made "omitted" default to the built-in
+    // design-power pack, so a true zero-pack run now needs [] / {} explicitly.
     const result = await runInit({
       argv: [],
       prompter,
       repoRoot: repoDir,
       now: () => FIXED_NOW,
+      packDescriptors: [],
+      packModules: {},
     });
 
     expect(result.state).toBe('created');
@@ -222,7 +177,7 @@ describe('AC2 — zero active packs: additive, off-by-default', () => {
     );
   });
 
-  it('explicit_empty_pack_params_is_byte_identical_to_omitting_them', async () => {
+  it('two_explicit_opt_out_runs_with_identical_answers_are_byte_identical', async () => {
     const { runInit } = await import(PROD.init);
 
     const repoA = makeTmpDir('af-init-pack-explicit-empty-a');
@@ -242,6 +197,8 @@ describe('AC2 — zero active packs: additive, off-by-default', () => {
       prompter: makeScriptedPrompter(webSaasAnswers(answersOverride)),
       repoRoot: repoB,
       now: () => FIXED_NOW,
+      packDescriptors: [],
+      packModules: {},
     });
 
     expect(resultA.state).toBe('created');

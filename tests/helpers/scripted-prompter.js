@@ -45,6 +45,13 @@ const PROMPT_SIGNATURES = {
   package_manager: 'Which package registry',
   // TASK-036 — optional per-agent model overrides
   agent_models: 'Per-agent model overrides',
+  // TASK-129 — design-power is now an ALWAYS-LOADED first-party pack
+  // candidate (src/builtin-packs.js): its design_heavy gate question is
+  // injected into every interactive init by default. Tests that don't care
+  // about the design-profile pack get a safe default answer ('no') via
+  // DEFAULT_ANSWERS_WHEN_MISSING below instead of throwing — see that map's
+  // comment for why this can't just be KNOWN_OPTIONAL_IDS treatment.
+  design_heavy: 'visual, human-facing interface',
 };
 
 // Question ids declared `required: false` in src/question-library.js, plus
@@ -76,6 +83,19 @@ const KNOWN_OPTIONAL_IDS = new Set([
   '__confirm__',
 ]);
 
+// TASK-129 — ids with a real (non-empty) DEFAULT answer to fall back to when
+// no scripted answer is supplied, distinct from KNOWN_OPTIONAL_IDS above
+// (which return '' — a true skip). design_heavy is a REQUIRED question (enum,
+// no `required: false`), so an empty '' answer would fail validation and hang
+// the engine's re-prompt `while(true)` loop; 'no' is both a valid enum value
+// and the value that reproduces pre-TASK-129 behavior (the design-power pack
+// derives NO tier/perfil_proyecto fields for design_heavy !== 'yes' — see
+// src/builtin-packs.js's deriveProjectMdGated), so every existing
+// scripted-prompter-driven test keeps passing unchanged.
+const DEFAULT_ANSWERS_WHEN_MISSING = {
+  design_heavy: 'no',
+};
+
 /**
  * Build a scripted prompter from a {questionId: answerString} map.
  *
@@ -101,6 +121,9 @@ export function makeScriptedPrompter(answers) {
       if (KNOWN_OPTIONAL_IDS.has(id)) {
         // Optional question with no scripted answer → empty input = skip.
         return '';
+      }
+      if (Object.prototype.hasOwnProperty.call(DEFAULT_ANSWERS_WHEN_MISSING, id)) {
+        return DEFAULT_ANSWERS_WHEN_MISSING[id];
       }
       throw new Error(
         `scripted-prompter: no scripted answer for question id "${id}" (prompt: ${JSON.stringify(ctx.prompt)})`,
