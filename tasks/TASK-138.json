@@ -1,0 +1,39 @@
+{
+  "key": "TASK-138",
+  "title": "Fix malformed plugin hooks/hooks.json (Hook load failed at path [hooks]) + regression sensor",
+  "description": "BUG (crucial, user-blocking): the shipped plugin's hooks/hooks.json fails Claude Code hook validation at load with `Error: Hook load failed: expected record, received undefined at path [\\\"hooks\\\"]`. The file has TWO format defects vs the canonical Claude Code plugin hook schema (authoritative source: https://code.claude.com/docs/en/plugins.md, 'Migrate hooks' section): (1) missing the top-level `\\\"hooks\\\": { ... }` wrapper key (hence the error at path [hooks]); (2) the `type`/`command` are flattened as siblings of `matcher` instead of being nested inside a `\\\"hooks\\\": [ ... ]` array. This shipped undetected because NO sensor validates hooks/hooks.json structure. The file is not bundled into dist (ships as-is), so no rebuild is needed. matcher `startup|resume|clear|compact` is valid for SessionStart and must be preserved. This is a patch release (0.14.0 -> 0.14.1).\\n\\nCorrected file content (write verbatim):\\n{\\n  \\\"hooks\\\": {\\n    \\\"SessionStart\\\": [\\n      { \\\"matcher\\\": \\\"startup|resume|clear|compact\\\",\\n        \\\"hooks\\\": [ { \\\"type\\\": \\\"command\\\", \\\"command\\\": \\\"node \\\\\\\"${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs\\\\\\\"\\\" } ] }\\n    ]\\n  }\\n}",
+  "acceptance_criteria": [
+    "hooks/hooks.json has a top-level `hooks` object key wrapping the event map (fixes the `at path [\"hooks\"]` undefined error).",
+    "The SessionStart entry has `matcher` as a sibling of a nested `hooks` array; the `{type:'command', command:'node \"${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs\"'}` object lives INSIDE that nested `hooks` array (not flattened).",
+    "The command string and the matcher `startup|resume|clear|compact` are preserved byte-for-byte from the original (only the structure changes).",
+    "A regression sensor (e.g. tests/plugin-hooks-format.spec.js) parses hooks/hooks.json and asserts: top-level `hooks` is an object; each event value is an array; each entry has a `hooks` array of `{type, command}` objects; and NO entry carries a flat top-level `command`/`type` sibling of `matcher`. The sensor must be non-vacuous (fail against the old flat shape).",
+    "npm run test:all is green including the new sensor; hooks/hooks.json is valid JSON."
+  ],
+  "status": "done",
+  "priority": "critical",
+  "labels": [
+    "bug",
+    "plugin",
+    "hooks",
+    "crucial"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "bbf2bef"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "reviewer",
+      "at": "2026-07-09T14:06:07.387Z",
+      "body": "APPROVE (FULL depth; clean first pass). Review depth = FULL; rubric inputs: CRITICAL user-blocking bug in shipped plugin config (hooks/hooks.json) fixed against an authoritative external schema, plus a MODIFIED existing sensor (laundering risk) + a new regression sensor. tests-after tier appropriate (config/data file + regression locks; ACs machine-verifiable so no UAT).\n\nRoot cause: hooks/hooks.json failed Claude Code hook validation (expected record, received undefined at path [hooks]) with two format defects vs the canonical schema (code.claude.com/docs/en/plugins.md 'Migrate hooks'): missing top-level `hooks` wrapper + type/command flattened as siblings of matcher instead of nested in a `hooks: []` array. It shipped undetected because tests/plugin-hooks-scaffold.spec.js (TASK-009) had ENCODED THE WRONG (flat) shape — the sensor locked in the bug.\n\nVerified: (1) corrected hooks/hooks.json is an EXACT canonical match (top-level hooks object -> SessionStart array -> entry with matcher sibling of a nested hooks array holding {type:'command', command:'node \"${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs\"'}); diffed vs git show 68c67d0:hooks/hooks.json — command + matcher preserved byte-for-byte, only structure changed. (2) The scaffold-sensor rewrite is a LEGITIMATE correction not laundering — it now navigates hooks.SessionStart[].hooks[] faithful to the schema, preserves all 7 original tests' intent, and is non-vacuous (against the old flat file fileJson.hooks is undefined so the repin assertion fails). (3) New tests/plugin-hooks-format.spec.js is non-vacuous — dedicated negative tests run the validator against OLD_FLAT_SHAPE + a wrapped-but-flat variant asserting specific violation messages. (4) No over-reach — only 3 files changed; no dist rebuild (hooks.json not bundled; dist-parity green over 8 bundles).\n\nGate green: test:since -- 68c67d0 = 15 passed/2 files; npm test = 900 passed/2 skip; plugin-deps e2e 26; dist-parity 2. npm run test:all = 1640 passed/4 skipped.\n\nFindings: 0 HIGH, 0 MEDIUM, 1 LOW (benign structural overlap between the two hooks specs — justified, both encode real regressions). Knowledge capture (TASK-105): not triggered by the rule (clean first-pass, no HIGH, no RC), but the orchestrator is capturing the wrong-format-sensor lesson separately given its value. Closed — ships in patch 0.14.1."
+    }
+  ],
+  "created_at": "2026-07-09T13:59:12.163Z",
+  "updated_at": "2026-07-09T14:06:07.387Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

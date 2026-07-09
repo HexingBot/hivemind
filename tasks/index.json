@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-09T05:07:04.513Z",
+  "generated_at": "2026-07-09T14:06:07.387Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -810,6 +810,12 @@
       "title": "Wire the design-power addon-install flow + orchestrator-routing pointer",
       "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-138",
+      "title": "Fix malformed plugin hooks/hooks.json (Hook load failed at path [hooks]) + regression sensor",
+      "status": "done",
+      "priority": "critical"
     }
   ]
 }
