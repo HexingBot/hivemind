@@ -42,7 +42,7 @@ tags:
 projects:
   - hivemind
 created_at: '2026-06-15T19:00:00Z'
-last_seen_at: '2026-07-08T19:58:59.983Z'
+last_seen_at: '2026-07-09T00:10:52.964Z'
 source_urls:
   - 'https://code.claude.com/docs/en/headless'
   - 'https://code.claude.com/docs/en/cli-reference'

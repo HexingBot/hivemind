@@ -140,16 +140,52 @@
       "label": "License is decision-support only, not a safety gate: every third-party skill needs a mandatory license-independent content security review (scan + reviewer) and NO auto-adopt without explicit human sign-off (locked in TASK-120 UAT)"
     },
     {
+      "id": "decision-20260708-phase-d-hybrid-hook-minimal-scope",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Phase D pack registration hook = Option C (hybrid: descriptor allowlist + pack-module pure exports), scoped minimally to intake questions + PROJECT.md block; pipeline-step + gate-scope injection deferred to loop integration"
+    },
+    {
+      "id": "decision-20260708-phase-f-scope-pins-discovery",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Phase F scope: discovery Option C (design-power always-loaded first-party candidate); drop gsap (kind mismatch) + omit openart (no pin) from resources; frontend-design kept as Wave-2 plugin; researched pins for ui-ux-pro-max/shadcn/shadcn-vue/firecrawl/playwright; FP-1..4 autonomous, FP-5 (assimilate adopt) human-gated"
+    },
+    {
       "id": "ke-claude-headless-bridge",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
       "label": "Headless claude stream-json bridge: persistent session mechanics + subscription auth"
     },
     {
+      "id": "ke-cross-reference-validators-exclude-self",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/cross-reference-validators-must-exclude-self.md",
+      "label": "Cross-reference validators must exclude self + enforce id uniqueness"
+    },
+    {
+      "id": "ke-license-not-safety-gate",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/license-is-not-a-safety-gate-for-third-party-adoption.md",
+      "label": "License is a legal signal, not a safety gate for third-party adoption"
+    },
+    {
+      "id": "ke-reconcile-removal-needs-desired",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/reconcile-removal-needs-desired-not-just-ownership.md",
+      "label": "Reconciler removal needs not-desired AND unowned AND safe (conjunction)"
+    },
+    {
       "id": "ke-session-audit-logs-gitignore",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/session-audit-logs-vs-wildcard-gitignore.md",
       "label": "Session audit logs vs wildcard gitignore"
+    },
+    {
+      "id": "ke-set-source-tier-at-creation",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/set-source-tier-at-task-creation-not-review.md",
+      "label": "Set source_tier at task creation, not at review"
     },
     {
       "id": "ke-teammate-envelope-misattribution",
@@ -588,12 +624,71 @@
       "type": "task",
       "ref": "tasks/TASK-124.json",
       "label": "PROJECT.md perfil_proyecto + tier frontmatter (design profile fields)"
+    },
+    {
+      "id": "task-125",
+      "type": "task",
+      "ref": "tasks/TASK-125.json",
+      "label": "Design-profile subsystem: scoreComplexity + interview + deriveProfileFields (Phase E)"
+    },
+    {
+      "id": "task-126",
+      "type": "task",
+      "ref": "tasks/TASK-126.json",
+      "label": "Pack registry: load + validate active packs, resolve core_compat (Phase D-1)"
+    },
+    {
+      "id": "task-127",
+      "type": "task",
+      "ref": "tasks/TASK-127.json",
+      "label": "Pack hooks: question + PROJECT.md-field collectors with isolation assert (Phase D-2)"
+    },
+    {
+      "id": "task-128",
+      "type": "task",
+      "ref": "tasks/TASK-128.json",
+      "label": "Wire pack registration hook into the intake wizard (Phase D-3)"
+    },
+    {
+      "id": "task-129",
+      "type": "task",
+      "ref": "tasks/TASK-129.json",
+      "label": "Bundle design-power as a first-party active-pack candidate + wire into bin/init.js (Phase F-1)"
+    },
+    {
+      "id": "task-130",
+      "type": "task",
+      "ref": "tasks/TASK-130.json",
+      "label": "Author the production design-power pack descriptor (Phase F-2)"
+    },
+    {
+      "id": "task-131",
+      "type": "task",
+      "ref": "tasks/TASK-131.json",
+      "label": "Desired-set resolver: intersect descriptor resources with scored profile activations (Phase F-3)"
+    },
+    {
+      "id": "task-132",
+      "type": "task",
+      "ref": "tasks/TASK-132.json",
+      "label": "Reconcile orchestrator: compose probe -> plan -> apply for design-power skills (Phase F-4)"
+    },
+    {
+      "id": "task-133",
+      "type": "task",
+      "ref": "tasks/TASK-133.json",
+      "label": "Adopt ui-ux-pro-max via the assimilate human-approve gate (Phase F-5)"
     }
   ],
   "edges": [
     {
       "from": "ke-claude-headless-bridge",
       "to": "task-050",
+      "relation": "learned-in"
+    },
+    {
+      "from": "ke-set-source-tier-at-creation",
+      "to": "task-125",
       "relation": "learned-in"
     },
     {
@@ -969,6 +1064,56 @@
     {
       "from": "task-124",
       "to": "decision-20260708-design-pack-foundations-first",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-125",
+      "to": "decision-20260708-design-pack-foundations-first",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-126",
+      "to": "decision-20260708-phase-d-hybrid-hook-minimal-scope",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-127",
+      "to": "decision-20260708-phase-d-hybrid-hook-minimal-scope",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-128",
+      "to": "decision-20260708-phase-d-hybrid-hook-minimal-scope",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-129",
+      "to": "decision-20260708-phase-f-scope-pins-discovery",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-130",
+      "to": "decision-20260708-phase-f-scope-pins-discovery",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-131",
+      "to": "decision-20260708-phase-f-scope-pins-discovery",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-132",
+      "to": "decision-20260708-phase-f-scope-pins-discovery",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-133",
+      "to": "decision-20260708-license-not-safety-content-review-gate",
+      "relation": "relates-to"
+    },
+    {
+      "from": "task-133",
+      "to": "decision-20260708-phase-f-scope-pins-discovery",
       "relation": "produced-by"
     }
   ]
