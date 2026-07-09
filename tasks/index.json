@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-08T20:40:00.685Z",
+  "generated_at": "2026-07-09T01:42:19.715Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -736,7 +736,55 @@
     {
       "key": "TASK-125",
       "title": "Design-profile subsystem: scoreComplexity + interview + deriveProfileFields (Phase E)",
-      "status": "in_review",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-126",
+      "title": "Pack registry: load + validate active packs, resolve core_compat (Phase D-1)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-127",
+      "title": "Pack hooks: question + PROJECT.md-field collectors with isolation assert (Phase D-2)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-128",
+      "title": "Wire pack registration hook into the intake wizard (Phase D-3)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-129",
+      "title": "Bundle design-power as a first-party active-pack candidate + wire into bin/init.js (Phase F-1)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-130",
+      "title": "Author the production design-power pack descriptor (Phase F-2)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-131",
+      "title": "Desired-set resolver: intersect descriptor resources with the scored profile activations (Phase F-3)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-132",
+      "title": "Reconcile orchestrator: compose probe -> plan -> apply for design-power skills (Phase F-4)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-133",
+      "title": "Adopt ui-ux-pro-max via the assimilate human-approve gate (Phase F-5) [HUMAN SIGN-OFF REQUIRED]",
+      "status": "done",
       "priority": "high"
     }
   ]

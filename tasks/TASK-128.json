@@ -1,0 +1,41 @@
+{
+  "key": "TASK-128",
+  "title": "Wire pack registration hook into the intake wizard (Phase D-3)",
+  "description": "Wire the TASK-126 registry + TASK-127 collectors into runWizardAndWriteProjectMd() in bin/init.js at the two seams the investigation identified: (1) extend the question array handed to runQuestionnaire (~bin/init.js:489) with collectPackQuestions over the active-pack set; (2) merge applyProjectMdContributions into `answers` between answers-finalization (~bin/init.js:505) and the writeProjectMd call (~bin/init.js:519). The writeProjectMd/readProjectMd side already supports tier + perfil_proyecto (TASK-124), so NO change to src/project-md.js is needed. With the design-power pack active, DESIGN_PROFILE_QUESTIONS is asked and the scored tier/perfil_proyecto are written to PROJECT.md; with zero active packs, init behavior is byte-identical to today (hook is additive, off-by-default). This is the ticket that makes the Phase E design profile live end-to-end. Touches bin/ -> requires `npm run build:plugin` and the dist-parity gate; run `npm run test:all` at hand-off (mandatory-FULL surface: packaging/dist + core intake path). src/question-library.js must remain byte-unchanged.",
+  "acceptance_criteria": [
+    "With the design-power pack active in the registry, a scripted init run (scripted prompter + tmp dir) asks the design_heavy gate + conditional interview and writes `tier` + `perfil_proyecto` to PROJECT.md; those fields round-trip through readProjectMd to exactly the values deriveProfileFields produced for the scripted answers.",
+    "With NO active packs, writeProjectMd output is byte-identical to the pre-change behavior — a regression lock (e.g. golden PROJECT.md or deep-equal of frontmatter) proving the hook is additive and off-by-default.",
+    "The two seams call ONLY the TASK-127 collectors; no other control-flow change in bin/init.js, and src/question-library.js is byte-unchanged (git diff empty).",
+    "dist/ is rebuilt via `npm run build:plugin` and the dist-parity gate (tests/e2e/dist-parity.spec.js) passes under `npm run test:all`; the regenerated dist/*.cjs bundle(s) are committed in the impl commit."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-d",
+    "hook-api"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-127"
+  ],
+  "linked_commits": [
+    "f1c56c6",
+    "29ff36c",
+    "222a1d6"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T22:03:40.941Z",
+      "body": "APPROVE — closed autonomously in loop mode (auto_close_on_green_review granted). Review depth: FULL (734 insertions/24 deletions; touched core intake path bin/init.js + packaging/dist init.cjs — both mandatory-FULL). Reviewer verified in-code: AC1 fixture pack binds the REAL DESIGN_PROFILE_QUESTIONS + deriveProfileFields (not a reimpl); scripted init asks design_heavy + conditional interview, ui_outside_canvas correctly skipped via forward-only when, tier+perfil_proyecto round-trip through readProjectMd to the deriveProfileFields values. AC2 (critical regression lock) non-vacuous: exact frontmatter key-set assertion + byte-identical PROJECT.md between explicit-empty and omitted params; defaults packDescriptors=[]/packModules={} make both seams strict no-ops (off-by-default for every existing project). AC3 bin/init.js has exactly 1 source deletion (the seam-1 line replacement) + additive param threading through 3 call sites + seam-2 insertion; src/question-library.js byte-unchanged (empty diff + in-suite sensor). AC4 only dist/init.cjs changed (committed in impl), dist-parity green. SCRUTINIZED middle commit 29ff36c (adjusted a test's expected value — laundering shape): adjudicated LEGITIMATE — reviewer reproduced RED in an isolated worktree at the impl parent (AC1 fails 'expected [] to include design_heavy' = wiring absent, NOT expected-mismatch), traced src/question-engine.js validateAndCoerce (number->Number, multi->string[]) which coerces answers before any pack sees them, and confirmed the corrected expected matches the SPEC axis gate (coerced 10 screens+branded+real+custom-assets -> COMPLETO/F2B2/assets), not merely the impl. tdd multi-commit verified: f1c56c6+29ff36c (both test:) strictly precede 222a1d6 (feat). Gate: npm run test:all = 140 files/1538 passed, 4 skipped; dist-parity all-7-bundles byte-match PASS. New minimal src/pack-loader.js binds descriptor<->module by id via caller-supplied moduleRegistry (default empty -> no-op); production design-power descriptor + on-disk discovery convention correctly DEFERRED to Phase F (flagged by dev, not invented). Findings: 0 HIGH, 0 MEDIUM, 2 LOW (speculative hookApiVersion param plumbing in pack-loader; process note re checklist text — substance independently verified) — neither blocking. Depends-on TASK-127 satisfied. Phase D registration hook mechanism COMPLETE."
+    }
+  ],
+  "created_at": "2026-07-08T21:20:04.571Z",
+  "updated_at": "2026-07-08T22:03:40.941Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "source_tier": "T2"
+}

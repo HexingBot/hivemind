@@ -1,0 +1,38 @@
+{
+  "key": "TASK-126",
+  "title": "Pack registry: load + validate active packs, resolve core_compat (Phase D-1)",
+  "description": "Phase D introduces the core registration hook so a pack injects its intake contributions WITHOUT patching core. This ticket builds the missing first link: an active-pack registry. No such registry exists today (grep for loadPack/activePacks/registerPack finds only docs/schema/the reconciler). New module src/pack-registry.js: load pack descriptor(s), run validatePackDescriptor (src/pack-descriptor.js) on each, check each descriptor's core_compat range against a new exported HOOK_API_VERSION semver constant, and return the ordered active-pack set. Keep the compat+validation decision a PURE function of (loaded descriptors, HOOK_API_VERSION) so it is fast-tier testable; a thin loader may read descriptor files from disk. No wizard wiring here (that is Phase D-3). Hook-API design is the human-approved Option C (hybrid): the descriptor is the declarative allowlist; a pack module supplies named pure exports consumed only for declared surfaces. Grounds: docs/design/addon-packs.md §5/§8/§9(#4), addon-packs-plan.md Phase D.",
+  "acceptance_criteria": [
+    "A HOOK_API_VERSION semver string constant is exported from src/pack-registry.js; the registry admits a pack IFF its descriptor's core_compat range is satisfied by HOOK_API_VERSION, and excludes an incompatible pack LOUDLY with a pack-attributed reason (never silently dropped). Proven by a table-driven test covering a satisfied range and an unsatisfied range.",
+    "Every descriptor is run through validatePackDescriptor (src/pack-descriptor.js) before admission; an invalid descriptor is rejected (not admitted) with its validation error surfaced. Non-vacuous: a test feeds a descriptor that validatePackDescriptor rejects and asserts it never enters the active set.",
+    "The active-pack set is returned in a deterministic, documented order (e.g. by id) so downstream question/field injection is reproducible; a test asserts stable ordering across input permutations.",
+    "The compat+validation resolution is a PURE function of (loaded descriptors, HOOK_API_VERSION) with no I/O; table-driven tests cover compatible, incompatible-core_compat, invalid-descriptor, and the EMPTY case (no packs -> empty active set, the zero-pack path that keeps core behavior unchanged)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-d",
+    "hook-api"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "d31384f",
+    "7ad689f"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T21:35:11.094Z",
+      "body": "APPROVE — closed autonomously in loop mode (auto_close_on_green_review granted). Review depth: FULL (rubric inputs: 315 insertions + new core tdd-tier logic surface src/pack-registry.js). Reviewer verified in-code (not just via tests): AC1 core_compat gate admits IFF range satisfied, excludes incompatible packs LOUDLY via skip-report {pack_id, reason} (never silent); AC2 validatePackDescriptor runs before admission, invalid descriptors rejected + surfaced (non-vacuous); AC3 active set sorted by id, stable across input permutations; AC4 pure resolution (no I/O), empty->empty zero-pack path. Internal semver comparator scrutinized across all in-use core_compat forms (>=1.0/>=1.0.0) + edge cases: correct, and FAILS CLOSED on malformed ranges (^,~,1.x,non-string -> unsatisfied) so an incompatible pack is never silently admitted — no HIGH. Skip-report mechanism confirmed consistent with src/pack-apply.js leave-and-report precedent. tdd two-commit verified (d31384f test strictly precedes 7ad689f impl); red-run reproduced independently (module absent at test commit — correct reason). Gate: test:since -- dcb5b9a = 13 passed; npm test = 815 passed/2 skip. dist correctly not rebuilt (module outside every bundle graph). Findings: 0 HIGH, 0 MEDIUM, 2 LOW (source-inspection purity proof adequately mitigated by a paired determinism test; complete single-operator comparator is minimal-correct, not speculative) — neither blocking. HOOK_API_VERSION started at 1.0.0."
+    }
+  ],
+  "created_at": "2026-07-08T21:19:29.921Z",
+  "updated_at": "2026-07-08T21:35:11.094Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "source_tier": "T2"
+}

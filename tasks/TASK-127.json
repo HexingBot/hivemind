@@ -1,0 +1,40 @@
+{
+  "key": "TASK-127",
+  "title": "Pack hooks: question + PROJECT.md-field collectors with isolation assert (Phase D-2)",
+  "description": "Build the two pure collectors that realize the Option C (hybrid) hook over the active-pack set from TASK-126. New module src/pack-hooks.js: (1) collectPackQuestions(activePacks, coreQuestionIds) concatenates each active pack module's exported `questions` (design-power's export = DESIGN_PROFILE_QUESTIONS from src/design-profile.js) onto the core question list, guarding against question-id collisions; (2) applyProjectMdContributions(activePacks, answers) runs each pack module's derive export (design-power's = deriveProfileFields), asserts every returned key is a member of that pack's declared descriptor.project_md_contribution (the isolation envelope), and merges the result into answers. Core stays the ONLY caller of runQuestionnaire/writeProjectMd; src/question-library.js stays byte-unpatched. No bin/init.js wiring here (that is Phase D-3). Engine constraints to respect (src/question-engine.js): globally-unique ids (engine throws on dupes), forward-only `when(answers)` (no lookahead), types string|number|enum|multi. Grounds: docs/design/addon-packs.md §5/§8, the human-approved Option C decision.",
+  "acceptance_criteria": [
+    "collectPackQuestions appends active-pack questions AFTER the core questions and returns a combined list whose forward-only `when` predicates remain valid (the appended block references only ids within the same block or earlier). A question id that collides with a core id (or another pack's id) throws a pack-attributed error naming the offending id; a table-driven test proves both the happy append and the collision throw.",
+    "applyProjectMdContributions runs each active pack's derive fn and merges its output (for design-power: {tier, perfil_proyecto}) into answers; a derived key NOT in that pack's descriptor.project_md_contribution throws a pack-attributed isolation error and merges NOTHING for that pack (all-or-nothing). Non-vacuous: a stub pack whose derive emits an out-of-envelope key asserts the throw fires.",
+    "With zero active packs BOTH collectors are no-ops: collectPackQuestions returns the core list unchanged and applyProjectMdContributions returns answers unchanged (deep-equal), proving injection is strictly additive and off-by-default.",
+    "Both collectors are pure/deterministic (no I/O) and are exercised against the REAL DESIGN_PROFILE_QUESTIONS + deriveProfileFields (not only stubs), so the design-power pack's actual contributions are covered."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-d",
+    "hook-api"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-126"
+  ],
+  "linked_commits": [
+    "725394d",
+    "52882ac"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T21:43:14.085Z",
+      "body": "APPROVE — closed autonomously in loop mode (auto_close_on_green_review granted). Review depth: FULL (384 insertions + new core tdd-tier logic surface src/pack-hooks.js). Reviewer verified in-code: AC1 collectPackQuestions appends pack questions AFTER core (forward-only when preserved), collision guard seeds seenIds from core ids + accumulates pack ids so it fires for core AND prior-pack collisions with a pack-attributed error (earlier + more specific than the engine dup-throw); AC2 (the load-bearing isolation invariant) collects offending keys and throws a pack-attributed error BEFORE Object.assign so nothing from the offending pack merges (all-or-nothing, stronger than required), non-vacuous via rogue-pack stub emitting secret_field; AC3 zero-pack both collectors exact no-ops (deep-equal), additive/off-by-default; AC4 pure (no fs/network/clock/random) + exercised against REAL DESIGN_PROFILE_QUESTIONS/deriveProfileFields not only stubs. ActivePack adapter {descriptor, module} binds the Option C allowlist(descriptor) to code(module); descriptor->module zip deferred to TASK-128 (needs I/O). tdd two-commit verified (725394d test strictly precedes 52882ac impl; commit hygiene clean — one logical change each); red-run reproduced independently (module absent at test-commit parent). src/question-library.js byte-unchanged; src/pack-hooks.js outside every esbuild entrypoint (dist correctly not rebuilt). Gate: test:since -- 7ad689f = 14 passed; npm test = 829 passed/2 skip. Findings: 0 HIGH, 0 MEDIUM, 1 LOW (AC1-mandated table test mildly redundant vs explicit named tests — keep per AC, no more cases). Depends-on TASK-126 satisfied."
+    }
+  ],
+  "created_at": "2026-07-08T21:19:47.349Z",
+  "updated_at": "2026-07-08T21:43:14.085Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "source_tier": "T2"
+}

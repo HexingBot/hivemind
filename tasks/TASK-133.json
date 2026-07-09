@@ -1,0 +1,43 @@
+{
+  "key": "TASK-133",
+  "title": "Adopt ui-ux-pro-max via the assimilate human-approve gate (Phase F-5) [HUMAN SIGN-OFF REQUIRED]",
+  "description": "HARD HUMAN GATE — NOT completable under the unattended preset. Adopt the real third-party ui-ux-pro-max skill (github.com/nextlevelbuilder/ui-ux-pro-max-skill, MIT, pin sha 12b486b22e67f5d887962ef8351c1ac863bfaeb9) into this repo via src/assimilate.js's assimilateSkill, so the FP-4 reconcile path can materialize it. assimilateSkill writes NOTHING unless decision:'approve', and a security-reviewer verdict of 'suspicious' blocks even approve without an explicit securityOverride (addon-packs.md §7 / §82-86; decision-20260708-license-not-safety-content-review-gate). The Orchestrator may PREPARE the approval package autonomously — fetch the skill content at the pinned sha, run the automated risky-pattern scan (shell/exec, network/URL fetch, env/credential access, filesystem access outside the skill dir, obfuscated/base64), and spawn the security-reviewer subagent over the skill's actual instruction text to get a verdict + license classification — and assemble it all into one approval package. But the final decision:'approve' is an explicit HUMAN sign-off that no loop switch lifts; the loop MUST STOP and surface the assembled package for the human to approve/deny (and, if 'suspicious', to explicitly override or reject). Grounds: investigator Phase F memo §4(#3) + §5 FP-5.",
+  "acceptance_criteria": [
+    "The approval package is assembled: license classification (expected MIT/permissive), the automated risky-pattern scan result, and a security-reviewer subagent verdict over the actual skill instruction text — all presented to the human.",
+    "assimilateSkill is invoked with decision:'approve' ONLY after an explicit human sign-off (recorded); if the security-reviewer verdict is 'suspicious', approve additionally requires an explicit human securityOverride — never an autonomous override.",
+    "On approval, the ui-ux-pro-max skill is materialized under .claude/skills/ui-ux-pro-max (or staged under assimilated-skills/ then reconciled via FP-4), and the integrations lock records the ownership edge.",
+    "UAT (human): confirm the skill is present + functional and the lock/provenance is correct. This ticket cannot transition to done without the recorded human approve; uat_delegated_to_orchestrator does NOT lift the assimilate approve gate."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-f",
+    "assimilate",
+    "human-gate"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-132"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-09T01:41:54.286Z",
+      "body": "UAT — TASK-133 adopt ui-ux-pro-max via the assimilate human-approve gate (verification_tier uat-only). The gate-satisfying HUMAN approve was given explicitly (the human selected \\\"Approve & vendor\\\" after reviewing the full approval package). Overall result: PASS.\n\nStep 1 (AC1 — approval package assembled + presented): expect license classification + risky-pattern scan + security-reviewer verdict, all shown to the human. Observed: PASS — package presented: license MIT (permissive, detected from LICENSE file); automated scan = 5 HIGH findings, ALL adjudicated FALSE-POSITIVE by the security-reviewer subagent (4 = design-guidance text in CSV datasets, 1 = benign COLORTERM check); security-reviewer verdict = safe (read SKILL.md + all 4 Python scripts: local CSV search/format only, no network/exec/exfiltration, no prompt-injection). Human reviewed and approved.\n\nStep 2 (AC2 — approve only after explicit human sign-off): expect assimilateSkill(decision:'approve') invoked ONLY after human approval; suspicious verdict would require an explicit securityOverride. Observed: PASS — invoked only after the human's explicit approve; reviewer verdict was 'safe' so no override was needed or used. assimilate returned status:'assimilated', spdx MIT, owner design-power@0.1.0.\n\nStep 3 (AC3 — skill materialized + lock ownership edge): expect the skill live under .claude/skills/ui-ux-pro-max and the integrations lock records the ownership edge. Observed: PASS — reconcilePack (FP-4) materialized .claude/skills/ui-ux-pro-max/ (39 files); integrations.lock.json resources['skill:ui-ux-pro-max'] = {kind:skill, pin 12b486b..., owners:[design-power@0.1.0], scope:project, install_method:assimilated}; SKILL.md carries the provenance block (origin, pin, spdx MIT, source integrity). frontend-design plugin correctly reported Wave-2 (blocking, not installed); reconcile aborted:false.\n\nStep 4 (AC4 — present + functional + provenance correct): expect the skill loadable and provenance/lock correct. Observed: PASS — the Claude Code harness now lists 'ui-ux-pro-max' as an available Skill (materialized copy is live + loadable in-session); fast tier stays green (858 passed/2 skip) with no parity/doc-lock sensor tripped by the new .claude/skills/ entry. Verified by Orchestrator; the gating approve was the human's.\n\nMinor observation (non-blocking, possible follow-up): the lock's integrity is computed over the staged copy (which includes the appended provenance block; 935dd1b6...) while the provenance block records the original-source integrity (fc4c9af8...), and the lock normalizes the origin (drops https://). Expected artifacts of the assimilate-then-materialize flow, not a functional mismatch — flagged for a possible provenance-consistency follow-up.\n\nOverall result: PASS (all 4 ACs). The assimilate path is now proven end-to-end with a real third-party skill adopted through the human-gated flow."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-09T01:42:19.715Z",
+      "body": "DONE — FP-5 completed via the human-gated assimilate flow (verification_tier uat-only; closed in harness mode after the recorded human approve + delegated UAT PASS). The human reviewed the full approval package and explicitly approved (\"Approve & vendor\"). Executed: (1) cloned ui-ux-pro-max @ 12b486b (public MIT repo); (2) dry-run assimilateSkill (no decision) -> license MIT/permissive + integrity + risky-pattern scan (5 HIGH, ALL false-positive: design-guidance text in CSV data + a benign COLORTERM check); (3) security-reviewer subagent over SKILL.md + all 4 Python scripts -> verdict SAFE (local CSV search/format only; no network/exec/exfiltration; no prompt-injection); (4) presented the package; human approved; (5) assimilateSkill(decision:'approve', reviewerVerdict:safe) staged assimilated-skills/ui-ux-pro-max/ + lock entry owned by design-power@0.1.0; (6) reconcilePack (FP-4) materialized .claude/skills/ui-ux-pro-max/ (39 files), aborted:false, frontend-design plugin reported Wave-2 (blocking, not installed — expected). VERIFIED: the harness now lists ui-ux-pro-max as an available Skill (live + loadable in-session); fast tier 858 passed/2 skip, no parity/doc-lock sensor tripped; lock + provenance block correct (MIT, pin, owner). This proves the design pack's assimilate path end-to-end with a REAL third-party skill. Minor non-blocking observation for a possible follow-up: lock integrity (over staged copy incl. provenance block) differs from the provenance block's source integrity, and origin is normalized (https:// dropped) — assimilate-then-materialize artifacts, not a functional mismatch. NOTE: the vendored files (assimilated-skills/, .claude/skills/ui-ux-pro-max/, integrations.lock.json) are UNCOMMITTED working-tree changes awaiting a human decision to commit. Graph: task-133 produced-by decision-20260708-phase-f-scope-pins-discovery + relates-to decision-20260708-license-not-safety-content-review-gate."
+    }
+  ],
+  "created_at": "2026-07-09T00:20:50.264Z",
+  "updated_at": "2026-07-09T01:42:19.715Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "source_tier": "T2"
+}

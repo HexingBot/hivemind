@@ -1,0 +1,38 @@
+{
+  "key": "TASK-129",
+  "title": "Bundle design-power as a first-party active-pack candidate + wire into bin/init.js (Phase F-1)",
+  "description": "Make the design-power pack actually feed the Phase D hook in real projects (today the hook is an unfed no-op). Adopt discovery Option C (investigator-recommended): design-power ships INSIDE the plugin and is ALWAYS passed to loadActivePacks as a first-party candidate. Introduce a minimal built-in pack registration (e.g. src/builtin-packs.js or similar) that exposes the design-power ActivePack = { descriptor, module: { questions: DESIGN_PROFILE_QUESTIONS, deriveProjectMd: deriveProfileFields } } and have runInit/runWizardAndWriteProjectMd pass it as the default packDescriptors/packModules (instead of the current empty defaults) so the design_heavy gate question is injected on every init. The one unconditional gate question self-gates everything else: on design_heavy=no, scoreComplexity short-circuits to LIGERO with all activations false and the conditional questions never fire (their when predicates require design_heavy===yes), so a backend/CLI project sees no design fields. This touches bin/ -> requires npm run build:plugin + dist-parity; run npm run test:all. NOTE: FP-1 may use a minimal/stub descriptor if FP-2's production descriptor is not yet merged — the binding + wiring is the deliverable here; the real descriptor lands in FP-2. src/question-library.js must stay byte-unchanged. Grounds: investigator Phase F memo §3 (Option C) + §5 FP-1; addon-packs.md §5/§8; src/design-profile.js:29-37 (gate), :159-170 (short-circuit).",
+  "acceptance_criteria": [
+    "After init on an interactive run, the design_heavy gate question is asked (design-power is an always-loaded first-party candidate); a scripted init answering design_heavy=yes + the conditional interview writes tier + perfil_proyecto to PROJECT.md, round-tripping through readProjectMd to the deriveProfileFields values.",
+    "A scripted init answering design_heavy=no (or a non-design project) writes a PROJECT.md with NO tier/perfil_proyecto fields and is otherwise unchanged from pre-FP-1 behavior for the non-design fields — a genuine off-by-default regression lock proving the always-loaded gate does not leak design fields into non-design projects.",
+    "The design-power module binding satisfies the pack-hooks isolation allowlist (derived keys ⊆ descriptor.project_md_contribution = [perfil_proyecto, tier]); the built-in registration binds the REAL DESIGN_PROFILE_QUESTIONS + deriveProfileFields, not a reimplementation.",
+    "dist/ rebuilt via npm run build:plugin and dist-parity passes under npm run test:all; only the bundle(s) whose graph includes bin/init.js change and are committed; src/question-library.js is byte-unchanged (git diff empty)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-f",
+    "wiring"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "ae87bea",
+    "7621b05"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-09T00:48:25.285Z",
+      "body": "APPROVE — closed autonomously in loop mode (auto_close_on_green_review granted). Review depth: FULL (784 ins/99 del, 10 files; core intake bin/init.js + packaging/dist + test infra tests/helpers — all mandatory-FULL). FP-1 (discovery Option C): design-power is now an always-loaded first-party candidate via new src/builtin-packs.js binding the seed descriptor packs/design-power/descriptor.json to {questions: DESIGN_PROFILE_QUESTIONS, deriveProjectMd: gated deriveProfileFields}; bin/init.js passes it by default. Reviewer verified: AC1 default run asks design_heavy + interview, yes-path round-trips tier+perfil_proyecto; AC2 non-vacuous off-by-default (design_heavy=no writes NO tier/perfil_proyecto, non-design fields byte-identical to a true opt-out); AC3 binds REAL exports (reference-equal, not reimplementation), derived keys ⊆ project_md_contribution; AC4 only dist/init.cjs changed + committed, dist-parity green, question-library.js byte-unchanged. SCRUTINIZED two risks: (1) deriveProjectMdGated wrapper — the leak is REAL (deriveProfileFields emits a non-empty perfil_proyecto even for design_heavy!=='yes'), wrapper returns {} for non-yes and calls the real fn verbatim on yes; correct pack-level policy, non-vacuous. (2) tests/helpers/scripted-prompter.js gained a design_heavy->'no' default (required enum, distinct from KNOWN_OPTIONAL_IDS '' skip) so the newly-universal gate doesn't hang ~15 existing e2e specs — SOUND, not masking: the yes-path is exercised via makePackAwarePrompter in the dedicated specs, so the default cannot green-wash it. TASK-128's init-pack-hook off-by-default lock preserved (now explicit packDescriptors:[]/packModules:{} opt-out). tdd two-commit verified (ae87bea test strictly precedes 7621b05 impl, clean split); red-run reproduced. Gate: npm run test:all = 142 files/1555 passed, 4 skipped; dist-parity all-7-bundles byte-match PASS. Findings: 0 HIGH, 0 MEDIUM, 1 LOW (every project now gets a recorded design_heavy:no stack line — AC-sanctioned Option C behavior, product observation only). FP-1 seed descriptor at packs/design-power/descriptor.json chosen so FP-2 (TASK-130) drops the real resource pins by overwriting one file with zero wiring churn. Dev flagged (non-blocking): no --no-builtin-packs CLI opt-out for end users — possible follow-up if human-facing skip desired."
+    }
+  ],
+  "created_at": "2026-07-09T00:19:18.016Z",
+  "updated_at": "2026-07-09T00:48:25.285Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "source_tier": "T2"
+}

@@ -1,0 +1,40 @@
+{
+  "key": "TASK-132",
+  "title": "Reconcile orchestrator: compose probe -> plan -> apply for design-power skills (Phase F-4)",
+  "description": "Add the thin composer that runs the skills-reconcile path end-to-end for the design-power pack, proven against FIXTURES (no real third-party adoption here — that is FP-5). Today no single entry composes probeSkills(root) -> plan(desired, lock, actual) -> applyPlan({plan, lockPath, root, owner}). Build that composer (e.g. reconcilePack({ repoRoot, descriptor, profileResult, owner }) ) using the desired-set from FP-3 (TASK-131) and the EXISTING reconciler modules (src/pack-reconcile.js probe/plan, src/pack-apply.js applyPlan, src/integrations-lock.js). owner = design-power@<version>. Skills are the only kind materialized (a skill is materializable only if its owned copy already exists under assimilated-skills/<id>/ — which is FP-5's job for the real skill); mcp + plugin resources are surfaced in the report as Wave-2 (declared-not-acted-on, blocking iff required:hard). Prove with the existing tests/e2e assimilate/reconcile fixtures — do NOT call assimilateSkill with a real third-party skill. Grounds: investigator Phase F memo §4(#2) + §5 FP-4; src/pack-reconcile.js, src/pack-apply.js, src/integrations-lock.js.",
+  "acceptance_criteria": [
+    "The composer materializes a FIXTURE assimilated skill (owned copy staged under assimilated-skills/<id>/) into .claude/skills/<id>/ via the existing applyPlan path, and records the ownership edge (owner=design-power@<version>) in the integrations lock.",
+    "Non-skill resources (mcp/plugin) appear in the reconcile report as Wave-2 not-installed entries — blocking iff required:hard, leave-and-report iff soft — and are never installed by this composer.",
+    "A hard-failure aborts the reconcile (no partial lock write); a soft-failure degrades via leave-and-report; the lock is written atomically. Verified against fixtures.",
+    "No real third-party skill is adopted in this ticket (assimilateSkill with a real origin is FP-5); the composer is exercised only against tests/e2e fixtures. If bin/ or a bundled entrypoint is touched, dist is rebuilt + dist-parity passes under npm run test:all."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-f",
+    "reconciler"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-131"
+  ],
+  "linked_commits": [
+    "2396990",
+    "80babc3"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-09T01:28:46.896Z",
+      "body": "APPROVE — closed autonomously in loop mode (auto_close_on_green_review). Review depth: FULL (331 insertions, new core tdd-tier reconciler logic src/pack-orchestrator.js with real FS I/O). FP-4: reconcilePack({repoRoot, descriptor, profileResult, owner}) composes resolveDesired (FP-3) -> probeSkills+readLock -> plan -> real applyPlan; NO reimplementation. Reviewer verified: AC1 materializes a FIXTURE owned skill into .claude/skills/ + records owner=design-power@0.1.0 lock edge; AC2 mcp/plugin resources structurally never reach materialization (plan short-circuits kind!==skill into report, blocking iff required:hard), forwarded verbatim; AC3 (data-loss class, traced end-to-end) SOUND — single atomic writeLock (temp+rename), no partial/torn write, failed op throws before any fs/lock mutation, HardResourceFailureError caught into {aborted:true,error} (other errors rethrown fail-loud), soft-failure leave-and-report continues, executeRemove re-derives orphan status from current lock (no removed-skill-not-owned hazard), installed re-derived from POST-run probeSkills (soft-failed op excluded), empty-lock precondition guarded by !existsSync (can't clobber); AC4 assimilateSkill never imported/called — all fixtures staged under makeTmpDir, NO real skill adopted. Surfaced + verified the test:since dynamic-import blind spot (every pack-*.spec.js uses import(PROD.x) computed specifier; correct non-zero repro via pre-ticket base ref 9eaac48 = 65 files/579 passed — pre-existing, not introduced here). tdd two-commit verified (2396990 test strictly precedes 80babc3 impl, genuine module-not-found red). Gate: test:since -- 9eaac48 = 579 passed; pack-orchestrator.spec.js 5 passed; npm test = 858 passed/2 skip. dist not rebuilt (not an entrypoint). 0 HIGH/0 MED/1 LOW (no OTel span — project-wide convention, not a regression). Depends-on TASK-131 satisfied. Graph edge task-132 produced-by decision-20260708-phase-f-scope-pins-discovery to follow."
+    }
+  ],
+  "created_at": "2026-07-09T00:20:21.124Z",
+  "updated_at": "2026-07-09T01:28:46.896Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "source_tier": "T2"
+}

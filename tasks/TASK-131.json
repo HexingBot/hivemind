@@ -1,0 +1,40 @@
+{
+  "key": "TASK-131",
+  "title": "Desired-set resolver: intersect descriptor resources with the scored profile activations (Phase F-3)",
+  "description": "Build the load-bearing glue between the scored design profile and the reconciler. New pure function (e.g. resolveDesired(descriptor, profileResult) in src/pack-resources.js or similar): return descriptor.resources filtered to those whose id is activated for this project, i.e. keep resource R iff resourceActivations(profileResult)[R.id] === true (resourceActivations from src/design-profile.js, already pure). profileResult is the output of scoreComplexity(answers). This is the desired-set the reconciler's plan(desired, lock, actual) consumes. Pure/deterministic, no I/O. Must honor the §8.1 canvas exclusion exactly (it already lives inside resourceActivations, so intersecting is sufficient — verify). Grounds: investigator Phase F memo §4(#1) + §5 FP-3; src/design-profile.js:249 resourceActivations; src/pack-reconcile.js plan() input shape.",
+  "acceptance_criteria": [
+    "A COMPLETO + framework==vue + ui_outside_canvas profile yields a desired set that INCLUDES ui-ux-pro-max, shadcn-vue, playwright and EXCLUDES shadcn/ui (React-only). Table-driven test.",
+    "The §8.1 canvas exclusion holds: with ui_outside_canvas==false, the desired set drops shadcn-vue, shadcn/ui, and playwright (verified by intersecting resourceActivations, which already encodes the exclusion).",
+    "A LIGERO profile (design_heavy=no) yields a desired set of only the always-on resource(s) (frontend-design) or empty per the activation predicates — never a MEDIO/COMPLETO-only resource.",
+    "A resource id present in descriptor.resources but absent from resourceActivations keys is never silently activated (it is excluded, or the mismatch is surfaced); the resolver is pure (no I/O) — table-driven tests cover canvas + non-canvas + LIGERO + unknown-id cases."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "addon-packs",
+    "design-pack",
+    "phase-f",
+    "reconciler"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-130"
+  ],
+  "linked_commits": [
+    "179915b",
+    "9eaac48"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-09T01:09:47.944Z",
+      "body": "APPROVE — closed autonomously in loop mode (auto_close_on_green_review). Review depth: FULL (227 insertions, new core tdd-tier logic src/pack-resources.js). FP-3: resolveDesired(descriptor, profileResult) = descriptor.resources.filter(r => resourceActivations(profileResult)[r.id] === true) — the pure glue feeding the reconciler's plan(desired,...). Reviewer verified: AC1 COMPLETO+vue+ui_outside_canvas includes ui-ux-pro-max/shadcn-vue/playwright, excludes shadcn/ui (built via REAL scoreComplexity, not a faked activation map); AC2 (key correctness) the resolver contains ZERO ui_outside_canvas logic — the §8.1 canvas exclusion is genuinely INHERITED from resourceActivations (all 3 DOM resources gate on the shared domUi), no re-implementation/divergence; AC3 LIGERO -> empty or frontend-design only, never a MEDIO/COMPLETO-only resource; AC4 bogus resource id excluded + a companion test proves the id is genuinely outside resourceActivations keys (non-vacuous), resolver pure. Return shape = descriptor's own resource objects verbatim (object-identity asserted), matches pack-reconcile.js plan() desired contract -> FP-4 consumption safe. tdd two-commit verified (179915b test strictly precedes 9eaac48 impl); genuine module-not-found red. Gate: test:since -- ccdc9ff = 9 passed; npm test = 858 passed/2 skip. dist correctly not rebuilt (not an entrypoint). Tier-audit: tdd correct. 0 HIGH/0 MED/0 LOW. Depends-on TASK-130 satisfied. Graph edge task-131 produced-by decision-20260708-phase-f-scope-pins-discovery to follow."
+    }
+  ],
+  "created_at": "2026-07-09T00:20:00.487Z",
+  "updated_at": "2026-07-09T01:09:47.944Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "source_tier": "T2"
+}

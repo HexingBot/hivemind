@@ -11,7 +11,7 @@
     "deriveProfileFields(answers) returns {tier, perfil_proyecto} with tier in {LIGERO,MEDIO,COMPLETO} and perfil_proyecto a flat map whose every value is a comma/brace-free scalar; a round-trip through writeProjectMd + readProjectMd (the TASK-124 fields) preserves tier and every perfil_proyecto entry. deriveProfileFields throws loudly if any value it would emit contains a comma/brace (discharging the carried TASK-124 LOW) rather than producing a value that mis-parses.",
     "src/question-library.js is byte-unchanged (no core intake patching); a code comment in the new module records that live wizard injection is deferred to the Phase D registration hook."
   ],
-  "status": "in_review",
+  "status": "done",
   "priority": "high",
   "labels": [
     "addon-packs",
@@ -23,11 +23,21 @@
   "depends_on": [
     "TASK-124"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "ff11dfd",
+    "9dbbff1"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-08T21:07:19.396Z",
+      "body": "APPROVE — closed on a clean full-context review. Review depth: FULL (rubric inputs: ~1008 changed lines [1003 insertions + 5 deletions] AND new core tdd-tier logic surface src/design-profile.js + test infra tests/helpers/fixtures.js; either alone forces FULL). Reviewer verified spec fidelity in-code against the human-approved docs/design/design-profile-spec.md sections 1-5 and 8: all 6 worked examples reproduce exactly incl. the design_heavy=no short-circuit and the 6a/6b tie-break; the tier gate is fHigh&&bHigh->COMPLETO / fHigh||bHigh->MEDIO / else LIGERO with score=F+B descriptive-only (no code path uses score for the tier decision); 5.1 pipeline-step and 5.2/8 resource activation predicates match incl. the 8.1 canvas exclusion (ui_outside_canvas=false disables shadcn-vue, shadcn/ui, playwright); DESIGN_PROFILE_QUESTIONS passes runQuestionnaire config validation with forward-only when predicates; deriveProfileFields emits a flat comma/brace-free scalar map and throws loudly otherwise (discharging the carried TASK-124 LOW); round-trip through writeProjectMd+readProjectMd preserves tier and every perfil_proyecto entry; src/question-library.js byte-unchanged with a comment recording the Phase D registration-hook deferral. tdd two-commit verified: test commit ff11dfd strictly precedes impl commit 9dbbff1; red-run reproduced independently (module-not-found at the test commit — correct reason). Gate re-run green: test:since -- f75ff94 = 565 passed/1 skipped; npm test = 802 passed/2 skipped. No dist rebuild (module not yet bundled — correct). Findings: 1 HIGH (calibration source_tier missing from the mandated task-file surface — resolved by the Orchestrator adding source_tier: T2 per the SOURCE_TIERS design-of-record exception; check:calibration now clean — no code loop-back), 0 MEDIUM, 1 LOW (benign test overlap, no action)."
+    }
+  ],
   "created_at": "2026-07-08T20:29:27.592Z",
-  "updated_at": "2026-07-08T20:40:00.685Z",
+  "updated_at": "2026-07-08T21:07:19.396Z",
   "jira_key": null,
-  "verification_tier": "tdd"
+  "verification_tier": "tdd",
+  "source_tier": "T2"
 }
