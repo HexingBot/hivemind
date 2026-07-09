@@ -2,10 +2,10 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "paused",
-  "updated_at": "2026-07-09T03:52:55.151Z",
+  "updated_at": "2026-07-09T05:09:33.896Z",
   "active_task": null,
   "workflow_step": "idle",
-  "next_action": "DEPLOYED. Diseño Poderoso design-power pack (TASK-125..133) shipped in plugin v0.13.0 and pushed to origin/main. This deploy session: promoted all 4 knowledge/proposed drafts to knowledge/entries/ + added 4 knowledge_entry graph nodes (learned-in edge to task-125); accepted the FP-2 product-data ratifications as documented in packs/design-power/README.md (gsap dropped, openart omitted, frontend-design pin kept provisional per human); bumped plugin.json + publish-config.spec.js to 0.13.0; added the ui-ux-pro-max MIT attribution to NOTICE.md; committed orchestrator state in 5 logical commits (release/knowledge/tasks/vendored-skill/session) and pushed. Release gate green at deploy (test:all 1575 passed/4 skipped, dist-parity clean). Open follow-ups (not blocking): Wave-2 mcp/plugin appliers (reconciler is skills-only), a provenance-consistency fix (lock integrity over staged copy vs source), and a runtime gate for the vendored skill Python scripts.",
+  "next_action": "Phase G: 134/135/136 CLOSED. Driving TASK-137 (design-power install flow + orchestrator-routing pointer + README, uat-only) — last ticket before the 0.14.0 deploy.",
   "handoff_summary": "Design-power pack COMPLETE, CLOSED, and DEPLOYED in plugin v0.13.0 (pushed to origin/main). Full arc TASK-125..133 done; ui-ux-pro-max vendored + harness-loadable. At deploy the orchestrator curated knowledge (4 drafts promoted + graph-noded), ratified FP-2 product data, bumped both version locations, added MIT attribution, and pushed 5 logical commits. No pending curation. Idle/awaiting next goal.",
   "open_questions": [
     "Human to approve/adjust docs/design/design-profile-spec.md (esp. open Q#4 no canvas-motion resource, Q#5 playwright/web-UI predicate inferred, 1:1 axis weighting, uncalibrated tier thresholds).",
@@ -16,6 +16,11 @@
   ],
   "blockers": [],
   "decisions": [
+    {
+      "at": "2026-07-09T05:09:33.895Z",
+      "decision": "Phase G (addon surface & wiring): build the wired surface the design docs intended over the already-shipped FP machinery. Full turnkey slice + shipped dist CLI wrapper (human choice). Decomposed into TASK-134 (pack-ctl resolve/reconcile CLI, tdd T1), TASK-135 (pack-ctl assimilate subcommands classify/scan/stage, tdd T1), TASK-136 (hivemind-assimilate-skill wired skill, uat-only T2), TASK-137 (design-power /hivemind:design-pack install flow + orchestrator-routing pointer + README, uat-only T2). Runnability via a shipped dist/pack-ctl.cjs wrapper mirroring the loop-ctl precedent (blessed pattern; survives a no-node_modules plugin install), with the license/safety JUDGEMENT (security-reviewer + human sign-off) kept OUTSIDE the LLM/network-free CLI. All 4 closed; 3 clean-first-pass APPROVE + TASK-136 APPROVE after 1 RC loop (missing byte-identity parity sensor). Graph: decision-20260709-phase-g-addon-surface; each task edges produced-by it.",
+      "rationale": "Prior deploy shipped the machinery (src/assimilate.js, reconciler, profiling) + a one-off repo-local vendoring, but NOT the wired surface: no hivemind-assimilate-skill, no shipped CLI reachable in a plugin install, no orchestrator-routing pointer. Design-of-record (addon-packs.md §5/§7 names hivemind-assimilate-skill + a documented public extension API; addon-packs-plan.md §11 makes it the first vertical slice). The dist-wrapper pattern is what makes loop-ctl work in a plugin install with no reachable src/; reused verbatim. Assimilation stays human-gated + never autonomous (unliftable per decision-20260708-license-not-safety-content-review-gate)."
+    },
     {
       "at": "2026-07-09T00:20:00.000Z",
       "decision": "Phase F scope (design-power pack usable end-to-end): discovery = Option C (design-power ships as an always-loaded first-party candidate; its one unconditional design_heavy gate question self-gates everything else). Product-data calls: DROP gsap from resources[] (kind enum is skill|mcp|plugin; gsap is a plain npm lib -> added as a project dep by the impl pipeline step, not a Claude resource); OMIT openart (no trustworthy pin exists; schema requires pin minLength 1 -> not fabricated; documented as manual OAuth connect); KEEP frontend-design as a Wave-2 plugin resource (TUI-install-only, not acted on by the reconciler) with an honestly-marked pin for human ratification. Researched pins used verbatim for the acted-upon resources: ui-ux-pro-max sha 12b486b..., shadcn/ui 4.13.0, shadcn-vue 2.7.4, firecrawl 3.22.3, playwright 0.0.77. Decomposed into TASK-129 (FP-1 bundle+wire, tdd), TASK-130 (FP-2 descriptor, uat-only), TASK-131 (FP-3 desired-set resolver, tdd), TASK-132 (FP-4 reconcile orchestrator, tdd), TASK-133 (FP-5 assimilate adopt ui-ux-pro-max, uat-only, HUMAN-GATED). FP-1..4 buildable autonomously under the unattended preset; FP-5 hits the unliftable assimilate approve gate and stops for human sign-off. Graph: decision-20260708-phase-f-scope-pins-discovery; each FP task edges produced-by it at close.",
@@ -114,6 +119,5 @@
     "auto_consolidate": true,
     "auto_push_after_close": false,
     "auto_version_bump_on_milestone": false
-  },
-  "loop_state": null
+  }
 }

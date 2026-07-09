@@ -152,6 +152,12 @@
       "label": "Phase F scope: discovery Option C (design-power always-loaded first-party candidate); drop gsap (kind mismatch) + omit openart (no pin) from resources; frontend-design kept as Wave-2 plugin; researched pins for ui-ux-pro-max/shadcn/shadcn-vue/firecrawl/playwright; FP-1..4 autonomous, FP-5 (assimilate adopt) human-gated"
     },
     {
+      "id": "decision-20260709-phase-g-addon-surface",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Phase G (addon surface): ship pack-ctl CLI wrapper + hivemind-assimilate-skill + design-power install flow + orchestrator-routing pointer — the wired surface over the FP machinery, blessed loop-ctl dist-wrapper pattern"
+    },
+    {
       "id": "ke-claude-headless-bridge",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
@@ -210,6 +216,12 @@
       "type": "skill",
       "ref": "skills/graphify/SKILL.md",
       "label": "graphify skill"
+    },
+    {
+      "id": "skill-hivemind-assimilate",
+      "type": "skill",
+      "ref": "skills/hivemind-assimilate-skill/SKILL.md",
+      "label": "hivemind-assimilate-skill: human-gated third-party skill adoption workflow"
     },
     {
       "id": "skill-orchestrator-routing",
@@ -678,6 +690,30 @@
       "type": "task",
       "ref": "tasks/TASK-133.json",
       "label": "Adopt ui-ux-pro-max via the assimilate human-approve gate (Phase F-5)"
+    },
+    {
+      "id": "task-134",
+      "type": "task",
+      "ref": "tasks/TASK-134.json",
+      "label": "Shipped pack-ctl CLI wrapper: resolve + reconcile over the addon machinery"
+    },
+    {
+      "id": "task-135",
+      "type": "task",
+      "ref": "tasks/TASK-135.json",
+      "label": "pack-ctl assimilate subcommands: classify/scan/stage over src/assimilate.js"
+    },
+    {
+      "id": "task-136",
+      "type": "task",
+      "ref": "tasks/TASK-136.json",
+      "label": "Wire the assimilate workflow as a shipped skill: hivemind-assimilate-skill"
+    },
+    {
+      "id": "task-137",
+      "type": "task",
+      "ref": "tasks/TASK-137.json",
+      "label": "Wire the design-power addon-install flow + orchestrator-routing pointer"
     }
   ],
   "edges": [
@@ -705,6 +741,11 @@
       "from": "skill-graphify",
       "to": "task-059",
       "relation": "learned-in"
+    },
+    {
+      "from": "skill-hivemind-assimilate",
+      "to": "task-136",
+      "relation": "produced-by"
     },
     {
       "from": "skill-orchestrator-routing",
@@ -1114,6 +1155,26 @@
     {
       "from": "task-133",
       "to": "decision-20260708-phase-f-scope-pins-discovery",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-134",
+      "to": "decision-20260709-phase-g-addon-surface",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-135",
+      "to": "decision-20260709-phase-g-addon-surface",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-136",
+      "to": "decision-20260709-phase-g-addon-surface",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-137",
+      "to": "decision-20260709-phase-g-addon-surface",
       "relation": "produced-by"
     }
   ]
