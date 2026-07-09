@@ -34,6 +34,11 @@
 // so a plugin-installed project can drive the loop via
 // ${CLAUDE_PLUGIN_ROOT}/dist/loop-ctl.cjs (see commands/loop.md, commands/mode.md,
 // the orchestrator-routing SKILL.md).
+//
+// TASK-134 — added the eighth entry: bin/pack-ctl.js -> dist/pack-ctl.cjs, the
+// CLI wrapper exposing the deterministic addon-pack ops (resolveDesired /
+// pack-reconcile / pack-orchestrator) so a plugin-installed project can drive
+// resolve/reconcile-plan/reconcile-apply via ${CLAUDE_PLUGIN_ROOT}/dist/pack-ctl.cjs.
 
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +59,7 @@ export const ENTRYPOINT_NAMES = [
   'report-framework-bug.cjs',
   'brain-launch.cjs',
   'loop-ctl.cjs',
+  'pack-ctl.cjs',
 ];
 
 /**
@@ -83,6 +89,10 @@ export async function buildTo(outDir) {
     // loop-checkpoint/loop-auth so a plugin install (no framework src/ on
     // disk) can drive the autonomous loop.
     { entry: join(REPO_ROOT, 'bin', 'loop-ctl.js'), outfile: join(outDir, 'loop-ctl.cjs') },
+    // TASK-134 — the pack-control CLI: wraps resolveDesired/pack-reconcile/
+    // pack-orchestrator so a plugin install (no framework src/ on disk) can
+    // resolve/reconcile-plan/reconcile-apply the addon-pack surface.
+    { entry: join(REPO_ROOT, 'bin', 'pack-ctl.js'), outfile: join(outDir, 'pack-ctl.cjs') },
   ];
 
   for (const { entry, outfile } of entrypoints) {
