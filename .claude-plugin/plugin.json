@@ -6,6 +6,6 @@
   "author": { "name": "Rafael Matovelle" },
   "license": "MIT",
   "keywords": ["orchestration", "subagents", "workflow", "tasks", "tdd"],
-  "version": "0.14.0",
+  "version": "0.14.1",
   "mcpServers": "./.mcp.json"
 }
