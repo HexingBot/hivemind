@@ -5,17 +5,20 @@
 //
 // SCOPE NOTE (flagged for the Orchestrator, not resolved here): this loader
 // takes descriptors + a module registry as explicit ARGUMENTS — it does NOT
-// scan disk for pack descriptor files. There is no on-disk discovery
+// scan disk for pack descriptor files. There is no general on-disk discovery
 // convention for "where a project's active packs live" anywhere in
-// docs/design/addon-packs-plan.md yet; that convention is Phase F's concern
-// (§ "Phase F — The design-power pack (data + uat)"), which also owns the
-// real resource pins/origins this ticket is explicitly barred from
-// authoring. Inventing a discovery mechanism now would exceed TASK-128's
-// minimal-wiring scope. Because of this, bin/init.js's default call (no
-// descriptors/modules supplied) is a strict no-op — the mechanism is wired
-// end-to-end and proven against a test fixture, but nothing feeds it in a
-// real run yet. A future Phase-F ticket wires the real discovery source
-// (however it is decided) to this same loadActivePacks() call.
+// docs/design/addon-packs-plan.md yet; that convention (for arbitrary
+// third-party packs) remains a future Phase-F concern.
+//
+// TASK-129 update: bin/init.js's default call is NO LONGER a strict no-op.
+// src/builtin-packs.js registers the design-power pack as an ALWAYS-LOADED
+// first-party candidate (discovery Option C) and bin/init.js now defaults
+// packDescriptors/packModules to that module's BUILTIN_PACK_DESCRIPTORS /
+// BUILTIN_PACK_MODULES instead of [] / {}. A caller (or test) that supplies
+// its own packDescriptors/packModules explicitly still overrides this
+// default entirely, including opting out with [] / {} for a true zero-pack
+// run. A general discovery mechanism for OTHER (non-built-in) packs is still
+// unbuilt and remains Phase F's concern.
 //
 // Pure/I-O-free: no fs, no network, no clock, no random. Mirrors
 // src/pack-hooks.js's purity contract.

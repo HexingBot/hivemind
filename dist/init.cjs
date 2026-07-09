@@ -9324,6 +9324,201 @@ function loadActivePacks({ descriptors = [], moduleRegistry = {}, hookApiVersion
   return { activePacks, skipped };
 }
 
+// src/design-profile.js
+var DESIGN_HEAVY_QUESTION = {
+  id: "design_heavy",
+  type: "enum",
+  enum: ["yes", "no"],
+  prompt: "Does this project have a visual, human-facing interface that needs deliberate design work \u2014 as opposed to a pure API, CLI, backend service, or script? (This decides whether the design-power pack engages at all.)"
+};
+var FASE_1_QUESTIONS = [
+  {
+    id: "estimated_screens",
+    type: "number",
+    prompt: "Roughly how many distinct user-facing screens/flows will this need at launch? (best estimate; a single-page tool = 1)",
+    when: (a) => a.design_heavy === "yes"
+  },
+  {
+    id: "stakes",
+    type: "enum",
+    enum: ["low", "real"],
+    prompt: "What's the deployment reality? 'low' = personal project/prototype/experiment, no one depends on it working. 'real' = an internal team relies on it daily, or it has public/paying users and uptime matters.",
+    when: (a) => a.design_heavy === "yes"
+  },
+  {
+    id: "design_ambition",
+    type: "enum",
+    enum: ["utilitarian", "tidy", "branded", "signature"],
+    prompt: "What visual bar does this need to hit? utilitarian = internal tool, just needs to be usable. tidy = clean and professional, generic is fine. branded = distinctive, competitive with polished products in its category. signature = best-in-class, art-directed, a differentiator in itself.",
+    when: (a) => a.design_heavy === "yes"
+  },
+  {
+    id: "ui_framework",
+    type: "enum",
+    enum: ["react", "vue", "other"],
+    prompt: "Which framework renders the UI? (drives component-registry routing)",
+    when: (a) => a.design_heavy === "yes"
+  },
+  {
+    id: "has_canvas_render",
+    type: "enum",
+    enum: ["yes", "no"],
+    prompt: "Does the project render through a canvas/game-engine surface (Phaser, WebGL, Three.js, etc.) rather than plain DOM?",
+    when: (a) => a.design_heavy === "yes"
+  },
+  {
+    id: "ui_outside_canvas",
+    type: "enum",
+    enum: ["yes", "no"],
+    prompt: "Is there any DOM UI (HUD, menus, settings screens, overlays) outside that canvas?",
+    when: (a) => a.design_heavy === "yes" && a.has_canvas_render === "yes"
+  },
+  {
+    id: "motion_required",
+    type: "enum",
+    enum: ["yes", "no"],
+    prompt: "Does this need real animation/motion work \u2014 transitions, micro-interactions, choreographed sequences \u2014 beyond basic hover states?",
+    when: (a) => a.design_heavy === "yes"
+  },
+  {
+    id: "motion_layer",
+    type: "enum",
+    enum: ["dom", "canvas", "both"],
+    prompt: "Where does that motion primarily live?",
+    when: (a) => a.design_heavy === "yes" && a.motion_required === "yes"
+  },
+  {
+    id: "needs_research",
+    type: "enum",
+    enum: ["need-research", "have-direction"],
+    prompt: "Do you need competitive/visual reference research (mood boards, competitor UI audits) before design starts, or do you already have clear direction (existing brand, mockups, style guide)?",
+    when: (a) => a.design_heavy === "yes"
+  },
+  {
+    id: "assets_required",
+    type: "multi",
+    enum: ["illustrations", "icons-custom", "photography", "3d-renders", "game-sprites-tiles", "none"],
+    prompt: "Which custom visual assets does this need? (comma-separated; pick from the listed values)",
+    when: (a) => a.design_heavy === "yes"
+  }
+];
+var DESIGN_PROFILE_QUESTIONS = [DESIGN_HEAVY_QUESTION, ...FASE_1_QUESTIONS];
+function bucketScreens(n) {
+  const v = Number.isFinite(n) ? n : 1;
+  if (v <= 2) return 0;
+  if (v <= 7) return 1;
+  if (v <= 20) return 2;
+  return 3;
+}
+var DESIGN_AMBITION_SCORE = { utilitarian: 0, tidy: 1, branded: 2, signature: 3 };
+function scoreComplexity(answers) {
+  if (answers.design_heavy !== "yes") {
+    return {
+      tier: "LIGERO",
+      score: 0,
+      axes: { functionality: 0, beauty: 0 },
+      activations: {
+        design_heavy: false,
+        framework: null,
+        is_canvas: false,
+        ui_outside_canvas: null,
+        motion_required: false,
+        motion_layer: null,
+        needs_research: false,
+        assets: false,
+        assets_list: []
+      }
+    };
+  }
+  let F = bucketScreens(answers.estimated_screens);
+  if (answers.stakes === "real" && F === 0) F = 1;
+  F = Math.min(F, 3);
+  const B = DESIGN_AMBITION_SCORE[answers.design_ambition] ?? 0;
+  const fHigh = F >= 2;
+  const bHigh = B >= 2;
+  const tier = fHigh && bHigh ? "COMPLETO" : fHigh || bHigh ? "MEDIO" : "LIGERO";
+  const score = F + B;
+  const isCanvas = answers.has_canvas_render === "yes";
+  const uiOutsideCanvas = isCanvas ? answers.ui_outside_canvas === "yes" : true;
+  const motionRequired = answers.motion_required === "yes";
+  const motionLayer = motionRequired ? answers.motion_layer ?? "dom" : null;
+  const needsResearch = answers.needs_research === "need-research";
+  const assetsList = Array.isArray(answers.assets_required) ? answers.assets_required.filter((a) => a !== "none") : [];
+  return {
+    tier,
+    score,
+    axes: { functionality: F, beauty: B },
+    activations: {
+      design_heavy: true,
+      framework: answers.ui_framework ?? "other",
+      is_canvas: isCanvas,
+      ui_outside_canvas: uiOutsideCanvas,
+      motion_required: motionRequired,
+      motion_layer: motionLayer,
+      needs_research: needsResearch,
+      assets: assetsList.length > 0,
+      assets_list: assetsList
+    }
+  };
+}
+function deriveProfileFields(answers) {
+  const { tier, score, axes, activations } = scoreComplexity(answers);
+  const raw = {
+    score,
+    functionality: axes.functionality,
+    beauty: axes.beauty,
+    design_heavy: activations.design_heavy,
+    framework: activations.framework,
+    is_canvas: activations.is_canvas,
+    ui_outside_canvas: activations.ui_outside_canvas,
+    motion_required: activations.motion_required,
+    motion_layer: activations.motion_layer,
+    needs_research: activations.needs_research,
+    assets: activations.assets,
+    assets_list: activations.assets_list.join("+")
+  };
+  const perfil_proyecto = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === null || value === void 0) continue;
+    const str = String(value);
+    if (str.length === 0) continue;
+    if (str.includes(",") || str.includes("{") || str.includes("}")) {
+      throw new Error(
+        `deriveProfileFields: value for perfil_proyecto.${key} ("${str}") contains a comma or brace, which would corrupt the inline-object PROJECT.md frontmatter encoding (project-md.js splits on unescaped "," and strips "{"/"}") \u2014 refusing to emit a value that would mis-parse on read-back`
+      );
+    }
+    perfil_proyecto[key] = str;
+  }
+  return { tier, perfil_proyecto };
+}
+
+// packs/design-power/descriptor.json
+var descriptor_default = {
+  id: "design-power",
+  name: "Design Power (FP-1 seed)",
+  version: "0.0.1-fp1-seed",
+  core_compat: ">=1.0.0",
+  trigger: {},
+  project_md_contribution: ["perfil_proyecto", "tier"],
+  profile: {},
+  resources: [],
+  gate_scopes: [],
+  pipeline: []
+};
+
+// src/builtin-packs.js
+var DESIGN_POWER_DESCRIPTOR = descriptor_default;
+function deriveProjectMdGated(answers) {
+  if (!answers || answers.design_heavy !== "yes") return {};
+  return deriveProfileFields(answers);
+}
+var DESIGN_POWER_MODULE = {
+  questions: DESIGN_PROFILE_QUESTIONS,
+  deriveProjectMd: deriveProjectMdGated
+};
+var BUILTIN_PACK_DESCRIPTORS = [DESIGN_POWER_DESCRIPTOR];
+var BUILTIN_PACK_MODULES = { [DESIGN_POWER_DESCRIPTOR.id]: DESIGN_POWER_MODULE };
+
 // src/agent-generator.js
 var import_node_fs8 = require("node:fs");
 var import_node_path6 = require("node:path");
@@ -10841,8 +11036,8 @@ async function runWizardAndWriteProjectMd({
   now,
   suppliedAnswers,
   skipConfirm,
-  packDescriptors = [],
-  packModules = {}
+  packDescriptors = BUILTIN_PACK_DESCRIPTORS,
+  packModules = BUILTIN_PACK_MODULES
 }) {
   const { activePacks } = loadActivePacks({ descriptors: packDescriptors, moduleRegistry: packModules });
   let answers;
@@ -10936,8 +11131,8 @@ async function runInit({
   repoRoot,
   now = () => (/* @__PURE__ */ new Date()).toISOString(),
   answers = null,
-  packDescriptors = [],
-  packModules = {}
+  packDescriptors = BUILTIN_PACK_DESCRIPTORS,
+  packModules = BUILTIN_PACK_MODULES
 }) {
   const parsed = parseArgs(argv);
   if (answers) {

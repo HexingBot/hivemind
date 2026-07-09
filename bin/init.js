@@ -36,6 +36,7 @@ import { buildIntakeQuestions, parseAgentModelsAnswer } from '../src/question-li
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
 import { collectPackQuestions, applyProjectMdContributions } from '../src/pack-hooks.js';
 import { loadActivePacks } from '../src/pack-loader.js';
+import { BUILTIN_PACK_DESCRIPTORS, BUILTIN_PACK_MODULES } from '../src/builtin-packs.js';
 import { generateProjectContext, applyAgentModels, applyDeveloperPermissions } from '../src/agent-generator.js';
 import { seedBacklog } from '../src/backlog-seeder.js';
 import { generateUseCaseSuite } from '../src/use-case-specs.js';
@@ -479,13 +480,17 @@ function normalizeAgentModelsAnswer(answers) {
  */
 async function runWizardAndWriteProjectMd({
   repoRoot, sessionId, prompter, now, suppliedAnswers, skipConfirm,
-  packDescriptors = [], packModules = {},
+  packDescriptors = BUILTIN_PACK_DESCRIPTORS, packModules = BUILTIN_PACK_MODULES,
 }) {
   // TASK-128 — minimal pack-loading seam (src/pack-loader.js): bind admitted
   // descriptors (src/pack-registry.js's resolveActivePacks) to their pack
-  // modules. Default (no packDescriptors/packModules supplied by any caller)
-  // is a strict no-op — activePacks is [] and both TASK-127 collectors below
-  // are additive/off-by-default in that case (AC2).
+  // modules. TASK-129 — the default (no packDescriptors/packModules supplied
+  // by the caller) is no longer a no-op: it is the built-in design-power
+  // candidate (src/builtin-packs.js), so its single unconditional
+  // `design_heavy` gate question is injected into every intake by default. A
+  // caller that explicitly passes packDescriptors:[]/packModules:{} still
+  // gets the strict no-op (activePacks === []), in which case both TASK-127
+  // collectors below stay additive/off-by-default exactly as before (AC2).
   const { activePacks } = loadActivePacks({ descriptors: packDescriptors, moduleRegistry: packModules });
 
   let answers;
@@ -695,12 +700,16 @@ async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConse
  *   answers supplied, so a re-run is idempotent (it never clobbers PROJECT.md).
  * @param {object[]} [opts.packDescriptors] - TASK-128: candidate addon-pack
  *   descriptors (src/pack-descriptor.js shape) to resolve via
- *   src/pack-registry.js. Defaults to [] — no production caller supplies this
- *   yet (Phase F owns the real design-power descriptor + its discovery
- *   convention); tests inject a fixture pack here.
+ *   src/pack-registry.js. TASK-129 — defaults to
+ *   src/builtin-packs.js#BUILTIN_PACK_DESCRIPTORS (the design-power FP-1 seed
+ *   descriptor), the always-loaded first-party candidate; pass [] explicitly
+ *   to opt out of every pack, built-in included. Tests inject a fixture pack
+ *   here to exercise the generic pack-hook seam independent of design-power.
  * @param {object} [opts.packModules] - TASK-128: map of descriptor id -> pack
  *   module ({questions?, deriveProjectMd?}), consumed by src/pack-hooks.js.
- *   Defaults to {}.
+ *   TASK-129 — defaults to src/builtin-packs.js#BUILTIN_PACK_MODULES,
+ *   matching packDescriptors' new default; pass {} explicitly alongside
+ *   packDescriptors:[] for a true zero-pack run.
  * @returns {Promise<{state: 'already_initialized'|'forced'|'resumed'|'created', projectMdPath: string, sessionId: string|null}>}
  */
 export async function runInit({
@@ -709,8 +718,8 @@ export async function runInit({
   repoRoot,
   now = () => new Date().toISOString(),
   answers = null,
-  packDescriptors = [],
-  packModules = {},
+  packDescriptors = BUILTIN_PACK_DESCRIPTORS,
+  packModules = BUILTIN_PACK_MODULES,
 }) {
   const parsed = parseArgs(argv);
 

@@ -1,0 +1,12 @@
+{
+  "id": "design-power",
+  "name": "Design Power (FP-1 seed)",
+  "version": "0.0.1-fp1-seed",
+  "core_compat": ">=1.0.0",
+  "trigger": {},
+  "project_md_contribution": ["perfil_proyecto", "tier"],
+  "profile": {},
+  "resources": [],
+  "gate_scopes": [],
+  "pipeline": []
+}
