@@ -16,3 +16,16 @@ development framework by integrating two more tools:
   lessons. Called as an out-of-process MCP service (managed, with graceful fallback).
 
 See [`PLAN.md`](./PLAN.md) for the merge plan.
+
+## Vendored third-party skills
+
+The **Diseño Poderoso** design-power pack vendors third-party Agent Skills via the
+`assimilate` gate (mandatory license classification + content security review +
+explicit human sign-off). Each adoption's exact provenance — origin, pinned commit,
+and `sha256` integrity — is recorded in [`integrations.lock.json`](./integrations.lock.json).
+
+- **ui-ux-pro-max** — UI/UX design-intelligence skill by *nextlevelbuilder*
+  (<https://github.com/nextlevelbuilder/ui-ux-pro-max-skill>), used under the MIT
+  License. Vendored at commit `12b486b22e67f5d887962ef8351c1ac863bfaeb9` under
+  `assimilated-skills/ui-ux-pro-max/` (staging) and materialized to
+  `.claude/skills/ui-ux-pro-max/` (harness-loadable) by the pack reconciler.

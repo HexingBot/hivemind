@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "resources": {
+    "skill:ui-ux-pro-max": {
+      "kind": "skill",
+      "origin": "github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "pin": "12b486b22e67f5d887962ef8351c1ac863bfaeb9",
+      "integrity": "sha256:935dd1b6b7b56202c21b8cfc11a601a2b67fab24a1c23ed3b9667bc7a1b0e307",
+      "scope": "project",
+      "owners": [
+        "design-power@0.1.0"
+      ],
+      "required": "soft",
+      "installed_at": "2026-07-09T01:39:45.792Z",
+      "install_method": "assimilated",
+      "verified": "unsigned"
+    }
+  }
+}
