@@ -187,6 +187,8 @@ export const PROD = Object.freeze({
   integrationsLock: prodUrl('integrations-lock.js'),
   packReconcile: prodUrl('pack-reconcile.js'),
   packApply: prodUrl('pack-apply.js'),
+  packResources: prodUrl('pack-resources.js'),
+  packOrchestrator: prodUrl('pack-orchestrator.js'),
   assimilate: prodUrl('assimilate.js'),
   claudeMd: prodUrl('claude-md.js'),
   agentGenerator: prodUrl('agent-generator.js'),
