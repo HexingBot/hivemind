@@ -1,0 +1,47 @@
+{
+  "key": "TASK-137",
+  "title": "Wire the design-power addon-install flow + orchestrator-routing pointer",
+  "description": "Phase G-4 (addon surface). Make the design-power pack push-button installable in any hivemind project, and make the orchestrator aware the whole addon/assimilate surface exists (today orchestrator-routing has ZERO mention of packs/assimilate). Add a documented, invocable install flow (a command under commands/ or a skill) that runs: check PROJECT.md profile -> pack-ctl resolve -> pack-ctl reconcile-apply -> report installed skills + the Wave-2 MCP/plugin resources left for the human. Add an orchestrator-routing SKILL.md section describing the addon-pack + assimilate protocol and pointing at hivemind-assimilate-skill + pack-ctl + packs/design-power. Surface the end-to-end story in README. Depends on TASK-134 + TASK-136.",
+  "acceptance_criteria": [
+    "A documented, invocable install flow (command or skill) exists that drives pack-ctl resolve -> reconcile-apply for the active design-power pack and reports the skills materialized plus the Wave-2 MCP/plugin resources it did NOT install (with their descriptor install commands for the human).",
+    "skills/orchestrator-routing/SKILL.md gains a section on the addon-pack + assimilate surface that references hivemind-assimilate-skill, pack-ctl, and packs/design-power, so a fresh orchestrator can route to them.",
+    "README documents the design-heavy end-to-end path: init writes the profile -> the install flow reconciles the design skills -> assimilate adopts new third-party skills via the human gate.",
+    "All existing doc-lock / readme / routing / skills-parity sensors stay green (updated where they pin content)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "design-power",
+    "phase-g",
+    "addon-surface",
+    "routing",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-134",
+    "TASK-136"
+  ],
+  "linked_commits": [
+    "f2c844060942ac3f43ffca394798915a6c0018ce"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-09T05:06:46.694Z",
+      "body": "UAT (verified by Orchestrator at the human's request — uat_delegated_to_orchestrator standing grant). Script derived from the 4 ACs; every AC covered, all steps PASS.\n\nStep 1 (AC1) — Run: inspect commands/design-pack.md. Expect: an invocable flow that reads PROJECT.md profile then drives pack-ctl resolve -> reconcile-plan -> reconcile-apply, and honestly reports Wave-2 MCP/plugin gaps + routes skill adoption through the assimilate skill. Observed: lines 25/34/46 invoke the REAL `${CLAUDE_PLUGIN_ROOT}/dist/pack-ctl.cjs resolve|reconcile-plan|reconcile-apply`; 5 hits on skills-only/Wave-2/manual/hivemind-assimilate-skill making clear the reconciler is skills-only and vendoring routes through the assimilate skill (never shortcut). PASS.\n\nStep 2 (AC2) — Run: grep skills/orchestrator-routing/SKILL.md for the addon surface. Expect: a section pointing at pack-ctl, packs/design-power, /hivemind:design-pack, and hivemind-assimilate-skill, with the human-gate noted. Observed: new '## Addon-pack + assimilate surface' section (L938+) referencing all four, stating hivemind-assimilate-skill is the ONLY supported third-party-skill adoption path. Byte-identical parity copy confirmed (diff -> IDENTICAL; enforced by orchestrator-routing-skill + orchestrator-skill-v2 byte-identity specs). PASS.\n\nStep 3 (AC3) — Run: grep README.md. Expect: the design-heavy end-to-end path (init profile -> install flow -> assimilate for new skills). Observed: 'Design-heavy project?' day-two bullet (L169) pointing at /hivemind:design-pack. README stayed under the 200-line cap with no banned jargon. PASS.\n\nStep 4 (AC4) — Run: the doc-lock/readme/routing sensors + full gate. Expect: all green. Observed (from developer hand-off, spot-confirmed): readme.spec 6/6, orchestrator-routing-skill 13/13, orchestrator-skill-v2 20/20, agility-doc-locks 15/15, calibration 33/33, plugin-scaffold 16/16, docs 2/2; npm test 892 passed/2 skip; npm run test:all 1632 passed/4 skipped. PASS.\n\nOverall: PASS (4/4). Install-flow form = a commands/ entry (/hivemind:design-pack) mirroring the commands/loop.md -> dist/loop-ctl.cjs precedent. No new behavioral specs (uat-only budget honored)."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-07-09T05:07:04.513Z",
+      "body": "APPROVE (LIGHT depth; clean first pass). Review depth = LIGHT; rubric inputs: docs-only, uat-only surface (commands/ + skills/orchestrator-routing + README), ~155 prose lines, no source logic and no security-gate logic touched. Phase G-4 (final wiring) of the addon-surface slice.\n\nAccuracy-critical points verified in-code by the Orchestrator (who reviewed the pack-ctl surface at TASK-134/135): commands/design-pack.md drives the REAL `dist/pack-ctl.cjs resolve|reconcile-plan|reconcile-apply` subcommands (L25/34/46) — no fabricated commands; it honestly states the reconciler is skills-only (Wave 1) and routes third-party skill vendoring through hivemind-assimilate-skill rather than shortcutting it, and cross-references each Wave-2 MCP/plugin gap to its descriptor install command. orchestrator-routing SKILL.md gains a '## Addon-pack + assimilate surface' section (L938+) pointing at packs/design-power, pack-ctl, /hivemind:design-pack, and hivemind-assimilate-skill (named the ONLY supported adoption path), with byte-identical .claude/ parity (diff IDENTICAL; enforced by orchestrator-routing-skill + orchestrator-skill-v2 byte-identity specs). README documents the design-heavy end-to-end path under the 200-line cap.\n\nInstall-flow form = a commands/ entry (/hivemind:design-pack) mirroring the commands/loop.md -> dist/loop-ctl.cjs precedent (correct: an invocable operator flow, not always-on routing knowledge). No .claude/commands/ dir exists, so no command parity copy needed.\n\nUAT (delegated to Orchestrator): recorded separately, 4/4 ACs PASS.\n\nGate green: npm test = 892 passed/2 skip; npm run test:all = 1632 passed/4 skipped; readme/orchestrator-routing/orchestrator-skill-v2/agility-doc-locks/calibration/plugin-scaffold/docs sensors all green. No new behavioral specs (uat-only budget honored). Knowledge capture (TASK-105): not triggered — clean first-pass APPROVE, no HIGH, no RC loop. Closed."
+    }
+  ],
+  "created_at": "2026-07-09T04:08:27.426Z",
+  "updated_at": "2026-07-09T05:07:04.513Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

@@ -1,0 +1,40 @@
+{
+  "key": "TASK-134",
+  "title": "Shipped pack-ctl CLI wrapper: resolve + reconcile over the addon machinery",
+  "description": "Phase G-1 (addon surface). Mirror the loop-ctl pattern (bin/loop-ctl.js -> dist/loop-ctl.cjs) to expose the deterministic addon-pack ops to a plugin-installed project that has no cleanly-reachable src/. New zero-external-dep bin/pack-ctl.js wrapping src/design-profile.js + src/pack-loader.js + src/pack-orchestrator.js + src/pack-reconcile.js. Bundle to dist/pack-ctl.cjs and register it in .claude-plugin/shipped-bin.json + scripts/build-plugin.mjs ENTRYPOINT_NAMES so a git-URL install ships it. Skills-only reconcile per Wave-1 (MCP/plugin appliers remain declared-not-acted-on). Touches build/test-infra -> run the release gate (test:all) at hand-off.",
+  "acceptance_criteria": [
+    "`node bin/pack-ctl.js resolve --repo-root <r>` reads a fixture project's PROJECT.md perfil_proyecto/tier + active pack descriptors and prints the resolved desired resource set as JSON identical to resolveDesired() for that fixture.",
+    "`node bin/pack-ctl.js reconcile-plan --repo-root <r>` prints the plan {install,remove,replace,report} JSON for skills over the fixture's actual state + integrations.lock.json (skills-only).",
+    "`node bin/pack-ctl.js reconcile-apply --repo-root <r>` materializes the desired skills and writes integrations.lock.json atomically; a second run is idempotent (empty install/remove/replace).",
+    "dist/pack-ctl.cjs is registered in .claude-plugin/shipped-bin.json and scripts/build-plugin.mjs ENTRYPOINT_NAMES; dist-parity spec passes (byte-identical committed rebuild).",
+    "Unknown subcommand or missing --repo-root exits non-zero with a clear stderr message; no partial writes on error."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "design-power",
+    "phase-g",
+    "addon-surface",
+    "cli"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "dfcfe4d0750b967074d282a34c4bb4b86a7b6dde",
+    "d1dd2616d42668f91af8a061583f9e7964cf8577"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "reviewer",
+      "at": "2026-07-09T04:25:56.379Z",
+      "body": "APPROVE (FULL depth). Review depth = FULL; rubric inputs: new tdd-tier core CLI source (bin/pack-ctl.js wrapping the pack reconciler), build/test-infra touch (.claude-plugin/shipped-bin.json + scripts/build-plugin.mjs + committed dist/pack-ctl.cjs), changed-lines > 150. Phase G-1 of the addon-surface slice.\n\ntdd two-commit discipline verified: test dfcfe4d strictly precedes feat d1dd261; RED independently reproduced (git ls-tree confirms bin/pack-ctl.js + dist/pack-ctl.cjs absent at the test commit and its parent 303affd — specs failed for the right reason). Specs non-vacuous (reconstructed.toEqual(real), file materialization, lock-owner edge, idempotent empty second-run plan, non-zero exit + no partial writes).\n\nAll 5 ACs verified in-code: resolve == aggregateDesired over resolveDesired(); reconcile-plan emits the real {install,remove,replace,report} shape read-only (no lock creation); reconcile-apply delegates to reconcilePack with atomic lock write + proven idempotency; dist/pack-ctl.cjs registered in shipped-bin + ENTRYPOINT_NAMES with byte-identical parity over 8 bundles; error paths validate before any fs access, exit 1, no partial writes. No logic forked — the CLI imports and calls the existing src functions.\n\nDesign notes adjudicated: (a) profileResultFromFrontmatter is the exact inverse of deriveProfileFields with a drift-free scoreComplexity({}) fallback (the only theoretical drift is unreachable since non-'yes' projects persist no perfil); (b) hard-abort branch unreachable via the real descriptor is acceptable — logic lives in reconcilePack + is covered by pack-orchestrator e2e; (c) multi-pack aggregateDesired IS covered at the fast tier (packA+packB).\n\nGate green: test:since -- 303affd = 24 passed/3 files; npm test = 871 passed/2 skipped; pack-orchestrator + pack-reconcile e2e = 9 passed; dist-parity byte-identical over 8 bundles.\n\nFindings: 0 HIGH, 0 MEDIUM, 3 LOW. LOW-1: reconcile-apply loops reconcilePack per active pack — an unexpected throw on pack N>1 could leave pack 1's committed writes; unreachable with one built-in pack but add a guard when pack #2 lands. LOW-2: CLI emits structured-JSON only, no OTel span — faithfully follows the sanctioned loop-ctl/init CLI precedent, not a new regression. LOW-3: process-only note on checklist relay. Knowledge capture (TASK-105): not triggered — clean first-pass APPROVE, no HIGH, no RC loop. Closed."
+    }
+  ],
+  "created_at": "2026-07-09T04:07:31.693Z",
+  "updated_at": "2026-07-09T04:25:56.379Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

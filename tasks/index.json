@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-09T01:42:19.715Z",
+  "generated_at": "2026-07-09T05:07:04.513Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -784,6 +784,30 @@
     {
       "key": "TASK-133",
       "title": "Adopt ui-ux-pro-max via the assimilate human-approve gate (Phase F-5) [HUMAN SIGN-OFF REQUIRED]",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-134",
+      "title": "Shipped pack-ctl CLI wrapper: resolve + reconcile over the addon machinery",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-135",
+      "title": "pack-ctl assimilate subcommands: classify/scan/stage over src/assimilate.js",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-136",
+      "title": "Wire the assimilate workflow as a shipped skill: skills/hivemind-assimilate-skill",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-137",
+      "title": "Wire the design-power addon-install flow + orchestrator-routing pointer",
       "status": "done",
       "priority": "high"
     }

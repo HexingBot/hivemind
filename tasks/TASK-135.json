@@ -1,0 +1,44 @@
+{
+  "key": "TASK-135",
+  "title": "pack-ctl assimilate subcommands: classify/scan/stage over src/assimilate.js",
+  "description": "Phase G-2 (addon surface). Extend bin/pack-ctl.js with the deterministic assimilate ops wrapping src/assimilate.js + src/skill-scan.js. CRITICAL boundary: the human sign-off and the security-reviewer subagent verdict stay OUTSIDE the CLI — they are injected as inputs (--decision, --security-verdict, --security-override) exactly as src/assimilate.js already models them, so the CLI stays LLM/network-free and the no-auto-adopt invariant holds at the CLI boundary. Rebuild dist/pack-ctl.cjs. Depends on TASK-134.",
+  "acceptance_criteria": [
+    "`pack-ctl assimilate scan --path <skill>` prints the risky-pattern scan report JSON (shell/exec, network/URL, env/credential, fs-outside-dir, obfuscated/base64) from src/skill-scan.js.",
+    "`pack-ctl assimilate classify --path <skill>` prints the license verdict (SPDX id + permissive|copyleft|unknown) using the addon-packs-plan.md §12 nearest-enclosing precedence.",
+    "`pack-ctl assimilate stage ...` writes assimilated-skills/<id>/ with re-scoped frontmatter + provenance block ONLY when --decision approve is passed AND the verdict is not suspicious (or --security-override is the strict boolean true); every other combination writes nothing and exits reporting blocked_* with a reason.",
+    "Invariant test sweeps {permissive,copyleft,unknown} x {no-decision,decline} and asserts zero writes; a suspicious verdict blocks even approve unless --security-override true.",
+    "dist/pack-ctl.cjs rebuilt; dist-parity green."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "design-power",
+    "phase-g",
+    "addon-surface",
+    "assimilate",
+    "cli",
+    "security"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-134"
+  ],
+  "linked_commits": [
+    "60f3fdf",
+    "993eb8d"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "reviewer",
+      "at": "2026-07-09T04:41:23.368Z",
+      "body": "APPROVE (FULL depth). Review depth = FULL; rubric inputs: security surface (the third-party-skill assimilate/skill-scan CLI boundary), a change to the security-critical src/assimilate.js primitive, tdd-tier, shipped dist/pack-ctl.cjs rebuild. Phase G-2 of the addon-surface slice.\n\nPRIORITY SCRUTINY of the src/assimilate.js edit: the ONLY change is adding the `export` keyword to the pre-existing computeSkillScan function (line 166) — zero logic change. The three locked invariants re-verified in-code AFTER the change: write-only-on-approve (decision !== 'approve' early-returns, no write); suspicious-blocks-approve under strict boolean (verdict === 'suspicious' && securityOverride !== true); license classification never a write authority (only populates payload, never gates). Correct minimal choice (reuse not fork), not scope creep, no invariant weakening.\n\nCLI no-auto-adopt boundary verified in code: securityOverride = flags.securityOverride === 'true' (strict) — 'yes' does NOT bypass. AC4 sweep {permissive,copyleft,unknown}×{no-decision,decline} = 6 non-vacuous cases each asserting assimilated-skills/ AND integrations.lock.json absent; suspicious-without-override proven with a PERMISSIVE fixture (security gate orthogonal to license). classify/scan delegate to detectLicense/classifyLicense/computeSkillScan with no forked logic; §12 nearest-enclosing precedence untouched.\n\ntdd two-commit: 60f3fdf~1 == d1dd261 confirms test strictly precedes feat 993eb8d; RED independently reproduced in a throwaway worktree (16/16 new specs fail for the right reason — computeSkillScan unexported + no assimilate subcommand at parent).\n\nGate green: test:since -- d1dd261 = 53 passed/2 files; npm test = 888 passed/2 skipped; assimilate.spec 17 + skill-scan 16 + license-detect 15 + pack-ctl (23 e2e + 30 fast) + dist-parity byte-identical over 8 bundles. npm run test:all = 1628 passed/4 skipped.\n\nFindings: 0 HIGH, 0 MEDIUM, 2 LOW (both informational: CLI emits structured-JSON-only per the sanctioned bin/*-ctl.js observability convention; --source-repo-root subdir LICENSE-fallback opt not exposed — known gap, not a defect). Minimalism exemplary (one-keyword export to avoid forking). Knowledge capture (TASK-105): not triggered — clean first-pass APPROVE, no HIGH, no RC loop. Closed."
+    }
+  ],
+  "created_at": "2026-07-09T04:07:48.704Z",
+  "updated_at": "2026-07-09T04:41:23.368Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

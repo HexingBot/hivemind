@@ -1,0 +1,49 @@
+{
+  "key": "TASK-136",
+  "title": "Wire the assimilate workflow as a shipped skill: skills/hivemind-assimilate-skill",
+  "description": "Phase G-3 (addon surface). Author the orchestrator-facing WIRED skill that operationalizes addon-packs.md §4/§7 and addon-packs-plan.md §7/§12 — the surface the design docs name `hivemind-assimilate-skill`. It ships under plugin-root skills/ (parity-copied to .claude/skills/ in the dev repo) so an orchestrator in ANY hivemind project loads it via progressive disclosure and knows the third-party-skill adoption protocol. The skill drives pack-ctl (TASK-135) for the deterministic steps (classify/scan/stage), spawns the REAL security-reviewer subagent over the fetched content (incl. its instruction text for prompt-injection), assembles the approval package, requires explicit human sign-off, then stages + reconciles via pack-ctl. No source logic — this is a SKILL.md + sensor wiring. Depends on TASK-135.",
+  "acceptance_criteria": [
+    "skills/hivemind-assimilate-skill/SKILL.md exists with a progressive-disclosure description stating WHEN to load (adopting a third-party Agent Skill / design-pack resource) and the full human-gated flow: fetch+pin -> license classify -> scan -> security-reviewer subagent verdict -> approval package -> explicit human sign-off -> stage -> reconcile-apply.",
+    "The skill instructs driving pack-ctl for the deterministic ops and spawning the security-reviewer subagent for the verdict — explicitly NOT running license/safety judgement inside the CLI.",
+    "It states the locked invariants verbatim in intent: no third-party skill adopts without an explicit human approve (license classification is decision-support only, forgeable); a suspicious verdict blocks even approve unless the human passes an explicit override; assimilation never goes autonomous under any loop_auth grant.",
+    "Skill parity + manifest-skills sensors updated so the new skill is covered and green (agents-parity.spec.js / manifest-skills.spec.js / any skills-parity doc-lock).",
+    "A dev-repo .claude/skills/hivemind-assimilate-skill parity copy exists so the parity sensor passes."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "design-power",
+    "phase-g",
+    "addon-surface",
+    "assimilate",
+    "skill",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-135"
+  ],
+  "linked_commits": [
+    "a1f67be018c3713789855a3a9260880c6b232a9e",
+    "a94325de3d1940819a8ef44fd9ad3ab1fc6809cf"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-09T04:58:28.605Z",
+      "body": "UAT (verified by Orchestrator at the human's request — uat_delegated_to_orchestrator standing grant). Script derived from the 5 ACs; every AC covered, all steps PASS.\n\nStep 1 (AC1) — Run: inspect skills/hivemind-assimilate-skill/SKILL.md frontmatter + body. Expect: a `description:` stating WHEN to load (third-party skill adoption) + the ordered human-gated flow. Observed: description names the trigger conditions (\"assimilate a skill\", \"vendor this skill\", pack-ctl assimilate, integrations.lock.json, assimilated-skills/) and the full flow (fetch+pin -> license classify -> scan -> security-reviewer verdict -> approval package -> human sign-off -> stage -> reconcile); 51 ordered-flow keyword hits. Live signal: the skill auto-loaded into the orchestrator session with this description via progressive disclosure. PASS.\n\nStep 2 (AC2) — Run: grep the flow for the tool boundary. Expect: deterministic ops driven via pack-ctl; license/safety JUDGEMENT (security-reviewer subagent + human) OUTSIDE the CLI. Observed: 7 pack-ctl/dist references + 9 security-reviewer/subagent/spawn references + 7 explicit \"outside / network-free / judgement\" boundary statements. PASS.\n\nStep 3 (AC3) — Run: grep for the locked invariants. Expect: (a) no adoption without explicit human approve; (b) license classification decision-support only + forgeable; (c) suspicious verdict blocks even approve unless explicit override; (d) never autonomous under any loop_auth grant. Observed: 19 invariant-language hits; reviewer independently cross-checked all four against src/assimilate.js (L291/L322) + addon-packs.md §4/§7 and found them FAITHFUL (no HIGH). PASS.\n\nStep 4 (AC4) — Run: npx vitest run tests/assimilate-skill.spec.js. Expect: a byte-identity parity sensor green. Observed: 4 passed (exists + frontmatter + dev copy exists + byte-identical); red-green planted by the developer (fails on a 1-byte corruption). PASS.\n\nStep 5 (AC5) — Run: diff the two SKILL.md copies. Expect: .claude/skills/ dev parity copy exists byte-identical. Observed: diff -> no output (IDENTICAL). PASS.\n\nOverall: PASS (5/5). The flag contract documented in the skill was independently verified by the reviewer against bin/pack-ctl.js ASSIMILATE_FLAG_SPEC (no fabricated flags; strict override semantics correct)."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-07-09T04:59:35.505Z",
+      "body": "APPROVE after 1 RC loop (FULL depth). Review depth = FULL; rubric inputs: a plugin-shipped skill documenting the third-party-skill assimilation SECURITY gate — its invariant statements + pack-ctl flag contract must be exactly faithful or the orchestrator misfires the gate; near-zero logic lines but security-relevant surface. Phase G-3 of the addon-surface slice.\n\nContent fidelity (first pass, a1f67be): FAITHFUL, no HIGH. All four locked invariants cross-checked against src/assimilate.js (L291 write-only-on-approve, L322 suspicious-blocks-approve strict boolean) + addon-packs.md §4/§7: (a) no adopt without explicit human approve, (b) license classification decision-support-only + forgeable, (c) suspicious blocks approve unless explicit override, (d) never autonomous under any loop_auth grant. Every documented pack-ctl assimilate scan|classify|stage command + flag matches bin/pack-ctl.js ASSIMILATE_FLAG_SPEC; strict override semantics (securityOverride === 'true') correct; permissive allowlist + scan categories match license-detect.js/skill-scan.js. No fabricated flag. CLI-vs-judgement boundary faithfully stated.\n\nRC loop (1): MEDIUM — AC4/AC5 require a parity SENSOR covering the two SKILL.md copies; the first pass only added the skill to REPO_LOCAL_SKILLS (pins the plugin-root listing, never reads .claude/skills copy, never byte-compares). Fixed in a94325d: new tests/assimilate-skill.spec.js mirrors graphify-skill.spec.js (both copies exist + frontmatter + Buffer.equals byte-identity), red-green planted (fails on 1-byte corruption). LOW also fixed: step-5 status string corrected pending_approval -> blocked_pending_approval (the CLI's BLOCKED_STATUS_MAP rename) in both copies. security-reviewer-agent gap adjudicated an acceptable interim (skill is transparent about it, constrains the spawn to read-only + strict {verdict,reasoning} + BEGIN-DATA fencing; the write-gating invariants are enforced by the primitive regardless of which subagent produces the verdict).\n\nUAT (delegated to Orchestrator): recorded separately, 5/5 ACs PASS; the skill auto-loaded into the session via progressive disclosure (AC1 proven live).\n\nGate green: test:since -- 993eb8d = 15 passed/1 skip; npm test = 892 passed/2 skip (incl new assimilate-skill.spec.js 4 tests); npm run test:all = 1632 passed/4 skipped. Byte-identity confirmed (diff -> identical).\n\nKnowledge capture (TASK-105): TRIGGERED by the RC loop — wrote knowledge/proposed/dogfood-skill-parity-needs-byte-identity-sensor-not-listing.md (a listing-enumeration entry guards presence, NOT copy equality; dogfood/plugin skills with two copies need a dedicated byte-identity sensor). Closed."
+    }
+  ],
+  "created_at": "2026-07-09T04:08:12.856Z",
+  "updated_at": "2026-07-09T04:59:35.505Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}
