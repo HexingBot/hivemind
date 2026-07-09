@@ -72,9 +72,14 @@ const MANIFEST_SKILLS = [
 ];
 // P3.3 — the independent manifest-verifier role (objective spec gate) ships as a skill too.
 const VERIFIER_SKILL = 'manifest-verifier';
+// TASK-136 — hivemind-assimilate-skill: the orchestrator-facing skill that
+// operationalizes the third-party-skill adoption protocol (addon-packs.md
+// §4/§7). Ships in BOTH skills/ and .claude/skills/ byte-identical (dev
+// dogfood mirror, same pattern as orchestrator-routing/mcp-server/graphify).
+const ASSIMILATE_SKILL = 'hivemind-assimilate-skill';
 const REPO_LOCAL_SKILLS = [
   BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
-  ...MANIFEST_SKILLS, VERIFIER_SKILL,
+  ...MANIFEST_SKILLS, VERIFIER_SKILL, ASSIMILATE_SKILL,
 ].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
