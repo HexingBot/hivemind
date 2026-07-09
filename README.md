@@ -166,6 +166,10 @@ A few things you will want to know as you go:
   handoff note so the next chat resumes cleanly.
 - **Read the long-form rules**: `CLAUDE.md` at the repo root captures the
   team-wide operating principles.
+- **Design-heavy project?** Run `/hivemind:design-pack` to pull in the
+  matching design skills; it lists anything it could not install with the
+  command to run yourself. Ask the chat to "assimilate" any other outside
+  skill you want — it fetches, checks, and only adds it once you say yes.
 
 ## Preparing a distribution
 

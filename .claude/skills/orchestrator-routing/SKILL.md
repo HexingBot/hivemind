@@ -935,6 +935,42 @@ layer; it accelerates the data-gathering stage.
 
 Returns `{ summary, key_facts: [{ fact, source, confidence }], gaps, sources }`.
 
+## Addon-pack + assimilate surface (TASK-137)
+
+A separate, optional surface exists alongside the per-ticket workflow above: **addon packs** —
+bundles of design/tooling resources (skills, MCP servers, marketplace plugins) that a project can
+opt into based on its intake profile. This surface has its own reconciler and its own human-gated
+adoption protocol; route to it whenever the human wants a pack installed, or wants to bring in a
+third-party skill.
+
+- **`packs/design-power`** (`packs/design-power/descriptor.json`) is the one shipped built-in pack
+  today — design-heavy projects (the intake's `design_heavy` gate, recorded on `PROJECT.md` as
+  `tier`/`perfil_proyecto` frontmatter) activate a scored subset of its resources: skills, MCP
+  servers (shadcn/shadcn-vue/firecrawl/playwright), and the official `frontend-design` plugin.
+- **`pack-ctl`** (`${CLAUDE_PLUGIN_ROOT}/dist/pack-ctl.cjs`, dev-repo equivalent `node
+  bin/pack-ctl.js`) is the deterministic CLI over the reconciler: `resolve` (desired resources for
+  this project's profile), `reconcile-plan` (diff against actual disk state, read-only),
+  `reconcile-apply` (materialize the diff), and `assimilate scan|classify|stage` (the third-party
+  skill adoption primitive's deterministic ops). **Today the reconciler is skills-only (Wave 1)** —
+  MCP servers and marketplace plugins always come back in the plan's `report` as gaps for the human
+  to install by hand from the descriptor's own `install` command; never assume `reconcile-apply`
+  covers everything a pack lists.
+- **`/hivemind:design-pack`** (`commands/design-pack.md`) drives the resolve -> reconcile-plan ->
+  reconcile-apply sequence end to end for the design-power pack and reports the split between what
+  was materialized and what the human still needs to install themselves.
+- **`hivemind-assimilate-skill`** (`skills/hivemind-assimilate-skill/SKILL.md`) is the ONLY
+  supported way a project adopts a third-party Agent Skill (including a design-pack's own bundled
+  skill resources like `ui-ux-pro-max`) — fetch+pin, license classify, risky-pattern scan, a
+  spawned security-reviewer subagent verdict over the skill's actual instruction text, an approval
+  package, then stage + reconcile. Load this skill whenever the task is "assimilate/vendor/adopt a
+  third-party skill."
+
+**Assimilation never goes autonomous under any `loop_auth` grant.** Unlike installing an
+already-vetted pack resource (which the reconciler above can do without a human in the loop),
+adopting a third-party skill always requires an explicit human `approve` — no standing
+authorization switch, preset, or trust grant ever lifts that gate. See
+`hivemind-assimilate-skill`'s "invariants" section for the enforced detail.
+
 ## Notes
 
 - The pointer is intentionally tiny; never store substantive state in it.
