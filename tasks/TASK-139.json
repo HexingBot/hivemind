@@ -1,0 +1,46 @@
+{
+  "key": "TASK-139",
+  "title": "design-pack usability: surface skills-needing-assimilation + route to hivemind-assimilate-skill",
+  "description": "USABILITY BUG (diagnosed via a fresh-project smoke test): on a fresh project where no skill has been assimilated yet, `/hivemind:design-pack` runs cleanly (exit 0, no crash) but installs NOTHING and leaves the user with 'skills materialized: none' + a list of MCP gaps — it never tells them the pack's headline skill (ui-ux-pro-max) needs to be adopted via hivemind-assimilate-skill FIRST. Root cause: commands/design-pack.md Step 5 surfaces only `installed` + the TOP-LEVEL `plan.report` (which holds only mcp/plugin Wave-2 entries). The signal that a desired skill couldn't be materialized (no owned copy) lands in the PER-PACK `packs[].report` (e.g. {id:'skill:ui-ux-pro-max', reason:'owned source not found ...', blocking:false}), which Step 5 never reads. The command's Notes mention assimilation generically but the step-by-step report never connects the runtime signal to the fix.\\n\\nThis is a docs-only fix to commands/design-pack.md (uat-only). Do NOT change the CLI/reconciler behavior — the runtime signal already exists; the command just needs to surface it. The robust key is the runtime outcome itself: any `packs[].report` entry whose id starts with 'skill:' after reconcile-apply = a desired skill that could not be materialized = needs adoption via hivemind-assimilate-skill (don't parse the fragile reason string). This is a shipped plugin command, so it warrants a patch release.",
+  "acceptance_criteria": [
+    "commands/design-pack.md Step 5 (report step) is rewritten to present THREE honest, non-conflated lists: (1) skills materialized = `installed` ids; (2) skills that still need adoption = every `packs[].report` entry whose id starts with 'skill:'; (3) Wave-2 mcp/plugin gaps = the top-level `plan.report` mcp/plugin entries (existing behavior).",
+    "For each skill-needing-adoption entry, the command instructs the operator to run the human-gated hivemind-assimilate-skill to vendor that skill (looking up its origin + pin from packs/design-power/descriptor.json's resources[] by id), THEN re-run /hivemind:design-pack to materialize it. It explicitly must NOT shortcut assimilation.",
+    "The command makes explicit that on a FRESH project (nothing assimilated yet) the expected first-run outcome is: installed = empty, and ui-ux-pro-max appears under 'needs adoption' with the assimilate instruction — so the user is never left with a bare 'nothing installed'.",
+    "Step 4's description notes that a skill in the plan's `install` bucket that cannot be materialized (no owned copy) surfaces in `packs[].report`, which Step 5 turns into the adoption instruction.",
+    "All doc-lock/readme/routing sensors stay green (readme.spec.js, docs.spec.js, calibration.spec.js command-surface check, any command doc-lock). No new behavioral specs (uat-only budget). npm run test:all green."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "design-power",
+    "usability",
+    "design-pack",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-137"
+  ],
+  "linked_commits": [
+    "cb230c6"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-09T14:26:23.803Z",
+      "body": "UAT (verified by Orchestrator at the human's request — uat_delegated_to_orchestrator). Verified BEHAVIORALLY by running the real fresh-project flow (a COMPLETO-profile scratch project, nothing assimilated) and tracing the rewritten Step 5 logic against actual `dist/pack-ctl.cjs reconcile-apply` output. 4/4 ACs PASS.\n\nStep 1 (AC1) — Run: reconcile-apply on the fresh project; derive the three lists Step 5 specifies. Observed: LIST 1 skills-materialized (`installed`) = []; LIST 2 skills-needing-adoption (`packs[].report` entries with id starting 'skill:') = ['skill:ui-ux-pro-max']; LIST 3 Wave-2 (`plan.report` mcp/plugin) = [plugin:frontend-design, mcp:shadcn/ui, mcp:firecrawl, mcp:playwright]. All three lists non-conflated and correctly derivable from real output. PASS.\n\nStep 2 (AC2) — Run: for the needs-adoption skill, look up origin+pin in descriptor. Observed: descriptor resources[] ui-ux-pro-max -> origin github.com/nextlevelbuilder/ui-ux-pro-max-skill, pin 12b486b22e67f5d887962ef8351c1ac863bfaeb9 — exactly what Step 5's instruction block tells the operator to pass to hivemind-assimilate-skill, with a 'then re-run /hivemind:design-pack' follow-up and an explicit never-shortcut-assimilation note. PASS.\n\nStep 3 (AC3) — Fresh-project expectation. Observed live: installed=[] AND ui-ux-pro-max under 'needs adoption' with its assimilate instruction — the user is NEVER left with a bare 'nothing installed'. The command doc also states this expected first-run outcome explicitly. PASS.\n\nStep 4 (AC4) — Step 4 description now notes a skill in the plan's install bucket that can't be materialized (no owned copy) surfaces in packs[].report, which Step 5 turns into the adoption instruction. Confirmed in the doc. PASS.\n\nStep 5 (AC5) — Sensors: readme.spec 6/6, docs.spec 2/2, calibration 33/33 (commands/*.md non-mandated surface, no frontmatter change); no design-pack doc-lock exists. npm test 900 passed/2 skip; npm run test:all 1640 passed/4 skipped. No new behavioral specs (uat-only budget). No CLI/source change (docs-only). PASS.\n\nOverall: PASS (4/4). The usability gap is closed — keyed on the robust runtime signal (packs[].report skill: entries), not a fragile reason string."
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-07-09T14:26:39.743Z",
+      "body": "APPROVE (LIGHT depth; clean first pass). Review depth = LIGHT; rubric inputs: docs-only change to one shipped command file (commands/design-pack.md), uat-only, no source/CLI/dist change, no security surface. Usability follow-up to Phase G (TASK-137).\n\nVerified BEHAVIORALLY (the real risk for this fix is whether the command, followed literally, produces correct guidance): ran the actual fresh-project reconcile-apply and traced the rewritten Step 5 against it. The three lists resolve correctly from real output — installed=[]; packs[].report skill: entries = [skill:ui-ux-pro-max] (the previously-hidden signal, now surfaced); plan.report mcp/plugin = the Wave-2 gaps. The needs-adoption instruction keys on the robust runtime outcome (a desired skill that could not be materialized) rather than the fragile 'owned source not found' reason string, and looks up origin+pin from the descriptor (verified: matches ui-ux-pro-max's real origin/pin). Never-shortcut-assimilation note preserved; Step 4 note added (AC4). Fresh-project expectation (installed empty + ui-ux-pro-max under needs-adoption, never a bare 'nothing installed') stated explicitly (AC3).\n\nScope: single-file docs diff (git diff --stat), no .claude/commands parity copy exists, no new behavioral specs (uat-only budget). Gate green: readme 6/6, docs 2/2, calibration 33/33; npm test 900 passed/2 skip; npm run test:all 1640 passed/4 skipped. UAT recorded separately, 4/4 PASS.\n\nFindings: 0 HIGH, 0 MEDIUM, 0 LOW. Knowledge capture (TASK-105): not triggered (clean first-pass, no HIGH, no RC). Closed — ships in patch 0.14.2."
+    }
+  ],
+  "created_at": "2026-07-09T14:22:17.968Z",
+  "updated_at": "2026-07-09T14:26:39.743Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

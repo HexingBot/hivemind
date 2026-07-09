@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-09T14:06:07.387Z",
+  "generated_at": "2026-07-09T14:26:39.743Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -816,6 +816,12 @@
       "title": "Fix malformed plugin hooks/hooks.json (Hook load failed at path [hooks]) + regression sensor",
       "status": "done",
       "priority": "critical"
+    },
+    {
+      "key": "TASK-139",
+      "title": "design-pack usability: surface skills-needing-assimilation + route to hivemind-assimilate-skill",
+      "status": "done",
+      "priority": "high"
     }
   ]
 }
