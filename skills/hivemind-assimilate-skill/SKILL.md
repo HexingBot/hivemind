@@ -109,9 +109,10 @@ verdict.
 5. **Assemble the approval package** for the human: origin + pin, the license verdict (step 2),
    the scan findings (step 3), the security-reviewer verdict + reasoning (step 4), and the exact
    provenance block that would be written on approve (available from a dry-run `assimilate stage`
-   call with no `--decision`, which returns `status: 'pending_approval'` and a
-   `provenance_preview` — writes nothing). Present all of it together; do not ask for sign-off on
-   the license alone.
+   call with no `--decision`, which the CLI reports as `status: 'blocked_pending_approval'` — the
+   primitive's own `pending_approval` status, renamed by `pack-ctl`'s `blocked_*` normalization,
+   same family as step 7's outcomes — carrying a `provenance_preview` and writing nothing).
+   Present all of it together; do not ask for sign-off on the license alone.
 
 6. **Get explicit human sign-off.** This step can never be automated or covered by a standing
    `loop_auth` grant (see the invariants above). The human's answer is exactly one of:
