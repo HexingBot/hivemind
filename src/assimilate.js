@@ -160,7 +160,10 @@ function walkSkillFiles(dir) {
 // Unreadable/oversized/non-utf8 files are skipped rather than failing the
 // whole assimilate call -- a scan gap is surfaced as fewer findings, never a
 // thrown error blocking the human from even seeing the rest of the package.
-function computeSkillScan(source, sourceSkillPath) {
+//
+// Exported (TASK-135) so bin/pack-ctl.js's `assimilate scan` subcommand can
+// reuse this exact walk-and-scan behavior instead of reimplementing it.
+export function computeSkillScan(source, sourceSkillPath) {
   const mainText = readFileSync(sourceSkillPath, 'utf8');
   const otherFiles = [];
   for (const full of walkSkillFiles(source)) {

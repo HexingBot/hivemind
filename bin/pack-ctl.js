@@ -37,15 +37,56 @@
 //                     soft failure handling; this CLI does not reimplement any
 //                     of that). Prints `packs: [{id, owner, aborted, installed,
 //                     report}, ...]` alongside the pre-apply `plan`.
+//   assimilate scan --path <skill>
+//                     TASK-135. Prints the risky-pattern scan report
+//                     ({findings, summary}) for the skill directory at --path,
+//                     via src/assimilate.js#computeSkillScan (itself a thin
+//                     walk-and-call wrapper over src/skill-scan.js#scanSkillContent
+//                     — this CLI reuses that exact function, never
+//                     reimplements the scan). Zero writes.
+//   assimilate classify --path <skill>
+//                     TASK-135. Prints the license verdict ({spdx_id,
+//                     classification, detected_via, source_path}) for the
+//                     skill directory at --path, via
+//                     src/license-detect.js#detectLicense + #classifyLicense
+//                     (addon-packs-plan.md §12's nearest-enclosing-wins
+//                     fallback chain). Zero writes.
+//   assimilate stage --source <path> --resource-id <id> --pack <id@version>
+//                     [--origin <o>] [--pin <p>] --repo-root <project-root>
+//                     [--decision approve|decline]
+//                     [--security-verdict safe|suspicious]
+//                     [--security-reasoning <text>]
+//                     [--security-override true]
+//                     TASK-135. Wraps src/assimilate.js#assimilateSkill
+//                     unchanged — this CLI is the ONLY place the human
+//                     sign-off (--decision) and the security-reviewer
+//                     subagent's verdict (--security-verdict/--security-
+//                     override) are ever injected; assimilateSkill itself
+//                     stays LLM/network-free, and so does this CLI (both
+//                     verdicts are always caller-supplied data, never computed
+//                     here). Writes assimilated-skills/<resourceId>/ +
+//                     records the integrations.lock.json owner ONLY when
+//                     --decision approve is given AND the verdict is not
+//                     suspicious (or --security-override is the *exact*
+//                     string "true" — see the strict-boundary comment on
+//                     runAssimilateStage below). Every other combination
+//                     (no --decision, --decision decline, or an un-overridden
+//                     suspicious verdict) writes nothing and reports a
+//                     `blocked_*` status with a `reason`.
 //
 // `--repo-root` is REQUIRED for every subcommand (unlike loop-ctl.js, which
 // falls back to CLAUDE_PROJECT_DIR/cwd) — the addon-pack ops always operate on
 // an explicit fixture/project root, never an implicit one; AC5 requires a
-// missing --repo-root to fail fast with a clear message before any I/O.
+// missing --repo-root to fail fast with a clear message before any I/O. For
+// `assimilate stage`, --repo-root is the TARGET PROJECT root (where
+// assimilated-skills/ and integrations.lock.json live — assimilateSkill's own
+// `root` opt), distinct from --source (the third-party skill's own directory).
 //
 // Output contract: identical to bin/loop-ctl.js — one JSON line to stdout,
 // `{ ok: true, ... }` on success (exit 0) or `{ ok: false, code, message }` on
-// failure (exit 1; `message` also goes to stderr).
+// failure (exit 1; `message` also goes to stderr). A blocked_* assimilate
+// stage outcome (no write) is still `ok: true, exit 0` — it is a legitimate,
+// deterministic result of the gate, not a CLI usage error.
 
 import { pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -59,10 +100,13 @@ import { resolveDesired } from '../src/pack-resources.js';
 import { probeSkills, plan } from '../src/pack-reconcile.js';
 import { readLock } from '../src/integrations-lock.js';
 import { reconcilePack } from '../src/pack-orchestrator.js';
+import { assimilateSkill, computeSkillScan } from '../src/assimilate.js';
+import { detectLicense, classifyLicense } from '../src/license-detect.js';
 
 const LOCK_FILENAME = 'integrations.lock.json';
+const SKILL_FILENAME = 'SKILL.md';
 
-const SUBCOMMANDS = new Set(['resolve', 'reconcile-plan', 'reconcile-apply']);
+const SUBCOMMANDS = new Set(['resolve', 'reconcile-plan', 'reconcile-apply', 'assimilate']);
 
 // Every subcommand currently accepts exactly one flag. Kept as a map (rather
 // than a bare array) to mirror bin/loop-ctl.js's FLAG_SPEC shape so a future
@@ -71,6 +115,21 @@ const FLAG_SPEC = {
   resolve: ['--repo-root'],
   'reconcile-plan': ['--repo-root'],
   'reconcile-apply': ['--repo-root'],
+};
+
+// TASK-135 — `assimilate <action> [--flags]` is a nested subcommand: the
+// first rest-token after "assimilate" is the action (scan|classify|stage),
+// not a flag. Parsed separately from FLAG_SPEC/parseFlags (parseAssimilateArgs,
+// below) so the existing single-level subcommands' own contract is untouched.
+const ASSIMILATE_ACTIONS = new Set(['scan', 'classify', 'stage']);
+
+const ASSIMILATE_FLAG_SPEC = {
+  scan: ['--path'],
+  classify: ['--path'],
+  stage: [
+    '--source', '--resource-id', '--pack', '--origin', '--pin', '--repo-root',
+    '--decision', '--security-verdict', '--security-reasoning', '--security-override',
+  ],
 };
 
 function kebabToCamel(flag) {
@@ -91,6 +150,27 @@ export function parseFlags(subcommand, argv) {
     out[kebabToCamel(flag)] = value;
   }
   return out;
+}
+
+/** Parse `assimilate <action> [--flags]` argv (the argv AFTER the "assimilate"
+ * token) into `{action, flags}`. Mirrors parseFlags' own eager-throw-before-
+ * I/O contract: an unrecognized action or flag, or a flag missing its value,
+ * throws immediately — no I/O has happened yet. */
+export function parseAssimilateArgs(argv) {
+  const [action, ...rest] = argv;
+  if (!action || !ASSIMILATE_ACTIONS.has(action)) {
+    throw new Error(`unknown assimilate action: ${action ?? '(none)'} — expected one of ${[...ASSIMILATE_ACTIONS].join('|')}`);
+  }
+  const known = new Set(ASSIMILATE_FLAG_SPEC[action]);
+  const flags = {};
+  for (let i = 0; i < rest.length; i++) {
+    const flag = rest[i];
+    if (!known.has(flag)) throw new Error(`unknown flag for assimilate ${action}: ${flag}`);
+    const value = rest[++i];
+    if (value === undefined) throw new Error(`flag ${flag} requires a value`);
+    flags[kebabToCamel(flag)] = value;
+  }
+  return { action, flags };
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +263,116 @@ async function readLockTolerant(lockPath) {
   return readLock(lockPath);
 }
 
+// ---------------------------------------------------------------------------
+// TASK-135 — assimilate scan / classify / stage.
+// ---------------------------------------------------------------------------
+
+/** `assimilate scan --path <skill>` — the risky-pattern scan report, via
+ * src/assimilate.js#computeSkillScan (never reimplemented here). Zero writes. */
+async function runAssimilateScan(flags) {
+  if (!flags.path) throw new Error('--path is required');
+  const sourceSkillPath = join(flags.path, SKILL_FILENAME);
+  if (!existsSync(sourceSkillPath)) {
+    throw new Error(`assimilate scan: no ${SKILL_FILENAME} found at "${flags.path}"`);
+  }
+  return { scan: computeSkillScan(flags.path, sourceSkillPath) };
+}
+
+/** `assimilate classify --path <skill>` — the license verdict (SPDX id +
+ * permissive|copyleft|unknown), via src/license-detect.js's own
+ * detectLicense/classifyLicense (addon-packs-plan.md §12's nearest-enclosing
+ * fallback chain, never reimplemented here). Zero writes. */
+async function runAssimilateClassify(flags) {
+  if (!flags.path) throw new Error('--path is required');
+  const sourceSkillPath = join(flags.path, SKILL_FILENAME);
+  if (!existsSync(sourceSkillPath)) {
+    throw new Error(`assimilate classify: no ${SKILL_FILENAME} found at "${flags.path}"`);
+  }
+  const license = await detectLicense({ skillDir: flags.path });
+  return {
+    license: {
+      spdx_id: license.spdx_id,
+      classification: classifyLicense(license.spdx_id),
+      detected_via: license.detected_via,
+      source_path: license.source_path,
+    },
+  };
+}
+
+// assimilateSkill's own status -> the CLI's `blocked_*` reporting family
+// (AC3/AC4: "every other combination writes nothing and exits reporting
+// blocked_* with a reason"). 'blocked_security' is already named this way by
+// assimilateSkill itself and already carries its own `reason`; only
+// 'pending_approval'/'declined' need renaming + a synthesized reason (they
+// are no-write-by-design outcomes, not assimilateSkill-reported errors).
+const BLOCKED_STATUS_MAP = { pending_approval: 'blocked_pending_approval', declined: 'blocked_declined' };
+const BLOCKED_REASON_MAP = {
+  pending_approval: 'no --decision was given; nothing is written until an explicit --decision approve',
+  declined: 'human decision was --decision decline; a terminal no, nothing is written',
+};
+
+/** `assimilate stage ...` — wraps src/assimilate.js#assimilateSkill exactly;
+ * --decision/--security-verdict/--security-override are the ONLY channel
+ * through which the human sign-off and the (Orchestrator-produced)
+ * security-reviewer verdict ever enter this LLM/network-free CLI. */
+async function runAssimilateStage(flags) {
+  if (!flags.source) throw new Error('--source is required');
+  if (!flags.resourceId) throw new Error('--resource-id is required');
+  if (!flags.pack) throw new Error('--pack is required');
+  if (!flags.repoRoot) throw new Error('--repo-root is required');
+  if (flags.decision !== undefined && flags.decision !== 'approve' && flags.decision !== 'decline') {
+    throw new Error(`--decision must be "approve" or "decline" (got "${flags.decision}")`);
+  }
+  if (flags.securityVerdict !== undefined && flags.securityVerdict !== 'safe' && flags.securityVerdict !== 'suspicious') {
+    throw new Error(`--security-verdict must be "safe" or "suspicious" (got "${flags.securityVerdict}")`);
+  }
+
+  const reviewerVerdict = flags.securityVerdict
+    ? { verdict: flags.securityVerdict, reasoning: flags.securityReasoning || '' }
+    : null;
+  // Strict CLI-boundary parse, mirroring src/assimilate.js's own downstream
+  // `reviewerVerdict?.verdict === 'suspicious' && securityOverride !== true`
+  // check (TASK-122): ONLY the exact string "true" ever becomes the boolean
+  // true. Any other value -- missing, "false", "yes", "1", a typo -- becomes
+  // false, so a truthy-but-wrong CLI arg can never accidentally bypass the
+  // security gate the way a loosely-truthy check would.
+  const securityOverride = flags.securityOverride === 'true';
+
+  const result = await assimilateSkill({
+    source: flags.source,
+    resourceId: flags.resourceId,
+    pack: flags.pack,
+    origin: flags.origin,
+    pin: flags.pin,
+    decision: flags.decision,
+    root: flags.repoRoot,
+    reviewerVerdict,
+    securityOverride,
+  });
+
+  if (result.status === 'assimilated') return { assimilate: result };
+
+  // Every non-write outcome is reported under the blocked_* family with a
+  // human-readable reason -- never a bare pass-through of assimilateSkill's
+  // own status vocabulary, which the CLI's ACs deliberately normalize.
+  const status = BLOCKED_STATUS_MAP[result.status] || result.status;
+  const reason = result.reason || BLOCKED_REASON_MAP[result.status] || 'nothing was written';
+  return { assimilate: { ...result, status, reason } };
+}
+
+async function runAssimilate(flags) {
+  switch (flags.action) {
+    case 'scan': return runAssimilateScan(flags);
+    case 'classify': return runAssimilateClassify(flags);
+    case 'stage': return runAssimilateStage(flags);
+    default:
+      throw new Error(`unknown assimilate action: ${flags.action}`);
+  }
+}
+
 async function run(subcommand, flags) {
+  if (subcommand === 'assimilate') return runAssimilate(flags);
+
   if (!flags.repoRoot) throw new Error('--repo-root is required');
   const repoRoot = flags.repoRoot;
 
@@ -234,7 +423,15 @@ async function main() {
   if (!subcommand || !SUBCOMMANDS.has(subcommand)) {
     throw new Error(`usage: pack-ctl <${[...SUBCOMMANDS].join('|')}> [--flags]`);
   }
-  const flags = parseFlags(subcommand, rest);
+
+  let flags;
+  if (subcommand === 'assimilate') {
+    const { action, flags: assimilateFlags } = parseAssimilateArgs(rest);
+    flags = { action, ...assimilateFlags };
+  } else {
+    flags = parseFlags(subcommand, rest);
+  }
+
   const result = await run(subcommand, flags);
   const payload = { ok: true, ...result };
   // eslint-disable-next-line no-console

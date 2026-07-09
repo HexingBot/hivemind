@@ -3645,49 +3645,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative3, options, skipNormalization) {
+    function resolveComponent(base, relative4, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse(serialize(base, options), options);
-        relative3 = parse(serialize(relative3, options), options);
+        relative4 = parse(serialize(relative4, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative3.scheme) {
-        target.scheme = relative3.scheme;
-        target.userinfo = relative3.userinfo;
-        target.host = relative3.host;
-        target.port = relative3.port;
-        target.path = removeDotSegments(relative3.path || "");
-        target.query = relative3.query;
+      if (!options.tolerant && relative4.scheme) {
+        target.scheme = relative4.scheme;
+        target.userinfo = relative4.userinfo;
+        target.host = relative4.host;
+        target.port = relative4.port;
+        target.path = removeDotSegments(relative4.path || "");
+        target.query = relative4.query;
       } else {
-        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
-          target.userinfo = relative3.userinfo;
-          target.host = relative3.host;
-          target.port = relative3.port;
-          target.path = removeDotSegments(relative3.path || "");
-          target.query = relative3.query;
+        if (relative4.userinfo !== void 0 || relative4.host !== void 0 || relative4.port !== void 0) {
+          target.userinfo = relative4.userinfo;
+          target.host = relative4.host;
+          target.port = relative4.port;
+          target.path = removeDotSegments(relative4.path || "");
+          target.query = relative4.query;
         } else {
-          if (!relative3.path) {
+          if (!relative4.path) {
             target.path = base.path;
-            if (relative3.query !== void 0) {
-              target.query = relative3.query;
+            if (relative4.query !== void 0) {
+              target.query = relative4.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative3.path[0] === "/") {
-              target.path = removeDotSegments(relative3.path);
+            if (relative4.path[0] === "/") {
+              target.path = removeDotSegments(relative4.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative3.path;
+                target.path = "/" + relative4.path;
               } else if (!base.path) {
-                target.path = relative3.path;
+                target.path = relative4.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative4.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative3.query;
+            target.query = relative4.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3695,7 +3695,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative3.fragment;
+      target.fragment = relative4.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -7714,14 +7714,15 @@ var require_dist = __commonJS({
 var pack_ctl_exports = {};
 __export(pack_ctl_exports, {
   aggregateDesired: () => aggregateDesired,
+  parseAssimilateArgs: () => parseAssimilateArgs,
   parseFlags: () => parseFlags,
   profileResultFromFrontmatter: () => profileResultFromFrontmatter,
   run: () => run
 });
 module.exports = __toCommonJS(pack_ctl_exports);
 var import_node_url = require("node:url");
-var import_node_fs7 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path9 = require("node:path");
 
 // src/project-md.js
 var import_promises = require("node:fs/promises");
@@ -8996,14 +8997,567 @@ async function reconcilePack(opts = {}) {
   return result;
 }
 
+// src/assimilate.js
+var import_node_fs8 = require("node:fs");
+var import_node_path8 = require("node:path");
+
+// src/license-detect.js
+var import_node_fs7 = require("node:fs");
+var import_node_path7 = require("node:path");
+var PERMISSIVE_IDS = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "CC0-1.0", "Unlicense", "0BSD"];
+var COPYLEFT_IDS = [
+  "GPL-2.0-only",
+  "GPL-2.0-or-later",
+  "GPL-3.0-only",
+  "GPL-3.0-or-later",
+  "LGPL-2.1-only",
+  "LGPL-2.1-or-later",
+  "LGPL-3.0-only",
+  "LGPL-3.0-or-later",
+  "AGPL-3.0-only",
+  "AGPL-3.0-or-later"
+];
+var DEPRECATED_ALIASES = {
+  "gpl-2.0": "GPL-2.0-only",
+  "gpl-3.0": "GPL-3.0-only",
+  "lgpl-2.1": "LGPL-2.1-only",
+  "lgpl-3.0": "LGPL-3.0-only",
+  "agpl-3.0": "AGPL-3.0-only"
+};
+var TEXT_ALIASES = {
+  "mit license": "MIT",
+  "apache 2.0": "Apache-2.0",
+  "apache-2.0": "Apache-2.0",
+  "apache license 2.0": "Apache-2.0",
+  "apache license, version 2.0": "Apache-2.0",
+  "bsd 2-clause license": "BSD-2-Clause",
+  "bsd 3-clause license": "BSD-3-Clause",
+  "isc license": "ISC",
+  "the unlicense": "Unlicense"
+};
+var ALIAS_TABLE = /* @__PURE__ */ new Map();
+for (const id of [...PERMISSIVE_IDS, ...COPYLEFT_IDS]) ALIAS_TABLE.set(id.toLowerCase(), id);
+for (const [alias, id] of Object.entries(DEPRECATED_ALIASES)) ALIAS_TABLE.set(alias, id);
+for (const [alias, id] of Object.entries(TEXT_ALIASES)) ALIAS_TABLE.set(alias, id);
+function normalizeLicenseString(raw) {
+  if (raw === null || raw === void 0) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return null;
+  return ALIAS_TABLE.get(trimmed.toLowerCase()) ?? trimmed;
+}
+var COMPOUND_RE = /^(.+?)\s+(OR|AND)\s+(.+)$/i;
+function classifyLicense(spdxId) {
+  const normalized = normalizeLicenseString(spdxId);
+  if (!normalized) return "unknown";
+  const compound = normalized.match(COMPOUND_RE);
+  if (compound) {
+    const [, left, operator, right] = compound;
+    const leftClass = classifyLicense(left);
+    const rightClass = classifyLicense(right);
+    if (operator.toUpperCase() === "OR") {
+      if (leftClass === "permissive" || rightClass === "permissive") return "permissive";
+      if (leftClass === "copyleft" || rightClass === "copyleft") return "copyleft";
+      return "unknown";
+    }
+    if (leftClass === "permissive" && rightClass === "permissive") return "permissive";
+    if (leftClass === "copyleft" || rightClass === "copyleft") return "copyleft";
+    return "unknown";
+  }
+  if (PERMISSIVE_IDS.includes(normalized)) return "permissive";
+  if (COPYLEFT_IDS.includes(normalized)) return "copyleft";
+  return "unknown";
+}
+var SPDX_HEADER_RE = /SPDX-License-Identifier:\s*([^\r\n]+)/i;
+var LICENSE_FILENAMES = ["LICENSE", "COPYING", "LICENSE.md"];
+var IGNORED_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git"]);
+var MAX_SCANNED_FILE_BYTES = 65536;
+var LICENSE_TEXT_SIGNATURES = [
+  [/\bMIT License\b/i, "MIT"],
+  [/\bApache License,?\s*Version 2\.0\b/i, "Apache-2.0"],
+  [/\bBSD 2-Clause License\b/i, "BSD-2-Clause"],
+  [/\bBSD 3-Clause License\b/i, "BSD-3-Clause"],
+  [/\bISC License\b/i, "ISC"],
+  [/\bCC0[ -]1\.0\b|\bCreative Commons Zero\b/i, "CC0-1.0"],
+  [/\bThe Unlicense\b|unencumbered software released into the public domain/i, "Unlicense"],
+  [/\b0BSD\b|BSD Zero Clause License/i, "0BSD"],
+  [/\bGNU AFFERO GENERAL PUBLIC LICENSE\b/i, "AGPL"],
+  [/\bGNU LESSER GENERAL PUBLIC LICENSE\b/i, "LGPL"],
+  [/\bGNU GENERAL PUBLIC LICENSE\b/i, "GPL"]
+];
+function cleanSpdxCapture(raw) {
+  return raw.replace(/(\*\/|-->)\s*$/, "").trim();
+}
+function resolveGnuFamilyVersion(family, text) {
+  const versionMatch = text.match(/Version\s+(\d+)(?:\.(\d+))?/i);
+  if (!versionMatch) return null;
+  const major = versionMatch[1];
+  const minor = versionMatch[2] ?? (family === "LGPL" && major === "2" ? "1" : "0");
+  const orLater = /or\s*\(at your option\)\s*any later version/i.test(text);
+  return `${family}-${major}.${minor}-${orLater ? "or-later" : "only"}`;
+}
+function detectFromFreeText(text) {
+  if (!text) return null;
+  const direct = ALIAS_TABLE.get(text.trim().toLowerCase());
+  if (direct) return direct;
+  const header = text.match(SPDX_HEADER_RE);
+  if (header) return normalizeLicenseString(cleanSpdxCapture(header[1]));
+  for (const [re, id] of LICENSE_TEXT_SIGNATURES) {
+    if (re.test(text)) {
+      return ["GPL", "LGPL", "AGPL"].includes(id) ? resolveGnuFamilyVersion(id, text) : id;
+    }
+  }
+  return null;
+}
+function walkFiles(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = (0, import_node_fs7.readdirSync)(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (IGNORED_DIRS.has(entry.name)) continue;
+    const full = (0, import_node_path7.join)(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkFiles(full));
+    else if (entry.isFile()) out.push(full);
+  }
+  return out;
+}
+function findSpdxHeaderInDir(dir) {
+  if (!dir || !(0, import_node_fs7.existsSync)(dir)) return null;
+  for (const file of walkFiles(dir)) {
+    let size;
+    try {
+      size = (0, import_node_fs7.statSync)(file).size;
+    } catch {
+      continue;
+    }
+    if (size > MAX_SCANNED_FILE_BYTES) continue;
+    let content;
+    try {
+      content = (0, import_node_fs7.readFileSync)(file, "utf8");
+    } catch {
+      continue;
+    }
+    const match = content.match(SPDX_HEADER_RE);
+    if (match) return { path: file, spdxRaw: cleanSpdxCapture(match[1]) };
+  }
+  return null;
+}
+function findLicenseFile(dir) {
+  if (!dir || !(0, import_node_fs7.existsSync)(dir)) return null;
+  for (const name of LICENSE_FILENAMES) {
+    const p = (0, import_node_path7.join)(dir, name);
+    if ((0, import_node_fs7.existsSync)(p) && (0, import_node_fs7.statSync)(p).isFile()) {
+      return { path: p, content: (0, import_node_fs7.readFileSync)(p, "utf8") };
+    }
+  }
+  return null;
+}
+async function detectFromGithubApi(github, fetchGithubLicense) {
+  let body;
+  try {
+    body = await fetchGithubLicense(github.owner, github.repo);
+  } catch {
+    return null;
+  }
+  const id = body?.license?.spdx_id;
+  if (!id || id === "NOASSERTION" || id.toLowerCase() === "other") return null;
+  return id;
+}
+function extractPackageJsonLicense(pkg) {
+  if (!pkg) return null;
+  if (typeof pkg.license === "string") return pkg.license;
+  if (pkg.license && typeof pkg.license.type === "string") return pkg.license.type;
+  if (Array.isArray(pkg.licenses) && typeof pkg.licenses[0]?.type === "string") return pkg.licenses[0].type;
+  return null;
+}
+function extractReadmeLicenseSection(text) {
+  const lines = text.split(/\r?\n/);
+  const headingRe = /^(#{1,6})\s*license\b/i;
+  let start = -1;
+  let level = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(headingRe);
+    if (m) {
+      start = i + 1;
+      level = m[1].length;
+      break;
+    }
+  }
+  if (start === -1) return null;
+  const section = [];
+  for (let i = start; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s/);
+    if (m && m[1].length <= level) break;
+    section.push(lines[i]);
+  }
+  return section.join("\n").trim() || null;
+}
+async function detectLicense(source = {}) {
+  const { skillDir = null, repoRoot = null, github = null, fetchGithubLicense } = source;
+  const checked_at = (/* @__PURE__ */ new Date()).toISOString();
+  const dirs = [skillDir, repoRoot].filter(Boolean);
+  const headerHit = findSpdxHeaderInDir(skillDir);
+  if (headerHit) {
+    return { spdx_id: normalizeLicenseString(headerHit.spdxRaw), detected_via: "spdx-header", source_path: headerHit.path, checked_at };
+  }
+  for (const dir of dirs) {
+    const licenseHit = findLicenseFile(dir);
+    if (!licenseHit) continue;
+    const id = detectFromFreeText(licenseHit.content);
+    if (id) return { spdx_id: normalizeLicenseString(id), detected_via: "license-file", source_path: licenseHit.path, checked_at };
+  }
+  if (github?.owner && github?.repo && typeof fetchGithubLicense === "function") {
+    const id = await detectFromGithubApi(github, fetchGithubLicense);
+    if (id) {
+      return {
+        spdx_id: normalizeLicenseString(id),
+        detected_via: "github-api",
+        source_path: `github:${github.owner}/${github.repo}`,
+        checked_at
+      };
+    }
+  }
+  for (const dir of dirs) {
+    const pkgPath = (0, import_node_path7.join)(dir, "package.json");
+    if (!(0, import_node_fs7.existsSync)(pkgPath)) continue;
+    let pkg;
+    try {
+      pkg = JSON.parse((0, import_node_fs7.readFileSync)(pkgPath, "utf8"));
+    } catch {
+      pkg = null;
+    }
+    const raw = extractPackageJsonLicense(pkg);
+    if (raw) return { spdx_id: normalizeLicenseString(raw), detected_via: "package.json", source_path: pkgPath, checked_at };
+  }
+  for (const dir of dirs) {
+    const readmePath = (0, import_node_path7.join)(dir, "README.md");
+    if (!(0, import_node_fs7.existsSync)(readmePath)) continue;
+    const section = extractReadmeLicenseSection((0, import_node_fs7.readFileSync)(readmePath, "utf8"));
+    if (!section) continue;
+    const id = detectFromFreeText(section);
+    if (id) return { spdx_id: normalizeLicenseString(id), detected_via: "readme", source_path: readmePath, checked_at };
+  }
+  return { spdx_id: null, detected_via: "none", source_path: null, checked_at };
+}
+
+// src/skill-scan.js
+var SEVERITIES = ["high", "medium", "low"];
+var PATTERN_DEFS = [
+  {
+    category: "shell-exec",
+    severity: "high",
+    // curl/wget piped straight into a shell interpreter -- the classic
+    // "curl | sh" remote-code-execution pattern. Requires an actual pipe to
+    // sh/bash/zsh, not just the word "curl" appearing in prose.
+    re: /\b(curl|wget)\b[^\n|]{0,200}\|\s*(sudo\s+)?(sh|bash|zsh)\b/i
+  },
+  {
+    category: "shell-exec",
+    severity: "high",
+    // Direct shell/process-exec invocations across common languages.
+    re: /\b(child_process\.(exec|execSync|spawn|spawnSync)|os\.system|subprocess\.(run|call|Popen|check_output|check_call))\s*\(/
+  },
+  {
+    category: "network-fetch",
+    severity: "medium",
+    // Programmatic HTTP calls to a literal URL -- an invocation, not a bare
+    // markdown link or a URL mentioned in prose.
+    re: /\b(fetch|axios\.(get|post|put)|urllib\.request\.urlopen|requests\.(get|post)|http\.request)\s*\(\s*['"`]https?:\/\//i
+  },
+  {
+    category: "network-fetch",
+    severity: "medium",
+    // curl/wget invoked against a URL directly (not necessarily piped to a shell).
+    re: /\b(curl|wget)\s+(-{1,2}\S+\s+)*https?:\/\//i
+  },
+  {
+    category: "env-credential-access",
+    severity: "high",
+    // Programmatic env/credential reads: process.env.X, os.environ[...]/getenv(...).
+    re: /\b(process\.env\.[A-Za-z_][A-Za-z0-9_]*|process\.env\[|os\.environ(\.get)?\(|os\.environ\[|os\.getenv\()/
+  },
+  {
+    category: "filesystem-access-outside-skill",
+    severity: "high",
+    // Two-or-more-level path traversal ("escaping" the skill's own dir), or
+    // a known-sensitive absolute path (SSH keys, cloud credential files,
+    // /etc/passwd, Windows profile env vars).
+    re: /(\.\.[\\/]){2,}|\/etc\/passwd\b|\.ssh[\\/](id_rsa|id_ed25519|authorized_keys)\b|\.aws[\\/]credentials\b|%APPDATA%|\$HOME[\\/]\.ssh\b|~[\\/]\.ssh[\\/]/i
+  },
+  {
+    category: "obfuscated-blob",
+    severity: "medium",
+    // A long run of base64-alphabet characters -- a hallmark of an
+    // obfuscated/binary payload smuggled into otherwise-textual content.
+    // 80+ chars keeps this well clear of routine content like a 64-hex
+    // sha256 digest or a normal-length identifier/URL slug.
+    re: /\b[A-Za-z0-9+/]{80,}={0,2}\b/
+  }
+];
+function severityRank(sev) {
+  return SEVERITIES.indexOf(sev);
+}
+function scanOneFile(content, location) {
+  if (!content) return [];
+  const lines = String(content).split(/\r?\n/);
+  const findings = [];
+  lines.forEach((line, idx) => {
+    for (const { category, severity, re } of PATTERN_DEFS) {
+      if (re.test(line)) {
+        findings.push({
+          category,
+          severity,
+          location: `${location}:${idx + 1}`,
+          snippet: line.trim().slice(0, 160)
+        });
+      }
+    }
+  });
+  return findings;
+}
+function summarizeFindings(findings) {
+  const bySeverity = { high: 0, medium: 0, low: 0 };
+  for (const f of findings) bySeverity[f.severity] = (bySeverity[f.severity] ?? 0) + 1;
+  let highestSeverity = null;
+  for (const f of findings) {
+    if (highestSeverity === null || severityRank(f.severity) < severityRank(highestSeverity)) {
+      highestSeverity = f.severity;
+    }
+  }
+  return { total: findings.length, bySeverity, highestSeverity };
+}
+function scanSkillContent(text, opts = {}) {
+  const { location = "SKILL.md", files = [] } = opts;
+  const findings = [...scanOneFile(text, location)];
+  for (const file of files) {
+    findings.push(...scanOneFile(file.content, file.path));
+  }
+  return { findings, summary: summarizeFindings(findings) };
+}
+
+// src/assimilate.js
+var SKILL_FILENAME2 = "SKILL.md";
+var DEFAULT_STAGING_SUBDIR = "assimilated-skills";
+var PROVENANCE_HEADING2 = "## Sources & provenance (hivemind)";
+var HIVEMIND_TAG = " (assimilated for Hivemind)";
+function defaultNow() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function tagDescriptionForHivemind(text) {
+  const open = text.match(/^---(\r?\n)/);
+  if (!open) return text;
+  const fmStart = open[0].length;
+  const rest = text.slice(fmStart);
+  const close = rest.match(/(^|\r?\n)---(\r?\n|$)/);
+  if (!close) return text;
+  const innerEnd = fmStart + close.index + close[1].length;
+  const inner = text.slice(fmStart, innerEnd);
+  const descRe = /^description:[^\r\n]*/m;
+  const match = inner.match(descRe);
+  if (!match || match[0].includes(HIVEMIND_TAG.trim())) return text;
+  const newInner = inner.replace(descRe, `${match[0]}${HIVEMIND_TAG}`);
+  return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
+}
+function buildProvenanceBlock({ origin, pin, spdx_id, integrity, assimilated_at }) {
+  return [
+    PROVENANCE_HEADING2,
+    "",
+    `- origin: ${origin}`,
+    `- pin: ${pin}`,
+    `- spdx_id: ${spdx_id}`,
+    `- integrity: ${integrity}`,
+    `- assimilated_at: ${assimilated_at}`,
+    ""
+  ].join("\n");
+}
+function appendProvenanceBlock(text, fields) {
+  const base = text.endsWith("\n") ? text : `${text}
+`;
+  return `${base}
+${buildProvenanceBlock(fields)}`;
+}
+function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
+  return {
+    origin,
+    pin,
+    spdx_id,
+    integrity: `sha256:${hashDir(source)}`,
+    assimilated_at: now()
+  };
+}
+var SCAN_IGNORED_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git"]);
+var SCAN_MAX_FILE_BYTES = 1e6;
+function walkSkillFiles2(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = (0, import_node_fs8.readdirSync)(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (SCAN_IGNORED_DIRS.has(entry.name)) continue;
+    const full = (0, import_node_path8.join)(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkSkillFiles2(full));
+    else if (entry.isFile()) out.push(full);
+  }
+  return out;
+}
+function computeSkillScan(source, sourceSkillPath) {
+  const mainText = (0, import_node_fs8.readFileSync)(sourceSkillPath, "utf8");
+  const otherFiles = [];
+  for (const full of walkSkillFiles2(source)) {
+    if (full === sourceSkillPath) continue;
+    let size;
+    try {
+      size = (0, import_node_fs8.statSync)(full).size;
+    } catch {
+      continue;
+    }
+    if (size > SCAN_MAX_FILE_BYTES) continue;
+    let content;
+    try {
+      content = (0, import_node_fs8.readFileSync)(full, "utf8");
+    } catch {
+      continue;
+    }
+    otherFiles.push({ path: (0, import_node_path8.relative)(source, full).split(import_node_path8.sep).join("/"), content });
+  }
+  return scanSkillContent(mainText, { location: SKILL_FILENAME2, files: otherFiles });
+}
+async function assimilateSkill(opts) {
+  const {
+    source,
+    resourceId,
+    pack,
+    origin,
+    pin,
+    repoRoot,
+    decision,
+    github,
+    fetch: fetchGithubLicense,
+    now = defaultNow,
+    root = process.cwd(),
+    lockPath = (0, import_node_path8.join)(root, "integrations.lock.json"),
+    required = "soft",
+    reviewerVerdict = null,
+    securityOverride = false
+  } = opts;
+  const sourceSkillPath = (0, import_node_path8.join)(source, SKILL_FILENAME2);
+  if (!(0, import_node_fs8.existsSync)(sourceSkillPath)) {
+    throw new Error(`assimilateSkill: no ${SKILL_FILENAME2} found at "${source}"`);
+  }
+  const license = await detectLicense({ skillDir: source, repoRoot, github, fetchGithubLicense });
+  const classification = classifyLicense(license.spdx_id);
+  const base = {
+    id: resourceId,
+    spdx_id: license.spdx_id,
+    classification,
+    detected_via: license.detected_via,
+    source_path: license.source_path
+  };
+  if (decision !== "approve") {
+    if (decision === "decline") {
+      return { ...base, status: "declined" };
+    }
+    const fields2 = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
+    const scan2 = computeSkillScan(source, sourceSkillPath);
+    return {
+      ...base,
+      status: "pending_approval",
+      origin: fields2.origin,
+      pin: fields2.pin,
+      integrity: fields2.integrity,
+      assimilated_at: fields2.assimilated_at,
+      provenance_preview: buildProvenanceBlock(fields2),
+      scan: scan2,
+      reviewer: reviewerVerdict
+    };
+  }
+  const scan = computeSkillScan(source, sourceSkillPath);
+  if (reviewerVerdict?.verdict === "suspicious" && securityOverride !== true) {
+    return {
+      ...base,
+      status: "blocked_security",
+      scan,
+      reviewer: reviewerVerdict,
+      reason: "security-reviewer verdict is suspicious; an explicit securityOverride is required to proceed"
+    };
+  }
+  const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
+  const ownedDir = (0, import_node_path8.join)(root, DEFAULT_STAGING_SUBDIR, resourceId);
+  (0, import_node_fs8.mkdirSync)((0, import_node_path8.dirname)(ownedDir), { recursive: true });
+  (0, import_node_fs8.rmSync)(ownedDir, { recursive: true, force: true });
+  (0, import_node_fs8.cpSync)(source, ownedDir, { recursive: true });
+  const ownedSkillPath = (0, import_node_path8.join)(ownedDir, SKILL_FILENAME2);
+  const original = (0, import_node_fs8.readFileSync)(ownedSkillPath, "utf8");
+  const rescoped = appendProvenanceBlock(tagDescriptionForHivemind(original), fields);
+  (0, import_node_fs8.writeFileSync)(ownedSkillPath, rescoped, "utf8");
+  const id = `skill:${resourceId}`;
+  let lock;
+  try {
+    lock = await readLock(lockPath);
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    lock = { schema_version: 1, resources: {} };
+  }
+  lock.resources[id] = {
+    kind: "skill",
+    origin: fields.origin,
+    pin: fields.pin,
+    integrity: fields.integrity,
+    scope: "project",
+    owners: [],
+    required,
+    installed_at: fields.assimilated_at,
+    install_method: "assimilated",
+    verified: "unsigned"
+  };
+  addOwner(lock, id, pack);
+  await writeLock(lockPath, lock);
+  return {
+    ...base,
+    status: "assimilated",
+    path: ownedDir,
+    origin: fields.origin,
+    pin: fields.pin,
+    integrity: fields.integrity,
+    assimilated_at: fields.assimilated_at,
+    owners: lock.resources[id].owners,
+    scan,
+    reviewer: reviewerVerdict
+  };
+}
+
 // bin/pack-ctl.js
 var import_meta = {};
 var LOCK_FILENAME = "integrations.lock.json";
-var SUBCOMMANDS = /* @__PURE__ */ new Set(["resolve", "reconcile-plan", "reconcile-apply"]);
+var SKILL_FILENAME3 = "SKILL.md";
+var SUBCOMMANDS = /* @__PURE__ */ new Set(["resolve", "reconcile-plan", "reconcile-apply", "assimilate"]);
 var FLAG_SPEC = {
   resolve: ["--repo-root"],
   "reconcile-plan": ["--repo-root"],
   "reconcile-apply": ["--repo-root"]
+};
+var ASSIMILATE_ACTIONS = /* @__PURE__ */ new Set(["scan", "classify", "stage"]);
+var ASSIMILATE_FLAG_SPEC = {
+  scan: ["--path"],
+  classify: ["--path"],
+  stage: [
+    "--source",
+    "--resource-id",
+    "--pack",
+    "--origin",
+    "--pin",
+    "--repo-root",
+    "--decision",
+    "--security-verdict",
+    "--security-reasoning",
+    "--security-override"
+  ]
 };
 function kebabToCamel(flag) {
   return flag.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -9019,6 +9573,22 @@ function parseFlags(subcommand, argv) {
     out[kebabToCamel(flag)] = value;
   }
   return out;
+}
+function parseAssimilateArgs(argv) {
+  const [action, ...rest] = argv;
+  if (!action || !ASSIMILATE_ACTIONS.has(action)) {
+    throw new Error(`unknown assimilate action: ${action ?? "(none)"} \u2014 expected one of ${[...ASSIMILATE_ACTIONS].join("|")}`);
+  }
+  const known = new Set(ASSIMILATE_FLAG_SPEC[action]);
+  const flags = {};
+  for (let i = 0; i < rest.length; i++) {
+    const flag = rest[i];
+    if (!known.has(flag)) throw new Error(`unknown flag for assimilate ${action}: ${flag}`);
+    const value = rest[++i];
+    if (value === void 0) throw new Error(`flag ${flag} requires a value`);
+    flags[kebabToCamel(flag)] = value;
+  }
+  return { action, flags };
 }
 function profileResultFromFrontmatter(answers) {
   const { tier, perfil_proyecto: p } = answers || {};
@@ -9063,10 +9633,81 @@ async function loadProfile(repoRoot) {
   return { profileResult, activePacks };
 }
 async function readLockTolerant(lockPath) {
-  if (!(0, import_node_fs7.existsSync)(lockPath)) return { schema_version: 1, resources: {} };
+  if (!(0, import_node_fs9.existsSync)(lockPath)) return { schema_version: 1, resources: {} };
   return readLock(lockPath);
 }
+async function runAssimilateScan(flags) {
+  if (!flags.path) throw new Error("--path is required");
+  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME3);
+  if (!(0, import_node_fs9.existsSync)(sourceSkillPath)) {
+    throw new Error(`assimilate scan: no ${SKILL_FILENAME3} found at "${flags.path}"`);
+  }
+  return { scan: computeSkillScan(flags.path, sourceSkillPath) };
+}
+async function runAssimilateClassify(flags) {
+  if (!flags.path) throw new Error("--path is required");
+  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME3);
+  if (!(0, import_node_fs9.existsSync)(sourceSkillPath)) {
+    throw new Error(`assimilate classify: no ${SKILL_FILENAME3} found at "${flags.path}"`);
+  }
+  const license = await detectLicense({ skillDir: flags.path });
+  return {
+    license: {
+      spdx_id: license.spdx_id,
+      classification: classifyLicense(license.spdx_id),
+      detected_via: license.detected_via,
+      source_path: license.source_path
+    }
+  };
+}
+var BLOCKED_STATUS_MAP = { pending_approval: "blocked_pending_approval", declined: "blocked_declined" };
+var BLOCKED_REASON_MAP = {
+  pending_approval: "no --decision was given; nothing is written until an explicit --decision approve",
+  declined: "human decision was --decision decline; a terminal no, nothing is written"
+};
+async function runAssimilateStage(flags) {
+  if (!flags.source) throw new Error("--source is required");
+  if (!flags.resourceId) throw new Error("--resource-id is required");
+  if (!flags.pack) throw new Error("--pack is required");
+  if (!flags.repoRoot) throw new Error("--repo-root is required");
+  if (flags.decision !== void 0 && flags.decision !== "approve" && flags.decision !== "decline") {
+    throw new Error(`--decision must be "approve" or "decline" (got "${flags.decision}")`);
+  }
+  if (flags.securityVerdict !== void 0 && flags.securityVerdict !== "safe" && flags.securityVerdict !== "suspicious") {
+    throw new Error(`--security-verdict must be "safe" or "suspicious" (got "${flags.securityVerdict}")`);
+  }
+  const reviewerVerdict = flags.securityVerdict ? { verdict: flags.securityVerdict, reasoning: flags.securityReasoning || "" } : null;
+  const securityOverride = flags.securityOverride === "true";
+  const result = await assimilateSkill({
+    source: flags.source,
+    resourceId: flags.resourceId,
+    pack: flags.pack,
+    origin: flags.origin,
+    pin: flags.pin,
+    decision: flags.decision,
+    root: flags.repoRoot,
+    reviewerVerdict,
+    securityOverride
+  });
+  if (result.status === "assimilated") return { assimilate: result };
+  const status = BLOCKED_STATUS_MAP[result.status] || result.status;
+  const reason = result.reason || BLOCKED_REASON_MAP[result.status] || "nothing was written";
+  return { assimilate: { ...result, status, reason } };
+}
+async function runAssimilate(flags) {
+  switch (flags.action) {
+    case "scan":
+      return runAssimilateScan(flags);
+    case "classify":
+      return runAssimilateClassify(flags);
+    case "stage":
+      return runAssimilateStage(flags);
+    default:
+      throw new Error(`unknown assimilate action: ${flags.action}`);
+  }
+}
 async function run(subcommand, flags) {
+  if (subcommand === "assimilate") return runAssimilate(flags);
   if (!flags.repoRoot) throw new Error("--repo-root is required");
   const repoRoot = flags.repoRoot;
   switch (subcommand) {
@@ -9078,14 +9719,14 @@ async function run(subcommand, flags) {
       const { profileResult, activePacks } = await loadProfile(repoRoot);
       const desired = aggregateDesired(activePacks, profileResult);
       const actual = probeSkills(repoRoot);
-      const lock = await readLockTolerant((0, import_node_path7.join)(repoRoot, LOCK_FILENAME));
+      const lock = await readLockTolerant((0, import_node_path9.join)(repoRoot, LOCK_FILENAME));
       return { plan: plan(desired, lock, actual) };
     }
     case "reconcile-apply": {
       const { profileResult, activePacks } = await loadProfile(repoRoot);
       const desired = aggregateDesired(activePacks, profileResult);
       const actual = probeSkills(repoRoot);
-      const lock = await readLockTolerant((0, import_node_path7.join)(repoRoot, LOCK_FILENAME));
+      const lock = await readLockTolerant((0, import_node_path9.join)(repoRoot, LOCK_FILENAME));
       const computedPlan = plan(desired, lock, actual);
       const packs = [];
       for (const { descriptor } of activePacks) {
@@ -9110,7 +9751,13 @@ async function main() {
   if (!subcommand || !SUBCOMMANDS.has(subcommand)) {
     throw new Error(`usage: pack-ctl <${[...SUBCOMMANDS].join("|")}> [--flags]`);
   }
-  const flags = parseFlags(subcommand, rest);
+  let flags;
+  if (subcommand === "assimilate") {
+    const { action, flags: assimilateFlags } = parseAssimilateArgs(rest);
+    flags = { action, ...assimilateFlags };
+  } else {
+    flags = parseFlags(subcommand, rest);
+  }
   const result = await run(subcommand, flags);
   const payload = { ok: true, ...result };
   console.log(JSON.stringify(payload));
@@ -9127,6 +9774,7 @@ if (__isEntry) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   aggregateDesired,
+  parseAssimilateArgs,
   parseFlags,
   profileResultFromFrontmatter,
   run
