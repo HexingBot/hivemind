@@ -38,7 +38,7 @@ const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 const MARKETPLACE_JSON = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-const EXPECTED_VERSION = '0.12.0';
+const EXPECTED_VERSION = '0.13.0';
 const EXPECTED_MARKETPLACE_NAME = 'hivemind-marketplace';
 const EXPECTED_PLUGIN_NAME = 'hivemind';
 const EXPECTED_SOURCE = './';
