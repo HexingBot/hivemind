@@ -1,12 +1,12 @@
 // tests/e2e/pack-ctl.spec.js
-// TASK-134 — e2e regression locks for bin/pack-ctl.js (built as
+// TASK-134/TASK-135 — e2e regression locks for bin/pack-ctl.js (built as
 // dist/pack-ctl.cjs), the CLI wrapper exposing the deterministic addon-pack
-// ops (resolveDesired / pack-reconcile / pack-orchestrator) to a
+// ops (resolveDesired / pack-reconcile / pack-orchestrator / assimilate) to a
 // plugin-installed project that has no cleanly-reachable src/. Mirrors
 // tests/e2e/loop-ctl.spec.js's own shape exactly (spawn the BUILT bundle, not
 // the src) — see that file's header for the established precedent.
 //
-// AC map:
+// AC map (TASK-134):
 //   AC1 — `resolve --repo-root <r>` prints the desired resource set as JSON,
 //         identical to a direct resolveDesired() call for the fixture.
 //   AC2 — `reconcile-plan --repo-root <r>` prints {install,remove,replace,report}
@@ -19,6 +19,27 @@
 //         specs cover the registration itself under `npm run test:all`).
 //   AC5 — unknown subcommand / missing --repo-root exits non-zero with a
 //         clear stderr message; no partial writes on error.
+//
+// AC map (TASK-135 — `assimilate` subcommands, wrapping src/assimilate.js +
+// src/skill-scan.js; the human sign-off / security-reviewer verdict are
+// injected as --decision/--security-verdict/--security-override, exactly as
+// src/assimilate.js already models them, keeping this CLI LLM/network-free):
+//   AC1 — `assimilate scan --path <skill>` prints the risky-pattern scan
+//         report JSON from src/skill-scan.js (via src/assimilate.js's own
+//         computeSkillScan, now exported — not reimplemented here).
+//   AC2 — `assimilate classify --path <skill>` prints the license verdict
+//         (SPDX id + permissive|copyleft|unknown) via src/license-detect.js.
+//   AC3 — `assimilate stage ...` writes assimilated-skills/<id>/ with
+//         re-scoped frontmatter + provenance ONLY on --decision approve AND
+//         (verdict != suspicious OR --security-override is the strict
+//         boolean "true"); every other combination writes nothing and
+//         reports a blocked_* status with a reason.
+//   AC4 — invariant sweep: {permissive,copyleft,unknown} x {no-decision,
+//         decline} asserts zero writes; a suspicious verdict blocks even
+//         approve unless --security-override is the literal string "true".
+//   AC5 — dist/pack-ctl.cjs rebuilt; dist-parity green (covered by the
+//         existing "dist/pack-ctl.cjs is committed" + release-gate dist-parity
+//         spec, not duplicated here).
 //
 // Real disk I/O + process spawn -> slow tier: tests/e2e/.
 
@@ -45,6 +66,16 @@ import { DESIGN_POWER_DESCRIPTOR } from '../../src/builtin-packs.js';
 afterAll(cleanupAll);
 
 const CLI = join(REPO_ROOT, 'dist', 'pack-ctl.cjs');
+
+// TASK-135 — assimilate scan/classify/stage fixtures, reused from
+// tests/e2e/assimilate.spec.js (TASK-120/TASK-122)'s own fixture set, plus a
+// new unknown-skill fixture (no LICENSE/package.json/README license section
+// at all) added by this ticket for the {permissive,copyleft,unknown} sweep.
+const PERMISSIVE_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'permissive-skill');
+const COPYLEFT_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'copyleft-skill');
+const UNKNOWN_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'unknown-skill');
+const MALICIOUS_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'malicious-skill');
+const ASSIMILATE_PACK = 'design-power@0.1.0';
 
 function runCli(args, { cwd, env } = {}) {
   const cleanEnv = { ...process.env, ...env };
@@ -234,5 +265,208 @@ describe('AC5 — argument-error paths exit non-zero with clear stderr and make 
     expect(result.json.message).toMatch(/PROJECT\.md/);
     expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
     expect(existsSync(join(root, '.claude', 'skills'))).toBe(false);
+  });
+});
+
+// ===========================================================================
+// TASK-135 — assimilate scan / classify / stage
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// AC1 — assimilate scan
+// ---------------------------------------------------------------------------
+describe('AC1 — assimilate scan prints the risky-pattern scan report JSON', () => {
+  it('a_malicious_fixture_surfaces_categorized_findings_at_high_severity', () => {
+    const result = runCli(['assimilate', 'scan', '--path', MALICIOUS_FIXTURE]);
+
+    expect(result.status).toBe(0);
+    expect(result.json.ok).toBe(true);
+    expect(Array.isArray(result.json.scan.findings)).toBe(true);
+    const categories = result.json.scan.findings.map((f) => f.category);
+    expect(categories).toContain('shell-exec');
+    expect(categories).toContain('network-fetch');
+    expect(categories).toContain('env-credential-access');
+    expect(categories).toContain('obfuscated-blob');
+    expect(result.json.scan.summary.highestSeverity).toBe('high');
+  });
+
+  it('a_clean_fixture_scans_with_zero_findings', () => {
+    const result = runCli(['assimilate', 'scan', '--path', PERMISSIVE_FIXTURE]);
+
+    expect(result.status).toBe(0);
+    expect(result.json.scan.findings).toEqual([]);
+    expect(result.json.scan.summary.total).toBe(0);
+  });
+
+  it('a_missing_SKILL_md_at_the_given_path_exits_nonzero_with_a_clear_message', () => {
+    const emptyDir = makeTmpDir('af-packctl-scan-no-skillmd');
+    const result = runCli(['assimilate', 'scan', '--path', emptyDir]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.json.ok).toBe(false);
+    expect(result.json.message).toMatch(/SKILL\.md/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC2 — assimilate classify
+// ---------------------------------------------------------------------------
+describe('AC2 — assimilate classify prints the license verdict (SPDX id + classification)', () => {
+  it('a_permissive_MIT_fixture_classifies_permissive', () => {
+    const result = runCli(['assimilate', 'classify', '--path', PERMISSIVE_FIXTURE]);
+
+    expect(result.status).toBe(0);
+    expect(result.json.license.spdx_id).toBe('MIT');
+    expect(result.json.license.classification).toBe('permissive');
+    expect(result.json.license.detected_via).toBe('license-file');
+  });
+
+  it('a_copyleft_GPL_fixture_classifies_copyleft', () => {
+    const result = runCli(['assimilate', 'classify', '--path', COPYLEFT_FIXTURE]);
+
+    expect(result.status).toBe(0);
+    expect(result.json.license.spdx_id).toBe('GPL-3.0-only');
+    expect(result.json.license.classification).toBe('copyleft');
+  });
+
+  it('a_fixture_with_no_license_signal_at_all_classifies_unknown', () => {
+    const result = runCli(['assimilate', 'classify', '--path', UNKNOWN_FIXTURE]);
+
+    expect(result.status).toBe(0);
+    expect(result.json.license.spdx_id).toBeNull();
+    expect(result.json.license.classification).toBe('unknown');
+    expect(result.json.license.detected_via).toBe('none');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC3/AC4 — assimilate stage: writes ONLY on approve + non-suspicious(or
+// strict-boolean override); every other combination is a no-write blocked_*.
+// ---------------------------------------------------------------------------
+function stageCli({
+  source, resourceId, root, decision, securityVerdict, securityOverride,
+}) {
+  const args = [
+    'assimilate', 'stage',
+    '--source', source,
+    '--resource-id', resourceId,
+    '--pack', ASSIMILATE_PACK,
+    '--origin', 'github.com/example/fixture',
+    '--pin', 'abc123',
+    '--repo-root', root,
+  ];
+  if (decision) args.push('--decision', decision);
+  if (securityVerdict) args.push('--security-verdict', securityVerdict);
+  if (securityOverride !== undefined) args.push('--security-override', securityOverride);
+  return runCli(args);
+}
+
+describe('AC3 — assimilate stage writes the owned copy + provenance only on approve, non-suspicious', () => {
+  it('decision_approve_with_no_security_verdict_writes_the_owned_copy_and_lock_entry', () => {
+    const root = makeTmpDir('af-packctl-stage-approve');
+    const result = stageCli({ source: PERMISSIVE_FIXTURE, resourceId: 'permissive-skill', root, decision: 'approve' });
+
+    expect(result.status).toBe(0);
+    expect(result.json.ok).toBe(true);
+    expect(result.json.assimilate.status).toBe('assimilated');
+
+    const ownedSkillPath = join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md');
+    expect(existsSync(ownedSkillPath)).toBe(true);
+    expect(readFileSync(ownedSkillPath, 'utf8')).toContain('## Sources & provenance (hivemind)');
+
+    const lock = JSON.parse(readFileSync(join(root, 'integrations.lock.json'), 'utf8'));
+    expect(lock.resources['skill:permissive-skill'].owners).toEqual([ASSIMILATE_PACK]);
+  });
+
+  it('a_suspicious_verdict_blocks_approve_without_an_override_and_writes_nothing', () => {
+    const root = makeTmpDir('af-packctl-stage-blocked-security');
+    const result = stageCli({
+      source: MALICIOUS_FIXTURE, resourceId: 'malicious-skill', root, decision: 'approve', securityVerdict: 'suspicious',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.json.assimilate.status).toBe('blocked_security');
+    expect(result.json.assimilate.reason).toMatch(/suspicious/);
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+
+  it('a_suspicious_verdict_with_the_strict_boolean_override_true_proceeds_and_writes', () => {
+    const root = makeTmpDir('af-packctl-stage-override');
+    const result = stageCli({
+      source: MALICIOUS_FIXTURE, resourceId: 'malicious-skill', root, decision: 'approve', securityVerdict: 'suspicious', securityOverride: 'true',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.json.assimilate.status).toBe('assimilated');
+    expect(existsSync(join(root, 'assimilated-skills', 'malicious-skill', 'SKILL.md'))).toBe(true);
+  });
+
+  it('a_truthy_but_non_strict_boolean_override_value_does_NOT_bypass_the_suspicious_block', () => {
+    const root = makeTmpDir('af-packctl-stage-override-non-strict');
+    const result = stageCli({
+      source: MALICIOUS_FIXTURE, resourceId: 'malicious-skill', root, decision: 'approve', securityVerdict: 'suspicious', securityOverride: 'yes',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.json.assimilate.status).toBe('blocked_security');
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+});
+
+describe('AC4 — invariant sweep: {permissive,copyleft,unknown} x {no-decision,decline} makes zero writes', () => {
+  it('sweeps every license classification across no-decision and decline, asserting zero writes each time', () => {
+    const fixtures = [
+      ['permissive', PERMISSIVE_FIXTURE],
+      ['copyleft', COPYLEFT_FIXTURE],
+      ['unknown', UNKNOWN_FIXTURE],
+    ];
+    for (const [label, source] of fixtures) {
+      for (const decision of [undefined, 'decline']) {
+        const root = makeTmpDir(`af-packctl-sweep-${label}-${decision ?? 'absent'}`);
+        const result = stageCli({ source, resourceId: `${label}-skill`, root, decision });
+
+        expect(result.status, `${label}/${decision}`).toBe(0);
+        expect(result.json.assimilate.status, `${label}/${decision}`).toMatch(/^blocked_/);
+        expect(existsSync(join(root, 'assimilated-skills')), `${label}/${decision} staging dir`).toBe(false);
+        expect(existsSync(join(root, 'integrations.lock.json')), `${label}/${decision} lock`).toBe(false);
+      }
+    }
+  });
+
+  it('a_suspicious_verdict_blocks_approve_without_override_for_every_license_classification_too', () => {
+    // The security gate is orthogonal to license classification -- a
+    // permissive skill with a suspicious content verdict is blocked exactly
+    // like the malicious fixture above.
+    const root = makeTmpDir('af-packctl-sweep-suspicious-permissive');
+    const result = stageCli({
+      source: PERMISSIVE_FIXTURE, resourceId: 'permissive-skill', root, decision: 'approve', securityVerdict: 'suspicious',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.json.assimilate.status).toBe('blocked_security');
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC3 — assimilate stage argument-error paths: nonzero exit, no partial writes.
+// ---------------------------------------------------------------------------
+describe('assimilate stage — argument-error paths exit non-zero with no partial writes', () => {
+  it('unknown_assimilate_action_exits_nonzero_with_a_usage_message', () => {
+    const result = runCli(['assimilate', 'not-a-real-action']);
+    expect(result.status).not.toBe(0);
+    expect(result.json.ok).toBe(false);
+    expect(result.json.message).toMatch(/usage: pack-ctl assimilate|unknown assimilate action/);
+  });
+
+  it('missing_source_exits_nonzero_with_a_clear_stderr_message', () => {
+    const root = makeTmpDir('af-packctl-stage-missing-source');
+    const result = runCli(['assimilate', 'stage', '--resource-id', 'x', '--pack', ASSIMILATE_PACK, '--repo-root', root]);
+    expect(result.status).not.toBe(0);
+    expect(result.json.ok).toBe(false);
+    expect(result.json.message).toMatch(/--source/);
   });
 });

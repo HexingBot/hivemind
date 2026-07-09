@@ -1,18 +1,21 @@
 // tests/pack-ctl.spec.js
-// TASK-134 — pure-logic specs for bin/pack-ctl.js, the zero-external-dep CLI
-// wrapper exposing the addon-pack ops (resolveDesired / pack-reconcile /
-// pack-orchestrator) to a plugin-installed project with no cleanly-reachable
-// src/ (mirrors bin/loop-ctl.js -> dist/loop-ctl.cjs exactly, see that file's
-// header for the established CLI-shape precedent this ticket copies).
+// TASK-134/TASK-135 — pure-logic specs for bin/pack-ctl.js, the zero-external-dep
+// CLI wrapper exposing the addon-pack ops (resolveDesired / pack-reconcile /
+// pack-orchestrator / assimilate) to a plugin-installed project with no
+// cleanly-reachable src/ (mirrors bin/loop-ctl.js -> dist/loop-ctl.cjs exactly,
+// see that file's header for the established CLI-shape precedent this ticket
+// copies).
 //
 // Fast tier: no disk I/O, no process spawn. The reconstruction helper
-// (profileResultFromFrontmatter) and the flag parser (parseFlags) are pure;
-// run()'s own argument-validation guard (missing --repo-root / unknown
-// subcommand) throws BEFORE any fs access, so it is exercised here too.
+// (profileResultFromFrontmatter) and the flag parsers (parseFlags,
+// parseAssimilateArgs) are pure; run()'s own argument-validation guards
+// (missing --repo-root / unknown subcommand / TASK-135's assimilate
+// action+flag guards) throw BEFORE any fs access, so they are exercised here
+// too.
 //
 // Real disk I/O + spawned-CLI coverage (resolve/reconcile-plan/reconcile-apply
-// end to end against the BUILT dist/pack-ctl.cjs) lives in
-// tests/e2e/pack-ctl.spec.js.
+// and TASK-135's assimilate scan/classify/stage, end to end against the BUILT
+// dist/pack-ctl.cjs) lives in tests/e2e/pack-ctl.spec.js.
 //
 // AC map:
 //   AC1 (partial) — profileResultFromFrontmatter round-trips deriveProfileFields'
@@ -23,11 +26,23 @@
 //     active pack, in pack order, without reimplementing resolveDesired.
 //   AC5 — --repo-root is required (missing flag rejected before any I/O);
 //     unknown subcommand rejected by run()'s own default branch.
+//
+// TASK-135 AC map (validation-guard slice — the real assimilate scan/classify/
+// stage behavior against fixtures lives in tests/e2e/pack-ctl.spec.js):
+//   AC1/AC2 — `assimilate scan`/`assimilate classify` require --path, rejected
+//     before any fs access.
+//   AC3/AC4 — `assimilate stage` requires --source/--resource-id/--pack/
+//     --repo-root, and rejects an invalid --decision or --security-verdict
+//     value, all BEFORE calling assimilateSkill (i.e. before any write can
+//     even be attempted) — the CLI-boundary half of the no-auto-adopt
+//     invariant's typo protection.
+//   AC3 — parseAssimilateArgs itself: unknown action, unknown flag, missing
+//     flag value all throw eagerly (mirrors parseFlags' own contract).
 
 import { describe, it, expect } from 'vitest';
 
 import {
-  parseFlags, run, profileResultFromFrontmatter, aggregateDesired,
+  parseFlags, run, profileResultFromFrontmatter, aggregateDesired, parseAssimilateArgs,
 } from '../bin/pack-ctl.js';
 import { scoreComplexity, resourceActivations } from '../src/design-profile.js';
 import { deriveProfileFields } from '../src/design-profile.js';
@@ -183,5 +198,127 @@ describe('run() — argument validation happens before any disk I/O (AC5)', () =
 
   it('rejects_an_unknown_subcommand', async () => {
     await expect(run('bogus-subcommand', { repoRoot: '/tmp/whatever' })).rejects.toThrow(/unknown subcommand/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseAssimilateArgs — parses `assimilate <action> [--flags]` argv (TASK-135).
+// ---------------------------------------------------------------------------
+describe('parseAssimilateArgs', () => {
+  it('parses_a_scan_action_with_its_path_flag', () => {
+    expect(parseAssimilateArgs(['scan', '--path', '/tmp/skill'])).toEqual({
+      action: 'scan',
+      flags: { path: '/tmp/skill' },
+    });
+  });
+
+  it('parses_a_classify_action_with_its_path_flag', () => {
+    expect(parseAssimilateArgs(['classify', '--path', '/tmp/skill'])).toEqual({
+      action: 'classify',
+      flags: { path: '/tmp/skill' },
+    });
+  });
+
+  it('parses_a_stage_action_with_all_of_its_known_flags_to_camelCase', () => {
+    const { action, flags } = parseAssimilateArgs([
+      'stage',
+      '--source', '/tmp/skill',
+      '--resource-id', 'demo-skill',
+      '--pack', 'design-power@0.1.0',
+      '--origin', 'github.com/example/demo-skill',
+      '--pin', 'abc123',
+      '--repo-root', '/tmp/project',
+      '--decision', 'approve',
+      '--security-verdict', 'safe',
+      '--security-reasoning', 'no risky patterns',
+      '--security-override', 'true',
+    ]);
+    expect(action).toBe('stage');
+    expect(flags).toEqual({
+      source: '/tmp/skill',
+      resourceId: 'demo-skill',
+      pack: 'design-power@0.1.0',
+      origin: 'github.com/example/demo-skill',
+      pin: 'abc123',
+      repoRoot: '/tmp/project',
+      decision: 'approve',
+      securityVerdict: 'safe',
+      securityReasoning: 'no risky patterns',
+      securityOverride: 'true',
+    });
+  });
+
+  it('throws_on_a_missing_action', () => {
+    expect(() => parseAssimilateArgs([])).toThrow(/unknown assimilate action/);
+  });
+
+  it('throws_on_an_unrecognized_action', () => {
+    expect(() => parseAssimilateArgs(['bogus'])).toThrow(/unknown assimilate action/);
+  });
+
+  it('throws_on_an_unknown_flag_for_the_given_action', () => {
+    expect(() => parseAssimilateArgs(['scan', '--bogus', 'x'])).toThrow(/unknown flag/);
+  });
+
+  it('throws_when_a_flag_value_is_missing', () => {
+    expect(() => parseAssimilateArgs(['scan', '--path'])).toThrow(/requires a value/);
+  });
+
+  it('a_stage_only_flag_is_unknown_for_scan', () => {
+    expect(() => parseAssimilateArgs(['scan', '--decision', 'approve'])).toThrow(/unknown flag/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// run('assimilate', ...) — argument-validation guards, before any I/O
+// (TASK-135 AC1/AC2/AC3 CLI-boundary typo protection).
+// ---------------------------------------------------------------------------
+describe('run("assimilate", ...) — argument validation happens before any disk I/O or write', () => {
+  it('rejects_scan_missing_path', async () => {
+    await expect(run('assimilate', { action: 'scan' })).rejects.toThrow(/--path/);
+  });
+
+  it('rejects_classify_missing_path', async () => {
+    await expect(run('assimilate', { action: 'classify' })).rejects.toThrow(/--path/);
+  });
+
+  it('rejects_stage_missing_source', async () => {
+    await expect(run('assimilate', {
+      action: 'stage', resourceId: 'x', pack: 'p@1.0.0', repoRoot: '/tmp/project',
+    })).rejects.toThrow(/--source/);
+  });
+
+  it('rejects_stage_missing_resource_id', async () => {
+    await expect(run('assimilate', {
+      action: 'stage', source: '/tmp/skill', pack: 'p@1.0.0', repoRoot: '/tmp/project',
+    })).rejects.toThrow(/--resource-id/);
+  });
+
+  it('rejects_stage_missing_pack', async () => {
+    await expect(run('assimilate', {
+      action: 'stage', source: '/tmp/skill', resourceId: 'x', repoRoot: '/tmp/project',
+    })).rejects.toThrow(/--pack/);
+  });
+
+  it('rejects_stage_missing_repo_root', async () => {
+    await expect(run('assimilate', {
+      action: 'stage', source: '/tmp/skill', resourceId: 'x', pack: 'p@1.0.0',
+    })).rejects.toThrow(/--repo-root/);
+  });
+
+  it('rejects_stage_with_an_invalid_decision_value', async () => {
+    await expect(run('assimilate', {
+      action: 'stage', source: '/tmp/skill', resourceId: 'x', pack: 'p@1.0.0', repoRoot: '/tmp/project', decision: 'maybe',
+    })).rejects.toThrow(/--decision must be/);
+  });
+
+  it('rejects_stage_with_an_invalid_security_verdict_value', async () => {
+    await expect(run('assimilate', {
+      action: 'stage', source: '/tmp/skill', resourceId: 'x', pack: 'p@1.0.0', repoRoot: '/tmp/project', securityVerdict: 'meh',
+    })).rejects.toThrow(/--security-verdict must be/);
+  });
+
+  it('rejects_an_unknown_assimilate_action', async () => {
+    await expect(run('assimilate', { action: 'bogus' })).rejects.toThrow(/unknown assimilate action/);
   });
 });
