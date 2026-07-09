@@ -2,10 +2,10 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "paused",
-  "updated_at": "2026-07-09T14:08:27.865Z",
+  "updated_at": "2026-07-09T14:28:14.861Z",
   "active_task": null,
   "workflow_step": "idle",
-  "next_action": "HOTFIX SHIPPED (v0.14.1): TASK-138 fixed the malformed plugin hooks/hooks.json that blocked SessionStart hook load in Claude Code (missing top-level hooks wrapper + un-nested command). Root cause: tests/plugin-hooks-scaffold.spec.js had encoded the WRONG flat shape, hiding the bug — corrected + a new tests/plugin-hooks-format.spec.js regression sensor added. FULL APPROVE clean. Lesson captured as a proposed knowledge draft (format-sensor-vs-authoritative-schema). User must restart Claude Code / re-update to 0.14.1 to clear the hook error. Known open usability item (not blocking): /hivemind:design-pack does not clearly surface that ui-ux-pro-max needs assimilation first on a fresh project.",
+  "next_action": "v0.14.2 SHIPPED. TASK-139 closed the /hivemind:design-pack usability gap: Step 5 now surfaces packs[].report skills-needing-adoption (e.g. ui-ux-pro-max) and routes the user to hivemind-assimilate-skill with origin+pin, then re-run — never a bare nothing-installed. UAT verified behaviorally against real reconcile-apply output. Both open items from this session are now resolved: (1) hooks.json hook-load bug fixed in 0.14.1; (2) design-pack usability in 0.14.2. User needs to /hivemind:update + restart to pick up 0.14.2.",
   "handoff_summary": "Design-power pack COMPLETE, CLOSED, and DEPLOYED in plugin v0.13.0 (pushed to origin/main). Full arc TASK-125..133 done; ui-ux-pro-max vendored + harness-loadable. At deploy the orchestrator curated knowledge (4 drafts promoted + graph-noded), ratified FP-2 product data, bumped both version locations, added MIT attribution, and pushed 5 logical commits. No pending curation. Idle/awaiting next goal.",
   "open_questions": [
     "Human to approve/adjust docs/design/design-profile-spec.md (esp. open Q#4 no canvas-motion resource, Q#5 playwright/web-UI predicate inferred, 1:1 axis weighting, uncalibrated tier thresholds).",
