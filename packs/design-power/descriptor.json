@@ -1,12 +1,86 @@
 {
   "id": "design-power",
-  "name": "Design Power (FP-1 seed)",
-  "version": "0.0.1-fp1-seed",
+  "name": "Diseño Poderoso",
+  "version": "0.1.0",
   "core_compat": ">=1.0.0",
-  "trigger": {},
+  "trigger": {
+    "intake_question": "Does this project have a visual, human-facing interface that needs deliberate design work — as opposed to a pure API, CLI, backend service, or script? (This decides whether the design-power pack engages at all.)",
+    "activates_when": "design_heavy==yes"
+  },
   "project_md_contribution": ["perfil_proyecto", "tier"],
   "profile": {},
-  "resources": [],
-  "gate_scopes": [],
-  "pipeline": []
+  "resources": [
+    {
+      "id": "frontend-design",
+      "kind": "plugin",
+      "origin": "official Claude plugin marketplace (e.g. anthropics/claude-code frontend-design plugin)",
+      "pin": "marketplace-latest (Wave-2; human to ratify)",
+      "scope": "project",
+      "required": "hard",
+      "activate_when": "always (design_heavy)",
+      "install": "/plugin install frontend-design@<marketplace-pin-tbd> (Wave-2, TUI-only — human to ratify exact pin before autonomous install)"
+    },
+    {
+      "id": "ui-ux-pro-max",
+      "kind": "skill",
+      "origin": "github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "pin": "12b486b22e67f5d887962ef8351c1ac863bfaeb9",
+      "scope": "project",
+      "required": "soft",
+      "activate_when": "tier != LIGERO",
+      "install": "vendor via assimilate (FP-5)"
+    },
+    {
+      "id": "shadcn/ui",
+      "kind": "mcp",
+      "origin": "shadcn CLI",
+      "pin": "4.13.0",
+      "scope": "project",
+      "required": "soft",
+      "activate_when": "framework==react && ui_outside_canvas",
+      "install": "claude mcp add shadcn -- npx shadcn@4.13.0 mcp"
+    },
+    {
+      "id": "shadcn-vue",
+      "kind": "mcp",
+      "origin": "shadcn-vue CLI",
+      "pin": "2.7.4",
+      "scope": "project",
+      "required": "soft",
+      "activate_when": "framework==vue && ui_outside_canvas",
+      "install": "npx shadcn-vue@2.7.4 mcp init --client claude"
+    },
+    {
+      "id": "firecrawl",
+      "kind": "mcp",
+      "origin": "firecrawl-mcp (Mendable)",
+      "pin": "3.22.3",
+      "scope": "project",
+      "required": "soft",
+      "activate_when": "needs_research",
+      "install": "claude mcp add firecrawl -e FIRECRAWL_API_KEY=<key> -- npx -y firecrawl-mcp@3.22.3"
+    },
+    {
+      "id": "playwright",
+      "kind": "mcp",
+      "origin": "@playwright/mcp (Microsoft)",
+      "pin": "0.0.77",
+      "scope": "project",
+      "required": "soft",
+      "activate_when": "tier==COMPLETO && ui_outside_canvas",
+      "install": "claude mcp add playwright -- npx @playwright/mcp@0.0.77"
+    }
+  ],
+  "gate_scopes": ["design_pipeline"],
+  "pipeline": [
+    "reference",
+    "research",
+    "art-direction",
+    "design-system",
+    "implementation",
+    "motion",
+    "assets",
+    "polish",
+    "testing"
+  ]
 }
