@@ -9423,21 +9423,26 @@ var PATTERN_DEFS = [
     severity: "high",
     // A filesystem WRITE (Node writeFileSync/fs.writeFile/fs.promises.writeFile)
     // whose target path touches another agent-config surface outside the
-    // skill's own directory: .claude/, settings.json, or a >=2-level escape.
-    re: /\b(writeFileSync|fs\.writeFile|fs\.promises\.writeFile)\s*\([^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})/i
+    // skill's own directory: a .claude/ segment, a >=2-level path escape, or
+    // a settings.json specifically preceded by a directory escape. A bare
+    // `settings.json` / `./config/settings.json` with no .claude/ segment and
+    // no escape is the skill's OWN file -- AC1 scopes this category to
+    // outside the skill dir, so the settings.json alternative must stay
+    // qualified by an out-of-dir signal rather than matching on filename alone.
+    re: /\b(writeFileSync|fs\.writeFile|fs\.promises\.writeFile)\s*\([^)\n]{0,300}(\.claude[\\/]|(\.\.[\\/]){2,}|(\.\.[\\/])[^)\n]{0,200}settings\.json)/i
   },
   {
     category: "persistence-write",
     severity: "high",
-    // Python `open(path, 'w'|'a')` targeting the same kind of path, in either
-    // argument order.
-    re: /\bopen\s*\([^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})[^)\n]{0,300}['"][wa][+b]?['"]\s*\)|\bopen\s*\([^)\n]{0,300}['"][wa][+b]?['"][^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})/i
+    // Python `open(path, 'w'|'a')` targeting the same kind of qualified path,
+    // in either argument order.
+    re: /\bopen\s*\([^)\n]{0,300}(\.claude[\\/]|(\.\.[\\/]){2,}|(\.\.[\\/])[^)\n]{0,200}settings\.json)[^)\n]{0,300}['"][wa][+b]?['"]\s*\)|\bopen\s*\([^)\n]{0,300}['"][wa][+b]?['"][^)\n]{0,300}(\.claude[\\/]|(\.\.[\\/]){2,}|(\.\.[\\/])[^)\n]{0,200}settings\.json)/i
   },
   {
     category: "persistence-write",
     severity: "high",
-    // Shell append/overwrite redirection into the same kind of path.
-    re: />{1,2}\s*[^\n|]{0,80}(\.claude[\\/]|settings\.json)/i
+    // Shell append/overwrite redirection into the same kind of qualified path.
+    re: />{1,2}\s*[^\n|]{0,80}(\.claude[\\/]|(\.\.[\\/]){2,}|(\.\.[\\/])[^\n|]{0,80}settings\.json)/i
   }
 ];
 var MULTILINE_BASE64_LINE_RE = /^[A-Za-z0-9+/]{16,}={0,2}$/;

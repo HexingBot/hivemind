@@ -324,6 +324,36 @@ describe('scanSkillContent -- persistence-write: filesystem write targeting anot
     const findings = scanSkillContent(text).findings.filter((f) => f.category === 'persistence-write');
     expect(findings).toEqual([]);
   });
+
+  // Reviewer MEDIUM finding (post-c57aa20): a bare `settings.json` filename,
+  // written from inside the skill's own dir with no .claude/ segment and no
+  // directory escape, is the skill's OWN config-shaped file -- not "another
+  // agent-config file OUTSIDE the skill dir" per AC1. The category must not
+  // flag it just because the filename happens to be "settings.json".
+  it('does NOT false-positive on a bare settings.json filename (no .claude/, no escape -- the skill\'s own file)', () => {
+    const text = 'fs.writeFileSync("settings.json", cfg);';
+    const findings = scanSkillContent(text).findings.filter((f) => f.category === 'persistence-write');
+    expect(findings).toEqual([]);
+  });
+
+  it('does NOT false-positive on a settings.json nested inside the skill\'s own subdirectory', () => {
+    const text = 'fs.writeFileSync("./config/settings.json", cfg);';
+    const findings = scanSkillContent(text).findings.filter((f) => f.category === 'persistence-write');
+    expect(findings).toEqual([]);
+  });
+
+  it('still flags a single-level ../ escape targeting settings.json (a real out-of-dir signal)', () => {
+    const text = "fs.writeFileSync('../settings.json', cfg);";
+    const finding = scanSkillContent(text).findings.find((f) => f.category === 'persistence-write');
+    expect(finding).toBeDefined();
+    expect(finding.severity).toBe('high');
+  });
+
+  it('still flags a write into another skill/.claude path even without the settings.json filename', () => {
+    const text = "fs.writeFileSync('../../assimilated-skills/other-skill/SKILL.md', x);";
+    const finding = scanSkillContent(text).findings.find((f) => f.category === 'persistence-write');
+    expect(finding).toBeDefined();
+  });
 });
 
 describe('scanSkillContent -- additive contract: new categories layer onto the existing findings shape (TASK-141)', () => {
