@@ -152,31 +152,65 @@ export function hashDir(dir) {
   return hash.digest('hex');
 }
 
-// TASK-142 — CONTENT_INTEGRITY_LINE_RE / hashOwnedSkillDir together are the
-// ONE documented rule (resolving the ticket's chicken-and-egg) used
-// IDENTICALLY by the writer (src/assimilate.js, which imports both) and this
-// verifier: SKILL.md's own `- content_integrity: <value>` line is part of the
-// bytes an owned skill directory is hashed over, but it also ATTESTS TO that
-// hash — a self-reference. The rule: canonicalize that one line to a fixed
-// placeholder before hashing, regardless of what value (or lack of one)
-// currently occupies it. Both sides always hash the exact same canonicalized
-// bytes no matter what real value ends up written to disk, so a writer can
-// compute the true digest BEFORE embedding it, and a verifier can re-hash
-// AFTER it's embedded, and get the identical answer either way.
-export const CONTENT_INTEGRITY_LINE_RE = /^- content_integrity:.*$/m;
-const CONTENT_INTEGRITY_HASH_PLACEHOLDER = '- content_integrity: <redacted-for-hash>';
+// TASK-142 — hashOwnedSkillDir's canonicalization is the ONE documented rule
+// (resolving the ticket's chicken-and-egg) used IDENTICALLY by the writer
+// (src/assimilate.js, which calls this exported function) and this verifier:
+// SKILL.md's own `- content_integrity: <value>` line is part of the bytes an
+// owned skill directory is hashed over, but it also ATTESTS TO that hash —
+// a self-reference.
+//
+// TASK-142 HIGH FIX (reviewer-reproduced post-approve tamper hole): the
+// original rule canonicalized the WHOLE line (`/^- content_integrity:.*$/m`)
+// regardless of its value, so an attacker who appended text to that exact
+// line AFTER approve had the appended bytes erased before hashing ever saw
+// them — undetected tampering, materialized verbatim into the live tree.
+// The rule is now narrower on TWO axes:
+//   1. VALUE shape — only a well-formed value (a real sha256 digest, or the
+//      transient write-time placeholder "(pending)") is canonicalized away.
+//      Anything else on that exact line — most importantly a valid hash
+//      with attacker-appended trailing text — FAILS to match and is left IN
+//      the hashed bytes, so the tamper changes the digest instead of being
+//      silently erased.
+//   2. LOCATION — canonicalization only ever looks at text AFTER the
+//      "## Sources & provenance (hivemind)" heading (PROVENANCE_HEADING,
+//      matching src/assimilate.js's writer and src/pack-reconcile.js's
+//      parser). A skill BODY that happens to contain a decoy line shaped
+//      like `- content_integrity: sha256:...` sits BEFORE that heading (the
+//      block is always appended, never prepended) and is therefore never
+//      touched — it hashes as ordinary body content, same as any other line.
+// Within the block, canonicalization additionally requires EXACTLY ONE
+// well-formed match; zero (the tamper case) or more than one (a structurally
+// malformed block) both leave the block's bytes UNCHANGED for hashing —
+// fail-closed by construction (the anomaly stays in the digest and causes a
+// mismatch), never a thrown exception that could short-circuit the caller's
+// normal mismatch-report path.
+const PROVENANCE_HEADING = '## Sources & provenance (hivemind)';
+const CONTENT_INTEGRITY_VALUE_RE = /^- content_integrity: (sha256:[0-9a-f]{64}|\(pending\))\s*$/m;
+const CONTENT_INTEGRITY_HASH_PLACEHOLDER_LINE = '- content_integrity: <redacted-for-hash>';
 
 function canonicalizeSkillTextForContentHash(text) {
-  return text.replace(CONTENT_INTEGRITY_LINE_RE, CONTENT_INTEGRITY_HASH_PLACEHOLDER);
+  const headingIdx = text.lastIndexOf(PROVENANCE_HEADING);
+  if (headingIdx === -1) return text; // no provenance block at all -- hash the file as-is.
+
+  const before = text.slice(0, headingIdx);
+  const block = text.slice(headingIdx);
+
+  const matches = block.match(new RegExp(CONTENT_INTEGRITY_VALUE_RE.source, 'gm'));
+  if (!matches || matches.length !== 1) return text; // 0 or >1 well-formed matches -- do not canonicalize.
+
+  return before + block.replace(CONTENT_INTEGRITY_VALUE_RE, CONTENT_INTEGRITY_HASH_PLACEHOLDER_LINE);
 }
 
 /**
  * Content hash of an OWNED skill directory (assimilated-skills/<id>/ or, once
  * materialized, .claude/skills/<id>/) — TASK-142's `content_integrity`.
  * Identical to hashDir's relPath+bytes-per-file algorithm, except the
- * top-level SKILL.md's `- content_integrity: ...` line is canonicalized away
- * first (see the constant above) so the hash never depends on its own
- * recorded value — the chicken-and-egg fix.
+ * top-level SKILL.md's WELL-FORMED `- content_integrity: <value>` line,
+ * scoped to inside the provenance block, is canonicalized away first (see
+ * canonicalizeSkillTextForContentHash above) so the hash never depends on
+ * its own recorded value — the chicken-and-egg fix. Anything that doesn't
+ * match that narrow shape (tampered trailing text, a decoy line outside the
+ * block, a malformed/duplicated block) is hashed AS-IS, not canonicalized.
  *
  * @param {string} dir - the owned skill directory to hash.
  * @param {{ skillText?: string }} [opts] - `skillText`, when given, is used

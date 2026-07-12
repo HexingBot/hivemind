@@ -8906,10 +8906,17 @@ function hashDir(dir) {
   }
   return hash.digest("hex");
 }
-var CONTENT_INTEGRITY_LINE_RE = /^- content_integrity:.*$/m;
-var CONTENT_INTEGRITY_HASH_PLACEHOLDER = "- content_integrity: <redacted-for-hash>";
+var PROVENANCE_HEADING2 = "## Sources & provenance (hivemind)";
+var CONTENT_INTEGRITY_VALUE_RE = /^- content_integrity: (sha256:[0-9a-f]{64}|\(pending\))\s*$/m;
+var CONTENT_INTEGRITY_HASH_PLACEHOLDER_LINE = "- content_integrity: <redacted-for-hash>";
 function canonicalizeSkillTextForContentHash(text) {
-  return text.replace(CONTENT_INTEGRITY_LINE_RE, CONTENT_INTEGRITY_HASH_PLACEHOLDER);
+  const headingIdx = text.lastIndexOf(PROVENANCE_HEADING2);
+  if (headingIdx === -1) return text;
+  const before = text.slice(0, headingIdx);
+  const block = text.slice(headingIdx);
+  const matches = block.match(new RegExp(CONTENT_INTEGRITY_VALUE_RE.source, "gm"));
+  if (!matches || matches.length !== 1) return text;
+  return before + block.replace(CONTENT_INTEGRITY_VALUE_RE, CONTENT_INTEGRITY_HASH_PLACEHOLDER_LINE);
 }
 function hashOwnedSkillDir(dir, opts = {}) {
   const { skillText } = opts;
@@ -9390,7 +9397,7 @@ function scanSkillContent(text, opts = {}) {
 // src/assimilate.js
 var SKILL_FILENAME3 = "SKILL.md";
 var DEFAULT_STAGING_SUBDIR = "assimilated-skills";
-var PROVENANCE_HEADING2 = "## Sources & provenance (hivemind)";
+var PROVENANCE_HEADING3 = "## Sources & provenance (hivemind)";
 var HIVEMIND_TAG = " (assimilated for Hivemind)";
 function defaultNow() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -9412,7 +9419,7 @@ function tagDescriptionForHivemind(text) {
 }
 function buildProvenanceBlock({ origin, pin, spdx_id, source_integrity, content_integrity, assimilated_at }) {
   return [
-    PROVENANCE_HEADING2,
+    PROVENANCE_HEADING3,
     "",
     `- origin: ${origin}`,
     `- pin: ${pin}`,
@@ -9439,13 +9446,12 @@ function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
   };
 }
 function rescopeWithContentIntegrity(originalSkillText, fields, hashDirPath) {
-  const withPlaceholder = appendProvenanceBlock(tagDescriptionForHivemind(originalSkillText), {
-    ...fields,
-    content_integrity: "(pending)"
-  });
+  const taggedText = tagDescriptionForHivemind(originalSkillText);
+  const withPlaceholder = appendProvenanceBlock(taggedText, { ...fields, content_integrity: "(pending)" });
   const contentIntegrity = `sha256:${hashOwnedSkillDir(hashDirPath, { skillText: withPlaceholder })}`;
-  const finalText = withPlaceholder.replace(CONTENT_INTEGRITY_LINE_RE, `- content_integrity: ${contentIntegrity}`);
-  const block = buildProvenanceBlock({ ...fields, content_integrity: contentIntegrity });
+  const finalFields = { ...fields, content_integrity: contentIntegrity };
+  const finalText = appendProvenanceBlock(taggedText, finalFields);
+  const block = buildProvenanceBlock(finalFields);
   return { finalText, contentIntegrity, block };
 }
 var SCAN_IGNORED_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git"]);

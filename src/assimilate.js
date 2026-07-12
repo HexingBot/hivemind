@@ -74,11 +74,15 @@
 //     an approve commits). Self-referential (the hash is over bytes that
 //     include the block that carries the hash) — resolved by the ONE
 //     documented rule at src/pack-apply.js#hashOwnedSkillDir (imported
-//     below): the `- content_integrity: ...` line's own value is
-//     canonicalized away before hashing, so the writer here and the verifier
-//     in src/pack-apply.js#executeInstall always agree byte-for-byte, and
-//     assimilateSkill can compute the true value once and write it exactly
-//     once (no placeholder-then-patch double write).
+//     below): the WELL-FORMED `- content_integrity: ...` value, scoped to
+//     inside the provenance block, is canonicalized away before hashing, so
+//     the writer here and the verifier in src/pack-apply.js#executeInstall
+//     always agree byte-for-byte. See rescopeWithContentIntegrity below for
+//     why the final on-disk text is built by calling buildProvenanceBlock a
+//     SECOND time with the real value (never a text-wide regex splice) —
+//     that HIGH (reviewer-reproduced post-approve tamper hole plus a
+//     duplicate-line hazard) is closed by construction, not by a broader
+//     regex.
 // The verifier side (src/pack-apply.js's TOCTOU close, A3) re-hashes the
 // staged bytes against `content_integrity` immediately before materialize
 // and fails closed on a mismatch — see that module's header for the full
@@ -90,7 +94,7 @@ import { join, dirname, relative, sep } from 'node:path';
 
 import { detectLicense, classifyLicense } from './license-detect.js';
 import { readLock, writeLock, addOwner } from './integrations-lock.js';
-import { hashDir, hashOwnedSkillDir, CONTENT_INTEGRITY_LINE_RE } from './pack-apply.js';
+import { hashDir, hashOwnedSkillDir } from './pack-apply.js';
 import { scanSkillContent } from './skill-scan.js';
 
 const SKILL_FILENAME = 'SKILL.md';
@@ -183,19 +187,28 @@ function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
 // rewrite has actually been written to disk yet.
 //
 // Resolves the self-reference (content_integrity's line is part of what it
-// hashes) by writing a placeholder into that line, hashing (the placeholder
-// value is irrelevant -- hashOwnedSkillDir canonicalizes the whole line away
-// regardless of its content), then splicing the REAL computed value into the
-// SAME text via CONTENT_INTEGRITY_LINE_RE -- one hash computation, one final
-// text, never a placeholder left on disk.
+// hashes) by writing the TRANSIENT placeholder "(pending)" into that line,
+// hashing (hashOwnedSkillDir canonicalizes that exact well-formed value away,
+// scoped to inside the provenance block -- see that function's header),
+// then building the FINAL text by calling buildProvenanceBlock a SECOND time
+// with the real computed value, rather than text-splicing the placeholder
+// occurrence via a regex. This is deliberate, not an optimization: a
+// text-wide regex replace (the pre-fix approach) replaces only the FIRST
+// match in the whole file, which is WRONG the moment a skill's own BODY
+// happens to contain a line shaped like `- content_integrity: sha256:...`
+// (the body always precedes the appended block, so it would "win" the
+// first-match race) -- reviewer-reproduced HIGH/MEDIUM. Reconstructing the
+// tail deterministically from `fields` sidesteps text search entirely: there
+// is no scanning of body content, so a decoy line can never be targeted by
+// the splice, and the provenance block always attests to the value that was
+// actually hashed.
 function rescopeWithContentIntegrity(originalSkillText, fields, hashDirPath) {
-  const withPlaceholder = appendProvenanceBlock(tagDescriptionForHivemind(originalSkillText), {
-    ...fields,
-    content_integrity: '(pending)',
-  });
+  const taggedText = tagDescriptionForHivemind(originalSkillText);
+  const withPlaceholder = appendProvenanceBlock(taggedText, { ...fields, content_integrity: '(pending)' });
   const contentIntegrity = `sha256:${hashOwnedSkillDir(hashDirPath, { skillText: withPlaceholder })}`;
-  const finalText = withPlaceholder.replace(CONTENT_INTEGRITY_LINE_RE, `- content_integrity: ${contentIntegrity}`);
-  const block = buildProvenanceBlock({ ...fields, content_integrity: contentIntegrity });
+  const finalFields = { ...fields, content_integrity: contentIntegrity };
+  const finalText = appendProvenanceBlock(taggedText, finalFields);
+  const block = buildProvenanceBlock(finalFields);
   return { finalText, contentIntegrity, block };
 }
 
@@ -422,9 +435,10 @@ export async function assimilateSkill(opts) {
   cpSync(source, ownedDir, { recursive: true });
 
   // TASK-142 -- content_integrity (over the OWNED artifact, post-rewrite) is
-  // computed and spliced into the SAME write as the description-tag +
+  // computed and folded into the SAME write as the description-tag +
   // provenance-block rewrite; see rescopeWithContentIntegrity's header for
-  // why this is a single write, not a placeholder-then-patch double write.
+  // why the final text is deterministically REBUILT (not text-spliced) --
+  // the fix for the reviewer-reproduced HIGH/MEDIUM.
   const ownedSkillPath = join(ownedDir, SKILL_FILENAME);
   const original = readFileSync(ownedSkillPath, 'utf8');
   const { finalText, contentIntegrity } = rescopeWithContentIntegrity(original, fields, ownedDir);
