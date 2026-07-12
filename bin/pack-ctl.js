@@ -336,11 +336,12 @@ async function runAssimilateStage(flags) {
     ? { verdict: flags.securityVerdict, reasoning: flags.securityReasoning || '' }
     : null;
   // Strict CLI-boundary parse, mirroring src/assimilate.js's own downstream
-  // `reviewerVerdict?.verdict === 'suspicious' && securityOverride !== true`
-  // check (TASK-122): ONLY the exact string "true" ever becomes the boolean
-  // true. Any other value -- missing, "false", "yes", "1", a typo -- becomes
-  // false, so a truthy-but-wrong CLI arg can never accidentally bypass the
-  // security gate the way a loosely-truthy check would.
+  // `reviewerVerdict?.verdict !== 'safe' && securityOverride !== true`
+  // default-deny check (TASK-122, inverted TASK-140): ONLY the exact string
+  // "true" ever becomes the boolean true. Any other value -- missing,
+  // "false", "yes", "1", a typo -- becomes false, so a truthy-but-wrong CLI
+  // arg can never accidentally bypass the security gate the way a
+  // loosely-truthy check would.
   const securityOverride = flags.securityOverride === 'true';
 
   const result = await assimilateSkill({

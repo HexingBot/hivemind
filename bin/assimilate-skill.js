@@ -24,11 +24,18 @@
 //   --reviewer-verdict <v>    'safe' | 'suspicious' — the security-reviewer subagent's
 //                             verdict (TASK-122; the Orchestrator runs that subagent
 //                             separately, over this same source dir, and passes its
-//                             verdict back in on the next invocation).
+//                             verdict back in on the next invocation). DEFAULT-DENY
+//                             (TASK-140): --decision approve writes ONLY when this is
+//                             exactly 'safe' — omitting --reviewer-verdict entirely, or
+//                             passing 'suspicious' (or any other value), both refuse the
+//                             write (status: blocked_security). There is no fail-open
+//                             path: run the security-reviewer subagent and pass its
+//                             verdict back in before approving, or the CLI will block.
 //   --reviewer-reasoning <s>  free-text reasoning accompanying --reviewer-verdict.
 //   --security-override       explicit human override allowing --decision approve to
-//                             proceed despite a 'suspicious' --reviewer-verdict; without
-//                             it, that combination refuses the write (status: blocked_security).
+//                             proceed despite a non-'safe' --reviewer-verdict (including
+//                             a missing one); without it, that combination refuses the
+//                             write (status: blocked_security).
 //
 // TASK-120 UAT-bounce gaps B + C:
 //   B — the clone root is always forwarded to assimilateSkill as `repoRoot`
