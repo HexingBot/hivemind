@@ -16,6 +16,21 @@
 // Patterns are deliberately conservative and anchored tightly to avoid
 // false positives on ordinary prose/doc content (e.g. the word "curl" used
 // in a sentence, or a plain markdown link) — see the regex comments below.
+//
+// HONEST FRAMING (TASK-141): this is LOW-RECALL TRIAGE, not a security
+// boundary. It is a fixed set of regexes against text a determined author
+// can trivially restructure (a new alias, an extra indirection, a helper
+// function) to evade every pattern below. Expanding recall (TASK-141 added
+// destructured/aliased env reads, computed child_process access, eval/
+// Function/vm sandbox escapes, non-literal fetch URLs, multi-line/MIME-
+// wrapped base64, Unicode Tag-block smuggling, and cross-skill persistence
+// writes) narrows the gap but never closes it — new evasions will keep
+// existing. A CLEAN SCAN (zero findings) IS NOT A SAFETY ASSURANCE; it only
+// raises the human/security-reviewer's prior that the content is benign.
+// The only thing that reliably catches intent-in-prose is the human-facing
+// security-reviewer subagent step (see src/assimilate.js's SECURITY REVIEW
+// BOUNDARY note) — this scanner is decision support layered underneath it,
+// never a substitute for it.
 
 const SEVERITIES = ['high', 'medium', 'low'];
 
@@ -36,6 +51,28 @@ const PATTERN_DEFS = [
     re: /\b(child_process\.(exec|execSync|spawn|spawnSync)|os\.system|subprocess\.(run|call|Popen|check_output|check_call))\s*\(/,
   },
   {
+    category: 'shell-exec',
+    severity: 'high',
+    // Computed/bracket member access into a fresh child_process require --
+    // evades a literal `.exec(` dot-call scan: require('child_process')['exec'](...).
+    re: /require\(\s*['"]child_process['"]\s*\)\s*\[\s*['"](exec|execSync|spawn|spawnSync)['"]\s*\]\s*\(/,
+  },
+  {
+    category: 'shell-exec',
+    severity: 'high',
+    // Destructured child_process import: const {exec} = require('child_process').
+    re: /\b(?:const|let|var)\s*\{[^{}]{0,200}\}\s*=\s*require\(\s*['"]child_process['"]\s*\)/,
+  },
+  {
+    category: 'shell-exec',
+    severity: 'high',
+    // Dynamic code execution / sandbox escapes: eval(...), new Function(...),
+    // vm.runInNewContext/runInThisContext/runInContext(...). Anchored to the
+    // call form (identifier immediately followed by `(`) so the bare word
+    // "eval" in ordinary prose does not match.
+    re: /\b(eval\s*\(|new\s+Function\s*\(|vm\.(runInNewContext|runInThisContext|runInContext)\s*\()/,
+  },
+  {
     category: 'network-fetch',
     severity: 'medium',
     // Programmatic HTTP calls to a literal URL -- an invocation, not a bare
@@ -49,10 +86,45 @@ const PATTERN_DEFS = [
     re: /\b(curl|wget)\s+(-{1,2}\S+\s+)*https?:\/\//i,
   },
   {
+    category: 'network-fetch',
+    severity: 'medium',
+    // Programmatic HTTP calls with a NON-literal URL argument -- a bare
+    // variable (`fetch(u)`) or a template literal (`` fetch(`${base}/x`) ``)
+    // evades a scan anchored to a literal 'http...' string. Requires the
+    // argument to be a single bare identifier immediately followed by `,`/`)`
+    // (not a multi-word phrase) or a template literal, to avoid matching
+    // prose like "fetch(the latest changes) from origin".
+    re: /\b(fetch|axios\.(get|post|put|delete|patch)|requests\.(get|post|put|delete))\s*\(\s*([A-Za-z_$][\w$]*\s*[,)]|`)/,
+  },
+  {
     category: 'env-credential-access',
     severity: 'high',
     // Programmatic env/credential reads: process.env.X, os.environ[...]/getenv(...).
     re: /\b(process\.env\.[A-Za-z_][A-Za-z0-9_]*|process\.env\[|os\.environ(\.get)?\(|os\.environ\[|os\.getenv\()/,
+  },
+  {
+    category: 'env-credential-access',
+    severity: 'high',
+    // Destructured env reads: `const {SECRET} = process.env` (also let/var) --
+    // evades a literal `process.env.X` scan by pulling names out via pattern
+    // matching instead of dot access.
+    re: /\b(?:const|let|var)\s*\{[^{}]{0,200}\}\s*=\s*process\.env\b/,
+  },
+  {
+    category: 'env-credential-access',
+    severity: 'high',
+    // Whole-object aliasing of process.env into a bare identifier (then used
+    // later as `alias.TOKEN`) -- flags the aliasing assignment itself, since
+    // the later member access on an arbitrary alias name isn't reliably
+    // distinguishable from ordinary object access. Excludes `x = process.env.Y`
+    // / `x = process.env[...]`, which the two patterns above already cover.
+    re: /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*process\.env\s*(?![.[\w])/,
+  },
+  {
+    category: 'env-credential-access',
+    severity: 'high',
+    // Bundler-injected env access (Vite/ESM): import.meta.env.X / import.meta.env[...].
+    re: /\bimport\.meta\.env(\.[A-Za-z_$][\w$]*|\[)/,
   },
   {
     category: 'filesystem-access-outside-skill',
@@ -71,7 +143,81 @@ const PATTERN_DEFS = [
     // sha256 digest or a normal-length identifier/URL slug.
     re: /\b[A-Za-z0-9+/]{80,}={0,2}\b/,
   },
+  {
+    category: 'unicode-tag-smuggling',
+    severity: 'high',
+    // Unicode Tag-block characters (U+E0000-U+E007F) render invisible in
+    // normal viewers/editors but are semantically processed by an LLM -- a
+    // known prompt/instruction-smuggling channel. Any occurrence is
+    // anomalous; legitimate skill prose has no reason to contain them.
+    re: /[\u{E0000}-\u{E007F}]/u,
+  },
+  {
+    category: 'persistence-write',
+    severity: 'high',
+    // A filesystem WRITE (Node writeFileSync/fs.writeFile/fs.promises.writeFile)
+    // whose target path touches another agent-config surface outside the
+    // skill's own directory: .claude/, settings.json, or a >=2-level escape.
+    re: /\b(writeFileSync|fs\.writeFile|fs\.promises\.writeFile)\s*\([^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})/i,
+  },
+  {
+    category: 'persistence-write',
+    severity: 'high',
+    // Python `open(path, 'w'|'a')` targeting the same kind of path, in either
+    // argument order.
+    re: /\bopen\s*\([^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})[^)\n]{0,300}['"][wa][+b]?['"]\s*\)|\bopen\s*\([^)\n]{0,300}['"][wa][+b]?['"][^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})/i,
+  },
+  {
+    category: 'persistence-write',
+    severity: 'high',
+    // Shell append/overwrite redirection into the same kind of path.
+    re: />{1,2}\s*[^\n|]{0,80}(\.claude[\\/]|settings\.json)/i,
+  },
 ];
+
+// A base64-alphabet run split across multiple consecutive lines (arbitrary
+// wrapping, or the standard 76-col MIME wrap) evades the single-line 80+
+// char PATTERN_DEFS regex above, since no *one* line crosses the threshold.
+// This is a supplementary WHOLE-TEXT pass (not per-line), additive to
+// PATTERN_DEFS: it joins consecutive lines that are themselves entirely
+// base64-alphabet characters and flags the run once its combined length
+// crosses the same 80-char bar used for the single-line case. A lone
+// short/medium line (e.g. a 64-hex sha256 digest) never forms a run by
+// itself, so it stays clear of this check the same way it clears the
+// single-line one.
+const MULTILINE_BASE64_LINE_RE = /^[A-Za-z0-9+/]{16,}={0,2}$/;
+const MULTILINE_BASE64_MIN_TOTAL = 80;
+
+function scanMultilineBase64(content, location) {
+  if (!content) return [];
+  const lines = String(content).split(/\r?\n/);
+  const findings = [];
+  let runStart = -1;
+  let runTotalLen = 0;
+  const flushRun = (endIdxExclusive) => {
+    if (runStart >= 0 && endIdxExclusive - runStart >= 2 && runTotalLen >= MULTILINE_BASE64_MIN_TOTAL) {
+      findings.push({
+        category: 'obfuscated-blob',
+        severity: 'medium',
+        location: `${location}:${runStart + 1}`,
+        snippet: lines[runStart].trim().slice(0, 160),
+      });
+    }
+    runStart = -1;
+    runTotalLen = 0;
+  };
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+    if (MULTILINE_BASE64_LINE_RE.test(trimmed)) {
+      if (runStart === -1) runStart = idx;
+      runTotalLen += trimmed.length;
+    } else {
+      flushRun(idx);
+    }
+  });
+  flushRun(lines.length);
+  return findings;
+}
 
 function severityRank(sev) {
   return SEVERITIES.indexOf(sev);
@@ -93,6 +239,7 @@ function scanOneFile(content, location) {
       }
     }
   });
+  findings.push(...scanMultilineBase64(content, location));
   return findings;
 }
 
@@ -109,10 +256,21 @@ function summarizeFindings(findings) {
 }
 
 /**
- * Scan skill content for risky patterns: shell/exec invocation, network/URL
- * fetch, env/credential access, filesystem access outside the skill dir, and
- * obfuscated/base64/binary blobs. Pure and synchronous -- does no I/O of its
- * own; the caller reads the file(s) and passes the text in.
+ * Scan skill content for risky patterns: shell/exec invocation (including
+ * computed/destructured child_process access and eval/Function/vm sandbox
+ * escapes), network/URL fetch (literal or non-literal/variable/template-
+ * literal URL), env/credential access (dot, bracket, destructured, aliased,
+ * import.meta.env), filesystem access outside the skill dir, cross-skill
+ * persistence writes (e.g. targeting .claude/settings.json), obfuscated/
+ * base64/binary blobs (single-line or split across lines / MIME-wrapped),
+ * and Unicode Tag-block smuggling characters. Pure and synchronous -- does
+ * no I/O of its own; the caller reads the file(s) and passes the text in.
+ *
+ * LOW-RECALL TRIAGE, NOT A SAFETY ASSURANCE: this is a fixed set of anchored
+ * regexes. A clean scan (zero findings) only raises the human/security-
+ * reviewer's prior that the content is benign -- it never certifies safety,
+ * and a motivated author can restructure code to evade any single pattern
+ * here. See the module header for the full framing.
  *
  * @param {string} text - the primary file's content (typically SKILL.md).
  * @param {object} [opts]

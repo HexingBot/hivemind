@@ -86,9 +86,16 @@ verdict.
 
    Runs the pure, sync, LLM-free `scanSkillContent` pattern scan (`src/skill-scan.js`) over the
    skill's own `SKILL.md` and every other file in its tree: shell-exec, network-fetch,
-   env-credential-access, filesystem-access-outside-skill, obfuscated/base64 blobs. Findings are
-   decision support only — a clean scan never itself authorizes adoption, and findings alone never
-   auto-block an approve (they're one more thing the human/reviewer sees).
+   env-credential-access, filesystem-access-outside-skill, persistence-write,
+   unicode-tag-smuggling, obfuscated/base64 blobs. Findings are decision support only — a clean
+   scan never itself authorizes adoption, and findings alone never auto-block an approve (they're
+   one more thing the human/reviewer sees).
+
+   **This is LOW-RECALL TRIAGE, not a safety assurance (TASK-141).** It is a fixed set of anchored
+   regexes; a determined author can trivially restructure code (a new alias, an extra indirection,
+   a helper function) to evade any single pattern. A clean scan (zero findings) means "nothing this
+   specific list of patterns catches was found" — it does NOT mean the skill is safe. Treat it as
+   raising the human/security-reviewer's prior, never as a substitute for step 4's judgement call.
 
 4. **Spawn a real security-reviewer subagent over the fetched content — including its instruction
    text.** A pattern scanner catches literal `curl | sh`; it cannot catch a `SKILL.md` whose prose

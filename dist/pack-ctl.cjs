@@ -9317,6 +9317,28 @@ var PATTERN_DEFS = [
     re: /\b(child_process\.(exec|execSync|spawn|spawnSync)|os\.system|subprocess\.(run|call|Popen|check_output|check_call))\s*\(/
   },
   {
+    category: "shell-exec",
+    severity: "high",
+    // Computed/bracket member access into a fresh child_process require --
+    // evades a literal `.exec(` dot-call scan: require('child_process')['exec'](...).
+    re: /require\(\s*['"]child_process['"]\s*\)\s*\[\s*['"](exec|execSync|spawn|spawnSync)['"]\s*\]\s*\(/
+  },
+  {
+    category: "shell-exec",
+    severity: "high",
+    // Destructured child_process import: const {exec} = require('child_process').
+    re: /\b(?:const|let|var)\s*\{[^{}]{0,200}\}\s*=\s*require\(\s*['"]child_process['"]\s*\)/
+  },
+  {
+    category: "shell-exec",
+    severity: "high",
+    // Dynamic code execution / sandbox escapes: eval(...), new Function(...),
+    // vm.runInNewContext/runInThisContext/runInContext(...). Anchored to the
+    // call form (identifier immediately followed by `(`) so the bare word
+    // "eval" in ordinary prose does not match.
+    re: /\b(eval\s*\(|new\s+Function\s*\(|vm\.(runInNewContext|runInThisContext|runInContext)\s*\()/
+  },
+  {
     category: "network-fetch",
     severity: "medium",
     // Programmatic HTTP calls to a literal URL -- an invocation, not a bare
@@ -9330,10 +9352,45 @@ var PATTERN_DEFS = [
     re: /\b(curl|wget)\s+(-{1,2}\S+\s+)*https?:\/\//i
   },
   {
+    category: "network-fetch",
+    severity: "medium",
+    // Programmatic HTTP calls with a NON-literal URL argument -- a bare
+    // variable (`fetch(u)`) or a template literal (`` fetch(`${base}/x`) ``)
+    // evades a scan anchored to a literal 'http...' string. Requires the
+    // argument to be a single bare identifier immediately followed by `,`/`)`
+    // (not a multi-word phrase) or a template literal, to avoid matching
+    // prose like "fetch(the latest changes) from origin".
+    re: /\b(fetch|axios\.(get|post|put|delete|patch)|requests\.(get|post|put|delete))\s*\(\s*([A-Za-z_$][\w$]*\s*[,)]|`)/
+  },
+  {
     category: "env-credential-access",
     severity: "high",
     // Programmatic env/credential reads: process.env.X, os.environ[...]/getenv(...).
     re: /\b(process\.env\.[A-Za-z_][A-Za-z0-9_]*|process\.env\[|os\.environ(\.get)?\(|os\.environ\[|os\.getenv\()/
+  },
+  {
+    category: "env-credential-access",
+    severity: "high",
+    // Destructured env reads: `const {SECRET} = process.env` (also let/var) --
+    // evades a literal `process.env.X` scan by pulling names out via pattern
+    // matching instead of dot access.
+    re: /\b(?:const|let|var)\s*\{[^{}]{0,200}\}\s*=\s*process\.env\b/
+  },
+  {
+    category: "env-credential-access",
+    severity: "high",
+    // Whole-object aliasing of process.env into a bare identifier (then used
+    // later as `alias.TOKEN`) -- flags the aliasing assignment itself, since
+    // the later member access on an arbitrary alias name isn't reliably
+    // distinguishable from ordinary object access. Excludes `x = process.env.Y`
+    // / `x = process.env[...]`, which the two patterns above already cover.
+    re: /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*process\.env\s*(?![.[\w])/
+  },
+  {
+    category: "env-credential-access",
+    severity: "high",
+    // Bundler-injected env access (Vite/ESM): import.meta.env.X / import.meta.env[...].
+    re: /\bimport\.meta\.env(\.[A-Za-z_$][\w$]*|\[)/
   },
   {
     category: "filesystem-access-outside-skill",
@@ -9351,8 +9408,70 @@ var PATTERN_DEFS = [
     // 80+ chars keeps this well clear of routine content like a 64-hex
     // sha256 digest or a normal-length identifier/URL slug.
     re: /\b[A-Za-z0-9+/]{80,}={0,2}\b/
+  },
+  {
+    category: "unicode-tag-smuggling",
+    severity: "high",
+    // Unicode Tag-block characters (U+E0000-U+E007F) render invisible in
+    // normal viewers/editors but are semantically processed by an LLM -- a
+    // known prompt/instruction-smuggling channel. Any occurrence is
+    // anomalous; legitimate skill prose has no reason to contain them.
+    re: /[\u{E0000}-\u{E007F}]/u
+  },
+  {
+    category: "persistence-write",
+    severity: "high",
+    // A filesystem WRITE (Node writeFileSync/fs.writeFile/fs.promises.writeFile)
+    // whose target path touches another agent-config surface outside the
+    // skill's own directory: .claude/, settings.json, or a >=2-level escape.
+    re: /\b(writeFileSync|fs\.writeFile|fs\.promises\.writeFile)\s*\([^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})/i
+  },
+  {
+    category: "persistence-write",
+    severity: "high",
+    // Python `open(path, 'w'|'a')` targeting the same kind of path, in either
+    // argument order.
+    re: /\bopen\s*\([^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})[^)\n]{0,300}['"][wa][+b]?['"]\s*\)|\bopen\s*\([^)\n]{0,300}['"][wa][+b]?['"][^)\n]{0,300}(\.claude[\\/]|settings\.json|(\.\.[\\/]){2,})/i
+  },
+  {
+    category: "persistence-write",
+    severity: "high",
+    // Shell append/overwrite redirection into the same kind of path.
+    re: />{1,2}\s*[^\n|]{0,80}(\.claude[\\/]|settings\.json)/i
   }
 ];
+var MULTILINE_BASE64_LINE_RE = /^[A-Za-z0-9+/]{16,}={0,2}$/;
+var MULTILINE_BASE64_MIN_TOTAL = 80;
+function scanMultilineBase64(content, location) {
+  if (!content) return [];
+  const lines = String(content).split(/\r?\n/);
+  const findings = [];
+  let runStart = -1;
+  let runTotalLen = 0;
+  const flushRun = (endIdxExclusive) => {
+    if (runStart >= 0 && endIdxExclusive - runStart >= 2 && runTotalLen >= MULTILINE_BASE64_MIN_TOTAL) {
+      findings.push({
+        category: "obfuscated-blob",
+        severity: "medium",
+        location: `${location}:${runStart + 1}`,
+        snippet: lines[runStart].trim().slice(0, 160)
+      });
+    }
+    runStart = -1;
+    runTotalLen = 0;
+  };
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+    if (MULTILINE_BASE64_LINE_RE.test(trimmed)) {
+      if (runStart === -1) runStart = idx;
+      runTotalLen += trimmed.length;
+    } else {
+      flushRun(idx);
+    }
+  });
+  flushRun(lines.length);
+  return findings;
+}
 function severityRank(sev) {
   return SEVERITIES.indexOf(sev);
 }
@@ -9372,6 +9491,7 @@ function scanOneFile(content, location) {
       }
     }
   });
+  findings.push(...scanMultilineBase64(content, location));
   return findings;
 }
 function summarizeFindings(findings) {
