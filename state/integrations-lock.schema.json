@@ -17,7 +17,6 @@
           "kind",
           "origin",
           "pin",
-          "integrity",
           "scope",
           "owners",
           "required",
@@ -26,11 +25,17 @@
           "verified"
         ],
         "additionalProperties": false,
+        "anyOf": [
+          { "required": ["integrity"] },
+          { "required": ["source_integrity", "content_integrity"] }
+        ],
         "properties": {
           "kind": { "type": "string", "enum": ["mcp", "skill", "plugin"] },
           "origin": { "type": "string", "minLength": 1, "description": "vendor/repo-or-registry the resource came from." },
           "pin": { "type": "string", "minLength": 1, "description": "commit-sha or exact semver — never a range." },
-          "integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Content hash of what was installed (exactly 64 hex chars — a truncated digest is rejected)." },
+          "integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "LEGACY (pre-TASK-142) single content hash of what was installed. New writes record source_integrity + content_integrity instead (see those two properties below); this field is retained ONLY so pre-existing entries keep validating without a forced migration. An entry carrying only this legacy field is treated by reconcile-apply (src/pack-apply.js#executeInstall) as having no stage-time content_integrity baseline, so the TASK-142 tamper-check is skipped for it — documented backward-compat, not a security regression (such an entry never had a two-hash baseline to check in the first place)." },
+          "source_integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "TASK-142. sha256 of the UNMODIFIED upstream source, computed BEFORE assimilate's description-tag/provenance-block rewrite (src/assimilate.js#computeProvenanceFields) — verifies the pin points at what was actually vetted." },
+          "content_integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "TASK-142. sha256 of the OWNED artifact as staged under assimilated-skills/<id>/, computed AFTER the description-tag + provenance-block rewrite — the exact bytes a human approved. reconcile-apply (src/pack-apply.js#executeInstall) re-hashes the CURRENT staged bytes against this value BEFORE copying anything into the live tree and fails closed (nothing materialized) on a mismatch, closing a TOCTOU window between stage-approve and reconcile-apply. See src/pack-apply.js#hashOwnedSkillDir for the single hashing rule (this field's own line is canonicalized out of the hash it attests to, resolving the self-reference) used identically by the writer (src/assimilate.js) and this verifier. Always present alongside source_integrity — never alone (see the anyOf below)." },
           "scope": { "type": "string", "enum": ["project", "user"] },
           "owners": {
             "type": "array",

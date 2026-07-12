@@ -60,13 +60,37 @@
 // value, including an entirely absent verdict — that gap is what this
 // inversion closes; an approve can now never write without either an
 // explicit 'safe' verdict or an explicit override.
+//
+// TWO-HASH INTEGRITY (TASK-142, closes A4): the pre-TASK-142 code computed a
+// single `integrity` hash over `source` BEFORE tagDescriptionForHivemind /
+// appendProvenanceBlock rewrote the owned copy — so the recorded hash
+// described the UPSTREAM source, and could never verify the actual staged
+// bytes under assimilated-skills/<id>/. Now TWO hashes are recorded:
+//   - `source_integrity` — sha256 of the UNMODIFIED upstream `source`,
+//     computed BEFORE any rewrite (computeProvenanceFields, unchanged
+//     computation from before — only the field name changed).
+//   - `content_integrity` — sha256 of the OWNED artifact as staged, computed
+//     AFTER the description-tag + provenance-block rewrite (the exact bytes
+//     an approve commits). Self-referential (the hash is over bytes that
+//     include the block that carries the hash) — resolved by the ONE
+//     documented rule at src/pack-apply.js#hashOwnedSkillDir (imported
+//     below): the `- content_integrity: ...` line's own value is
+//     canonicalized away before hashing, so the writer here and the verifier
+//     in src/pack-apply.js#executeInstall always agree byte-for-byte, and
+//     assimilateSkill can compute the true value once and write it exactly
+//     once (no placeholder-then-patch double write).
+// The verifier side (src/pack-apply.js's TOCTOU close, A3) re-hashes the
+// staged bytes against `content_integrity` immediately before materialize
+// and fails closed on a mismatch — see that module's header for the full
+// contract and its documented backward-compat handling of pre-TASK-142
+// (`integrity`-only) lock entries.
 
 import { existsSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 
 import { detectLicense, classifyLicense } from './license-detect.js';
 import { readLock, writeLock, addOwner } from './integrations-lock.js';
-import { hashDir } from './pack-apply.js';
+import { hashDir, hashOwnedSkillDir, CONTENT_INTEGRITY_LINE_RE } from './pack-apply.js';
 import { scanSkillContent } from './skill-scan.js';
 
 const SKILL_FILENAME = 'SKILL.md';
@@ -105,15 +129,18 @@ function tagDescriptionForHivemind(text) {
 }
 
 // Format LOCKED to what src/pack-reconcile.js's parseProvenance already
-// expects: a flat `- key: value` bullet list under the heading.
-function buildProvenanceBlock({ origin, pin, spdx_id, integrity, assimilated_at }) {
+// expects: a flat `- key: value` bullet list under the heading. TASK-142:
+// two integrity lines now, not one -- see the module header's TWO-HASH
+// INTEGRITY note.
+function buildProvenanceBlock({ origin, pin, spdx_id, source_integrity, content_integrity, assimilated_at }) {
   return [
     PROVENANCE_HEADING,
     '',
     `- origin: ${origin}`,
     `- pin: ${pin}`,
     `- spdx_id: ${spdx_id}`,
-    `- integrity: ${integrity}`,
+    `- source_integrity: ${source_integrity}`,
+    `- content_integrity: ${content_integrity}`,
     `- assimilated_at: ${assimilated_at}`,
     '',
   ].join('\n');
@@ -125,18 +152,51 @@ function appendProvenanceBlock(text, fields) {
 }
 
 // Shared by the pending_approval preview and the real write: both need the
-// exact same integrity hash (over the UNMODIFIED source, before any
+// exact same source_integrity hash (over the UNMODIFIED source, before any
 // description-tag/provenance-block rewrite) and the exact same clock read,
 // so a human reviewing a pending_approval payload sees the real values an
 // approve would commit -- not a second, possibly-different computation.
+// content_integrity is NOT computed here -- it depends on the rewritten
+// text/bytes, which don't exist yet at this point; see
+// rescopeWithContentIntegrity below.
 function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
   return {
     origin,
     pin,
     spdx_id,
-    integrity: `sha256:${hashDir(source)}`,
+    source_integrity: `sha256:${hashDir(source)}`,
     assimilated_at: now(),
   };
+}
+
+// TASK-142 -- the ONE place both the pending_approval preview and the real
+// approve-time write compute the rewritten SKILL.md text + its
+// content_integrity, so they can never diverge. `originalSkillText` is the
+// SKILL.md text BEFORE any rewrite; `hashDirPath` is the directory
+// hashOwnedSkillDir should walk for every OTHER file (the pending_approval
+// preview passes the untouched `source` dir -- nothing has been copied yet;
+// the approve path passes `ownedDir`, already cpSync'd from `source` but with
+// its SKILL.md not yet overwritten). Either way, hashOwnedSkillDir's
+// `skillText` override means the CURRENT on-disk SKILL.md content at
+// `hashDirPath` is never read -- only the rewritten text computed here is
+// hashed for that one file, so this works identically whether or not the
+// rewrite has actually been written to disk yet.
+//
+// Resolves the self-reference (content_integrity's line is part of what it
+// hashes) by writing a placeholder into that line, hashing (the placeholder
+// value is irrelevant -- hashOwnedSkillDir canonicalizes the whole line away
+// regardless of its content), then splicing the REAL computed value into the
+// SAME text via CONTENT_INTEGRITY_LINE_RE -- one hash computation, one final
+// text, never a placeholder left on disk.
+function rescopeWithContentIntegrity(originalSkillText, fields, hashDirPath) {
+  const withPlaceholder = appendProvenanceBlock(tagDescriptionForHivemind(originalSkillText), {
+    ...fields,
+    content_integrity: '(pending)',
+  });
+  const contentIntegrity = `sha256:${hashOwnedSkillDir(hashDirPath, { skillText: withPlaceholder })}`;
+  const finalText = withPlaceholder.replace(CONTENT_INTEGRITY_LINE_RE, `- content_integrity: ${contentIntegrity}`);
+  const block = buildProvenanceBlock({ ...fields, content_integrity: contentIntegrity });
+  return { finalText, contentIntegrity, block };
 }
 
 const SCAN_IGNORED_DIRS = new Set(['node_modules', '.git']);
@@ -255,16 +315,18 @@ export function computeSkillScan(source, sourceSkillPath) {
  *   effect when the verdict is already 'safe'.
  * @returns {Promise<object>} `{ status: 'pending_approval'|'declined'|'blocked_security'|'assimilated', id, spdx_id, classification, scan, reviewer, ... }`.
  *   A `pending_approval` payload additionally carries `origin`, `pin`,
- *   `integrity`, `assimilated_at`, and `provenance_preview` (the exact
- *   provenance-block text an `approve` would write), plus `scan` (structured
- *   risky-pattern findings, src/skill-scan.js) and `reviewer` (the injected
- *   verdict, or null) — everything a human needs to decide, computed WITHOUT
- *   writing anything. A `blocked_security` payload (reachable via `decision:
- *   'approve'` whenever `reviewerVerdict?.verdict !== 'safe'` — absent,
- *   `'suspicious'`, or any other non-'safe' value — and `securityOverride`
- *   is not strictly `true`) carries the same `scan`/`reviewer` fields and
- *   also writes NOTHING — an approve alone can never write without a 'safe'
- *   verdict or an explicit override.
+ *   `source_integrity`, `content_integrity` (TASK-142 -- two hashes, not one;
+ *   see the module header's TWO-HASH INTEGRITY note), `assimilated_at`, and
+ *   `provenance_preview` (the exact provenance-block text an `approve` would
+ *   write), plus `scan` (structured risky-pattern findings, src/skill-scan.js)
+ *   and `reviewer` (the injected verdict, or null) — everything a human needs
+ *   to decide, computed WITHOUT writing anything. A `blocked_security`
+ *   payload (reachable via `decision: 'approve'` whenever
+ *   `reviewerVerdict?.verdict !== 'safe'` — absent, `'suspicious'`, or any
+ *   other non-'safe' value — and `securityOverride` is not strictly `true`)
+ *   carries the same `scan`/`reviewer` fields and also writes NOTHING — an
+ *   approve alone can never write without a 'safe' verdict or an explicit
+ *   override.
  */
 export async function assimilateSkill(opts) {
   const {
@@ -310,17 +372,24 @@ export async function assimilateSkill(opts) {
     // NOTHING, but compute + return everything an approve would commit, so
     // the human reviewing this has the real numbers, not a placeholder.
     // TASK-122: the approval package also carries the content-security scan
-    // and the (possibly not-yet-computed) reviewer verdict.
+    // and the (possibly not-yet-computed) reviewer verdict. TASK-142: the
+    // preview now carries content_integrity too -- a best-effort hash of what
+    // the OWNED artifact would be if approved on these exact upstream bytes
+    // right now (see rescopeWithContentIntegrity; `source` itself, not yet
+    // copied anywhere, stands in for the not-yet-existing ownedDir).
     const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
     const scan = computeSkillScan(source, sourceSkillPath);
+    const sourceText = readFileSync(sourceSkillPath, 'utf8');
+    const { contentIntegrity, block } = rescopeWithContentIntegrity(sourceText, fields, source);
     return {
       ...base,
       status: 'pending_approval',
       origin: fields.origin,
       pin: fields.pin,
-      integrity: fields.integrity,
+      source_integrity: fields.source_integrity,
+      content_integrity: contentIntegrity,
       assimilated_at: fields.assimilated_at,
-      provenance_preview: buildProvenanceBlock(fields),
+      provenance_preview: block,
       scan,
       reviewer: reviewerVerdict,
     };
@@ -352,10 +421,14 @@ export async function assimilateSkill(opts) {
   rmSync(ownedDir, { recursive: true, force: true }); // clean-replace: re-assimilate is idempotent
   cpSync(source, ownedDir, { recursive: true });
 
+  // TASK-142 -- content_integrity (over the OWNED artifact, post-rewrite) is
+  // computed and spliced into the SAME write as the description-tag +
+  // provenance-block rewrite; see rescopeWithContentIntegrity's header for
+  // why this is a single write, not a placeholder-then-patch double write.
   const ownedSkillPath = join(ownedDir, SKILL_FILENAME);
   const original = readFileSync(ownedSkillPath, 'utf8');
-  const rescoped = appendProvenanceBlock(tagDescriptionForHivemind(original), fields);
-  writeFileSync(ownedSkillPath, rescoped, 'utf8');
+  const { finalText, contentIntegrity } = rescopeWithContentIntegrity(original, fields, ownedDir);
+  writeFileSync(ownedSkillPath, finalText, 'utf8');
 
   const id = `skill:${resourceId}`;
   let lock;
@@ -369,7 +442,8 @@ export async function assimilateSkill(opts) {
     kind: 'skill',
     origin: fields.origin,
     pin: fields.pin,
-    integrity: fields.integrity,
+    source_integrity: fields.source_integrity,
+    content_integrity: contentIntegrity,
     scope: 'project',
     owners: [],
     required,
@@ -386,7 +460,8 @@ export async function assimilateSkill(opts) {
     path: ownedDir,
     origin: fields.origin,
     pin: fields.pin,
-    integrity: fields.integrity,
+    source_integrity: fields.source_integrity,
+    content_integrity: contentIntegrity,
     assimilated_at: fields.assimilated_at,
     owners: lock.resources[id].owners,
     scan,

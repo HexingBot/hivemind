@@ -8751,7 +8751,6 @@ var integrations_lock_schema_default = {
           "kind",
           "origin",
           "pin",
-          "integrity",
           "scope",
           "owners",
           "required",
@@ -8760,11 +8759,17 @@ var integrations_lock_schema_default = {
           "verified"
         ],
         additionalProperties: false,
+        anyOf: [
+          { required: ["integrity"] },
+          { required: ["source_integrity", "content_integrity"] }
+        ],
         properties: {
           kind: { type: "string", enum: ["mcp", "skill", "plugin"] },
           origin: { type: "string", minLength: 1, description: "vendor/repo-or-registry the resource came from." },
           pin: { type: "string", minLength: 1, description: "commit-sha or exact semver \u2014 never a range." },
-          integrity: { type: "string", pattern: "^sha256:[0-9a-f]{64}$", description: "Content hash of what was installed (exactly 64 hex chars \u2014 a truncated digest is rejected)." },
+          integrity: { type: "string", pattern: "^sha256:[0-9a-f]{64}$", description: "LEGACY (pre-TASK-142) single content hash of what was installed. New writes record source_integrity + content_integrity instead (see those two properties below); this field is retained ONLY so pre-existing entries keep validating without a forced migration. An entry carrying only this legacy field is treated by reconcile-apply (src/pack-apply.js#executeInstall) as having no stage-time content_integrity baseline, so the TASK-142 tamper-check is skipped for it \u2014 documented backward-compat, not a security regression (such an entry never had a two-hash baseline to check in the first place)." },
+          source_integrity: { type: "string", pattern: "^sha256:[0-9a-f]{64}$", description: "TASK-142. sha256 of the UNMODIFIED upstream source, computed BEFORE assimilate's description-tag/provenance-block rewrite (src/assimilate.js#computeProvenanceFields) \u2014 verifies the pin points at what was actually vetted." },
+          content_integrity: { type: "string", pattern: "^sha256:[0-9a-f]{64}$", description: "TASK-142. sha256 of the OWNED artifact as staged under assimilated-skills/<id>/, computed AFTER the description-tag + provenance-block rewrite \u2014 the exact bytes a human approved. reconcile-apply (src/pack-apply.js#executeInstall) re-hashes the CURRENT staged bytes against this value BEFORE copying anything into the live tree and fails closed (nothing materialized) on a mismatch, closing a TOCTOU window between stage-approve and reconcile-apply. See src/pack-apply.js#hashOwnedSkillDir for the single hashing rule (this field's own line is canonicalized out of the hash it attests to, resolving the self-reference) used identically by the writer (src/assimilate.js) and this verifier. Always present alongside source_integrity \u2014 never alone (see the anyOf below)." },
           scope: { type: "string", enum: ["project", "user"] },
           owners: {
             type: "array",
@@ -8851,6 +8856,7 @@ var import_node_crypto2 = require("node:crypto");
 var SKILL_ID_PREFIX = "skill:";
 var DEFAULT_SOURCE_SUBDIR = "assimilated-skills";
 var LIVE_SKILLS_SUBDIR = [".claude", "skills"];
+var SKILL_FILENAME2 = "SKILL.md";
 var HardResourceFailureError = class extends Error {
   constructor(id, cause) {
     super(`pack-apply: hard-required resource "${id}" failed to apply: ${cause && cause.message ? cause.message : cause}`);
@@ -8858,6 +8864,16 @@ var HardResourceFailureError = class extends Error {
     this.code = "E_PACK_APPLY_HARD_FAILURE";
     this.id = id;
     this.cause = cause;
+  }
+};
+var ContentIntegrityMismatchError = class extends Error {
+  constructor(id, expected, actual) {
+    super(`pack-apply: content integrity mismatch for "${id}": staged content now hashes to ${actual}, but the lock recorded ${expected} at assimilate/approve time -- refusing to materialize (the staged copy changed after stage-approve, before reconcile-apply)`);
+    this.name = "ContentIntegrityMismatchError";
+    this.code = "E_PACK_APPLY_CONTENT_INTEGRITY_MISMATCH";
+    this.id = id;
+    this.expected = expected;
+    this.actual = actual;
   }
 };
 function bareSkillId(id) {
@@ -8890,12 +8906,40 @@ function hashDir(dir) {
   }
   return hash.digest("hex");
 }
+var CONTENT_INTEGRITY_LINE_RE = /^- content_integrity:.*$/m;
+var CONTENT_INTEGRITY_HASH_PLACEHOLDER = "- content_integrity: <redacted-for-hash>";
+function canonicalizeSkillTextForContentHash(text) {
+  return text.replace(CONTENT_INTEGRITY_LINE_RE, CONTENT_INTEGRITY_HASH_PLACEHOLDER);
+}
+function hashOwnedSkillDir(dir, opts = {}) {
+  const { skillText } = opts;
+  const relPaths = walkAllFiles(dir).map((f) => (0, import_node_path5.relative)(dir, f).split(import_node_path5.sep).join("/")).sort();
+  const hash = (0, import_node_crypto2.createHash)("sha256");
+  for (const relPath of relPaths) {
+    hash.update(relPath);
+    if (relPath === SKILL_FILENAME2) {
+      const text = skillText !== void 0 ? skillText : (0, import_node_fs5.readFileSync)((0, import_node_path5.join)(dir, relPath), "utf8");
+      hash.update(canonicalizeSkillTextForContentHash(text), "utf8");
+    } else {
+      hash.update((0, import_node_fs5.readFileSync)((0, import_node_path5.join)(dir, relPath)));
+    }
+  }
+  return hash.digest("hex");
+}
 function executeInstall(lock, op, { root, sourceRoot, owner }) {
   const { id, resource } = op;
   const bareId = resource.id;
   const sourceDir = (0, import_node_path5.join)(sourceRoot, bareId);
   if (!(0, import_node_fs5.existsSync)(sourceDir)) {
     throw new Error(`owned source not found for "${bareId}": ${sourceDir}`);
+  }
+  const priorEntry = lock.resources[id];
+  const hasStageTimeBaseline = Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
+  if (hasStageTimeBaseline) {
+    const actualContentIntegrity = `sha256:${hashOwnedSkillDir(sourceDir)}`;
+    if (actualContentIntegrity !== priorEntry.content_integrity) {
+      throw new ContentIntegrityMismatchError(id, priorEntry.content_integrity, actualContentIntegrity);
+    }
   }
   const liveDir = liveSkillDir(root, bareId);
   (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(liveDir), { recursive: true });
@@ -8905,7 +8949,12 @@ function executeInstall(lock, op, { root, sourceRoot, owner }) {
     kind: "skill",
     origin: resource.origin,
     pin: resource.pin,
-    integrity: `sha256:${hashDir(liveDir)}`,
+    // TASK-142 — a verified baseline is carried FORWARD unchanged (it was
+    // already proven to match the bytes just copied); never recomputed from
+    // liveDir, which is exactly the "re-bless with a fresh hash" pattern this
+    // ticket closes. A no-baseline (legacy/no-prior-entry) install keeps the
+    // pre-TASK-142 behavior of hashing what was just copied.
+    ...hasStageTimeBaseline ? { source_integrity: priorEntry.source_integrity, content_integrity: priorEntry.content_integrity } : { integrity: `sha256:${hashDir(liveDir)}` },
     scope: resource.scope,
     owners: [],
     required: resource.required,
@@ -9339,7 +9388,7 @@ function scanSkillContent(text, opts = {}) {
 }
 
 // src/assimilate.js
-var SKILL_FILENAME2 = "SKILL.md";
+var SKILL_FILENAME3 = "SKILL.md";
 var DEFAULT_STAGING_SUBDIR = "assimilated-skills";
 var PROVENANCE_HEADING2 = "## Sources & provenance (hivemind)";
 var HIVEMIND_TAG = " (assimilated for Hivemind)";
@@ -9361,14 +9410,15 @@ function tagDescriptionForHivemind(text) {
   const newInner = inner.replace(descRe, `${match[0]}${HIVEMIND_TAG}`);
   return text.slice(0, fmStart) + newInner + text.slice(innerEnd);
 }
-function buildProvenanceBlock({ origin, pin, spdx_id, integrity, assimilated_at }) {
+function buildProvenanceBlock({ origin, pin, spdx_id, source_integrity, content_integrity, assimilated_at }) {
   return [
     PROVENANCE_HEADING2,
     "",
     `- origin: ${origin}`,
     `- pin: ${pin}`,
     `- spdx_id: ${spdx_id}`,
-    `- integrity: ${integrity}`,
+    `- source_integrity: ${source_integrity}`,
+    `- content_integrity: ${content_integrity}`,
     `- assimilated_at: ${assimilated_at}`,
     ""
   ].join("\n");
@@ -9384,9 +9434,19 @@ function computeProvenanceFields(source, { origin, pin, spdx_id, now }) {
     origin,
     pin,
     spdx_id,
-    integrity: `sha256:${hashDir(source)}`,
+    source_integrity: `sha256:${hashDir(source)}`,
     assimilated_at: now()
   };
+}
+function rescopeWithContentIntegrity(originalSkillText, fields, hashDirPath) {
+  const withPlaceholder = appendProvenanceBlock(tagDescriptionForHivemind(originalSkillText), {
+    ...fields,
+    content_integrity: "(pending)"
+  });
+  const contentIntegrity = `sha256:${hashOwnedSkillDir(hashDirPath, { skillText: withPlaceholder })}`;
+  const finalText = withPlaceholder.replace(CONTENT_INTEGRITY_LINE_RE, `- content_integrity: ${contentIntegrity}`);
+  const block = buildProvenanceBlock({ ...fields, content_integrity: contentIntegrity });
+  return { finalText, contentIntegrity, block };
 }
 var SCAN_IGNORED_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git"]);
 var SCAN_MAX_FILE_BYTES = 1e6;
@@ -9426,7 +9486,7 @@ function computeSkillScan(source, sourceSkillPath) {
     }
     otherFiles.push({ path: (0, import_node_path8.relative)(source, full).split(import_node_path8.sep).join("/"), content });
   }
-  return scanSkillContent(mainText, { location: SKILL_FILENAME2, files: otherFiles });
+  return scanSkillContent(mainText, { location: SKILL_FILENAME3, files: otherFiles });
 }
 async function assimilateSkill(opts) {
   const {
@@ -9446,9 +9506,9 @@ async function assimilateSkill(opts) {
     reviewerVerdict = null,
     securityOverride = false
   } = opts;
-  const sourceSkillPath = (0, import_node_path8.join)(source, SKILL_FILENAME2);
+  const sourceSkillPath = (0, import_node_path8.join)(source, SKILL_FILENAME3);
   if (!(0, import_node_fs8.existsSync)(sourceSkillPath)) {
-    throw new Error(`assimilateSkill: no ${SKILL_FILENAME2} found at "${source}"`);
+    throw new Error(`assimilateSkill: no ${SKILL_FILENAME3} found at "${source}"`);
   }
   const license = await detectLicense({ skillDir: source, repoRoot, github, fetchGithubLicense });
   const classification = classifyLicense(license.spdx_id);
@@ -9465,14 +9525,17 @@ async function assimilateSkill(opts) {
     }
     const fields2 = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
     const scan2 = computeSkillScan(source, sourceSkillPath);
+    const sourceText = (0, import_node_fs8.readFileSync)(sourceSkillPath, "utf8");
+    const { contentIntegrity: contentIntegrity2, block } = rescopeWithContentIntegrity(sourceText, fields2, source);
     return {
       ...base,
       status: "pending_approval",
       origin: fields2.origin,
       pin: fields2.pin,
-      integrity: fields2.integrity,
+      source_integrity: fields2.source_integrity,
+      content_integrity: contentIntegrity2,
       assimilated_at: fields2.assimilated_at,
-      provenance_preview: buildProvenanceBlock(fields2),
+      provenance_preview: block,
       scan: scan2,
       reviewer: reviewerVerdict
     };
@@ -9492,10 +9555,10 @@ async function assimilateSkill(opts) {
   (0, import_node_fs8.mkdirSync)((0, import_node_path8.dirname)(ownedDir), { recursive: true });
   (0, import_node_fs8.rmSync)(ownedDir, { recursive: true, force: true });
   (0, import_node_fs8.cpSync)(source, ownedDir, { recursive: true });
-  const ownedSkillPath = (0, import_node_path8.join)(ownedDir, SKILL_FILENAME2);
+  const ownedSkillPath = (0, import_node_path8.join)(ownedDir, SKILL_FILENAME3);
   const original = (0, import_node_fs8.readFileSync)(ownedSkillPath, "utf8");
-  const rescoped = appendProvenanceBlock(tagDescriptionForHivemind(original), fields);
-  (0, import_node_fs8.writeFileSync)(ownedSkillPath, rescoped, "utf8");
+  const { finalText, contentIntegrity } = rescopeWithContentIntegrity(original, fields, ownedDir);
+  (0, import_node_fs8.writeFileSync)(ownedSkillPath, finalText, "utf8");
   const id = `skill:${resourceId}`;
   let lock;
   try {
@@ -9508,7 +9571,8 @@ async function assimilateSkill(opts) {
     kind: "skill",
     origin: fields.origin,
     pin: fields.pin,
-    integrity: fields.integrity,
+    source_integrity: fields.source_integrity,
+    content_integrity: contentIntegrity,
     scope: "project",
     owners: [],
     required,
@@ -9524,7 +9588,8 @@ async function assimilateSkill(opts) {
     path: ownedDir,
     origin: fields.origin,
     pin: fields.pin,
-    integrity: fields.integrity,
+    source_integrity: fields.source_integrity,
+    content_integrity: contentIntegrity,
     assimilated_at: fields.assimilated_at,
     owners: lock.resources[id].owners,
     scan,
@@ -9535,7 +9600,7 @@ async function assimilateSkill(opts) {
 // bin/pack-ctl.js
 var import_meta = {};
 var LOCK_FILENAME = "integrations.lock.json";
-var SKILL_FILENAME3 = "SKILL.md";
+var SKILL_FILENAME4 = "SKILL.md";
 var SUBCOMMANDS = /* @__PURE__ */ new Set(["resolve", "reconcile-plan", "reconcile-apply", "assimilate"]);
 var FLAG_SPEC = {
   resolve: ["--repo-root"],
@@ -9638,17 +9703,17 @@ async function readLockTolerant(lockPath) {
 }
 async function runAssimilateScan(flags) {
   if (!flags.path) throw new Error("--path is required");
-  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME3);
+  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME4);
   if (!(0, import_node_fs9.existsSync)(sourceSkillPath)) {
-    throw new Error(`assimilate scan: no ${SKILL_FILENAME3} found at "${flags.path}"`);
+    throw new Error(`assimilate scan: no ${SKILL_FILENAME4} found at "${flags.path}"`);
   }
   return { scan: computeSkillScan(flags.path, sourceSkillPath) };
 }
 async function runAssimilateClassify(flags) {
   if (!flags.path) throw new Error("--path is required");
-  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME3);
+  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME4);
   if (!(0, import_node_fs9.existsSync)(sourceSkillPath)) {
-    throw new Error(`assimilate classify: no ${SKILL_FILENAME3} found at "${flags.path}"`);
+    throw new Error(`assimilate classify: no ${SKILL_FILENAME4} found at "${flags.path}"`);
   }
   const license = await detectLicense({ skillDir: flags.path });
   return {

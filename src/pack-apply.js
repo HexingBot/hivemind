@@ -29,6 +29,36 @@
 // by this Wave-1 applier — that is deferred scope. They are still surfaced
 // in the returned report (executed: false) rather than silently dropped, so
 // a caller never mistakes "not yet implemented" for "nothing to do".
+//
+// TASK-142 — TOCTOU close (A3): src/assimilate.js#assimilateSkill already
+// records a stage-time `content_integrity` in THIS SAME lockfile at approve
+// time, before any materialize (the owned copy is staged, the lock entry is
+// written, but nothing is live yet — see that module's approve-path). Before
+// copying an install op's owned source into the live tree, executeInstall
+// below re-hashes the CURRENT staged bytes (hashOwnedSkillDir, exported
+// below) and compares against that recorded baseline. A mismatch means the
+// staged copy changed AFTER a human approved it and BEFORE this reconcile-
+// apply run — content tampering, or at minimum an un-vetted edit — so the op
+// throws ContentIntegrityMismatchError, which the existing hard/soft
+// dispatch above turns into either a HardResourceFailureError abort or a
+// leave-and-report entry. Either way NOTHING is copied and the lock entry is
+// NEVER re-blessed with a fresh hash of the mismatched bytes — closing the
+// exact bug where a stale `integrity: sha256:hashDir(liveDir)` computed
+// AFTER the copy just re-certified whatever had just been copied, tampered
+// or not.
+//
+// BACKWARD-COMPAT (documented, tested — tests/e2e/pack-apply.spec.js's
+// TASK-142 describe block): an id with NO prior lock entry (never went
+// through assimilateSkill — a hand-placed owned copy, or a fixture in a unit
+// test) or a PRE-TASK-142 entry that carries only the legacy `integrity`
+// field has no stage-time content_integrity baseline to verify against.
+// Verification is skipped for that combination — inventing a retroactive
+// baseline would be indistinguishable from the very TOCTOU gap this closes —
+// and the pre-existing single-hash-of-what-was-just-copied behavior
+// (`integrity: sha256:hashDir(liveDir)`) is preserved unchanged for it. This
+// is a least-surprise, fail-safe default: a legacy/no-baseline resource never
+// gets WORSE (it behaves exactly as it always did), while every resource
+// that carries a real baseline gets the new tamper-check for free.
 
 import {
   existsSync, mkdirSync, cpSync, rmSync, readdirSync, readFileSync,
@@ -41,6 +71,7 @@ import { readLock, writeLock, addOwner, dropOwner, isOrphaned } from './integrat
 const SKILL_ID_PREFIX = 'skill:';
 const DEFAULT_SOURCE_SUBDIR = 'assimilated-skills';
 const LIVE_SKILLS_SUBDIR = ['.claude', 'skills'];
+const SKILL_FILENAME = 'SKILL.md';
 
 /**
  * Thrown when a `required: "hard"` resource fails to apply. Aborts the run
@@ -54,6 +85,24 @@ export class HardResourceFailureError extends Error {
     this.code = 'E_PACK_APPLY_HARD_FAILURE';
     this.id = id;
     this.cause = cause;
+  }
+}
+
+/**
+ * TASK-142 — thrown by executeInstall when the CURRENT staged bytes under
+ * assimilated-skills/<id>/ no longer hash to the content_integrity the lock
+ * recorded at assimilate/approve time. Caught by applyPlan's existing
+ * hard/soft dispatch exactly like any other install failure (see the module
+ * header's TOCTOU-close note) — never bypassed, never silently re-hashed.
+ */
+export class ContentIntegrityMismatchError extends Error {
+  constructor(id, expected, actual) {
+    super(`pack-apply: content integrity mismatch for "${id}": staged content now hashes to ${actual}, but the lock recorded ${expected} at assimilate/approve time -- refusing to materialize (the staged copy changed after stage-approve, before reconcile-apply)`);
+    this.name = 'ContentIntegrityMismatchError';
+    this.code = 'E_PACK_APPLY_CONTENT_INTEGRITY_MISMATCH';
+    this.id = id;
+    this.expected = expected;
+    this.actual = actual;
   }
 }
 
@@ -103,6 +152,60 @@ export function hashDir(dir) {
   return hash.digest('hex');
 }
 
+// TASK-142 — CONTENT_INTEGRITY_LINE_RE / hashOwnedSkillDir together are the
+// ONE documented rule (resolving the ticket's chicken-and-egg) used
+// IDENTICALLY by the writer (src/assimilate.js, which imports both) and this
+// verifier: SKILL.md's own `- content_integrity: <value>` line is part of the
+// bytes an owned skill directory is hashed over, but it also ATTESTS TO that
+// hash — a self-reference. The rule: canonicalize that one line to a fixed
+// placeholder before hashing, regardless of what value (or lack of one)
+// currently occupies it. Both sides always hash the exact same canonicalized
+// bytes no matter what real value ends up written to disk, so a writer can
+// compute the true digest BEFORE embedding it, and a verifier can re-hash
+// AFTER it's embedded, and get the identical answer either way.
+export const CONTENT_INTEGRITY_LINE_RE = /^- content_integrity:.*$/m;
+const CONTENT_INTEGRITY_HASH_PLACEHOLDER = '- content_integrity: <redacted-for-hash>';
+
+function canonicalizeSkillTextForContentHash(text) {
+  return text.replace(CONTENT_INTEGRITY_LINE_RE, CONTENT_INTEGRITY_HASH_PLACEHOLDER);
+}
+
+/**
+ * Content hash of an OWNED skill directory (assimilated-skills/<id>/ or, once
+ * materialized, .claude/skills/<id>/) — TASK-142's `content_integrity`.
+ * Identical to hashDir's relPath+bytes-per-file algorithm, except the
+ * top-level SKILL.md's `- content_integrity: ...` line is canonicalized away
+ * first (see the constant above) so the hash never depends on its own
+ * recorded value — the chicken-and-egg fix.
+ *
+ * @param {string} dir - the owned skill directory to hash.
+ * @param {{ skillText?: string }} [opts] - `skillText`, when given, is used
+ *   INSTEAD of reading SKILL_FILENAME from `dir` — lets a caller preview the
+ *   hash an in-memory rewritten SKILL.md text would produce without writing
+ *   it to disk first (src/assimilate.js uses this both for the
+ *   pending_approval preview, against the untouched `source` dir, and for
+ *   the real approve-time write, against the freshly-copied `ownedDir`
+ *   before its SKILL.md has been overwritten with the final rescoped text).
+ * @returns {string} hex sha256 digest (no `sha256:` prefix — same convention as hashDir).
+ */
+export function hashOwnedSkillDir(dir, opts = {}) {
+  const { skillText } = opts;
+  const relPaths = walkAllFiles(dir)
+    .map((f) => relative(dir, f).split(sep).join('/'))
+    .sort();
+  const hash = createHash('sha256');
+  for (const relPath of relPaths) {
+    hash.update(relPath);
+    if (relPath === SKILL_FILENAME) {
+      const text = skillText !== undefined ? skillText : readFileSync(join(dir, relPath), 'utf8');
+      hash.update(canonicalizeSkillTextForContentHash(text), 'utf8');
+    } else {
+      hash.update(readFileSync(join(dir, relPath)));
+    }
+  }
+  return hash.digest('hex');
+}
+
 // install op = { id: "skill:<bareId>", resource: <descriptor resource> }.
 // Materializes the owned copy, then records/updates the lock entry with the
 // pack as an owner. Throws on failure (missing owned source, fs error) —
@@ -113,6 +216,20 @@ function executeInstall(lock, op, { root, sourceRoot, owner }) {
   const sourceDir = join(sourceRoot, bareId);
   if (!existsSync(sourceDir)) {
     throw new Error(`owned source not found for "${bareId}": ${sourceDir}`);
+  }
+
+  // TASK-142 — TOCTOU close: verify BEFORE touching the live tree at all (see
+  // the module header). A stage-time baseline only exists when the CURRENT
+  // lock entry already carries BOTH new-style fields (an entry with only the
+  // legacy `integrity`, or no entry at all, has nothing to verify against —
+  // documented backward-compat, see the module header).
+  const priorEntry = lock.resources[id];
+  const hasStageTimeBaseline = Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
+  if (hasStageTimeBaseline) {
+    const actualContentIntegrity = `sha256:${hashOwnedSkillDir(sourceDir)}`;
+    if (actualContentIntegrity !== priorEntry.content_integrity) {
+      throw new ContentIntegrityMismatchError(id, priorEntry.content_integrity, actualContentIntegrity);
+    }
   }
 
   const liveDir = liveSkillDir(root, bareId);
@@ -128,7 +245,14 @@ function executeInstall(lock, op, { root, sourceRoot, owner }) {
     kind: 'skill',
     origin: resource.origin,
     pin: resource.pin,
-    integrity: `sha256:${hashDir(liveDir)}`,
+    // TASK-142 — a verified baseline is carried FORWARD unchanged (it was
+    // already proven to match the bytes just copied); never recomputed from
+    // liveDir, which is exactly the "re-bless with a fresh hash" pattern this
+    // ticket closes. A no-baseline (legacy/no-prior-entry) install keeps the
+    // pre-TASK-142 behavior of hashing what was just copied.
+    ...(hasStageTimeBaseline
+      ? { source_integrity: priorEntry.source_integrity, content_integrity: priorEntry.content_integrity }
+      : { integrity: `sha256:${hashDir(liveDir)}` }),
     scope: resource.scope,
     owners: [],
     required: resource.required,
