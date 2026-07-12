@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
-import { detectLicense } from '../../src/license-detect.js';
+import { detectLicense, classifyLicense } from '../../src/license-detect.js';
 
 afterAll(cleanupAll);
 
@@ -19,8 +19,8 @@ function skeleton(label) {
   return { repoRoot, skillDir };
 }
 
-describe('detectLicense -- SPDX header step (wins over repo-root LICENSE)', () => {
-  it('finds a header in the skill\'s own file and stops there', async () => {
+describe('detectLicense -- SPDX header step conflicts with a disagreeing LICENSE file (TASK-150 spoof surfacing)', () => {
+  it('keeps the header as spdx_id/detected_via (backward-compat) but now surfaces a conflict with a disagreeing repo-root LICENSE', async () => {
     const { repoRoot, skillDir } = skeleton('lic-header');
     writeFileSync(join(repoRoot, 'LICENSE'), 'Apache License\nVersion 2.0, January 2004\n');
     writeFileSync(join(skillDir, 'SKILL.md'), '<!-- SPDX-License-Identifier: MIT -->\n# My Skill\n');
@@ -29,6 +29,85 @@ describe('detectLicense -- SPDX header step (wins over repo-root LICENSE)', () =
     expect(result.spdx_id).toBe('MIT');
     expect(result.detected_via).toBe('spdx-header');
     expect(result.source_path).toBe(join(skillDir, 'SKILL.md'));
+    // TASK-150: before the fix this returned only the 4 base keys (a clean,
+    // unconflicted MIT verdict). The repo-root LICENSE disagrees (Apache-2.0),
+    // so the fix must now surface a `conflict` field.
+    expect(Object.keys(result).sort()).toEqual(['checked_at', 'conflict', 'detected_via', 'source_path', 'spdx_id']);
+    expect(result.conflict).toEqual({
+      header_spdx: 'MIT',
+      header_source_path: join(skillDir, 'SKILL.md'),
+      license_file_spdx: 'Apache-2.0',
+      license_file_source_path: join(repoRoot, 'LICENSE'),
+    });
+  });
+});
+
+describe('detectLicense -- TASK-150 AC1 red inject: forged in-source SPDX header vs. the skill\'s own real copyleft LICENSE', () => {
+  it('surfaces the conflict instead of a clean permissive verdict', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-spoof');
+    // A forged MIT header lives in a source file the skill ships...
+    writeFileSync(join(skillDir, 'helper.js'), '// SPDX-License-Identifier: MIT\nmodule.exports = {};\n');
+    // ...while the skill's REAL LICENSE file is GPL-3.0.
+    writeFileSync(
+      join(skillDir, 'LICENSE'),
+      'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n\nCopyright (C) 2026 Example Author\n',
+    );
+
+    const result = await detectLicense({ skillDir, repoRoot });
+
+    // Header still resolves spdx_id/detected_via (additive fix, not a
+    // behavior swap) -- classifyLicense(result.spdx_id) alone would still say
+    // 'permissive', which is exactly the false-clean signal this ticket is
+    // about. The fix pairs it with a conflict field naming the real,
+    // more-restrictive LICENSE-file classification so the approval package
+    // can no longer present a clean permissive verdict for this skill.
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('spdx-header');
+    expect(classifyLicense(result.spdx_id)).toBe('permissive');
+
+    expect(result.conflict).toEqual({
+      header_spdx: 'MIT',
+      header_source_path: join(skillDir, 'helper.js'),
+      license_file_spdx: 'GPL-3.0-only',
+      license_file_source_path: join(skillDir, 'LICENSE'),
+    });
+    expect(classifyLicense(result.conflict.license_file_spdx)).toBe('copyleft');
+  });
+});
+
+describe('detectLicense -- TASK-150 AC2 no-conflict fast paths (unchanged behavior)', () => {
+  it('header-only, no LICENSE file anywhere: still classifies from the header, no conflict field', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-header-only');
+    writeFileSync(join(skillDir, 'SKILL.md'), '<!-- SPDX-License-Identifier: MIT -->\n# My Skill\n');
+
+    const result = await detectLicense({ skillDir, repoRoot });
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('spdx-header');
+    expect(result.conflict).toBeUndefined();
+    expect(Object.keys(result).sort()).toEqual(['checked_at', 'detected_via', 'source_path', 'spdx_id']);
+  });
+
+  it('LICENSE-only, no header: still classifies from the LICENSE file, no conflict field', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-license-only');
+    writeFileSync(join(skillDir, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Acme\n');
+    writeFileSync(join(skillDir, 'SKILL.md'), '# My Skill\nno header here\n');
+
+    const result = await detectLicense({ skillDir, repoRoot });
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('license-file');
+    expect(result.conflict).toBeUndefined();
+  });
+
+  it('header and LICENSE agree: same result as before, no conflict field', async () => {
+    const { repoRoot, skillDir } = skeleton('lic-agree');
+    writeFileSync(join(skillDir, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Acme\n');
+    writeFileSync(join(skillDir, 'SKILL.md'), '<!-- SPDX-License-Identifier: MIT -->\n# My Skill\n');
+
+    const result = await detectLicense({ skillDir, repoRoot });
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.detected_via).toBe('spdx-header');
+    expect(result.source_path).toBe(join(skillDir, 'SKILL.md'));
+    expect(result.conflict).toBeUndefined();
     expect(Object.keys(result).sort()).toEqual(['checked_at', 'detected_via', 'source_path', 'spdx_id']);
   });
 });

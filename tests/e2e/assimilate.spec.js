@@ -224,6 +224,70 @@ describe('AC2 — a copyleft skill requires the same explicit approve — the ga
   });
 });
 
+describe('TASK-150 — a forged in-source SPDX header conflicting with the real LICENSE file surfaces in the approval package, not a clean permissive verdict', () => {
+  const SPOOFED_FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'skills', 'spoofed-license-skill');
+
+  it('pending_approval carries a conflict field naming both the forged header and the real LICENSE-file classification', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-spoofed-pending');
+
+    const result = await assimilateSkill({
+      source: SPOOFED_FIXTURE,
+      resourceId: 'spoofed-license-skill',
+      pack: PACK,
+      origin: 'github.com/example/spoofed-license-skill',
+      pin: 'ff00ff',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('pending_approval');
+    // The header still wins for spdx_id/detected_via/classification (additive
+    // fix, backward-compatible) -- but a human reading the approval package
+    // must SEE the discrepancy via the conflict field, not just a clean
+    // 'permissive'.
+    expect(result.spdx_id).toBe('MIT');
+    expect(result.classification).toBe('permissive');
+    expect(result.detected_via).toBe('spdx-header');
+    expect(result.conflict).toEqual({
+      header_spdx: 'MIT',
+      header_source_path: join(SPOOFED_FIXTURE, 'helper.js'),
+      license_file_spdx: 'GPL-3.0-only',
+      license_file_source_path: join(SPOOFED_FIXTURE, 'LICENSE'),
+    });
+
+    // Not a new hard failure -- decision-support only, same as the rest of
+    // the license verdict. Nothing was written (no decision yet).
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+  });
+
+  it('does not auto-block: an explicit approve with a safe security verdict still assimilates despite the conflict', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-spoofed-approved');
+
+    const result = await assimilateSkill({
+      source: SPOOFED_FIXTURE,
+      resourceId: 'spoofed-license-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/spoofed-license-skill',
+      pin: 'ff00ff',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(result.conflict).toEqual({
+      header_spdx: 'MIT',
+      header_source_path: join(SPOOFED_FIXTURE, 'helper.js'),
+      license_file_spdx: 'GPL-3.0-only',
+      license_file_source_path: join(SPOOFED_FIXTURE, 'LICENSE'),
+    });
+    expect(existsSync(join(root, 'assimilated-skills', 'spoofed-license-skill', 'SKILL.md'))).toBe(true);
+  });
+});
+
 describe('Gap B — repoRoot forwarding: a LICENSE at the clone root is still found for a --subdir source', () => {
   it('detects the license via detectLicense\'s repoRoot fallback and assimilates once approved', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);

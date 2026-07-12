@@ -496,6 +496,13 @@ export async function assimilateSkill(opts) {
     classification,
     detected_via: license.detected_via,
     source_path: license.source_path,
+    // TASK-150 -- threaded through additively (only present when detectLicense
+    // found a conflict) so every status this function can return (declined,
+    // pending_approval, blocked_security, assimilated) carries it; the human
+    // reviewing pending_approval is the actual consumer, but there's no reason
+    // to hide it on the other statuses. Does NOT gate anything -- license is
+    // never a safety gate (see the TASK-140 header comment above).
+    ...(license.conflict ? { conflict: license.conflict } : {}),
   };
 
   if (decision !== 'approve') {

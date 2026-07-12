@@ -9258,7 +9258,24 @@ async function detectLicense(source = {}) {
   const dirs = [skillDir, repoRoot].filter(Boolean);
   const headerHit = findSpdxHeaderInDir(skillDir);
   if (headerHit) {
-    return { spdx_id: normalizeLicenseString(headerHit.spdxRaw), detected_via: "spdx-header", source_path: headerHit.path, checked_at };
+    const headerSpdxId = normalizeLicenseString(headerHit.spdxRaw);
+    const result = { spdx_id: headerSpdxId, detected_via: "spdx-header", source_path: headerHit.path, checked_at };
+    for (const dir of dirs) {
+      const licenseHit = findLicenseFile(dir);
+      if (!licenseHit) continue;
+      const licenseFileRaw = detectFromFreeText(licenseHit.content);
+      const licenseFileSpdxId = licenseFileRaw ? normalizeLicenseString(licenseFileRaw) : null;
+      if (licenseFileSpdxId && licenseFileSpdxId !== headerSpdxId) {
+        result.conflict = {
+          header_spdx: headerSpdxId,
+          header_source_path: headerHit.path,
+          license_file_spdx: licenseFileSpdxId,
+          license_file_source_path: licenseHit.path
+        };
+      }
+      break;
+    }
+    return result;
   }
   for (const dir of dirs) {
     const licenseHit = findLicenseFile(dir);
@@ -9684,7 +9701,14 @@ async function assimilateSkill(opts) {
     spdx_id: license.spdx_id,
     classification,
     detected_via: license.detected_via,
-    source_path: license.source_path
+    source_path: license.source_path,
+    // TASK-150 -- threaded through additively (only present when detectLicense
+    // found a conflict) so every status this function can return (declined,
+    // pending_approval, blocked_security, assimilated) carries it; the human
+    // reviewing pending_approval is the actual consumer, but there's no reason
+    // to hide it on the other statuses. Does NOT gate anything -- license is
+    // never a safety gate (see the TASK-140 header comment above).
+    ...license.conflict ? { conflict: license.conflict } : {}
   };
   if (decision !== "approve") {
     if (decision === "decline") {

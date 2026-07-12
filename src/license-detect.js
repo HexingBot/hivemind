@@ -274,7 +274,8 @@ function extractReadmeLicenseSection(text) {
  * @param {{owner: string, repo: string}} [source.github] - repo coordinates for step 3
  * @param {(owner: string, repo: string) => Promise<{license: {spdx_id: string}}|null>} [source.fetchGithubLicense]
  *   - injected transport for the GitHub Licenses API; undefined skips the step (no network)
- * @returns {Promise<{spdx_id: string|null, detected_via: string, source_path: string|null, checked_at: string}>}
+ * @returns {Promise<{spdx_id: string|null, detected_via: string, source_path: string|null, checked_at: string,
+ *   conflict?: {header_spdx: string|null, header_source_path: string, license_file_spdx: string, license_file_source_path: string}}>}
  */
 export async function detectLicense(source = {}) {
   const { skillDir = null, repoRoot = null, github = null, fetchGithubLicense } = source;
@@ -284,7 +285,37 @@ export async function detectLicense(source = {}) {
   // 1. SPDX header in the skill's own files -- wins even over a repo-wide license.
   const headerHit = findSpdxHeaderInDir(skillDir);
   if (headerHit) {
-    return { spdx_id: normalizeLicenseString(headerHit.spdxRaw), detected_via: 'spdx-header', source_path: headerHit.path, checked_at };
+    const headerSpdxId = normalizeLicenseString(headerHit.spdxRaw);
+    const result = { spdx_id: headerSpdxId, detected_via: 'spdx-header', source_path: headerHit.path, checked_at };
+
+    // TASK-150 (security -- SPDX-header spoof shadowing the real LICENSE
+    // file): CHOSEN BEHAVIOR is SURFACE, not silently prefer or auto-downgrade.
+    // spdx_id/detected_via above are left exactly as before (backward-compat:
+    // callers reading spdx_id directly are unaffected on the no-conflict
+    // path). When a LICENSE/COPYING file ALSO exists in the same dir(s) Step 2
+    // would search (skillDir before repoRoot -- nearest wins, first match
+    // only) and resolves to a DIFFERENT spdx id than the header, this attaches
+    // an ADDITIVE `conflict` field naming both, so a human reviewing the
+    // approval package (src/assimilate.js's pending_approval payload) sees
+    // "header says X but the LICENSE file says Y -- possible spoof" instead of
+    // a clean verdict. This is decision-support only, same as the rest of the
+    // license verdict -- it never blocks and classifyLicense is untouched.
+    for (const dir of dirs) {
+      const licenseHit = findLicenseFile(dir);
+      if (!licenseHit) continue;
+      const licenseFileRaw = detectFromFreeText(licenseHit.content);
+      const licenseFileSpdxId = licenseFileRaw ? normalizeLicenseString(licenseFileRaw) : null;
+      if (licenseFileSpdxId && licenseFileSpdxId !== headerSpdxId) {
+        result.conflict = {
+          header_spdx: headerSpdxId,
+          header_source_path: headerHit.path,
+          license_file_spdx: licenseFileSpdxId,
+          license_file_source_path: licenseHit.path,
+        };
+      }
+      break; // nearest LICENSE file only -- same precedence as step 2 below.
+    }
+    return result;
   }
 
   // 2. Nearest LICENSE/COPYING/LICENSE.md -- skill subdir before repo root.
