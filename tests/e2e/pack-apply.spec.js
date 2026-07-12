@@ -293,6 +293,198 @@ describe('AC4 — the lockfile is committed via atomicWriteFile exactly once', (
   });
 });
 
+// TASK-142 -- A3/TOCTOU fix: previously executeInstall computed
+// `integrity: sha256:hashDir(liveDir)` AFTER copying -- it hashed whatever it
+// just copied and never compared against anything, so content tampered in
+// assimilated-skills/<id>/ AFTER stage-approve but BEFORE reconcile-apply was
+// silently materialized and blessed with a fresh hash. Now: if the lockfile
+// already carries a stage-time content_integrity for this id (assimilateSkill
+// records one at approve time, src/assimilate.js), executeInstall re-hashes
+// the CURRENT staged bytes with hashOwnedSkillDir and refuses to copy
+// anything live on a mismatch -- fail closed, reported, no re-blessing.
+describe('TASK-142 -- TOCTOU close: staged content is re-verified against the recorded content_integrity before materialize', () => {
+  function seedStagedSkillWithApprovedBaseline(root, id, contents) {
+    const sourceRoot = join(root, 'assimilated-skills');
+    const skillDir = writeSkillSource(sourceRoot, id, contents);
+    return skillDir;
+  }
+
+  async function seedApprovedLockEntry(lockPath, id, skillDir, overrides = {}) {
+    const { hashOwnedSkillDir } = await import(PROD.packApply);
+    const contentIntegrity = `sha256:${hashOwnedSkillDir(skillDir)}`;
+    const entry = makeEntry({
+      owners: [],
+      required: 'soft',
+      source_integrity: 'sha256:' + 'a'.repeat(64),
+      content_integrity: contentIntegrity,
+      ...overrides,
+    });
+    delete entry.integrity; // new-field-only shape, matching assimilateSkill's real writes
+    seedLock(lockPath, { [`skill:${id}`]: entry });
+    return contentIntegrity;
+  }
+
+  it('RED-LOCK: content tampered AFTER stage-approve, BEFORE reconcile-apply, is refused -- nothing materializes, no fresh-hash re-blessing', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-142-toctou-soft');
+    const skillDir = seedStagedSkillWithApprovedBaseline(root, 'tampered', '# Tampered\nOriginal content a human actually approved.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    const approvedContentIntegrity = await seedApprovedLockEntry(lockPath, 'tampered', skillDir);
+
+    // TAMPER: the staged owned copy changes AFTER approve, BEFORE reconcile-apply.
+    writeFileSync(join(skillDir, 'SKILL.md'), '# Tampered\nMALICIOUS CONTENT INJECTED AFTER APPROVE.\n');
+
+    const plan = {
+      install: [{ id: 'skill:tampered', resource: { id: 'tampered', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' } }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({ plan, lockPath, root, owner: 'design-power@0.1.0', sourceRoot: join(root, 'assimilated-skills') });
+
+    // Fail closed: reported, not silently materialized.
+    expect(result.report).toHaveLength(1);
+    expect(result.report[0].id).toBe('skill:tampered');
+    expect(result.report[0].reason).toMatch(/content integrity mismatch/i);
+
+    // Nothing materialized to the live tree.
+    expect(existsSync(join(root, '.claude', 'skills', 'tampered'))).toBe(false);
+
+    // No re-blessing: the lock entry's content_integrity is untouched -- the
+    // tampered bytes never got a fresh hash written over the real one.
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(onDisk.resources['skill:tampered'].content_integrity).toBe(approvedContentIntegrity);
+  });
+
+  it('a hard-required tampered resource aborts the whole run via HardResourceFailureError, prior successful ops still committed', async () => {
+    const { applyPlan, HardResourceFailureError, ContentIntegrityMismatchError } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-142-toctou-hard');
+    const goodSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(goodSourceRoot, 'good');
+    const tamperedDir = seedStagedSkillWithApprovedBaseline(root, 'tampered', '# Tampered\nOriginal content.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {});
+    const approvedContentIntegrity = await seedApprovedLockEntry(lockPath, 'tampered', tamperedDir, { required: 'hard' });
+
+    writeFileSync(join(tamperedDir, 'SKILL.md'), '# Tampered\nMALICIOUS.\n');
+
+    const plan = {
+      install: [
+        { id: 'skill:good', resource: { id: 'good', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' } },
+        { id: 'skill:tampered', resource: { id: 'tampered', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'hard' } },
+      ],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    let caught;
+    try {
+      await applyPlan({ plan, lockPath, root, owner: 'design-power@0.1.0', sourceRoot: goodSourceRoot });
+    } catch (err) {
+      caught = err;
+    }
+
+    // Aborted via the typed hard-failure error, whose cause is the typed
+    // content-integrity mismatch -- not a generic Error either way.
+    expect(caught).toBeInstanceOf(HardResourceFailureError);
+    expect(caught.cause).toBeInstanceOf(ContentIntegrityMismatchError);
+    expect(caught.id).toBe('skill:tampered');
+
+    // Leave-and-report: the good op survived; the tampered one never materialized.
+    expect(existsSync(join(root, '.claude', 'skills', 'good', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(root, '.claude', 'skills', 'tampered'))).toBe(false);
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(onDisk.resources['skill:tampered'].content_integrity).toBe(approvedContentIntegrity);
+  });
+
+  it('matching content_integrity (no tampering) proceeds and materializes normally, carrying forward the verified hashes', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-142-toctou-match');
+    const skillDir = seedStagedSkillWithApprovedBaseline(root, 'clean', '# Clean\nUntouched staged content.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    const approvedContentIntegrity = await seedApprovedLockEntry(lockPath, 'clean', skillDir);
+    const seededBefore = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const approvedSourceIntegrity = seededBefore.resources['skill:clean'].source_integrity;
+
+    const plan = {
+      install: [{ id: 'skill:clean', resource: { id: 'clean', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' } }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({ plan, lockPath, root, owner: 'design-power@0.1.0', sourceRoot: join(root, 'assimilated-skills') });
+
+    expect(result.report).toEqual([]);
+    expect(existsSync(join(root, '.claude', 'skills', 'clean', 'SKILL.md'))).toBe(true);
+
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:clean'];
+    expect(entry.content_integrity).toBe(approvedContentIntegrity);
+    expect(entry.source_integrity).toBe(approvedSourceIntegrity);
+    expect(entry.integrity).toBeUndefined();
+  });
+
+  it('BACKWARD-COMPAT: a pre-TASK-142 lock entry with only the legacy `integrity` field skips verification and installs via the old hashDir(liveDir) path', async () => {
+    // Documented decision: an entry that predates TASK-142 has no
+    // content_integrity baseline to check against -- inventing one
+    // retroactively would be indistinguishable from the TOCTOU bug itself.
+    // Verification is skipped for it; the pre-existing single-hash-of-what-
+    // was-just-copied behavior is preserved unchanged.
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-142-legacy-entry');
+    const sourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(sourceRoot, 'legacy', '# Legacy\nPre-TASK-142 shape.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, { 'skill:legacy': makeEntry({ owners: [], required: 'soft' }) }); // legacy `integrity` only
+
+    const plan = {
+      install: [{ id: 'skill:legacy', resource: { id: 'legacy', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' } }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({ plan, lockPath, root, owner: 'design-power@0.1.0', sourceRoot });
+
+    expect(result.report).toEqual([]);
+    expect(existsSync(join(root, '.claude', 'skills', 'legacy', 'SKILL.md'))).toBe(true);
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(onDisk.resources['skill:legacy'].integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(onDisk.resources['skill:legacy'].content_integrity).toBeUndefined();
+  });
+
+  it('BACKWARD-COMPAT: an id with NO prior lock entry at all also skips verification (nothing to verify against)', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-142-no-prior-entry');
+    const sourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(sourceRoot, 'fresh', '# Fresh\nNever assimilated before.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {}); // no prior entry for "fresh" at all
+
+    const plan = {
+      install: [{ id: 'skill:fresh', resource: { id: 'fresh', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' } }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({ plan, lockPath, root, owner: 'design-power@0.1.0', sourceRoot });
+
+    expect(result.report).toEqual([]);
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(onDisk.resources['skill:fresh'].integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(onDisk.resources['skill:fresh'].content_integrity).toBeUndefined();
+  });
+});
+
 describe('a replace op is surfaced in the report as deferred, never silently dropped', () => {
   it('does_not_touch_the_lock_entry_or_live_dir_and_reports_executed_false', async () => {
     const { applyPlan } = await import(PROD.packApply);

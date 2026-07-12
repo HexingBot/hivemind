@@ -68,10 +68,16 @@ describe('AC1 — a known-permissive skill still requires an explicit approve to
     expect(result.spdx_id).toBe('MIT');
     expect(result.classification).toBe('permissive');
     // Everything an approve would commit is already computed for review...
-    expect(result.integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    // TASK-142: TWO hashes now, not one -- source_integrity (upstream,
+    // unmodified) and content_integrity (the owned artifact preview, post
+    // description-tag/provenance-block rewrite).
+    expect(result.source_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.content_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(result.assimilated_at).toBe('2026-07-08T12:00:00Z');
     expect(result.provenance_preview).toContain('## Sources & provenance (hivemind)');
     expect(result.provenance_preview).toContain('- spdx_id: MIT');
+    expect(result.provenance_preview).toMatch(/- source_integrity: sha256:[0-9a-f]{64}/);
+    expect(result.provenance_preview).toMatch(/- content_integrity: sha256:[0-9a-f]{64}/);
     // ...but NOTHING is written.
     expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
     expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
@@ -100,8 +106,15 @@ describe('AC1 — a known-permissive skill still requires an explicit approve to
     expect(result.status).toBe('assimilated');
     expect(result.spdx_id).toBe('MIT');
     expect(result.classification).toBe('permissive');
-    // AC5 — real sha256:<64hex> integrity over the source content.
-    expect(result.integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    // TASK-142 (AC1/A4 fix) — TWO real sha256:<64hex> hashes, not one:
+    // source_integrity over the UNMODIFIED upstream source, content_integrity
+    // over the OWNED artifact as staged (post description-tag +
+    // provenance-block rewrite). They must differ -- proves content_integrity
+    // is no longer decorative (previously it silently equalled a hash of the
+    // pre-rewrite source, which the staged bytes never actually matched).
+    expect(result.source_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.content_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.content_integrity).not.toBe(result.source_integrity);
 
     const ownedSkillPath = join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md');
     expect(existsSync(ownedSkillPath)).toBe(true);
@@ -111,8 +124,18 @@ describe('AC1 — a known-permissive skill still requires an explicit approve to
     expect(text).toContain('- origin: github.com/example/permissive-skill');
     expect(text).toContain('- pin: abc123');
     expect(text).toContain('- spdx_id: MIT');
-    expect(text).toMatch(/- integrity: sha256:[0-9a-f]{64}/);
+    expect(text).toMatch(/- source_integrity: sha256:[0-9a-f]{64}/);
+    expect(text).toContain(`- content_integrity: ${result.content_integrity}`);
     expect(text).toContain('- assimilated_at: 2026-07-08T12:00:00Z');
+
+    // AC1 — content_integrity matches a FRESH, independently-computed hash of
+    // the staged bytes under the documented hashing rule (imported straight
+    // from pack-apply.js, the same function the verifier uses -- never a
+    // second hand-rolled copy of the rule). source_integrity matches a fresh
+    // hash of the untouched upstream fixture.
+    const { hashDir, hashOwnedSkillDir } = await import(PROD.packApply);
+    expect(result.content_integrity).toBe(`sha256:${hashOwnedSkillDir(join(root, 'assimilated-skills', 'permissive-skill'))}`);
+    expect(result.source_integrity).toBe(`sha256:${hashDir(PERMISSIVE_FIXTURE)}`);
 
     const lock = JSON.parse(readFileSync(join(root, 'integrations.lock.json'), 'utf8'));
     const entry = lock.resources['skill:permissive-skill'];
@@ -120,7 +143,9 @@ describe('AC1 — a known-permissive skill still requires an explicit approve to
     expect(entry.kind).toBe('skill');
     expect(entry.scope).toBe('project');
     expect(entry.verified).toBe('unsigned');
-    expect(entry.integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(entry.source_integrity).toBe(result.source_integrity);
+    expect(entry.content_integrity).toBe(result.content_integrity);
+    expect(entry.integrity).toBeUndefined();
     expect(entry.owners).toEqual([PACK]);
   });
 });
@@ -147,7 +172,8 @@ describe('AC2 — a copyleft skill requires the same explicit approve — the ga
     expect(typeof result.source_path).toBe('string');
     // Copyleft/unknown carries the same computed-preview shape as permissive —
     // the ONLY difference is the classification/gate reason, not the payload shape.
-    expect(result.integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.source_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.content_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(result.provenance_preview).toContain('- spdx_id: GPL-3.0-only');
 
     expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
@@ -764,5 +790,142 @@ describe('TASK-140 -- content security gate is DEFAULT-DENY (block unless verdic
     expect(result.status).toBe('blocked_security');
     expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
     expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+});
+
+// TASK-142 -- A4 fix: assimilate now records TWO hashes instead of one --
+// source_integrity (the UNMODIFIED upstream source, computed before the
+// description-tag/provenance-block rewrite -- unchanged from the old
+// `integrity` field's computation) and content_integrity (the OWNED artifact
+// as actually staged, computed AFTER that rewrite -- the exact bytes a human
+// approved). Previously the single `integrity` field described the upstream
+// source only, so it could never verify the staged copy that reconcile-apply
+// actually materializes (see tests/e2e/pack-apply.spec.js's TASK-142 describe
+// block for the TOCTOU half of this fix).
+
+describe('TASK-142 -- content_integrity is computed over the OWNED artifact (post-rewrite), never the upstream source', () => {
+  it('the provenance block written to disk carries source_integrity + content_integrity as two DISTINCT hashes, both independently reproducible', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { hashDir, hashOwnedSkillDir } = await import(PROD.packApply);
+    const root = makeTmpDir('asm-142-two-hashes');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+
+    // source_integrity is over the UNTOUCHED fixture -- unaffected by
+    // anything assimilate wrote.
+    const expectedSourceIntegrity = `sha256:${hashDir(PERMISSIVE_FIXTURE)}`;
+    expect(result.source_integrity).toBe(expectedSourceIntegrity);
+
+    // content_integrity is over the STAGED, already-rewritten owned copy --
+    // recomputed here completely independently (a fresh call, after the
+    // fact) and must still match exactly, proving it's a real, reproducible
+    // hash of what's actually on disk, not a copy of source_integrity.
+    const ownedDir = join(root, 'assimilated-skills', 'permissive-skill');
+    const expectedContentIntegrity = `sha256:${hashOwnedSkillDir(ownedDir)}`;
+    expect(result.content_integrity).toBe(expectedContentIntegrity);
+
+    expect(result.content_integrity).not.toBe(result.source_integrity);
+
+    // Never regress to hashing the upstream source under the content_integrity
+    // name (the exact A4 bug: same value as source_integrity because it was
+    // computed BEFORE the rewrite).
+    expect(result.content_integrity).not.toBe(expectedSourceIntegrity);
+  });
+
+  it('the chicken-and-egg is resolved without a false mismatch: re-hashing the staged dir right after write reproduces the SAME content_integrity', async () => {
+    // Direct proof that the ONE documented hashing rule (content_integrity's
+    // own line canonicalized out of the hash it attests to,
+    // src/pack-apply.js#hashOwnedSkillDir) is self-consistent: hashing the
+    // dir a second time, with the REAL value now embedded in the file, must
+    // reproduce the exact same digest as the writer originally computed and
+    // recorded -- not a "close enough", byte-for-byte identical.
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { hashOwnedSkillDir } = await import(PROD.packApply);
+    const root = makeTmpDir('asm-142-self-consistent-rehash');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    const ownedDir = join(root, 'assimilated-skills', 'permissive-skill');
+    const rehash1 = `sha256:${hashOwnedSkillDir(ownedDir)}`;
+    const rehash2 = `sha256:${hashOwnedSkillDir(ownedDir)}`;
+    expect(rehash1).toBe(result.content_integrity);
+    expect(rehash2).toBe(result.content_integrity);
+  });
+});
+
+describe('TASK-142 -- AC4: an untampered stage-approve -> reconcile-apply round-trip has NO false mismatch', () => {
+  it('materializes cleanly end-to-end when nothing tampers with the staged copy between approve and reconcile-apply', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('asm-142-roundtrip-clean');
+    const lockPath = join(root, 'integrations.lock.json');
+
+    const assimilated = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+    expect(assimilated.status).toBe('assimilated');
+
+    const plan = {
+      install: [{
+        id: 'skill:permissive-skill',
+        resource: { id: 'permissive-skill', kind: 'skill', origin: 'github.com/example/permissive-skill', pin: 'abc123', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({ plan, lockPath, root, owner: PACK, sourceRoot: join(root, 'assimilated-skills') });
+
+    // No false mismatch -- the report is clean, nothing was refused.
+    expect(result.report).toEqual([]);
+
+    const liveSkillPath = join(root, '.claude', 'skills', 'permissive-skill', 'SKILL.md');
+    expect(existsSync(liveSkillPath)).toBe(true);
+    expect(readFileSync(liveSkillPath, 'utf8')).toBe(readFileSync(join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md'), 'utf8'));
+
+    // The stage-time hashes survive materialize unchanged -- reconcile-apply
+    // carries forward the ALREADY-VERIFIED baseline rather than re-blessing
+    // with a fresh hash of what it just copied (that re-blessing is exactly
+    // the TOCTOU bug this ticket closes). Asserted against a real regex, not
+    // just equality to `assimilated.*` -- two undefined values would also
+    // satisfy a bare equality check and mask a total absence of the fields.
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:permissive-skill'];
+    expect(entry.source_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(entry.content_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(entry.source_integrity).toBe(assimilated.source_integrity);
+    expect(entry.content_integrity).toBe(assimilated.content_integrity);
   });
 });

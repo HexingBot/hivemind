@@ -108,6 +108,72 @@ describe('AC1 — integrations-lock.schema.json shape', () => {
 });
 
 // ===========================================================================
+// TASK-142 — two-field integrity (source_integrity + content_integrity)
+// alongside the legacy single `integrity` field. AC1 (schema half) + AC5:
+// new entries carry the pair; pre-existing single-`integrity` entries must
+// keep validating (no forced migration) so writeLock never blocks on an
+// old resource sitting untouched elsewhere in the same lockfile.
+// ===========================================================================
+describe('TASK-142 — schema accepts the new source_integrity/content_integrity pair, keeps legacy `integrity` valid', () => {
+  const HASH_A = 'sha256:' + 'a'.repeat(64);
+  const HASH_B = 'sha256:' + 'b'.repeat(64);
+
+  it('accepts_an_entry_carrying_only_source_integrity_and_content_integrity_no_legacy_integrity', () => {
+    const schema = loadSchema();
+    const validate = buildAjv().compile(schema);
+    const entry = makeEntry(['design-power@0.1.0']);
+    delete entry.integrity;
+    entry.source_integrity = HASH_A;
+    entry.content_integrity = HASH_B;
+    const lock = makeLock({ 'skill:shadcn-vue': entry });
+    expect(validate(lock), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it('accepts_a_pre_existing_entry_carrying_only_the_legacy_integrity_field_unchanged', () => {
+    // Regression lock: TASK-142 must never force a migration of already-valid
+    // entries just because the schema also learned two new fields.
+    const schema = loadSchema();
+    const validate = buildAjv().compile(schema);
+    const entry = makeEntry(['design-power@0.1.0']); // legacy shape, untouched
+    const lock = makeLock({ 'skill:shadcn-vue': entry });
+    expect(validate(lock), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it('rejects_an_entry_with_neither_legacy_integrity_nor_the_new_pair', () => {
+    const schema = loadSchema();
+    const validate = buildAjv().compile(schema);
+    const entry = makeEntry(['design-power@0.1.0']);
+    delete entry.integrity; // no legacy field, no replacement pair either
+    const lock = makeLock({ 'skill:shadcn-vue': entry });
+    expect(validate(lock)).toBe(false);
+  });
+
+  it('rejects_an_entry_with_only_content_integrity_and_no_source_integrity_or_legacy_integrity', () => {
+    // The pair is required TOGETHER — a lone content_integrity with no
+    // source_integrity and no legacy `integrity` satisfies neither anyOf
+    // branch.
+    const schema = loadSchema();
+    const validate = buildAjv().compile(schema);
+    const entry = makeEntry(['design-power@0.1.0']);
+    delete entry.integrity;
+    entry.content_integrity = HASH_B;
+    const lock = makeLock({ 'skill:shadcn-vue': entry });
+    expect(validate(lock)).toBe(false);
+  });
+
+  it('rejects_a_truncated_content_integrity_digest', () => {
+    const schema = loadSchema();
+    const validate = buildAjv().compile(schema);
+    const entry = makeEntry(['design-power@0.1.0']);
+    delete entry.integrity;
+    entry.source_integrity = HASH_A;
+    entry.content_integrity = 'sha256:' + 'b'.repeat(63); // one short
+    const lock = makeLock({ 'skill:shadcn-vue': entry });
+    expect(validate(lock)).toBe(false);
+  });
+});
+
+// ===========================================================================
 // AC2 — addOwner/dropOwner mutate owners[]; isOrphaned iff owners is empty.
 // ===========================================================================
 describe('AC2 — ownership-edge helpers', () => {
