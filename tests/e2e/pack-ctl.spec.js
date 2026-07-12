@@ -362,9 +362,11 @@ function stageCli({
 }
 
 describe('AC3 — assimilate stage writes the owned copy + provenance only on approve, non-suspicious', () => {
-  it('decision_approve_with_no_security_verdict_writes_the_owned_copy_and_lock_entry', () => {
+  it('decision_approve_with_a_safe_security_verdict_writes_the_owned_copy_and_lock_entry', () => {
     const root = makeTmpDir('af-packctl-stage-approve');
-    const result = stageCli({ source: PERMISSIVE_FIXTURE, resourceId: 'permissive-skill', root, decision: 'approve' });
+    const result = stageCli({
+      source: PERMISSIVE_FIXTURE, resourceId: 'permissive-skill', root, decision: 'approve', securityVerdict: 'safe',
+    });
 
     expect(result.status).toBe(0);
     expect(result.json.ok).toBe(true);
@@ -376,6 +378,21 @@ describe('AC3 — assimilate stage writes the owned copy + provenance only on ap
 
     const lock = JSON.parse(readFileSync(join(root, 'integrations.lock.json'), 'utf8'));
     expect(lock.resources['skill:permissive-skill'].owners).toEqual([ASSIMILATE_PACK]);
+  });
+
+  // TASK-140 -- RED-LOCK at the CLI/bundle level: --security-verdict validation
+  // only ever accepts safe|suspicious (see runAssimilateStage), so the CLI's
+  // "no verdict at all" path is the ONLY way to reach an absent reviewerVerdict
+  // through this wrapper. Under the pre-TASK-140 fail-open gate this WROTE the
+  // owned copy; the default-deny fix now blocks it (status: blocked_security).
+  it('decision_approve_with_no_security_verdict_at_all_is_blocked_by_default_deny', () => {
+    const root = makeTmpDir('af-packctl-stage-approve-no-verdict-blocked');
+    const result = stageCli({ source: PERMISSIVE_FIXTURE, resourceId: 'permissive-skill', root, decision: 'approve' });
+
+    expect(result.status).toBe(0);
+    expect(result.json.assimilate.status).toBe('blocked_security');
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
   });
 
   it('a_suspicious_verdict_blocks_approve_without_an_override_and_writes_nothing', () => {

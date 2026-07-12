@@ -86,6 +86,11 @@ describe('AC1 — a known-permissive skill still requires an explicit approve to
       resourceId: 'permissive-skill',
       pack: PACK,
       decision: 'approve',
+      // TASK-140 — the content-security gate is now default-deny (blocks
+      // unless verdict === 'safe'); an explicit safe verdict is required to
+      // reach the write path this test exercises. See the "TASK-140" describe
+      // block below for the default-deny matrix itself.
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
       origin: 'github.com/example/permissive-skill',
       pin: 'abc123',
       root,
@@ -178,6 +183,8 @@ describe('AC2 — a copyleft skill requires the same explicit approve — the ga
       resourceId: 'copyleft-skill',
       pack: PACK,
       decision: 'approve',
+      // TASK-140 — default-deny gate: an explicit safe verdict is required.
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
       origin: 'github.com/example/copyleft-skill',
       pin: 'def456',
       root,
@@ -216,6 +223,8 @@ describe('Gap B — repoRoot forwarding: a LICENSE at the clone root is still fo
       resourceId: 'gsap-core',
       pack: PACK,
       decision: 'approve',
+      // TASK-140 — default-deny gate: an explicit safe verdict is required.
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
       origin: 'github.com/example/gsap-skills',
       pin: 'abc123',
       root,
@@ -284,6 +293,8 @@ describe('AC3/AC4 — end-to-end: assimilate (approved) -> materialize -> id-spa
       resourceId: 'permissive-skill',
       pack: PACK,
       decision: 'approve',
+      // TASK-140 — default-deny gate: an explicit safe verdict is required.
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
       origin: resourceDescriptor.origin,
       pin: resourceDescriptor.pin,
       root,
@@ -463,6 +474,8 @@ describe('AC4 -- a suspicious security-reviewer verdict blocks adoption on appro
       resourceId: 'permissive-skill',
       pack: PACK,
       decision: 'approve',
+      // TASK-140 — default-deny gate: an explicit safe verdict is required.
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
       origin: 'github.com/example/permissive-skill',
       pin: 'abc123',
       root,
@@ -621,5 +634,135 @@ describe('AC5 -- end-to-end: license -> scan -> reviewer -> presented package ->
     expect(lock.resources['skill:permissive-skill']).toBeDefined();
     // The declined resource from step 2 still never made it to disk.
     expect(existsSync(join(root, 'assimilated-skills', 'malicious-skill'))).toBe(false);
+  });
+});
+
+// TASK-140 -- DEFAULT-DENY inversion: the TASK-122 gate blocked ONLY on the
+// literal string 'suspicious', so ANY other reviewerVerdict value -- absent,
+// an unrecognized string ('unsafe'), a typo, differently-cased ('Safe'), or
+// an empty string -- was NOT treated as a block and let an approve write
+// (fail-OPEN). This locks the fix: on decision:'approve', the write proceeds
+// ONLY when reviewerVerdict?.verdict === 'safe' exactly; every other value
+// blocks with status:'blocked_security' unless securityOverride === true
+// (strict boolean, TASK-122's override semantics unchanged).
+
+describe('TASK-140 -- content security gate is DEFAULT-DENY (block unless verdict === "safe")', () => {
+  it('RED-LOCK: approve + reviewerVerdict:{verdict:"unsafe"} + no override is blocked (previously the fail-open bug WROTE the skill)', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-140-unsafe-blocks');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'unsafe', reasoning: 'not a recognized safe/suspicious value' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('blocked_security');
+    expect(result.reviewer).toEqual({ verdict: 'unsafe', reasoning: 'not a recognized safe/suspicious value' });
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+
+  it('approve + reviewerVerdict:{verdict:"safe"} proceeds and writes (green path preserved)', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-140-safe-proceeds');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(existsSync(join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md'))).toBe(true);
+  });
+
+  const DEFAULT_DENY_MATRIX = [
+    ['absent reviewerVerdict', undefined, 'absent'],
+    ['verdict: suspicious', { verdict: 'suspicious', reasoning: 'flagged' }, 'suspicious'],
+    ['verdict: unsafe (unrecognized string)', { verdict: 'unsafe', reasoning: 'flagged' }, 'unsafe'],
+    ['verdict: Safe (wrong case)', { verdict: 'Safe', reasoning: 'flagged' }, 'wrong-case'],
+    ['verdict: "" (empty string)', { verdict: '', reasoning: 'flagged' }, 'empty'],
+  ];
+
+  it.each(DEFAULT_DENY_MATRIX)('blocks approve for %s, writing nothing, unless securityOverride === true', async (label, reviewerVerdict, slug) => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir(`asm-140-matrix-${slug}`);
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict,
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status, label).toBe('blocked_security');
+    expect(existsSync(join(root, 'assimilated-skills')), label).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json')), label).toBe(false);
+  });
+
+  it('securityOverride === true (strict boolean) still lets approve proceed despite a non-safe verdict', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-140-override-bypasses-unsafe');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'unsafe', reasoning: 'flagged' },
+      securityOverride: true,
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(existsSync(join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md'))).toBe(true);
+  });
+
+  const LOOSE_OVERRIDE_CASES = [
+    ['the string "true"', 'true', 'str-true'],
+    ['the string "1"', '1', 'str-1'],
+  ];
+
+  it.each(LOOSE_OVERRIDE_CASES)('a loose truthy-but-non-boolean securityOverride (%s) does NOT bypass the default-deny gate', async (_label, looseOverride, slug) => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir(`asm-140-loose-override-${slug}`);
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'unsafe', reasoning: 'flagged' },
+      securityOverride: looseOverride,
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('blocked_security');
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
   });
 });
