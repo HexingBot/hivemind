@@ -8628,106 +8628,18 @@ function resolveDesired(descriptor, profileResult) {
 }
 
 // src/pack-reconcile.js
-var import_node_fs3 = require("node:fs");
-var import_node_path3 = require("node:path");
-var SKILL_FILENAME = "SKILL.md";
-var PROVENANCE_HEADING = "## Sources & provenance (hivemind)";
-function walkSkillFiles(dir) {
-  const out = [];
-  let entries;
-  try {
-    entries = (0, import_node_fs3.readdirSync)(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    const full = (0, import_node_path3.join)(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walkSkillFiles(full));
-    else if (entry.isFile() && entry.name === SKILL_FILENAME) out.push(full);
-  }
-  return out;
-}
-function parseProvenance(text) {
-  const idx = text.lastIndexOf(PROVENANCE_HEADING);
-  if (idx === -1) return void 0;
-  const rest = text.slice(idx + PROVENANCE_HEADING.length);
-  const nextHeadingAt = rest.search(/\n#{1,6}\s/);
-  const body = nextHeadingAt === -1 ? rest : rest.slice(0, nextHeadingAt);
-  const provenance = {};
-  const lineRe = /^[-*]\s*([a-zA-Z_]+)\s*:\s*(.+?)\s*$/gm;
-  let m;
-  while ((m = lineRe.exec(body)) !== null) {
-    provenance[m[1]] = m[2];
-  }
-  return Object.keys(provenance).length ? provenance : void 0;
-}
-function probeSkills(root) {
-  const skillsRoot = (0, import_node_path3.join)(root, ".claude", "skills");
-  const result = {};
-  if (!(0, import_node_fs3.existsSync)(skillsRoot)) return result;
-  for (const skillFile of walkSkillFiles(skillsRoot)) {
-    const skillDir = (0, import_node_path3.dirname)(skillFile);
-    const relId = (0, import_node_path3.relative)(skillsRoot, skillDir).split(import_node_path3.sep).join("/");
-    const id = `skill:${relId}`;
-    let text = "";
-    try {
-      text = (0, import_node_fs3.readFileSync)(skillFile, "utf8");
-    } catch {
-      text = "";
-    }
-    const provenance = parseProvenance(text);
-    result[id] = provenance ? { path: skillFile, provenance } : { path: skillFile };
-  }
-  return result;
-}
-function plan(desired, lock, actual) {
-  const install = [];
-  const remove = [];
-  const replace = [];
-  const report = [];
-  const desiredList = Array.isArray(desired) ? desired : [];
-  const lockResources = lock && lock.resources || {};
-  const actualMap = actual || {};
-  const desiredSkillIds = /* @__PURE__ */ new Set();
-  for (const resource of desiredList) {
-    if (!resource) continue;
-    if (resource.kind !== "skill") {
-      report.push({
-        id: `${resource.kind}:${resource.id}`,
-        reason: `resource kind "${resource.kind}" is out of scope for the Wave-1 (skills-only) planner`,
-        blocking: resource.required === "hard"
-      });
-      continue;
-    }
-    const id = `skill:${resource.id}`;
-    desiredSkillIds.add(id);
-    const lockEntry = lockResources[id];
-    const actualEntry = actualMap[id];
-    if (!actualEntry) {
-      install.push({ id, resource });
-      continue;
-    }
-    const currentPin = lockEntry ? lockEntry.pin : actualEntry?.provenance?.pin;
-    if (currentPin !== void 0 && currentPin !== resource.pin) {
-      replace.push({ id, resource, from: currentPin, to: resource.pin });
-    }
-  }
-  for (const [id, entry] of Object.entries(lockResources)) {
-    if (!entry || entry.kind !== "skill") continue;
-    if (desiredSkillIds.has(id)) continue;
-    const owners = Array.isArray(entry.owners) ? entry.owners : [];
-    const orphaned = owners.length === 0;
-    if (orphaned && entry.required === "soft") {
-      remove.push({ id, entry });
-    }
-  }
-  return { install, remove, replace, report };
-}
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
+
+// src/pack-apply.js
+var import_node_fs4 = require("node:fs");
+var import_node_path4 = require("node:path");
+var import_node_crypto2 = require("node:crypto");
 
 // src/integrations-lock.js
 var import_promises2 = require("node:fs/promises");
-var import_node_fs4 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs3 = require("node:fs");
+var import_node_path3 = require("node:path");
 var import__2 = __toESM(require__(), 1);
 var import_ajv_formats2 = __toESM(require_dist(), 1);
 
@@ -8820,8 +8732,8 @@ async function readLock(path) {
 }
 async function writeLock(path, lock) {
   validateLockOrThrow(lock);
-  const dir = (0, import_node_path4.dirname)(path);
-  if (!(0, import_node_fs4.existsSync)(dir)) (0, import_node_fs4.mkdirSync)(dir, { recursive: true });
+  const dir = (0, import_node_path3.dirname)(path);
+  if (!(0, import_node_fs3.existsSync)(dir)) (0, import_node_fs3.mkdirSync)(dir, { recursive: true });
   await atomicWriteFile(path, JSON.stringify(lock, null, 2) + "\n");
 }
 function getEntryOrThrow(lock, id) {
@@ -8845,18 +8757,11 @@ function isOrphaned(lock, id) {
   return Array.isArray(entry.owners) && entry.owners.length === 0;
 }
 
-// src/pack-orchestrator.js
-var import_node_fs6 = require("node:fs");
-var import_node_path6 = require("node:path");
-
 // src/pack-apply.js
-var import_node_fs5 = require("node:fs");
-var import_node_path5 = require("node:path");
-var import_node_crypto2 = require("node:crypto");
 var SKILL_ID_PREFIX = "skill:";
 var DEFAULT_SOURCE_SUBDIR = "assimilated-skills";
 var LIVE_SKILLS_SUBDIR = [".claude", "skills"];
-var SKILL_FILENAME2 = "SKILL.md";
+var SKILL_FILENAME = "SKILL.md";
 var HardResourceFailureError = class extends Error {
   constructor(id, cause) {
     super(`pack-apply: hard-required resource "${id}" failed to apply: ${cause && cause.message ? cause.message : cause}`);
@@ -8880,37 +8785,37 @@ function bareSkillId(id) {
   return id.startsWith(SKILL_ID_PREFIX) ? id.slice(SKILL_ID_PREFIX.length) : id;
 }
 function liveSkillDir(root, bareId) {
-  return (0, import_node_path5.join)(root, ...LIVE_SKILLS_SUBDIR, bareId);
+  return (0, import_node_path4.join)(root, ...LIVE_SKILLS_SUBDIR, bareId);
 }
 function walkAllFiles(dir) {
   const out = [];
   let entries;
   try {
-    entries = (0, import_node_fs5.readdirSync)(dir, { withFileTypes: true });
+    entries = (0, import_node_fs4.readdirSync)(dir, { withFileTypes: true });
   } catch {
     return out;
   }
   for (const entry of entries) {
-    const full = (0, import_node_path5.join)(dir, entry.name);
+    const full = (0, import_node_path4.join)(dir, entry.name);
     if (entry.isDirectory()) out.push(...walkAllFiles(full));
     else if (entry.isFile()) out.push(full);
   }
   return out;
 }
 function hashDir(dir) {
-  const relPaths = walkAllFiles(dir).map((f) => (0, import_node_path5.relative)(dir, f).split(import_node_path5.sep).join("/")).sort();
+  const relPaths = walkAllFiles(dir).map((f) => (0, import_node_path4.relative)(dir, f).split(import_node_path4.sep).join("/")).sort();
   const hash = (0, import_node_crypto2.createHash)("sha256");
   for (const relPath of relPaths) {
     hash.update(relPath);
-    hash.update((0, import_node_fs5.readFileSync)((0, import_node_path5.join)(dir, relPath)));
+    hash.update((0, import_node_fs4.readFileSync)((0, import_node_path4.join)(dir, relPath)));
   }
   return hash.digest("hex");
 }
-var PROVENANCE_HEADING2 = "## Sources & provenance (hivemind)";
+var PROVENANCE_HEADING = "## Sources & provenance (hivemind)";
 var CONTENT_INTEGRITY_VALUE_RE = /^- content_integrity: (sha256:[0-9a-f]{64}|\(pending\))\s*$/m;
 var CONTENT_INTEGRITY_HASH_PLACEHOLDER_LINE = "- content_integrity: <redacted-for-hash>";
 function canonicalizeSkillTextForContentHash(text) {
-  const headingIdx = text.lastIndexOf(PROVENANCE_HEADING2);
+  const headingIdx = text.lastIndexOf(PROVENANCE_HEADING);
   if (headingIdx === -1) return text;
   const before = text.slice(0, headingIdx);
   const block = text.slice(headingIdx);
@@ -8920,15 +8825,15 @@ function canonicalizeSkillTextForContentHash(text) {
 }
 function hashOwnedSkillDir(dir, opts = {}) {
   const { skillText } = opts;
-  const relPaths = walkAllFiles(dir).map((f) => (0, import_node_path5.relative)(dir, f).split(import_node_path5.sep).join("/")).sort();
+  const relPaths = walkAllFiles(dir).map((f) => (0, import_node_path4.relative)(dir, f).split(import_node_path4.sep).join("/")).sort();
   const hash = (0, import_node_crypto2.createHash)("sha256");
   for (const relPath of relPaths) {
     hash.update(relPath);
-    if (relPath === SKILL_FILENAME2) {
-      const text = skillText !== void 0 ? skillText : (0, import_node_fs5.readFileSync)((0, import_node_path5.join)(dir, relPath), "utf8");
+    if (relPath === SKILL_FILENAME) {
+      const text = skillText !== void 0 ? skillText : (0, import_node_fs4.readFileSync)((0, import_node_path4.join)(dir, relPath), "utf8");
       hash.update(canonicalizeSkillTextForContentHash(text), "utf8");
     } else {
-      hash.update((0, import_node_fs5.readFileSync)((0, import_node_path5.join)(dir, relPath)));
+      hash.update((0, import_node_fs4.readFileSync)((0, import_node_path4.join)(dir, relPath)));
     }
   }
   return hash.digest("hex");
@@ -8936,8 +8841,8 @@ function hashOwnedSkillDir(dir, opts = {}) {
 function executeInstall(lock, op, { root, sourceRoot, owner }) {
   const { id, resource } = op;
   const bareId = resource.id;
-  const sourceDir = (0, import_node_path5.join)(sourceRoot, bareId);
-  if (!(0, import_node_fs5.existsSync)(sourceDir)) {
+  const sourceDir = (0, import_node_path4.join)(sourceRoot, bareId);
+  if (!(0, import_node_fs4.existsSync)(sourceDir)) {
     throw new Error(`owned source not found for "${bareId}": ${sourceDir}`);
   }
   const priorEntry = lock.resources[id];
@@ -8949,9 +8854,9 @@ function executeInstall(lock, op, { root, sourceRoot, owner }) {
     }
   }
   const liveDir = liveSkillDir(root, bareId);
-  (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(liveDir), { recursive: true });
-  (0, import_node_fs5.rmSync)(liveDir, { recursive: true, force: true });
-  (0, import_node_fs5.cpSync)(sourceDir, liveDir, { recursive: true });
+  (0, import_node_fs4.mkdirSync)((0, import_node_path4.dirname)(liveDir), { recursive: true });
+  (0, import_node_fs4.rmSync)(liveDir, { recursive: true, force: true });
+  (0, import_node_fs4.cpSync)(sourceDir, liveDir, { recursive: true });
   lock.resources[id] = {
     kind: "skill",
     origin: resource.origin,
@@ -8976,10 +8881,10 @@ function executeRemove(lock, op, { root, owner }) {
   dropOwner(lock, id, owner);
   if (!isOrphaned(lock, id)) return;
   const liveDir = liveSkillDir(root, bareSkillId(id));
-  if ((0, import_node_fs5.existsSync)(liveDir)) (0, import_node_fs5.rmSync)(liveDir, { recursive: true, force: true });
+  if ((0, import_node_fs4.existsSync)(liveDir)) (0, import_node_fs4.rmSync)(liveDir, { recursive: true, force: true });
   delete lock.resources[id];
 }
-async function applyPlan({ plan: plan2, lockPath, root, owner, sourceRoot = (0, import_node_path5.join)(root, DEFAULT_SOURCE_SUBDIR) }) {
+async function applyPlan({ plan: plan2, lockPath, root, owner, sourceRoot = (0, import_node_path4.join)(root, DEFAULT_SOURCE_SUBDIR) }) {
   const lock = await readLock(lockPath);
   const report = [];
   async function abort(id, cause) {
@@ -9014,7 +8919,103 @@ async function applyPlan({ plan: plan2, lockPath, root, owner, sourceRoot = (0, 
   return { report };
 }
 
+// src/pack-reconcile.js
+var SKILL_FILENAME2 = "SKILL.md";
+function walkSkillFiles(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = (0, import_node_fs5.readdirSync)(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = (0, import_node_path5.join)(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkSkillFiles(full));
+    else if (entry.isFile() && entry.name === SKILL_FILENAME2) out.push(full);
+  }
+  return out;
+}
+function parseProvenance(text) {
+  const idx = text.lastIndexOf(PROVENANCE_HEADING);
+  if (idx === -1) return void 0;
+  const rest = text.slice(idx + PROVENANCE_HEADING.length);
+  const nextHeadingAt = rest.search(/\n#{1,6}\s/);
+  const body = nextHeadingAt === -1 ? rest : rest.slice(0, nextHeadingAt);
+  const provenance = {};
+  const lineRe = /^[-*]\s*([a-zA-Z_]+)\s*:\s*(.+?)\s*$/gm;
+  let m;
+  while ((m = lineRe.exec(body)) !== null) {
+    provenance[m[1]] = m[2];
+  }
+  return Object.keys(provenance).length ? provenance : void 0;
+}
+function probeSkills(root) {
+  const skillsRoot = (0, import_node_path5.join)(root, ".claude", "skills");
+  const result = {};
+  if (!(0, import_node_fs5.existsSync)(skillsRoot)) return result;
+  for (const skillFile of walkSkillFiles(skillsRoot)) {
+    const skillDir = (0, import_node_path5.dirname)(skillFile);
+    const relId = (0, import_node_path5.relative)(skillsRoot, skillDir).split(import_node_path5.sep).join("/");
+    const id = `skill:${relId}`;
+    let text = "";
+    try {
+      text = (0, import_node_fs5.readFileSync)(skillFile, "utf8");
+    } catch {
+      text = "";
+    }
+    const provenance = parseProvenance(text);
+    result[id] = provenance ? { path: skillFile, provenance } : { path: skillFile };
+  }
+  return result;
+}
+function plan(desired, lock, actual) {
+  const install = [];
+  const remove = [];
+  const replace = [];
+  const report = [];
+  const desiredList = Array.isArray(desired) ? desired : [];
+  const lockResources = lock && lock.resources || {};
+  const actualMap = actual || {};
+  const desiredSkillIds = /* @__PURE__ */ new Set();
+  for (const resource of desiredList) {
+    if (!resource) continue;
+    if (resource.kind !== "skill") {
+      report.push({
+        id: `${resource.kind}:${resource.id}`,
+        reason: `resource kind "${resource.kind}" is out of scope for the Wave-1 (skills-only) planner`,
+        blocking: resource.required === "hard"
+      });
+      continue;
+    }
+    const id = `skill:${resource.id}`;
+    desiredSkillIds.add(id);
+    const lockEntry = lockResources[id];
+    const actualEntry = actualMap[id];
+    if (!actualEntry) {
+      install.push({ id, resource });
+      continue;
+    }
+    const currentPin = lockEntry ? lockEntry.pin : actualEntry?.provenance?.pin;
+    if (currentPin !== void 0 && currentPin !== resource.pin) {
+      replace.push({ id, resource, from: currentPin, to: resource.pin });
+    }
+  }
+  for (const [id, entry] of Object.entries(lockResources)) {
+    if (!entry || entry.kind !== "skill") continue;
+    if (desiredSkillIds.has(id)) continue;
+    const owners = Array.isArray(entry.owners) ? entry.owners : [];
+    const orphaned = owners.length === 0;
+    if (orphaned && entry.required === "soft") {
+      remove.push({ id, entry });
+    }
+  }
+  return { install, remove, replace, report };
+}
+
 // src/pack-orchestrator.js
+var import_node_fs6 = require("node:fs");
+var import_node_path6 = require("node:path");
 var DEFAULT_LOCK_FILENAME = "integrations.lock.json";
 async function reconcilePack(opts = {}) {
   const { repoRoot, descriptor, profileResult, sourceRoot } = opts;
@@ -9522,7 +9523,6 @@ function scanSkillContent(text, opts = {}) {
 // src/assimilate.js
 var SKILL_FILENAME3 = "SKILL.md";
 var DEFAULT_STAGING_SUBDIR = "assimilated-skills";
-var PROVENANCE_HEADING3 = "## Sources & provenance (hivemind)";
 var HIVEMIND_TAG = " (assimilated for Hivemind)";
 function defaultNow() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -9544,7 +9544,7 @@ function tagDescriptionForHivemind(text) {
 }
 function buildProvenanceBlock({ origin, pin, spdx_id, source_integrity, content_integrity, assimilated_at }) {
   return [
-    PROVENANCE_HEADING3,
+    PROVENANCE_HEADING,
     "",
     `- origin: ${origin}`,
     `- pin: ${pin}`,
@@ -9670,11 +9670,11 @@ async function assimilateSkill(opts) {
     throw new Error(`assimilateSkill: no ${SKILL_FILENAME3} found at "${source}"`);
   }
   const sourceSkillText = (0, import_node_fs8.readFileSync)(sourceSkillPath, "utf8");
-  if (sourceSkillText.includes(PROVENANCE_HEADING3)) {
+  if (sourceSkillText.includes(PROVENANCE_HEADING)) {
     return {
       id: resourceId,
       status: "blocked_provenance",
-      reason: `source SKILL.md at "${source}" already contains a "${PROVENANCE_HEADING3}" heading -- a third-party skill must not arrive carrying a hivemind-authored provenance block; refusing to assimilate`
+      reason: `source SKILL.md at "${source}" already contains a "${PROVENANCE_HEADING}" heading -- a third-party skill must not arrive carrying a hivemind-authored provenance block; refusing to assimilate`
     };
   }
   const license = await detectLicense({ skillDir: source, repoRoot, github, fetchGithubLicense });

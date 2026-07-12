@@ -184,7 +184,17 @@ export function hashDir(dir) {
 // fail-closed by construction (the anomaly stays in the digest and causes a
 // mismatch), never a thrown exception that could short-circuit the caller's
 // normal mismatch-report path.
-const PROVENANCE_HEADING = '## Sources & provenance (hivemind)';
+// TASK-149 — exported so src/assimilate.js and src/pack-reconcile.js import
+// this SAME literal instead of each keeping an independent copy: pre-fix, the
+// heading string existed as three separate copies, and if they ever drifted
+// canonicalizeSkillTextForContentHash below would silently stop finding the
+// heading, skip canonicalization, and every untampered skill would
+// false-mismatch at reconcile (fail-closed but WRONG -- legit installs would
+// break). This module is the shared home because it is the only one of the
+// three with no import edge FROM the other two (src/assimilate.js already
+// imports hashDir/hashOwnedSkillDir from here; src/pack-reconcile.js imports
+// nothing from either sibling) -- adding this export creates no cycle.
+export const PROVENANCE_HEADING = '## Sources & provenance (hivemind)';
 const CONTENT_INTEGRITY_VALUE_RE = /^- content_integrity: (sha256:[0-9a-f]{64}|\(pending\))\s*$/m;
 const CONTENT_INTEGRITY_HASH_PLACEHOLDER_LINE = '- content_integrity: <redacted-for-hash>';
 

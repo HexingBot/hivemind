@@ -94,12 +94,14 @@ import { join, dirname, relative, sep } from 'node:path';
 
 import { detectLicense, classifyLicense } from './license-detect.js';
 import { readLock, writeLock, addOwner } from './integrations-lock.js';
-import { hashDir, hashOwnedSkillDir } from './pack-apply.js';
+import { hashDir, hashOwnedSkillDir, PROVENANCE_HEADING } from './pack-apply.js';
 import { scanSkillContent } from './skill-scan.js';
 
 const SKILL_FILENAME = 'SKILL.md';
 const DEFAULT_STAGING_SUBDIR = 'assimilated-skills';
-const PROVENANCE_HEADING = '## Sources & provenance (hivemind)';
+// TASK-149: PROVENANCE_HEADING is now imported from src/pack-apply.js (the
+// single shared owner) rather than duplicated here -- see that module's
+// export comment for the cycle-check that makes this the safe direction.
 const HIVEMIND_TAG = ' (assimilated for Hivemind)';
 
 function defaultNow() {

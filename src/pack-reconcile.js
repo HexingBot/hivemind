@@ -24,8 +24,13 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 
+import { PROVENANCE_HEADING } from './pack-apply.js';
+
 const SKILL_FILENAME = 'SKILL.md';
-const PROVENANCE_HEADING = '## Sources & provenance (hivemind)';
+// TASK-149: PROVENANCE_HEADING is now imported from src/pack-apply.js (the
+// single shared owner across pack-apply/assimilate/pack-reconcile) rather
+// than duplicated here -- see that module's export comment for the
+// cycle-check (pack-apply.js has no import edge back to this module).
 
 // Recursive directory walk collecting every SKILL.md, mirroring the
 // ignore-nothing walker in src/license-detect.js (no glob dependency —
