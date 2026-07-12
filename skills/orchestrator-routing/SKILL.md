@@ -141,10 +141,13 @@ same workflow applies; only the I/O surface changes.
    `status: todo` task by scanning `tasks/index.json`). Extract title, description,
    acceptance criteria, and `depends_on`.
 2. **Plan.** Assign `verification_tier` at this step if the ticket does not already
-   carry one: `tdd` for source logic, state mutation, parsing, or schema changes;
-   `tests-after` for behavior provable by running the code with low edge-risk;
-   `uat-only` for glue, config, docs, or prototypes. Use `TaskCreate` to record the
-   breakdown:
+   carry one, biasing toward the **lightest defensible tier**: `tdd` is RESERVED
+   for security-sensitive logic, parsing, schema/state-schema changes, or state
+   mutation with real edge-risk; `tests-after` is the DEFAULT for behavior
+   provable by running the code with low edge-risk; `uat-only` for glue, config,
+   docs, or prototypes. (Absent `verification_tier` on an existing ticket still
+   defaults to `tdd` — this bias governs new assignment, not that fallback.) Use
+   `TaskCreate` to record the breakdown:
    - Research tasks (one per unknown library/API/pattern).
    - One test-writing task (`tdd` only) or one combined impl+lock task
      (`tests-after`) or one impl task (`uat-only`).
@@ -154,10 +157,11 @@ same workflow applies; only the I/O surface changes.
    to a new or updated skill in `.claude/skills/` when relevant.
 4. **Verify per tier.**
    - `tdd` — Spawn the Developer **once**. Within that spawn: write failing tests
-     that encode the acceptance criteria, capture the red run as evidence, commit
-     them as a `test:` commit strictly before any implementation commit, then
-     implement until all tests are green, run the per-ticket gate, and commit the
-     implementation separately.
+     that encode the acceptance criteria, run them and capture the red run
+     verbatim as evidence, then implement until all tests are green, run the
+     per-ticket gate, and commit test(s) and implementation together in a single
+     commit (a separate `test:`-before-impl commit remains allowed but is no
+     longer required — see "Single developer spawn" below).
    - `tests-after` — Spawn the Developer in a single spawn: implement first, then
      add a minimal set of regression locks before hand-off. When the ACs describe
      human-observable behavior, the UAT step is also mandatory — run it after the
@@ -304,7 +308,7 @@ breaks real tickets or forces frequent frontmatter edits, eroding the safety win
 **Verdict: feasible as a `PROJECT.md`-derived, generated allowlist, not as a static
 one — worth a distinct follow-up ticket; not implemented here (analysis only).**
 
-## Single developer spawn, two-commit discipline (tdd tier)
+## Single developer spawn, single-commit discipline (tdd tier)
 
 Every ticket gets **one** Developer spawn regardless of tier. The earlier
 two-spawn protocol for `tdd` tickets (TEST mode, then a separate IMPL-mode
@@ -312,28 +316,35 @@ spawn) is retired (agility review 2026-07-01, recommendation R1): each spawn
 paid full cold-context acquisition, roughly doubling Developer cost per `tdd`
 ticket.
 
-For `tdd` tickets, the single spawn carries a **two-commit discipline** that
-keeps tests-first provable without a second spawn:
+For `tdd` tickets, the single spawn originally also carried a two-commit
+discipline (a `test:` commit strictly before a separate impl commit) to keep
+tests-first provable without a second spawn. That commit-ordering ceremony is
+retired as of TASK-148 (further speed simplification): the tests-first proof
+is the **captured red-run evidence**, not commit ordering.
 
 1. Developer writes failing tests encoding every AC.
 2. Developer runs the tests and **captures the red output** (the actual
    failing run) as evidence the tests fail for the right reason — included
-   verbatim in the hand-off.
-3. Developer commits the tests in a `test:` commit. This commit must land
-   **strictly before** any implementation commit. No implementation code lands
-   without this preceding test commit.
-4. Developer implements until all tests pass and existing tests still pass.
-5. Developer runs the per-ticket gate (`npm run test:changed` plus `npm test`
+   verbatim in the hand-off. This capture, not commit ordering, is the
+   load-bearing tests-first proof.
+3. Developer implements until all tests pass and existing tests still pass.
+4. Developer runs the per-ticket gate (`npm run test:changed` plus `npm test`
    (fast tier) plus named affected e2e specs).
-6. Developer commits the implementation in a separate impl commit.
+5. Developer commits the tests and the implementation together in a **single
+   commit** referencing the ticket key. A separate `test:`-before-impl commit
+   remains ALLOWED (e.g. when splitting is convenient) but is no longer
+   REQUIRED.
 
-**What the Reviewer verifies:** the `test:` commit strictly precedes the impl
-commit in `git log`; the captured red-run evidence is present in the hand-off;
-and, when the hand-off looks suspicious, the Reviewer may re-run the tests
-against the impl commit's parent to independently reproduce the red state.
-Dropping the second spawn does not weaken the quality gate — historical HIGH
-findings were caught by fresh-context review, not by the TEST/IMPL spawn
-separation, and the reviewer remains the independent quality sensor.
+**What the Reviewer verifies:** the captured red-run evidence is present in
+the hand-off and looks genuine (fails for the right reason, not a typo or
+import error). When the hand-off looks suspicious, the Reviewer independently
+reproduces the red state by reverting or stashing the implementation hunks of
+the committed diff (not by checking out a prior test-only commit — under the
+single-commit discipline there may not be one) and re-running the tests.
+Dropping the second spawn, and now the second commit, does not weaken the
+quality gate — historical HIGH findings were caught by fresh-context review,
+not by TEST/IMPL spawn or commit separation, and the reviewer remains the
+independent quality sensor.
 
 For `tests-after` and `uat-only` tickets the Developer is spawned in a **single
 spawn** — implement first, add regression locks (tests-after) or no specs

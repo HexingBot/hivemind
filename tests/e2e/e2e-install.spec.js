@@ -60,8 +60,9 @@
 //      tests-first (developer) → implementation (developer) → review (reviewer)
 //      → transition the ticket to `done`.
 //    EXPECT: the orchestrator spawns the installed `hivemind:developer`
-//      and `hivemind:reviewer` subagents; a test commit precedes the
-//      impl commit; the reviewer runs read-only; the ticket's status reaches
+//      and `hivemind:reviewer` subagents; the Developer's hand-off carries
+//      captured red-run evidence (tests failed for the right reason before
+//      implementation); the reviewer runs read-only; the ticket's status reaches
 //      `done` with linked_commits populated — proving the agent team activates
 //      from the INSTALLED plugin, not from this dev repo's local .claude/.
 //

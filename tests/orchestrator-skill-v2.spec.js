@@ -161,20 +161,26 @@ describe('TASK-032 — orchestrator-routing skill carries the full operational m
     expect(/fresh context/i.test(text), 'skill must mention fresh context for subagents').toBe(true);
   });
 
-  it('documents_tdd_single_spawn_two_commit_discipline', () => {
+  it('documents_tdd_single_spawn_single_commit_discipline', () => {
     const text = readSkill();
-    // TASK-076: the two-spawn TEST/IMPL protocol is retired in favor of a single
-    // spawn with a two-commit discipline (test: commit strictly before impl
-    // commit, plus captured red-run evidence in the hand-off).
-    expect(/test:.*commit/i.test(text), 'skill must document the test: commit').toBe(true);
-    expect(/impl commit/i.test(text), 'skill must document the impl commit').toBe(true);
+    // TASK-148: the earlier two-commit discipline (test: commit strictly
+    // before impl commit) is retired in favor of a single commit; the
+    // captured red-run evidence is now the tests-first proof, not commit
+    // ordering. The skill must still mention the (now-optional) test: commit
+    // as an allowed-but-not-required split, plus the captured red-run
+    // evidence, plus the single-commit discipline itself.
+    expect(
+      /single commit|single-commit/i.test(text),
+      'skill must document the single-commit discipline',
+    ).toBe(true);
     expect(
       /red.run|red output/i.test(text),
       'skill must document captured red-run evidence',
     ).toBe(true);
+    expect(/test:.*commit/i.test(text), 'skill must still mention the (now-optional) test: commit').toBe(true);
     expect(
-      /strictly (before|precede)/i.test(text),
-      'skill must state the test: commit strictly precedes the impl commit',
+      /no longer required|remains allowed/i.test(text),
+      'skill must state the separate test:-before-impl commit is no longer required',
     ).toBe(true);
   });
 

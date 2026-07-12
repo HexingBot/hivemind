@@ -38,11 +38,11 @@ When the Atlassian MCP server is configured, the Orchestrator switches to Jira a
 
 The Orchestrator must follow this loop for every unit of work:
 
-1. **Read the ticket.** Load the next `status: todo` task from `tasks/` (or, once Jira is wired up, from the Atlassian MCP server). Extract acceptance criteria. **Assign the `verification_tier` at this step** if the ticket does not already carry one, using the rubric: `tdd` for source logic, state mutation, parsing, or schema changes; `tests-after` for behavior that is provable by running the code with low edge-risk; `uat-only` for glue, config, docs, or prototypes. Record the chosen tier on the ticket.
+1. **Read the ticket.** Load the next `status: todo` task from `tasks/` (or, once Jira is wired up, from the Atlassian MCP server). Extract acceptance criteria. **Assign the `verification_tier` at this step** if the ticket does not already carry one, biasing toward the **lightest defensible tier**: `tdd` is RESERVED for security-sensitive logic, parsing, schema/state-schema changes, or state mutation with real edge-risk; `tests-after` is the DEFAULT for behavior that is provable by running the code with low edge-risk; `uat-only` for glue, config, docs, or prototypes. Record the chosen tier on the ticket. (Absent `verification_tier` on an already-existing ticket still defaults to `tdd` — see the Testing section's rubric; this bias governs new tier assignment, not that fallback.)
 2. **Plan.** Decompose the ticket into research, implementation, and verification tasks. Record the plan as TODOs.
 3. **Research (if needed).** Spawn the `researcher` subagent for any unfamiliar library, API, or pattern. If the researcher discovers a new tech stack, it must produce an Agent Skill under `.claude/skills/<stack-name>/`.
 4. **Verify per tier.**
-   - `tdd` — Spawn the `developer` subagent **once**. Within that single spawn: write failing tests that encode each acceptance criterion, run them and capture the red output as evidence they fail for the right reason, commit them as a `test:` commit, then implement until the tests (and all existing tests) pass, run the per-ticket gate, and commit the implementation separately. No implementation lands without a preceding test commit — the Reviewer checks that the `test:` commit strictly precedes the impl commit and that the red-run evidence is present, and may re-run the tests against the impl commit's parent to independently reproduce the red state.
+   - `tdd` — Spawn the `developer` subagent **once**. Within that single spawn: write failing tests that encode each acceptance criterion, run them and capture the red output verbatim as evidence they fail for the right reason, then implement until the tests (and all existing tests) pass, run the per-ticket gate, and commit test(s) and implementation together in a **single commit** (a separate `test:`-before-impl commit remains allowed but is no longer required). The captured red-run evidence — not commit ordering — is the tests-first proof: the Reviewer verifies the evidence is present in the hand-off, and when the hand-off looks suspicious, reproduces the red state by reverting or stashing the implementation hunks of the committed diff (not by checking out a prior test-only commit) and re-running the tests.
    - `tests-after` — Spawn the `developer` subagent in a single spawn: implement first, prove the behavior by running the code, then add a **minimal** set of regression locks before hand-off. When ACs describe human-observable behavior, also run the UAT step below after the regression locks land.
    - `uat-only` — Spawn the `developer` subagent for implementation only; no new specs are written. After implementation, run the UAT step below.
 
@@ -60,7 +60,7 @@ To self-drive this loop across multiple tickets toward a stated goal instead of 
 ## Repository Etiquette
 
 - Conventional Commits (`feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`).
-- One logical change per commit. Tests and implementation may share a commit only when the test is a pure regression check for the same fix.
+- One logical change per commit. Tests and implementation may share a commit when the test is a pure regression check for the same fix, or — for `tdd`-tier tickets under the single-commit discipline (Workflow step 4) — when the captured red-run evidence stands in for commit separation as the tests-first proof.
 - Never commit secrets. `.env`, credentials, and tokens are out of scope.
 - Never use `--no-verify` or skip hooks.
 - Never force-push to `main` or any shared branch.
@@ -74,13 +74,13 @@ The suite is split into two tiers **by directory** (see `vitest.config.js` for t
 
 ### Verification tier rubric
 
-The `verification_tier` field on a ticket controls how the Developer verifies it:
+The `verification_tier` field on a ticket controls how the Developer verifies it. Assign the **lightest defensible tier**:
 
-- `tdd` — source logic, state mutation, parsing, schema changes. Tests-first, unchanged from the original policy.
-- `tests-after` — behavior provable by running the code with low edge-risk. Implement first, then add a minimal set of regression locks.
+- `tdd` — RESERVED for security-sensitive logic, parsing, schema/state-schema changes, or state mutation with real edge-risk. Tests-first, single-commit discipline: write failing tests, capture the red-run evidence, then implement — test(s) and implementation may land in one commit (see the orchestrator-routing skill's "Single developer spawn, single-commit discipline" section).
+- `tests-after` — the DEFAULT for behavior provable by running the code with low edge-risk. Implement first, then add a minimal set of regression locks.
 - `uat-only` — glue, config, docs, prototypes. No new specs; verified via conversational UAT (see the UAT step in Workflow step 4).
 
-Absent `verification_tier` defaults to `tdd` (backward-compatible).
+Absent `verification_tier` defaults to `tdd` (backward-compatible) — unchanged; the lightest-defensible-tier bias above governs new tier assignment, not this fallback.
 
 ### New-test budget
 
@@ -127,7 +127,7 @@ Rules:
 Each subagent declares its model in the `model:` frontmatter field of its agent definition file:
 
 - **reviewer** → `inherit` — the independent quality gate runs on the session's main model (currently Opus 4.8); `inherit` tracks whatever model the session runs on so the gate stays on the strongest available model without re-pinning every time the default moves. (TASK-042: retired the `fable` pin — Fable 5 is no longer available to this account.)
-- **developer** → `sonnet` — high-volume role (spawned once per ticket, with a two-commit discipline for `tdd`-tier work); Sonnet delivers strong coding capability at a lower cost tier.
+- **developer** → `sonnet` — high-volume role (spawned once per ticket; `tdd`-tier work uses a single-commit discipline where captured red-run evidence, not commit ordering, is the tests-first proof); Sonnet delivers strong coding capability at a lower cost tier.
 - **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
 - **orchestrator** — no agent file; it runs as the main session thread and inherits whatever model the session is started with (Opus 4.8 in production). TASK-032 removed the orchestrator agent file — the role is the session itself, equipped with the orchestrator-routing skill.
 
