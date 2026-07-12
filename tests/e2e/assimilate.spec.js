@@ -929,3 +929,206 @@ describe('TASK-142 -- AC4: an untampered stage-approve -> reconcile-apply round-
     expect(entry.content_integrity).toBe(assimilated.content_integrity);
   });
 });
+
+// TASK-142 HIGH FIX (reviewer-reproduced, fix-round 2) -- the ORIGINAL
+// canonicalization rule matched the WHOLE content_integrity line
+// (`/^- content_integrity:.*$/m`), so appending attacker text to that exact
+// line AFTER approve was erased before hashing ever saw it: undetected
+// tampering, materialized verbatim into the live tree the agent reads. The
+// rule now only canonicalizes a WELL-FORMED value (a real sha256 digest or
+// the transient "(pending)" placeholder), scoped to inside the provenance
+// block -- anything else on that line, or a decoy line outside the block,
+// is left in the hashed bytes untouched.
+
+describe('TASK-142 HIGH FIX -- appending text to the staged content_integrity line is caught, not silently erased', () => {
+  it('reproduces the reviewer-found hole: line-tamper AFTER approve fails closed, nothing materializes, no injected text reaches any live file', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('asm-142-linetamper');
+    const lockPath = join(root, 'integrations.lock.json');
+
+    const assimilated = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+    expect(assimilated.status).toBe('assimilated');
+
+    const ownedSkillPath = join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md');
+    const before = readFileSync(ownedSkillPath, 'utf8');
+    const realLine = `- content_integrity: ${assimilated.content_integrity}`;
+    expect(before).toContain(realLine);
+
+    // TAMPER: append attacker text to the EXACT content_integrity line, post
+    // approve -- the valid-looking hash prefix is left completely intact,
+    // only trailing text is appended. This is the exact shape the reviewer
+    // reproduced: a whole-line canonicalization erases this before hashing,
+    // making the tamper invisible.
+    const injected = 'ATTACKER-INJECTED-INSTRUCTIONS-FOR-THE-AGENT';
+    const tamperedLine = `${realLine} ${injected}`;
+    const tampered = before.replace(realLine, tamperedLine);
+    expect(tampered).not.toBe(before);
+    writeFileSync(ownedSkillPath, tampered, 'utf8');
+
+    const plan = {
+      install: [{
+        id: 'skill:permissive-skill',
+        resource: { id: 'permissive-skill', kind: 'skill', origin: 'github.com/example/permissive-skill', pin: 'abc123', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({ plan, lockPath, root, owner: PACK, sourceRoot: join(root, 'assimilated-skills') });
+
+    // FAIL CLOSED: reported, nothing materialized -- the tamper is caught,
+    // not silently re-blessed.
+    expect(result.report).toHaveLength(1);
+    expect(result.report[0].id).toBe('skill:permissive-skill');
+    expect(result.report[0].reason).toMatch(/content integrity mismatch/i);
+
+    // Nothing materialized -- no live tree at all, so the injected text
+    // categorically cannot have reached anything an agent would read.
+    expect(existsSync(join(root, '.claude'))).toBe(false);
+  });
+
+  it('a hard-required line-tampered resource aborts via HardResourceFailureError with the typed mismatch cause', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { applyPlan, HardResourceFailureError, ContentIntegrityMismatchError } = await import(PROD.packApply);
+
+    const root = makeTmpDir('asm-142-linetamper-hard');
+    const lockPath = join(root, 'integrations.lock.json');
+
+    const assimilated = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    const ownedSkillPath = join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md');
+    const before = readFileSync(ownedSkillPath, 'utf8');
+    const realLine = `- content_integrity: ${assimilated.content_integrity}`;
+    writeFileSync(ownedSkillPath, before.replace(realLine, `${realLine} ATTACKER-INJECTED-INSTRUCTIONS-FOR-THE-AGENT`), 'utf8');
+
+    const plan = {
+      install: [{
+        id: 'skill:permissive-skill',
+        resource: { id: 'permissive-skill', kind: 'skill', origin: 'github.com/example/permissive-skill', pin: 'abc123', scope: 'project', required: 'hard' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    let caught;
+    try {
+      await applyPlan({ plan, lockPath, root, owner: PACK, sourceRoot: join(root, 'assimilated-skills') });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(HardResourceFailureError);
+    expect(caught.cause).toBeInstanceOf(ContentIntegrityMismatchError);
+    expect(existsSync(join(root, '.claude'))).toBe(false);
+  });
+});
+
+describe('TASK-142 HIGH FIX -- a decoy content_integrity-looking line in the skill BODY never confuses the writer or the verifier', () => {
+  it('the provenance block carries the REAL hash (never left "(pending)"), exactly the block line is canonicalized, and an untampered round-trip has no false mismatch', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { applyPlan, hashOwnedSkillDir } = await import(PROD.packApply);
+
+    const sourceDir = makeTmpDir('asm-142-decoy-source');
+    const decoyHash = 'sha256:' + 'c'.repeat(64); // well-formed-LOOKING, but not the real hash
+    writeFileSync(
+      join(sourceDir, 'SKILL.md'),
+      [
+        '---',
+        'name: decoy-skill',
+        'description: A demo skill whose body happens to contain a decoy provenance-looking line.',
+        '---',
+        '',
+        '# Decoy Skill',
+        '',
+        'Some legitimate content here, followed by a line that LOOKS like a',
+        'provenance bullet but is just ordinary body text, BEFORE the real',
+        'provenance block assimilate appends at the end of the file:',
+        '',
+        `- content_integrity: ${decoyHash}`,
+        '',
+        'The rest of the skill continues normally after the decoy line.',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(join(sourceDir, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Example\n');
+
+    const root = makeTmpDir('asm-142-decoy-project');
+    const lockPath = join(root, 'integrations.lock.json');
+
+    const assimilated = await assimilateSkill({
+      source: sourceDir,
+      resourceId: 'decoy-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/decoy-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+    expect(assimilated.status).toBe('assimilated');
+    expect(assimilated.content_integrity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(assimilated.content_integrity).not.toBe(decoyHash);
+
+    const ownedSkillPath = join(root, 'assimilated-skills', 'decoy-skill', 'SKILL.md');
+    const text = readFileSync(ownedSkillPath, 'utf8');
+
+    // Exactly TWO lines now match the "- content_integrity: ..." shape: the
+    // decoy (untouched, still in the body) and the real one (in the
+    // provenance block). The block's line carries the REAL hash -- never
+    // left as the transient "(pending)" placeholder (the MEDIUM half of the
+    // reviewer's finding: a text-wide first-match splice used to write the
+    // real value into the DECOY line instead, leaving "(pending)" attested
+    // in the actual provenance block).
+    const allMatches = text.match(/^- content_integrity: .*$/gm) || [];
+    expect(allMatches).toHaveLength(2);
+    expect(allMatches[0]).toBe(`- content_integrity: ${decoyHash}`);
+    expect(allMatches[1]).toBe(`- content_integrity: ${assimilated.content_integrity}`);
+    expect(text).not.toContain('- content_integrity: (pending)');
+
+    // A fresh, independent re-hash reproduces the exact same content_integrity
+    // -- proves only the block's own line was ever canonicalized, never the decoy.
+    const ownedDir = join(root, 'assimilated-skills', 'decoy-skill');
+    expect(`sha256:${hashOwnedSkillDir(ownedDir)}`).toBe(assimilated.content_integrity);
+
+    // Untampered round-trip -- no false mismatch despite the decoy.
+    const plan = {
+      install: [{
+        id: 'skill:decoy-skill',
+        resource: { id: 'decoy-skill', kind: 'skill', origin: 'github.com/example/decoy-skill', pin: 'abc123', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+    const result = await applyPlan({ plan, lockPath, root, owner: PACK, sourceRoot: join(root, 'assimilated-skills') });
+    expect(result.report).toEqual([]);
+    const liveSkillPath = join(root, '.claude', 'skills', 'decoy-skill', 'SKILL.md');
+    expect(existsSync(liveSkillPath)).toBe(true);
+    expect(readFileSync(liveSkillPath, 'utf8')).toContain(`- content_integrity: ${assimilated.content_integrity}`);
+  });
+});
