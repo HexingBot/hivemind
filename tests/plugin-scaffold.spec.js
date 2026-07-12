@@ -41,8 +41,10 @@ const PLUGIN_SKILLS_DIR = join(REPO_ROOT, 'skills');
 const BIN_DIR = join(REPO_ROOT, 'bin');
 
 // TASK-032 — orchestrator.md removed: the Orchestrator is the main session
-// thread, not a spawnable subagent. The plugin now ships three specialist agents.
-const AGENT_FILES = ['developer.md', 'researcher.md', 'reviewer.md'];
+// thread, not a spawnable subagent. TASK-144 added security-reviewer.md (a
+// first-class, read-only subagent for hivemind-assimilate-skill Step 4) — a
+// new agent must be COVERED by this scaffold sensor, not exempt from it.
+const AGENT_FILES = ['developer.md', 'researcher.md', 'reviewer.md', 'security-reviewer.md'];
 const REPO_LOCAL_SKILL = 'tech-training-template';
 // TASK-025 — the always-on orchestrator-routing backstop skill is a SECOND
 // legitimately shipped repo-local skill. The plugin's skill inventory genuinely
@@ -162,7 +164,7 @@ describe('AC2 — .claude-plugin/marketplace.json catalogs the plugin', () => {
 // AC3 — components relocated to the plugin root.
 // ===========================================================================
 describe('AC3 — agents/ and skills/ live at the plugin root', () => {
-  it('plugin_agents_dir_contains_exactly_the_three_specialist_agents', () => {
+  it('plugin_agents_dir_contains_exactly_the_specialist_agents', () => {
     expect(existsSync(PLUGIN_AGENTS_DIR), 'plugin-root agents/ must exist').toBe(true);
     const entries = readdirSync(PLUGIN_AGENTS_DIR)
       .filter((n) => n.endsWith('.md'))

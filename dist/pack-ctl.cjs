@@ -9619,6 +9619,33 @@ function computeSkillScan(source, sourceSkillPath) {
   }
   return scanSkillContent(mainText, { location: SKILL_FILENAME3, files: otherFiles });
 }
+function validateReviewerVerdict(reviewerVerdict) {
+  if (reviewerVerdict === null || reviewerVerdict === void 0) return;
+  if (typeof reviewerVerdict !== "object" || Array.isArray(reviewerVerdict)) {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict must be an object shaped { verdict: 'safe'|'suspicious', reasoning: string }, got ${JSON.stringify(reviewerVerdict)}`
+    );
+  }
+  const REQUIRED_KEYS = ["verdict", "reasoning"];
+  const keys = Object.keys(reviewerVerdict);
+  const missing = REQUIRED_KEYS.filter((k) => !keys.includes(k));
+  const extra = keys.filter((k) => !REQUIRED_KEYS.includes(k));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict has an off-shape key set (expected exactly ["verdict","reasoning"]; missing: ${JSON.stringify(missing)}, extra: ${JSON.stringify(extra)})`
+    );
+  }
+  if (typeof reviewerVerdict.verdict !== "string") {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict.verdict must be a string, got ${JSON.stringify(reviewerVerdict.verdict)} (${typeof reviewerVerdict.verdict})`
+    );
+  }
+  if (typeof reviewerVerdict.reasoning !== "string") {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict.reasoning must be a string, got ${JSON.stringify(reviewerVerdict.reasoning)} (${typeof reviewerVerdict.reasoning})`
+    );
+  }
+}
 async function assimilateSkill(opts) {
   const {
     source,
@@ -9637,6 +9664,7 @@ async function assimilateSkill(opts) {
     reviewerVerdict = null,
     securityOverride = false
   } = opts;
+  validateReviewerVerdict(reviewerVerdict);
   const sourceSkillPath = (0, import_node_path8.join)(source, SKILL_FILENAME3);
   if (!(0, import_node_fs8.existsSync)(sourceSkillPath)) {
     throw new Error(`assimilateSkill: no ${SKILL_FILENAME3} found at "${source}"`);

@@ -265,6 +265,78 @@ export function computeSkillScan(source, sourceSkillPath) {
   return scanSkillContent(mainText, { location: SKILL_FILENAME, files: otherFiles });
 }
 
+// TASK-144 -- strict-shape validation seam for opts.reviewerVerdict. The
+// security-reviewer subagent (.claude/agents/security-reviewer.md) and
+// hivemind-assimilate-skill Step 4 both commit to a STRICT return shape,
+// { verdict: 'safe'|'suspicious', reasoning: string }, exactly two keys, no
+// more, no fewer. Without this seam, assimilateSkill's default-deny gate
+// (TASK-140) only ever inspects `reviewerVerdict?.verdict === 'safe'` --
+// which correctly DENIES any wrong verdict *value* ('unsafe', 'Safe', '',
+// absent -- all already regression-locked by the TASK-140 default-deny
+// matrix in tests/e2e/assimilate.spec.js and must keep returning
+// status:'blocked_security', never throwing) but says nothing about the rest
+// of the object's SHAPE. A caller (a buggy Orchestrator-side JSON parse of
+// the subagent's reply, a future non-CLI integration, a hand-rolled verdict)
+// could hand in `{ verdict: 'safe', reasoning: 123, somethingElse: true }` --
+// off-shape, but `.verdict === 'safe'` still passes the loose check and the
+// write would silently proceed on a malformed object. THAT is the gap this
+// closes: a verdict object that IS present is validated structurally
+// (correct type, exactly the two expected keys, both fields the right
+// primitive type) and a violation is a HARD, SURFACED throw -- never folded
+// into the deny path and never silently treated as safe.
+//
+// Deliberately scoped, matching the ALREADY-LOCKED TASK-140 behavior this
+// ticket aligns with rather than replaces:
+//   - `reviewerVerdict` itself absent (null/undefined) is the legitimate
+//     "not yet reviewed" state (no security-reviewer spawn has happened yet,
+//     or a pending_approval preview is being computed before Step 4 runs).
+//     That is NOT an error here -- it is left to the existing default-deny
+//     gate, which already, correctly, refuses the write
+//     (status:'blocked_security') for an absent verdict on approve. Throwing
+//     here for "absent" would break that already-regression-locked contract
+//     (tests/e2e/assimilate.spec.js's DEFAULT_DENY_MATRIX 'absent
+//     reviewerVerdict' case, tests/e2e/pack-ctl.spec.js's
+//     "no_security_verdict_at_all" case).
+//   - `reviewerVerdict.verdict` holding a well-typed but UNRECOGNIZED string
+//     ('unsafe', 'Safe', '', 'suspicious') is likewise NOT a shape violation
+//     -- the key exists, the value is a string, the object is otherwise
+//     well-formed. That is a VALUE the deny gate already handles correctly
+//     (denies, does not throw); this validator only reaches for shape bugs
+//     the deny gate cannot see (wrong type, wrong key set, wrong field
+//     types) -- the exact case where an "off-shape but verdict says safe"
+//     object could otherwise slip through undetected.
+export function validateReviewerVerdict(reviewerVerdict) {
+  if (reviewerVerdict === null || reviewerVerdict === undefined) return;
+
+  if (typeof reviewerVerdict !== 'object' || Array.isArray(reviewerVerdict)) {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict must be an object shaped { verdict: 'safe'|'suspicious', reasoning: string }, got ${JSON.stringify(reviewerVerdict)}`,
+    );
+  }
+
+  const REQUIRED_KEYS = ['verdict', 'reasoning'];
+  const keys = Object.keys(reviewerVerdict);
+  const missing = REQUIRED_KEYS.filter((k) => !keys.includes(k));
+  const extra = keys.filter((k) => !REQUIRED_KEYS.includes(k));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict has an off-shape key set (expected exactly ["verdict","reasoning"]; missing: ${JSON.stringify(missing)}, extra: ${JSON.stringify(extra)})`,
+    );
+  }
+
+  if (typeof reviewerVerdict.verdict !== 'string') {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict.verdict must be a string, got ${JSON.stringify(reviewerVerdict.verdict)} (${typeof reviewerVerdict.verdict})`,
+    );
+  }
+
+  if (typeof reviewerVerdict.reasoning !== 'string') {
+    throw new Error(
+      `assimilateSkill: reviewerVerdict.reasoning must be a string, got ${JSON.stringify(reviewerVerdict.reasoning)} (${typeof reviewerVerdict.reasoning})`,
+    );
+  }
+}
+
 /**
  * Assimilate a third-party skill: run the license-detection decision-support
  * chain, then EITHER return a pending_approval/declined review payload
@@ -320,7 +392,11 @@ export function computeSkillScan(source, sourceSkillPath) {
  *   proceeds ONLY when `reviewerVerdict?.verdict === 'safe'` exactly — an
  *   absent reviewerVerdict, an unrecognized string, a typo, wrong case, or
  *   `'suspicious'` all block (`status: 'blocked_security'`) unless
- *   `opts.securityOverride === true`.
+ *   `opts.securityOverride === true`. STRICT SHAPE (TASK-144): when present,
+ *   this must be an object with exactly the keys `verdict` (string) and
+ *   `reasoning` (string) — validated by `validateReviewerVerdict` before any
+ *   other work; an off-shape object throws synchronously rather than being
+ *   silently folded into the deny path.
  * @param {boolean} [opts.securityOverride] - explicit human override that
  *   allows `decision: 'approve'` to proceed despite a non-'safe'
  *   `reviewerVerdict`. Default false. Strict boolean `true` only — a truthy
@@ -366,6 +442,14 @@ export async function assimilateSkill(opts) {
     reviewerVerdict = null,
     securityOverride = false,
   } = opts;
+
+  // TASK-144 -- hard, surfaced error on an off-shape (present but malformed)
+  // reviewerVerdict, BEFORE any other work; see validateReviewerVerdict's
+  // header for exactly what counts as off-shape vs. an already-locked
+  // legitimate deny value. Throws synchronously (this function is async, so
+  // the throw becomes a rejected promise -- callers already `await` this
+  // call and must handle rejection same as any other thrown Error here).
+  validateReviewerVerdict(reviewerVerdict);
 
   const sourceSkillPath = join(source, SKILL_FILENAME);
   if (!existsSync(sourceSkillPath)) {

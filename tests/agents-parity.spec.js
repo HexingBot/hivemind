@@ -9,10 +9,17 @@
 // agent files differs, or any pair of same-named files is not byte-identical.
 //
 // TASK-032 — orchestrator.md removed: the Orchestrator is the main session
-// thread, not a spawnable subagent. The agent-file set is now three files:
+// thread, not a spawnable subagent. The agent-file set was three files:
 // developer, researcher, reviewer. Coverage preserved — the parity guard still
 // enforces byte-identical copies between .claude/agents/ and plugin-root agents/
-// for all three remaining specialist subagents.
+// for every specialist subagent.
+//
+// TASK-144 — security-reviewer.md added: a first-class, read-only subagent
+// spawned by hivemind-assimilate-skill Step 4 to judge a fetched third-party
+// skill's *instruction text* for prompt-injection / secret-exfiltration /
+// guardrail-disable / user-impersonation risk (see that file's own header). A
+// new agent must be COVERED by this drift guard, not exempt from it — the set
+// is now four files.
 //
 // AC map (TASK-021):
 //   AC5 — keep-both + drift-guard: `.claude/agents/` stays; plugin-root
@@ -25,11 +32,11 @@ import { join } from 'node:path';
 
 import { REPO_ROOT } from './helpers/repoRoot.js';
 
-// The three repo-local specialist subagents. The Orchestrator is the main
-// session thread (TASK-032) and no longer ships as an agent file. The global
+// The repo-local specialist subagents. The Orchestrator is the main session
+// thread (TASK-032) and no longer ships as an agent file. The global
 // gsd-*/vue/etc. skills/agents are NOT repo-local and are intentionally out of
 // scope here.
-const AGENT_FILES = ['developer.md', 'researcher.md', 'reviewer.md'];
+const AGENT_FILES = ['developer.md', 'researcher.md', 'reviewer.md', 'security-reviewer.md'];
 
 const DEV_AGENTS_DIR = join(REPO_ROOT, '.claude', 'agents');
 const PLUGIN_AGENTS_DIR = join(REPO_ROOT, 'agents');
@@ -43,10 +50,11 @@ function listAgentMd(dir) {
 }
 
 describe('AC5 — .claude/agents stays as the live dev source of truth', () => {
-  it('dev_agents_dir_still_holds_exactly_the_three_specialist_agents', () => {
+  it('dev_agents_dir_still_holds_exactly_the_specialist_agents', () => {
     // Safety guard: the relocation must NOT delete the dev source. This passes
     // today and must keep passing after the impl lands. The Orchestrator is the
-    // main thread (TASK-032) so only three specialist agents remain.
+    // main thread (TASK-032) so only the specialist agents remain (TASK-144:
+    // developer, researcher, reviewer, security-reviewer).
     const entries = listAgentMd(DEV_AGENTS_DIR);
     expect(entries, '.claude/agents/ must still exist').not.toBeNull();
     expect(entries).toEqual([...AGENT_FILES].sort());
