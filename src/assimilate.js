@@ -339,7 +339,14 @@ export function computeSkillScan(source, sourceSkillPath) {
  *   other non-'safe' value — and `securityOverride` is not strictly `true`)
  *   carries the same `scan`/`reviewer` fields and also writes NOTHING — an
  *   approve alone can never write without a 'safe' verdict or an explicit
- *   override.
+ *   override. A `blocked_provenance` status (TASK-143, reachable for ANY
+ *   `decision`, including no decision at all) means `source`'s own SKILL.md
+ *   already contains a "## Sources & provenance (hivemind)" heading — a
+ *   third-party skill must never arrive carrying a hivemind-authored
+ *   provenance block (forgeable origin/pin/integrity that could otherwise
+ *   masquerade as genuine). Writes NOTHING; carries only `id`, `status`, and
+ *   `reason` — checked before license detection/scanning even run, so no
+ *   `spdx_id`/`classification`/`scan`/`reviewer` fields are present.
  */
 export async function assimilateSkill(opts) {
   const {
@@ -363,6 +370,35 @@ export async function assimilateSkill(opts) {
   const sourceSkillPath = join(source, SKILL_FILENAME);
   if (!existsSync(sourceSkillPath)) {
     throw new Error(`assimilateSkill: no ${SKILL_FILENAME} found at "${source}"`);
+  }
+
+  // TASK-143 (security, provenance spoofing) -- WRITER half of a
+  // defense-in-depth fix; the PARSER half is src/pack-reconcile.js#parseProvenance's
+  // matching lastIndexOf change (that module's TASK-143 comment). A malicious
+  // (or accidentally pre-seeded) third-party skill could ship its OWN
+  // "## Sources & provenance (hivemind)" heading -- forged origin/pin/spdx_id/
+  // integrity/assimilated_at -- and, pre-fix, that FIRST-in-file forged block
+  // shadowed the genuine block src/assimilate.js appends at the END (reconcile's
+  // old text.indexOf first-match parse). DECISION (documented, per the ticket's
+  // own guidance): REFUSE, not strip. This module's HUMAN-GATE POLICY (see the
+  // header above) already makes the human's `decision: 'approve'` the sole
+  // write authority, so a typed refusal here is simpler to reason about than a
+  // strip that could itself be gamed (e.g. a heading value crafted to survive
+  // whatever strip regex was chosen, or a strip that silently proceeds without
+  // the human ever knowing the source was tampered with). Checked
+  // unconditionally -- before license detection or content scanning, and
+  // regardless of `decision` -- so a poisoned source is refused even at the
+  // pending_approval preview stage; a human reviewing a preview should never
+  // see numbers computed from bytes that would be refused on approve anyway.
+  // A skill with no such heading is completely unaffected (existing behavior
+  // preserved) -- this is a pure pre-check, not a rewrite of anything below.
+  const sourceSkillText = readFileSync(sourceSkillPath, 'utf8');
+  if (sourceSkillText.includes(PROVENANCE_HEADING)) {
+    return {
+      id: resourceId,
+      status: 'blocked_provenance',
+      reason: `source SKILL.md at "${source}" already contains a "${PROVENANCE_HEADING}" heading -- a third-party skill must not arrive carrying a hivemind-authored provenance block; refusing to assimilate`,
+    };
   }
 
   const license = await detectLicense({ skillDir: source, repoRoot, github, fetchGithubLicense });
@@ -392,8 +428,10 @@ export async function assimilateSkill(opts) {
     // copied anywhere, stands in for the not-yet-existing ownedDir).
     const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
     const scan = computeSkillScan(source, sourceSkillPath);
-    const sourceText = readFileSync(sourceSkillPath, 'utf8');
-    const { contentIntegrity, block } = rescopeWithContentIntegrity(sourceText, fields, source);
+    // TASK-143 -- reuse the same read the provenance-heading guard above
+    // already performed rather than reading sourceSkillPath a second time;
+    // the guard already proved this text carries no pre-existing heading.
+    const { contentIntegrity, block } = rescopeWithContentIntegrity(sourceSkillText, fields, source);
     return {
       ...base,
       status: 'pending_approval',

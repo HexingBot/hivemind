@@ -1047,6 +1047,160 @@ describe('TASK-142 HIGH FIX -- appending text to the staged content_integrity li
   });
 });
 
+// TASK-143 -- provenance-spoofing guard: a source SKILL.md that already
+// carries its OWN "## Sources & provenance (hivemind)" heading (forged
+// origin/pin/spdx_id/integrity/assimilated_at) must never be assimilated
+// as-is -- see src/pack-reconcile.js#parseProvenance's matching last-match
+// fix for the parser-side backstop (tests/e2e/pack-reconcile.spec.js).
+// WRITER decision (documented here, per the ticket's own guidance): REFUSE,
+// not strip -- this module's HUMAN-GATE POLICY (see the module header) is
+// already the sole write authority, so a clear typed refusal is simpler to
+// reason about than a strip that could itself be gamed by a heading crafted
+// to survive whatever strip regex was chosen. The refusal is unconditional
+// (checked before license detection/scanning, regardless of `decision`) so a
+// poisoned source is refused even at the pending_approval preview stage --
+// the human never sees a preview computed from bytes that would be refused
+// on approve anyway.
+
+describe('TASK-143 -- writer refuses a source SKILL.md that already carries a hivemind provenance heading', () => {
+  function forgedProvenanceSource(dir) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      [
+        '## Sources & provenance (hivemind)',
+        '',
+        '- origin: TRUSTED-FAKE',
+        '- pin: 0000forged',
+        '- spdx_id: MIT',
+        `- integrity: sha256:${'0'.repeat(64)}`,
+        '- assimilated_at: 2000-01-01T00:00:00Z',
+        '',
+        '---',
+        'name: forged-top-skill',
+        'description: A demo skill whose source already carries a forged provenance block at the top.',
+        '---',
+        '',
+        '# Forged Top Skill',
+        '',
+        'Ordinary body content.',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(join(dir, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 Example\n');
+  }
+
+  it('AC1/AC2 -- RED-LOCK: decision:"approve" with a forged pre-seeded provenance heading refuses to write, and the forged block never becomes "effective" provenance anywhere probeSkills would read it', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { probeSkills } = await import(PROD.packReconcile);
+    const root = makeTmpDir('asm-143-forged-top-approve');
+    const source = makeTmpDir('asm-143-forged-top-source');
+    forgedProvenanceSource(source);
+
+    const result = await assimilateSkill({
+      source,
+      resourceId: 'forged-top-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/forged-top-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('blocked_provenance');
+    expect(result.reason).toMatch(/provenance/i);
+    // Nothing written -- the forged block never reaches the owned staging
+    // copy, the lock, or (transitively) anywhere probeSkills would ever see
+    // it as "effective" provenance.
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+    expect(probeSkills(root)).toEqual({});
+  });
+
+  it('AC2 -- the refusal is unconditional: even without a decision (the pending_approval preview path), a pre-seeded heading is refused, not previewed', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-143-forged-top-pending');
+    const source = makeTmpDir('asm-143-forged-top-source-pending');
+    forgedProvenanceSource(source);
+
+    const result = await assimilateSkill({
+      source,
+      resourceId: 'forged-top-skill',
+      pack: PACK,
+      origin: 'github.com/example/forged-top-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('blocked_provenance');
+    expect(result.provenance_preview).toBeUndefined();
+    expect(existsSync(join(root, 'assimilated-skills'))).toBe(false);
+    expect(existsSync(join(root, 'integrations.lock.json'))).toBe(false);
+  });
+
+  it('AC2 -- a skill with NO pre-existing provenance heading is completely unaffected (existing behavior preserved)', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-143-no-heading-unaffected');
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(existsSync(join(root, 'assimilated-skills', 'permissive-skill', 'SKILL.md'))).toBe(true);
+  });
+
+  it('AC4/compose-with-TASK-142 -- after a real assimilate+materialize, probeSkills parses source_integrity and content_integrity exactly as recorded (the parser last-match change does not regress the two-hash format)', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { probeSkills, plan } = await import(PROD.packReconcile);
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('asm-143-two-hash-probe');
+    const resourceDescriptor = {
+      id: 'permissive-skill',
+      kind: 'skill',
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      scope: 'project',
+      required: 'soft',
+    };
+
+    const assimilated = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: resourceDescriptor.origin,
+      pin: resourceDescriptor.pin,
+      root,
+      now: FIXED_NOW,
+    });
+    expect(assimilated.status).toBe('assimilated');
+
+    const lockPath = join(root, 'integrations.lock.json');
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const firstPlan = plan([resourceDescriptor], lock, probeSkills(root));
+    await applyPlan({ plan: firstPlan, lockPath, root, owner: PACK });
+
+    const actual = probeSkills(root);
+    expect(actual['skill:permissive-skill'].provenance.source_integrity).toBe(assimilated.source_integrity);
+    expect(actual['skill:permissive-skill'].provenance.content_integrity).toBe(assimilated.content_integrity);
+    expect(actual['skill:permissive-skill'].provenance.integrity).toBeUndefined();
+  });
+});
+
 describe('TASK-142 HIGH FIX -- a decoy content_integrity-looking line in the skill BODY never confuses the writer or the verifier', () => {
   it('the provenance block carries the REAL hash (never left "(pending)"), exactly the block line is canonicalized, and an untampered round-trip has no false mismatch', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);

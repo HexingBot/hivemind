@@ -8648,7 +8648,7 @@ function walkSkillFiles(dir) {
   return out;
 }
 function parseProvenance(text) {
-  const idx = text.indexOf(PROVENANCE_HEADING);
+  const idx = text.lastIndexOf(PROVENANCE_HEADING);
   if (idx === -1) return void 0;
   const rest = text.slice(idx + PROVENANCE_HEADING.length);
   const nextHeadingAt = rest.search(/\n#{1,6}\s/);
@@ -9641,6 +9641,14 @@ async function assimilateSkill(opts) {
   if (!(0, import_node_fs8.existsSync)(sourceSkillPath)) {
     throw new Error(`assimilateSkill: no ${SKILL_FILENAME3} found at "${source}"`);
   }
+  const sourceSkillText = (0, import_node_fs8.readFileSync)(sourceSkillPath, "utf8");
+  if (sourceSkillText.includes(PROVENANCE_HEADING3)) {
+    return {
+      id: resourceId,
+      status: "blocked_provenance",
+      reason: `source SKILL.md at "${source}" already contains a "${PROVENANCE_HEADING3}" heading -- a third-party skill must not arrive carrying a hivemind-authored provenance block; refusing to assimilate`
+    };
+  }
   const license = await detectLicense({ skillDir: source, repoRoot, github, fetchGithubLicense });
   const classification = classifyLicense(license.spdx_id);
   const base = {
@@ -9656,8 +9664,7 @@ async function assimilateSkill(opts) {
     }
     const fields2 = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
     const scan2 = computeSkillScan(source, sourceSkillPath);
-    const sourceText = (0, import_node_fs8.readFileSync)(sourceSkillPath, "utf8");
-    const { contentIntegrity: contentIntegrity2, block } = rescopeWithContentIntegrity(sourceText, fields2, source);
+    const { contentIntegrity: contentIntegrity2, block } = rescopeWithContentIntegrity(sourceSkillText, fields2, source);
     return {
       ...base,
       status: "pending_approval",

@@ -56,8 +56,20 @@ function walkSkillFiles(dir) {
 // hivemind-assimilate-skill). This parser's expected shape is this ticket's
 // best guess, not a locked contract — when TASK-120 lands, reconcile this
 // parser against whatever format its writer actually emits (or vice versa).
+//
+// TASK-143 (security, provenance spoofing) -- this is that reconciliation:
+// text.indexOf (first match) let a malicious/legacy SKILL.md carrying its
+// OWN forged "## Sources & provenance (hivemind)" heading BEFORE the genuine
+// hivemind-appended one shadow the real block (src/assimilate.js's
+// appendProvenanceBlock always appends at the END, never the top). lastIndexOf
+// makes the LAST occurrence authoritative, matching the writer's append-only
+// contract, so even a pre-seeded block cannot shadow the genuine one — the
+// defense-in-depth backstop for src/assimilate.js's writer-side refuse guard
+// (assimilateSkill refuses to even assimilate a source that already carries
+// this heading; see that module's TASK-143 comment), covering any block that
+// slips through some other path (a hand-placed/legacy skill).
 function parseProvenance(text) {
-  const idx = text.indexOf(PROVENANCE_HEADING);
+  const idx = text.lastIndexOf(PROVENANCE_HEADING);
   if (idx === -1) return undefined;
   const rest = text.slice(idx + PROVENANCE_HEADING.length);
   const nextHeadingAt = rest.search(/\n#{1,6}\s/);
