@@ -66,13 +66,18 @@
 //                     verdicts are always caller-supplied data, never computed
 //                     here). Writes assimilated-skills/<resourceId>/ +
 //                     records the integrations.lock.json owner ONLY when
-//                     --decision approve is given AND the verdict is not
-//                     suspicious (or --security-override is the *exact*
-//                     string "true" — see the strict-boundary comment on
-//                     runAssimilateStage below). Every other combination
-//                     (no --decision, --decision decline, or an un-overridden
-//                     suspicious verdict) writes nothing and reports a
-//                     `blocked_*` status with a `reason`.
+//                     --decision approve is given AND the security-reviewer
+//                     verdict is exactly "safe" (or --security-override is
+//                     the *exact* string "true" — see the strict-boundary
+//                     comment on runAssimilateStage below). DEFAULT-DENY
+//                     (TASK-140): this CLI's own --security-verdict flag only
+//                     ever accepts safe|suspicious, but the underlying
+//                     src/assimilate.js#assimilateSkill gate blocks on ANY
+//                     non-"safe" verdict, including an entirely absent one —
+//                     every other combination (no --decision, --decision
+//                     decline, no --security-verdict at all, or an
+//                     un-overridden "suspicious" verdict) writes nothing and
+//                     reports a `blocked_*` status with a `reason`.
 //
 // `--repo-root` is REQUIRED for every subcommand (unlike loop-ctl.js, which
 // falls back to CLAUDE_PROJECT_DIR/cwd) — the addon-pack ops always operate on

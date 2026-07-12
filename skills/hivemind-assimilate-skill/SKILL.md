@@ -23,9 +23,11 @@ route around them:
 - **License classification is decision support only, never a write authority.** A skill's
   self-declared frontmatter `license` is self-reported by the skill's own author and trivially
   forgeable — a "permissive" finding must never be able to auto-adopt anything.
-- **A `suspicious` reviewer verdict blocks even an `approve`**, unless the human also passes an
-  explicit override (`securityOverride: true` / CLI `--security-override true`, the *exact* string
-  `"true"` — nothing looser bypasses the gate).
+- **Default-deny: an `approve` write proceeds only when the reviewer verdict is exactly `'safe'`**
+  (TASK-140). Any other value — absent, `'suspicious'`, an unrecognized string, a typo,
+  differently-cased, or an empty string — blocks the write (`status: 'blocked_security'`), unless
+  the human also passes an explicit override (`securityOverride: true` / CLI `--security-override
+  true`, the *exact* string `"true"` — nothing looser bypasses the gate).
 - **Assimilation never goes autonomous under ANY `loop_auth` grant.** Unlike installing an
   already-vetted resource (which trust can automate), "Assimilating a third-party skill" stays
   **ask** in both the interactive and trust-granted columns of the addon-packs.md §4 trust-boundary
@@ -136,10 +138,11 @@ verdict.
    Wraps `assimilateSkill()` unchanged. Writes the owned, re-scoped copy to
    `assimilated-skills/<resource-id>/` (never directly into the live `.claude/skills/` tree — see
    step 8) and records the `integrations.lock.json` owner edge, but **only** when `--decision
-   approve` is given **and** the verdict is not `suspicious` (or `--security-override true` is
-   present). Every other combination — no `--decision`, `--decision decline`, or an
-   un-overridden `suspicious` verdict — writes nothing and reports a `blocked_*` status with a
-   `reason`; that is a legitimate, deterministic result, not a CLI error.
+   approve` is given **and** the security-reviewer verdict is exactly `safe` (or
+   `--security-override true` is present). Every other combination — no `--decision`,
+   `--decision decline`, or an absent/unrecognized/non-`safe` verdict (including `suspicious`),
+   un-overridden — writes nothing and reports a `blocked_*` status with a `reason`; that is a
+   legitimate, deterministic result, not a CLI error.
 
 8. **Reconcile / materialize:**
 

@@ -28,11 +28,12 @@
 // payload, never itself a write authority — a self-reported "permissive"
 // finding must never be able to auto-adopt.
 //
-// CONTENT SECURITY GATE (TASK-122, locked 2026-07-08): license is NOT a
-// safety assurance — a self-declared frontmatter license is forgeable, and
-// says nothing about whether the skill's *instructions* try to exfiltrate
-// secrets or run arbitrary commands. Every pending_approval/blocked_security
-// payload additionally carries:
+// CONTENT SECURITY GATE (TASK-122, locked 2026-07-08; DEFAULT-DENY inversion
+// TASK-140, locked 2026-07-12): license is NOT a safety assurance — a
+// self-declared frontmatter license is forgeable, and says nothing about
+// whether the skill's *instructions* try to exfiltrate secrets or run
+// arbitrary commands. Every pending_approval/blocked_security payload
+// additionally carries:
 //   - `scan` — src/skill-scan.js's structured findings over the skill's own
 //     content (pure, sync, LLM-free pattern scan: shell-exec, network-fetch,
 //     env-credential-access, filesystem-access-outside-skill, obfuscated-blob).
@@ -47,13 +48,18 @@
 // Orchestrator spawns a security-reviewer subagent that reads the fetched
 // skill's actual content INCLUDING its instruction text (the prompt-injection
 // risk a code scanner cannot catch), and passes the resulting verdict back in
-// on the next call. On `decision: 'approve'`, a `reviewerVerdict.verdict ===
-// 'suspicious'` WITHOUT an explicit `opts.securityOverride: true` refuses the
-// write (`status: 'blocked_security'`) — an approve alone can never override
-// a suspicious content verdict. Absent a reviewerVerdict at all, approve
-// proceeds unblocked (the Orchestrator is responsible for always running the
-// reviewer step before calling approve in real usage; this module only
-// enforces the case where a verdict WAS supplied and says suspicious).
+// on the next call. DEFAULT-DENY (TASK-140): the gate checks for the
+// POSITIVE `reviewerVerdict?.verdict === 'safe'`, never the negative
+// `=== 'suspicious'` — any value that is NOT exactly `'safe'` (absent,
+// `'suspicious'`, an unrecognized string, a typo, differently-cased `'Safe'`,
+// or an empty string) refuses the write (`status: 'blocked_security'`)
+// UNLESS the caller passes an explicit `opts.securityOverride: true` (strict
+// boolean; TASK-122's override semantics are unchanged — a truthy
+// non-boolean value never bypasses the gate). The pre-TASK-140 gate checked
+// the negative (`=== 'suspicious'`) and so failed OPEN on every other
+// value, including an entirely absent verdict — that gap is what this
+// inversion closes; an approve can now never write without either an
+// explicit 'safe' verdict or an explicit override.
 
 import { existsSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
@@ -237,21 +243,28 @@ export function computeSkillScan(source, sourceSkillPath) {
  *   - the security-reviewer subagent's verdict over the skill's content
  *   INCLUDING its instruction text (the Orchestrator's job to produce — see
  *   the CONTENT SECURITY GATE note above). Echoed back as `reviewer` in every
- *   status. Absent -> `reviewer: null`, and approve is NOT blocked by this
- *   check (only an explicit 'suspicious' verdict blocks).
+ *   status. DEFAULT-DENY (TASK-140): on `decision: 'approve'`, the write
+ *   proceeds ONLY when `reviewerVerdict?.verdict === 'safe'` exactly — an
+ *   absent reviewerVerdict, an unrecognized string, a typo, wrong case, or
+ *   `'suspicious'` all block (`status: 'blocked_security'`) unless
+ *   `opts.securityOverride === true`.
  * @param {boolean} [opts.securityOverride] - explicit human override that
- *   allows `decision: 'approve'` to proceed despite a 'suspicious'
- *   `reviewerVerdict`. Default false. Has no effect otherwise.
+ *   allows `decision: 'approve'` to proceed despite a non-'safe'
+ *   `reviewerVerdict`. Default false. Strict boolean `true` only — a truthy
+ *   non-boolean value (e.g. the string `'true'`) does NOT override. Has no
+ *   effect when the verdict is already 'safe'.
  * @returns {Promise<object>} `{ status: 'pending_approval'|'declined'|'blocked_security'|'assimilated', id, spdx_id, classification, scan, reviewer, ... }`.
  *   A `pending_approval` payload additionally carries `origin`, `pin`,
  *   `integrity`, `assimilated_at`, and `provenance_preview` (the exact
  *   provenance-block text an `approve` would write), plus `scan` (structured
  *   risky-pattern findings, src/skill-scan.js) and `reviewer` (the injected
  *   verdict, or null) — everything a human needs to decide, computed WITHOUT
- *   writing anything. A `blocked_security` payload (only reachable via
- *   `decision: 'approve'` + a 'suspicious' `reviewerVerdict` with no
- *   `securityOverride`) carries the same `scan`/`reviewer` fields and also
- *   writes NOTHING — an approve alone can never override a suspicious verdict.
+ *   writing anything. A `blocked_security` payload (reachable via `decision:
+ *   'approve'` whenever `reviewerVerdict?.verdict !== 'safe'` — absent,
+ *   `'suspicious'`, or any other non-'safe' value — and `securityOverride`
+ *   is not strictly `true`) carries the same `scan`/`reviewer` fields and
+ *   also writes NOTHING — an approve alone can never write without a 'safe'
+ *   verdict or an explicit override.
  */
 export async function assimilateSkill(opts) {
   const {
@@ -313,19 +326,22 @@ export async function assimilateSkill(opts) {
     };
   }
 
-  // decision === 'approve' -- for ANY classification, but TASK-122's content
-  // security gate can still refuse the write: a 'suspicious' reviewerVerdict
-  // without an explicit securityOverride blocks here, before anything is
-  // touched on disk. Scan findings ALONE never block -- they're surfaced for
-  // the human, same as license classification.
+  // decision === 'approve' -- for ANY classification, but TASK-122/TASK-140's
+  // content security gate can still refuse the write. DEFAULT-DENY
+  // (TASK-140): the write proceeds ONLY when reviewerVerdict?.verdict ===
+  // 'safe' exactly -- absent, unrecognized, differently-cased, empty, or
+  // 'suspicious' ALL block, unless the caller passes an explicit
+  // securityOverride === true (strict boolean; TASK-122's override semantics
+  // unchanged). Scan findings ALONE never block -- they're surfaced for the
+  // human, same as license classification.
   const scan = computeSkillScan(source, sourceSkillPath);
-  if (reviewerVerdict?.verdict === 'suspicious' && securityOverride !== true) {
+  if (reviewerVerdict?.verdict !== 'safe' && securityOverride !== true) {
     return {
       ...base,
       status: 'blocked_security',
       scan,
       reviewer: reviewerVerdict,
-      reason: 'security-reviewer verdict is suspicious; an explicit securityOverride is required to proceed',
+      reason: `security-reviewer verdict is ${JSON.stringify(reviewerVerdict?.verdict ?? null)}, not "safe" (default-deny); an explicit securityOverride is required to proceed`,
     };
   }
 

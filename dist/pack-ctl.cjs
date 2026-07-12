@@ -9478,13 +9478,13 @@ async function assimilateSkill(opts) {
     };
   }
   const scan = computeSkillScan(source, sourceSkillPath);
-  if (reviewerVerdict?.verdict === "suspicious" && securityOverride !== true) {
+  if (reviewerVerdict?.verdict !== "safe" && securityOverride !== true) {
     return {
       ...base,
       status: "blocked_security",
       scan,
       reviewer: reviewerVerdict,
-      reason: "security-reviewer verdict is suspicious; an explicit securityOverride is required to proceed"
+      reason: `security-reviewer verdict is ${JSON.stringify(reviewerVerdict?.verdict ?? null)}, not "safe" (default-deny); an explicit securityOverride is required to proceed`
     };
   }
   const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
