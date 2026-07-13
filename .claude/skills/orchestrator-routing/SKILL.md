@@ -969,18 +969,30 @@ third-party skill.
 - **`/hivemind:design-pack`** (`commands/design-pack.md`) drives the resolve -> reconcile-plan ->
   reconcile-apply sequence end to end for the design-power pack and reports the split between what
   was materialized and what the human still needs to install themselves.
-- **Assimilation** (TASK-154: two variants, gated by `isFrameworkRepo` from
-  `src/framework-context.js`) is the ONLY supported way a project adopts a third-party Agent Skill
+- **Assimilation** is the ONLY supported way a project adopts a third-party Agent Skill
   (including a design-pack's own bundled skill resources like `ui-ux-pro-max`) — fetch+pin, license
   classify, risky-pattern scan, a spawned security-reviewer subagent verdict over the skill's
   actual instruction text, an approval package, then stage + reconcile. Load whenever the task is
-  "assimilate/vendor/adopt a third-party skill":
-  - **`assimilate-current-project`** (`skills/assimilate-current-project/SKILL.md`, shipped to
-    every consumer install) — the entry point in a downstream consumer project (`isFrameworkRepo`
-    false). This is the variant `/hivemind:design-pack` above routes to.
-  - **`hivemind-assimilate-skill`** (`.claude/skills/hivemind-assimilate-skill/SKILL.md`,
-    framework-repo only) — the entry point when vendoring a skill INTO the hivemind framework's own
-    dev repo (`isFrameworkRepo` true). Never shipped to consumer installs.
+  "assimilate/vendor/adopt a third-party skill". Its two variants (`hivemind-assimilate-skill` /
+  `assimilate-current-project`) follow the framework-vs-consumer split documented in "Framework-only
+  vs current-project skill variants" below — `/hivemind:design-pack` above routes to
+  `assimilate-current-project`.
+
+## Framework-only vs current-project skill variants (TASK-152/153/154/155)
+
+Three skills operate on the hivemind framework repo's own `src/`/`tests/`/`tasks/` and are
+FRAMEWORK-only — they live in `.claude/skills/` and are never shipped to a consumer install. Each
+has a `-current-project` counterpart that is the CONSUMER-project entry point instead — it operates
+on the consumer's own project and ships at plugin-root `skills/`. Both sides of the split are gated
+at load time by `isFrameworkRepo` (`src/framework-context.js`): route to the framework variant when
+`isFrameworkRepo` is true for the repo at hand, otherwise to the `-current-project` variant. Each
+skill's own body carries the operational detail — this table is only the routing lookup:
+
+| Framework-only (`.claude/skills/`) | Consumer-facing (plugin-root `skills/`) |
+|---|---|
+| `hive-self-improve` | `hive-self-improve-current-project` |
+| `hive-adversarial-improve` | `hive-adversarial-improve-current-project` |
+| `hivemind-assimilate-skill` | `assimilate-current-project` |
 
 **Assimilation never goes autonomous under any `loop_auth` grant.** Unlike installing an
 already-vetted pack resource (which the reconciler above can do without a human in the loop),
