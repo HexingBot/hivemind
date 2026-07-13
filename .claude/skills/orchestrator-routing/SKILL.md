@@ -969,18 +969,24 @@ third-party skill.
 - **`/hivemind:design-pack`** (`commands/design-pack.md`) drives the resolve -> reconcile-plan ->
   reconcile-apply sequence end to end for the design-power pack and reports the split between what
   was materialized and what the human still needs to install themselves.
-- **`hivemind-assimilate-skill`** (`skills/hivemind-assimilate-skill/SKILL.md`) is the ONLY
-  supported way a project adopts a third-party Agent Skill (including a design-pack's own bundled
-  skill resources like `ui-ux-pro-max`) — fetch+pin, license classify, risky-pattern scan, a
-  spawned security-reviewer subagent verdict over the skill's actual instruction text, an approval
-  package, then stage + reconcile. Load this skill whenever the task is "assimilate/vendor/adopt a
-  third-party skill."
+- **Assimilation** (TASK-154: two variants, gated by `isFrameworkRepo` from
+  `src/framework-context.js`) is the ONLY supported way a project adopts a third-party Agent Skill
+  (including a design-pack's own bundled skill resources like `ui-ux-pro-max`) — fetch+pin, license
+  classify, risky-pattern scan, a spawned security-reviewer subagent verdict over the skill's
+  actual instruction text, an approval package, then stage + reconcile. Load whenever the task is
+  "assimilate/vendor/adopt a third-party skill":
+  - **`assimilate-current-project`** (`skills/assimilate-current-project/SKILL.md`, shipped to
+    every consumer install) — the entry point in a downstream consumer project (`isFrameworkRepo`
+    false). This is the variant `/hivemind:design-pack` above routes to.
+  - **`hivemind-assimilate-skill`** (`.claude/skills/hivemind-assimilate-skill/SKILL.md`,
+    framework-repo only) — the entry point when vendoring a skill INTO the hivemind framework's own
+    dev repo (`isFrameworkRepo` true). Never shipped to consumer installs.
 
 **Assimilation never goes autonomous under any `loop_auth` grant.** Unlike installing an
 already-vetted pack resource (which the reconciler above can do without a human in the loop),
 adopting a third-party skill always requires an explicit human `approve` — no standing
-authorization switch, preset, or trust grant ever lifts that gate. See
-`hivemind-assimilate-skill`'s "invariants" section for the enforced detail.
+authorization switch, preset, or trust grant ever lifts that gate. See either variant's
+"invariants" section for the enforced detail (identical in both).
 
 ## Notes
 

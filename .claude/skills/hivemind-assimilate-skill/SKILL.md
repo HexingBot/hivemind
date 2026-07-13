@@ -1,6 +1,6 @@
 ---
 name: hivemind-assimilate-skill
-description: Load when adopting, vendoring, or "assimilating" a third-party Agent Skill (or a design-pack skill resource) into a hivemind project — orchestrates the full human-gated adoption protocol (fetch+pin, license classify, risky-pattern scan, a security-reviewer subagent verdict over the skill's actual instruction text, an approval package, explicit human sign-off, then stage + reconcile). Triggers on "assimilate a skill", "vendor this skill", "adopt a third-party skill", pack-ctl assimilate, integrations.lock.json, or assimilated-skills/.
+description: Load when adopting, vendoring, or "assimilating" a third-party Agent Skill (or a design-pack skill resource) into the hivemind FRAMEWORK repo itself — orchestrates the full human-gated adoption protocol (fetch+pin, license classify, risky-pattern scan, a security-reviewer subagent verdict over the skill's actual instruction text, an approval package, explicit human sign-off, then stage + reconcile). FRAMEWORK-REPO ONLY — for a downstream consumer project use assimilate-current-project instead. Triggers on "assimilate a skill into the framework", "vendor this skill into hivemind", pack-ctl assimilate, integrations.lock.json, or assimilated-skills/.
 ---
 
 # hivemind-assimilate-skill
@@ -12,6 +12,21 @@ someone else's skill (and inheriting its supply-chain risk forever), hivemind **
 copy**: fetch it, judge it once at author/vet time with a human in the loop, then materialize the
 owned copy into the live `.claude/skills/` tree. An upstream repo going away, changing, or turning
 malicious after assimilation has **zero runtime effect** — you're running your own copy.
+
+**Context guard — framework repo only (TASK-154).** This skill vendors a third-party skill INTO
+the hivemind **framework's own** `.claude/skills/` tree (the `bin/*.js` dev-repo invocation path in
+step 1 below) — never into a downstream consumer project built with hivemind. Before proceeding,
+confirm you are in the framework repo: call `isFrameworkRepo({ repoRoot })` from
+`src/framework-context.js` against the current working repo root. If it returns **false** (a
+consumer project), **STOP** — do not proceed with this skill — and direct the user to the
+`assimilate-current-project` variant instead, which runs the same protocol against the consumer's
+own project via `${CLAUDE_PLUGIN_ROOT}/dist/pack-ctl.cjs`. If `src/framework-context.js` cannot be
+imported (e.g. a stripped checkout), fall back to the equivalent check by hand: the repo root has a
+`.claude-plugin/plugin.json` whose `name` field is `hivemind`, AND a `src/` directory, AND a
+`bin/init.js` file. All three must hold for this skill to apply; if any is missing, STOP and route
+to the `assimilate-current-project` variant. This skill is FRAMEWORK-ONLY — it lives in
+`.claude/skills/` only and is deliberately absent from the plugin-root `skills/` shipped to
+consumer installs.
 
 ## The invariants, first (locked — verbatim in intent)
 
@@ -186,6 +201,9 @@ verdict.
   explicitly carved out of every trust grant.
 - `--security-override` only ever means the literal string `"true"`; anything else (missing,
   `"false"`, `"1"`, a typo) is treated as no override, by design.
+- Do not confuse this skill with `assimilate-current-project` — that variant is for vendoring a
+  skill INTO a downstream consumer's own project and only applies when `isFrameworkRepo` is false,
+  which the guard above already checks for you.
 
 ## References
 
@@ -198,3 +216,5 @@ verdict.
 - `bin/pack-ctl.js` — the shipped CLI's `assimilate scan|classify|stage` flag contract.
 - `bin/assimilate-skill.js` — dev-repo convenience wrapper that also does the git-clone step
   (network; not part of the shipped plugin surface).
+- `src/framework-context.js` — `isFrameworkRepo({ repoRoot })`, the context guard this skill opens
+  with.

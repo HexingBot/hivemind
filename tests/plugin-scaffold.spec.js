@@ -77,9 +77,23 @@ const MANIFEST_SKILLS = [
 const VERIFIER_SKILL = 'manifest-verifier';
 // TASK-136 — hivemind-assimilate-skill: the orchestrator-facing skill that
 // operationalizes the third-party-skill adoption protocol (addon-packs.md
-// §4/§7). Ships in BOTH skills/ and .claude/skills/ byte-identical (dev
-// dogfood mirror, same pattern as orchestrator-routing/mcp-server/graphify).
+// §4/§7). Originally shipped in BOTH skills/ and .claude/skills/
+// byte-identical (dev dogfood mirror, same pattern as
+// orchestrator-routing/mcp-server/graphify).
+//
+// TASK-154 — FRAMEWORK-ONLY, not consumer-shipped: this skill's `bin/*.js`
+// invocation path and its "vendor a skill INTO the hivemind framework itself"
+// framing are meaningless in a downstream consumer project (same reasoning as
+// HARDENING_SKILL/SELF_IMPROVE_SKILL above). It now lives in .claude/skills/
+// ONLY — deliberately ABSENT from plugin-root skills/. See
+// FRAMEWORK_ONLY_SKILLS below. Its consumer-facing sibling is
+// ASSIMILATE_CURRENT_PROJECT_SKILL.
 const ASSIMILATE_SKILL = 'hivemind-assimilate-skill';
+// TASK-154 — the consumer-project counterpart: adopts a third-party skill
+// into the CONSUMER'S OWN project (dist/pack-ctl.cjs path), never into the
+// framework. Ships in plugin-root skills/ ONLY, not dogfooded into
+// .claude/skills/ (same -current-project pattern as the two siblings below).
+const ASSIMILATE_CURRENT_PROJECT_SKILL = 'assimilate-current-project';
 // TASK-147 (renamed from wargame-a-component → hive-self-improve → hive-adversarial-improve): a durable
 // self-hardening capability skill (the 9-step component-hardening protocol that
 // stress-tests trust boundaries against hostile inputs and locks each gap as a
@@ -109,16 +123,19 @@ const ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL = 'hive-adversarial-improve-curr
 
 // Framework-only channel: present in .claude/skills/ ONLY, absent from
 // plugin-root skills/ (never shipped to consumer installs).
-const FRAMEWORK_ONLY_SKILLS = [HARDENING_SKILL, SELF_IMPROVE_SKILL].sort();
+// TASK-154 — ASSIMILATE_SKILL (hivemind-assimilate-skill) joins this channel.
+const FRAMEWORK_ONLY_SKILLS = [HARDENING_SKILL, SELF_IMPROVE_SKILL, ASSIMILATE_SKILL].sort();
 
 // Consumer-shipped channel: present in plugin-root skills/ (what a consumer
 // install actually sees). This is the readdirSync(skills/) equality target —
-// the old REPO_LOCAL_SKILLS set minus the two framework-only skills, plus the
-// two -current-project siblings that replace them for consumers.
+// the old REPO_LOCAL_SKILLS set minus the three framework-only skills, plus
+// the three -current-project siblings that replace them for consumers.
+// TASK-154 — ASSIMILATE_SKILL removed from this list, ASSIMILATE_CURRENT_PROJECT_SKILL added.
 const CONSUMER_SHIPPED_SKILLS = [
   BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
-  ...MANIFEST_SKILLS, VERIFIER_SKILL, ASSIMILATE_SKILL,
+  ...MANIFEST_SKILLS, VERIFIER_SKILL,
   SELF_IMPROVE_CURRENT_PROJECT_SKILL, ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL,
+  ASSIMILATE_CURRENT_PROJECT_SKILL,
 ].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
@@ -259,8 +276,11 @@ describe('TASK-153 — framework-only skills are .claude/skills/-only, absent fr
   });
 });
 
-describe('TASK-153 — -current-project skills ship at plugin-root skills/, not dogfooded into .claude/skills/', () => {
-  const CURRENT_PROJECT_SKILLS = [SELF_IMPROVE_CURRENT_PROJECT_SKILL, ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL];
+describe('TASK-153/TASK-154 — -current-project skills ship at plugin-root skills/, not dogfooded into .claude/skills/', () => {
+  const CURRENT_PROJECT_SKILLS = [
+    SELF_IMPROVE_CURRENT_PROJECT_SKILL, ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL,
+    ASSIMILATE_CURRENT_PROJECT_SKILL,
+  ];
 
   it.each(CURRENT_PROJECT_SKILLS)('%s exists in plugin-root skills/', (skill) => {
     const pluginSkillMd = join(PLUGIN_SKILLS_DIR, skill, 'SKILL.md');

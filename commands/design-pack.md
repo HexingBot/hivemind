@@ -69,18 +69,18 @@ Present **three** lists to the human, never conflating them:
    itself, not on the human-readable `reason` string, which may change. For each one:
    - Strip the `skill:` prefix to get the resource id, and look up that id in
      `packs/design-power/descriptor.json`'s `resources[]` to read its `origin` and `pin`.
-   - Instruct the human to run the human-gated **`hivemind-assimilate-skill`** skill to vendor it,
+   - Instruct the human to run the human-gated **`assimilate-current-project`** skill to vendor it,
      giving it the resource's `origin` and `pin`, e.g.:
 
      ```
      ui-ux-pro-max (skill, required: soft) — not installed; no owned copy found.
-     Run hivemind-assimilate-skill to vendor it:
+     Run assimilate-current-project to vendor it:
        origin: github.com/nextlevelbuilder/ui-ux-pro-max-skill
        pin:    12b486b22e67f5d887962ef8351c1ac863bfaeb9
      Then re-run /hivemind:design-pack to materialize it.
      ```
    - Never shortcut assimilation yourself — do not copy the skill in manually or skip the
-     `hivemind-assimilate-skill` protocol to save a step.
+     `assimilate-current-project` protocol to save a step.
 3. **Wave-2 resources NOT installed** — every `mcp`/`plugin` entry in the **top-level** `plan.report`.
    For each one, look up its `install` command in `packs/design-power/descriptor.json`'s
    `resources[]` (matched by `id`) and give the human the exact command to run themselves, e.g.:
@@ -103,7 +103,8 @@ non-design-heavy resolve), not that something silently failed.
 
 - This command never assimilates a third-party skill on its own initiative — a resource whose
   `install` says "vendor via assimilate" (e.g. `ui-ux-pro-max`) still needs the full human-gated
-  `hivemind-assimilate-skill` protocol; point the human at that skill rather than trying to
+  `assimilate-current-project` protocol (the shipped, consumer-project entry point — this project
+  is never the hivemind framework repo itself); point the human at that skill rather than trying to
   shortcut it here.
 - `--repo-root` is required on every `pack-ctl` subcommand; resolve it the same way the rest of the
   framework does — `CLAUDE_PROJECT_DIR` if set, else the current working directory.
