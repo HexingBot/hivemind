@@ -39,7 +39,7 @@ import { dirname, join } from 'node:path';
 
 import { atomicWriteFile } from './atomic-write.js';
 import { readProjectMd } from './project-md.js';
-import { rejectControlChars, escapeMarkdownStructure, renderBulletLines } from './intake-sanitizer.js';
+import { rejectControlChars, escapeMarkdownStructure, renderBulletLines, sanitizeInvisibleCharsDeep } from './intake-sanitizer.js';
 
 const PROJECT_CONTEXT_REL = ['.claude', 'agents', 'project-context.md'];
 const SCHEMA_VERSION = 1;
@@ -150,6 +150,14 @@ export async function generateProjectContext({
       );
     }
   }
+
+  // TASK-159 — SECURITY: strip invisible Unicode Tag-block/format/control
+  // characters from every answer BEFORE rendering. Applied independently
+  // here (not just inside writeProjectMd) so this path is covered even when
+  // generateProjectContext is called with a fresh `answers` map that
+  // bypasses writeProjectMd entirely — the same defense-in-depth rationale
+  // as the existing rejectControlChars calls in this file's Stack loop.
+  resolvedAnswers = sanitizeInvisibleCharsDeep(resolvedAnswers ?? {});
 
   const target = join(repoRoot, ...PROJECT_CONTEXT_REL);
   mkdirSync(dirname(target), { recursive: true });

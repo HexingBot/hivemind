@@ -60,6 +60,127 @@
 //   for the pinned behavior and project-md.js's BODY_SECTIONS prose branch
 //   for the call site.
 
+// TASK-159 — SECURITY: invisible Unicode characters. Unlike the structural
+// forgery covered above (which is about visible markdown markers), this class
+// of value is invisible to a human reviewer but still tokenizable by an LLM
+// reading the raw file bytes (probe P9: a Unicode Tag-block-encoded hidden
+// instruction rides along inside an otherwise-innocuous success_criteria
+// string). \p{Cf} ("format" category) is the precise Unicode classification
+// for characters whose entire purpose is to affect rendering/processing
+// without themselves being visible — it covers the Tag block (U+E0000-
+// U+E007F, the exact probe P9 vector), zero-width space/joiners (U+200B-
+// U+200D), the BOM/ZWNBSP (U+FEFF), soft hyphen (U+00AD), and similar. It
+// deliberately does NOT match combining marks (Mn), CJK (Lo), or emoji (So) —
+// those are ordinary, visible Unicode and must survive untouched (AC4). The
+// second alternative strips non-whitespace C0/C1 control characters (bare
+// \x00-\x1F/\x7F-\x9F) EXCEPT tab/LF/CR, which remain meaningful in
+// multi-line prose fields and are handled by escapeMarkdownStructure /
+// rejectControlChars instead.
+// RC-loop follow-up (MEDIUM): \p{Cf} only matches ASSIGNED Unicode codepoints.
+// The Tag block (decimal 917504-917631, i.e. U+E0000-U+E007F) has 31
+// UNASSIGNED codepoints at its low end (U+E0000, U+E0002-U+E001F) that fall
+// outside Cf's coverage — no live payload exploits this today (the P9
+// encoder only emits the assigned, printable U+E0020-U+E007E sub-range,
+// which Cf already catches), but AC1's contract is an absolute "no codepoint
+// in U+E0000-U+E007F survives", not "no ASSIGNED codepoint survives", and
+// relying on assignment status is version-fragile (a future Unicode version
+// could assign those 31 codepoints, silently changing behavior). The numeric
+// range check below closes that gap directly — a plain decimal comparison,
+// not a literal `/[\u{...}-\u{...}]/u` regex escape range (kept in the
+// robust numeric form per this module's TASK-159 note on avoiding literal
+// escape-range syntax).
+const TAG_BLOCK_START = 0xe0000; // 917504
+const TAG_BLOCK_END = 0xe007f; // 917631
+
+// RC-loop follow-up (LOW, accepted trade-off): \p{Cf} strips ALL Unicode
+// "format" characters, which also includes a handful of legitimate
+// script-specific format signs (Arabic number signs U+0600-0605/U+06DD,
+// Syriac abbreviation mark U+070F, Kaithi number signs, etc.) alongside the
+// invisible-injection vectors this module targets. Accepted: intake is
+// English-first, the security value (tag-block/zero-width/bidi
+// neutralization) outweighs the rare degradation, and the failure mode is
+// graceful (a sign is dropped, never injected) — AC4 only pins Latin/CJK/
+// emoji preservation, not these scripts.
+const FORMAT_CHAR_RE = /\p{Cf}/u;
+
+// Non-whitespace C0/C1 control code points are also invisible-in-render, but
+// deliberately excluded from FORMAT_CHAR_RE's scope (Cf is a narrower,
+// display-focused category). Tab (9), LF (10), and CR (13) are EXCLUDED from
+// this strip set on purpose: tab is ordinary whitespace, and LF/CR remain
+// meaningful line separators in multi-line prose fields, already governed by
+// escapeMarkdownStructure (multi-line contexts) and rejectControlChars
+// (single-line Stack contexts) elsewhere in this module — stripping them here
+// too would silently collapse legitimate multi-paragraph input.
+function isStrippableControlCodePoint(codePoint) {
+  if (codePoint === 9 || codePoint === 10 || codePoint === 13) return false;
+  if (codePoint <= 31) return true; // C0 controls
+  if (codePoint >= 127 && codePoint <= 159) return true; // DEL + C1 controls
+  if (codePoint >= TAG_BLOCK_START && codePoint <= TAG_BLOCK_END) return true; // Tag block, assigned or not
+  return false;
+}
+
+/**
+ * Strip invisible-rendering Unicode characters from a single string value:
+ * Unicode Tag-block characters (U+E0000-U+E007F — probe P9's exact payload
+ * encoding), zero-width joiners/spaces and the BOM (all Unicode category Cf,
+ * "format"), and non-whitespace control characters. Ordinary visible Unicode
+ * — combining marks, CJK, emoji, accented Latin — is category Mn/Lo/So/Ll and
+ * is left untouched (AC4). Iterates by CODE POINT (`for...of` over a string),
+ * not by UTF-16 code unit, so supplementary-plane characters like the Tag
+ * block (which are surrogate pairs in UTF-16) are matched/removed whole
+ * rather than corrupting a lone surrogate half.
+ *
+ * STRIP (not reject) is the design choice here: a legitimate user does not
+ * knowingly type Tag-block or zero-width characters, so silently dropping
+ * them is friendlier than aborting the whole intake step over a field the
+ * human cannot even see is offending (see this module's TASK-159 extension
+ * note at the top of the file for the full strip-vs-reject rationale).
+ *
+ * @param {unknown} value
+ * @returns {unknown} the stripped string, or `value` unchanged if it is not
+ *   a non-empty string
+ */
+export function stripInvisibleChars(value) {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  let out = '';
+  for (const ch of value) {
+    const codePoint = ch.codePointAt(0);
+    if (isStrippableControlCodePoint(codePoint)) continue;
+    if (FORMAT_CHAR_RE.test(ch)) continue;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * Recursively apply stripInvisibleChars to every string reachable from
+ * `answers` — top-level scalars, array items (e.g. goals/scope_in/scope_out),
+ * and nested object values (e.g. agent_models, perfil_proyecto) — and return
+ * a NEW value; the input is never mutated. This is the single seam both
+ * writeProjectMd and generateProjectContext call at the very top of intake
+ * processing (TASK-159 AC2: every field that flows into PROJECT.md or
+ * project-context.md is covered, not just success_criteria), and each sink
+ * calls it independently so generateProjectContext is protected even when
+ * invoked with a fresh `answers` map that bypasses writeProjectMd entirely
+ * (mirrors the existing rejectControlChars call-twice pattern in this module,
+ * same rationale).
+ *
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+export function sanitizeInvisibleCharsDeep(value) {
+  if (typeof value === 'string') return stripInvisibleChars(value);
+  if (Array.isArray(value)) return value.map(sanitizeInvisibleCharsDeep);
+  if (value !== null && typeof value === 'object') {
+    const out = {};
+    for (const [key, v] of Object.entries(value)) {
+      out[key] = sanitizeInvisibleCharsDeep(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 const ATX_HEADING_RE = /^( {0,3})(#{1,6})(\s|$)/;
 const CODE_FENCE_RE = /^( {0,3})(`{3,}|~{3,})/;
 // Setext heading underline ('---' / '===') and thematic break ('---', '***',

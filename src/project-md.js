@@ -42,7 +42,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { atomicWriteFile } from './atomic-write.js';
-import { rejectControlChars, escapeMarkdownStructure, renderBulletLines } from './intake-sanitizer.js';
+import { rejectControlChars, escapeMarkdownStructure, renderBulletLines, sanitizeInvisibleCharsDeep } from './intake-sanitizer.js';
 
 // TASK-023 — the frontmatter schema is INLINED via a JSON import rather than
 // read at runtime from an `import.meta.url`-relative path, so esbuild can bundle
@@ -115,6 +115,16 @@ const VALID_AGENT_NAMES = new Set(['reviewer', 'developer', 'researcher']);
  * @returns {Promise<{path: string}>}
  */
 export async function writeProjectMd({ repoRoot, answers, now = () => new Date().toISOString() }) {
+  // TASK-159 — SECURITY: strip invisible Unicode Tag-block/format/control
+  // characters from EVERY intake answer BEFORE any other check or render.
+  // Doing this first (not last) means a value that is ONLY invisible
+  // characters (e.g. project_name = an all-tag-block payload) collapses to
+  // an empty string and is then correctly caught by the required-field check
+  // immediately below, rather than silently slipping past it as a
+  // non-empty-looking string that renders as nothing (probe P9; see
+  // src/intake-sanitizer.js's stripInvisibleChars for the exact ranges).
+  answers = sanitizeInvisibleCharsDeep(answers ?? {});
+
   // Validate required answers BEFORE touching disk so a missing field surfaces
   // at the point of error (TASK-016 AC4) rather than downstream at ajv. The
   // empty-string check is deliberate: a downstream renderer that emits

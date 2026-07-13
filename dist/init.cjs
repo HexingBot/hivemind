@@ -8607,6 +8607,39 @@ var import_node_fs7 = require("node:fs");
 var import_node_path5 = require("node:path");
 
 // src/intake-sanitizer.js
+var TAG_BLOCK_START = 917504;
+var TAG_BLOCK_END = 917631;
+var FORMAT_CHAR_RE = new RegExp("\\p{Cf}", "u");
+function isStrippableControlCodePoint(codePoint) {
+  if (codePoint === 9 || codePoint === 10 || codePoint === 13) return false;
+  if (codePoint <= 31) return true;
+  if (codePoint >= 127 && codePoint <= 159) return true;
+  if (codePoint >= TAG_BLOCK_START && codePoint <= TAG_BLOCK_END) return true;
+  return false;
+}
+function stripInvisibleChars(value) {
+  if (typeof value !== "string" || value.length === 0) return value;
+  let out = "";
+  for (const ch of value) {
+    const codePoint = ch.codePointAt(0);
+    if (isStrippableControlCodePoint(codePoint)) continue;
+    if (FORMAT_CHAR_RE.test(ch)) continue;
+    out += ch;
+  }
+  return out;
+}
+function sanitizeInvisibleCharsDeep(value) {
+  if (typeof value === "string") return stripInvisibleChars(value);
+  if (Array.isArray(value)) return value.map(sanitizeInvisibleCharsDeep);
+  if (value !== null && typeof value === "object") {
+    const out = {};
+    for (const [key, v] of Object.entries(value)) {
+      out[key] = sanitizeInvisibleCharsDeep(v);
+    }
+    return out;
+  }
+  return value;
+}
 var ATX_HEADING_RE = /^( {0,3})(#{1,6})(\s|$)/;
 var CODE_FENCE_RE = /^( {0,3})(`{3,}|~{3,})/;
 var SETEXT_OR_BREAK_RE = /^( {0,3})([=\-*_])(?:[ \t]*\2)*[ \t]*$/;
@@ -8757,6 +8790,7 @@ var MODEL_ALIASES = /* @__PURE__ */ new Set(["sonnet", "opus", "haiku", "fable",
 var FULL_MODEL_ID_RE = /^claude-[a-z0-9-]+$/;
 var VALID_AGENT_NAMES = /* @__PURE__ */ new Set(["reviewer", "developer", "researcher"]);
 async function writeProjectMd({ repoRoot, answers, now = () => (/* @__PURE__ */ new Date()).toISOString() }) {
+  answers = sanitizeInvisibleCharsDeep(answers ?? {});
   const requiredFrontmatterAnswers = ["project_name", "project_type"];
   for (const id of requiredFrontmatterAnswers) {
     const v = answers ? answers[id] : void 0;
@@ -9726,6 +9760,7 @@ async function generateProjectContext({
       );
     }
   }
+  resolvedAnswers = sanitizeInvisibleCharsDeep(resolvedAnswers ?? {});
   const target = (0, import_node_path6.join)(repoRoot, ...PROJECT_CONTEXT_REL);
   (0, import_node_fs8.mkdirSync)((0, import_node_path6.dirname)(target), { recursive: true });
   const body = renderProjectContext(resolvedAnswers, now());

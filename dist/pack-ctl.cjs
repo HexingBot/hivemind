@@ -7773,6 +7773,9 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// src/intake-sanitizer.js
+var FORMAT_CHAR_RE = new RegExp("\\p{Cf}", "u");
+
 // state/PROJECT.schema.json
 var PROJECT_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
