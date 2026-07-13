@@ -88,9 +88,14 @@ const ASSIMILATE_SKILL = 'hivemind-assimilate-skill';
 // pattern; it is NOT one of the six manifest-policy skills, so it is registered
 // here instead, not in MANIFEST_SKILLS).
 const HARDENING_SKILL = 'hive-adversarial-improve';
+// The constructive counterpart to hive-adversarial-improve: raises everyday
+// component QUALITY (simplification, coverage, doc drift, DX, performance) and
+// hands any trust-boundary/security finding off to hive-adversarial-improve.
+// Same repo-local pattern — ships in BOTH skills/ and .claude/skills/ byte-identical.
+const SELF_IMPROVE_SKILL = 'hive-self-improve';
 const REPO_LOCAL_SKILLS = [
   BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
-  ...MANIFEST_SKILLS, VERIFIER_SKILL, ASSIMILATE_SKILL, HARDENING_SKILL,
+  ...MANIFEST_SKILLS, VERIFIER_SKILL, ASSIMILATE_SKILL, HARDENING_SKILL, SELF_IMPROVE_SKILL,
 ].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
