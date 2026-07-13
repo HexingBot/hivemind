@@ -9,7 +9,7 @@
     "No vitest config/pool change is made (measurement showed parallelism is ~2x slower on Windows); this ticket is documentation-only",
     "UAT: a reader following the docs would budget the per-ticket gate realistically (~7s x2 fast tier) rather than ~2s"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "hive-self-improve",
@@ -18,11 +18,24 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "43d438a"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-13T03:46:34.978Z",
+      "body": "UAT script (one step per AC), overall result: PASS (5/5).\n\n1. AC1 — Read CLAUDE.md's three former \"~2s\" spots (fast-tier bullet, command table, Rules gate line). Expected: each distinguishes ~2s test-execution from ~7s wall-clock. Observed: all three updated as expected. PASS (verified by Orchestrator at the human's request).\n2. AC2 — Read vitest.config.js top comment block. Expected: no longer claims the tier split alone keeps the inner loop at ~2s; credits scoped test selection (test:changed/test:since) for bounding inner-loop time. Observed: exactly that wording. PASS (verified by Orchestrator at the human's request).\n3. AC3 — Check the \"roughly constant regardless of project age\" claim. Expected: softened to acknowledge fast-tier startup/collect scales with spec-file count. Observed: replaced with scoped-selection attribution + explicit \"startup/collect cost still scales with spec-file count\" sentence. PASS (verified by Orchestrator at the human's request).\n4. AC4 — git diff of vitest.config.js shows comments-only, no pool/config behavior change (2 files, 10+/6-, all prose). Expected: documentation-only. Observed: confirmed. PASS (human verdict).\n5. AC5 — A reader following the docs budgets the per-ticket gate realistically. Expected: ~7s ×2 wall-clock, not ~2s. Observed: CLAUDE.md now states \"budget roughly its wall-clock figure twice per ticket\". PASS (human verdict).\n\nNote: agents/developer.md + agents/reviewer.md (and .claude/agents/ mirrors) still carry the old \"(fast tier, ~2s)\" phrasing — out of AC scope, candidate follow-up ticket."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T03:46:46.690Z",
+      "body": "Closed on UAT 5/5 PASS (uat-only tier — no reviewer spawn, no new specs; review_depth: n/a per tier). Developer commit 43d438a (docs(TASK-151): correct stale ~2s fast-tier timing claim to ~7s wall-clock): CLAUDE.md ×3 spots + vitest.config.js comment block, comments/prose only, zero config behavior change. Gate: npm run test:changed = no specs selected (expected for md-only diff), npm test = 977 passed / 2 skipped incl. all doc-lock and parity sensors; affected-e2e: none (verified — no e2e asserts on repo-root CLAUDE.md/vitest.config.js prose). No sensor pinned the touched phrases, so no lockstep spec edits were needed. Punch list: agents/developer.md:46 + agents/reviewer.md:23 (and .claude/agents/ mirrors) still say '(fast tier, ~2s)' — out of AC scope, candidate follow-up."
+    }
+  ],
   "created_at": "2026-07-13T02:17:15.182Z",
-  "updated_at": "2026-07-13T02:17:15.182Z",
+  "updated_at": "2026-07-13T03:46:46.690Z",
   "jira_key": null,
   "verification_tier": "uat-only",
   "marker": "[EXPLICIT]",

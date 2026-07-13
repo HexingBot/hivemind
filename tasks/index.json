@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T03:17:58.505Z",
+  "generated_at": "2026-07-13T03:46:46.690Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -880,7 +880,7 @@
     {
       "key": "TASK-151",
       "title": "Correct stale \"~2s\" fast-tier timing claim (real wall-clock ~7s) across process docs",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
