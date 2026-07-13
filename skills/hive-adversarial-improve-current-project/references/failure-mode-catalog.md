@@ -1,11 +1,11 @@
 # Failure-mode catalog (supply-chain / third-party content inputs)
 
-Seed step 3 of the hive-adversarial-improve protocol from this list, not from improvisation. Each category
-below is a concrete, cited class of untrusted input that a trust-boundary gate must reject — not a
-hypothetical. Chain categories together in a single probe where plausible: the finding that **~91%
-of malicious skills combine prompt-injection WITH traditional malware** (rather than relying on
-either alone) means a review that only exercises the categories separately is under-testing the
-realistic failure surface.
+Seed step 3 of the hive-adversarial-improve-current-project protocol from this list, not from
+improvisation. Each category below is a concrete, cited class of untrusted input that a trust-boundary
+gate in this project must reject — not a hypothetical. Chain categories together in a single probe
+where plausible: the finding that **~91% of malicious skills combine prompt-injection WITH
+traditional malware** (rather than relying on either alone) means a review that only exercises the
+categories separately is under-testing the realistic failure surface.
 
 ## Categories
 
@@ -13,28 +13,28 @@ realistic failure surface.
   files, or session tokens and route them to an outside destination (a URL, a "logging" endpoint,
   an encoded parameter). The gate must treat such content as inert data, not honor it.
 - **Command execution** — a shell-exec, `child_process`/`subprocess`/`os.system` call, or a
-  `curl | sh` style pipe, invoked from content that should have been inert data (a skill's prose, a
+  `curl | sh` style pipe, invoked from content that should have been inert data (user input, a
   config value, a parsed file).
 - **Data routing / proxy substitution** — content that silently redirects a legitimate-looking
   network call (an API endpoint, a package registry, a webhook URL) to an outside proxy that can
   observe or alter the traffic.
 - **Persistence** — a write into another local context file that will be read automatically on a
-  later session or by a different tool — e.g. `.claude/settings.json` hooks, shell profile files,
-  or any other auto-loaded config that does not require the file to be opened again.
+  later session or by a different tool — e.g. shell profile files, auto-loaded config, or a
+  scheduled job definition.
 - **Hidden Unicode-tag input** — instructions smuggled inside the Unicode Tag block
   (U+E0000–U+E007F), which renders invisibly in most UIs but is still tokenized and read by an LLM
   processing the raw text.
 - **DDIPE (Document-Driven Implicit Payload Execution)** — logic embedded inside code examples,
   config templates, or "sample usage" snippets that a reader copies and runs verbatim, trusting the
   surrounding document's authority rather than reading the snippet critically.
-- **Typosquatting** — a skill, package, or resource name deliberately close to a legitimate,
+- **Typosquatting** — a dependency, package, or resource name deliberately close to a legitimate,
   trusted one, relying on a rushed or careless adoption step to pull in the wrong artifact.
-- **License-field spoofing** — a self-declared `license` field (in frontmatter, `package.json`, or
-  similar) that misrepresents the actual license terms or omits a restrictive clause, exploiting the
-  fact that license classification is decision support a human trusts, not a verified fact.
+- **License-field spoofing** — a self-declared `license` field (in `package.json` or similar) that
+  misrepresents the actual license terms or omits a restrictive clause, exploiting the fact that
+  license classification is decision support a human trusts, not a verified fact.
 - **Indirect injection via fetched third-party content** — a problem that doesn't live in the
-  skill/package itself but arrives later, embedded in content the component fetches at runtime (a
-  web page, an API response, a document) and then treats as trusted input.
+  input itself but arrives later, embedded in content this project fetches at runtime (a web page,
+  an API response, a document) and then treats as trusted input.
 
 ## Combining categories
 

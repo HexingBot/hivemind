@@ -5,6 +5,17 @@ description: Load when hardening a specific framework component/pipeline by stre
 
 # Hive Adversarial Improve
 
+**Context guard — framework repo only.** This skill targets the hivemind **framework's own**
+components (its `src/`, `tests/`, `tasks/`) — not a downstream project built with hivemind. Before
+proceeding, confirm you are in the framework repo: call `isFrameworkRepo({ repoRoot })` from
+`src/framework-context.js` against the current working repo root. If it returns **false** (a
+consumer project), **STOP** — do not proceed with this skill — and direct the user to the
+`hive-adversarial-improve-current-project` variant instead, which runs the same protocol against the
+consumer's own project code. If `src/framework-context.js` cannot be imported (e.g. a stripped
+checkout), fall back to the equivalent check by hand: the repo root has a `.claude-plugin/plugin.json`
+whose `name` field is `hivemind`, AND a `src/` directory, AND a `bin/init.js` file. All three must
+hold for this skill to apply; if any is missing, STOP and route to the `-current-project` variant.
+
 This skill turns an ad-hoc "let's think about how this could break" conversation into a
 repeatable, evidence-producing exercise. It is a **durable self-hardening capability**, not a
 one-off brainstorm: every run is seeded from a cited failure-mode catalog, exercises the real

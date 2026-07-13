@@ -38,6 +38,7 @@ const MARKETPLACE_MANIFEST = join(REPO_ROOT, '.claude-plugin', 'marketplace.json
 const SHIPPED_BIN_MANIFEST = join(REPO_ROOT, '.claude-plugin', 'shipped-bin.json');
 const PLUGIN_AGENTS_DIR = join(REPO_ROOT, 'agents');
 const PLUGIN_SKILLS_DIR = join(REPO_ROOT, 'skills');
+const DEV_SKILLS_DIR = join(REPO_ROOT, '.claude', 'skills');
 const BIN_DIR = join(REPO_ROOT, 'bin');
 
 // TASK-032 — orchestrator.md removed: the Orchestrator is the main session
@@ -82,20 +83,42 @@ const ASSIMILATE_SKILL = 'hivemind-assimilate-skill';
 // TASK-147 (renamed from wargame-a-component → hive-self-improve → hive-adversarial-improve): a durable
 // self-hardening capability skill (the 9-step component-hardening protocol that
 // stress-tests trust boundaries against hostile inputs and locks each gap as a
-// tdd regression fixture). A general capability skill authored by the team, same
-// pattern as graphify/mcp-server/hivemind-assimilate-skill — ships in BOTH
-// skills/ and .claude/skills/ byte-identical (see manifest-skills.spec.js sibling
-// pattern; it is NOT one of the six manifest-policy skills, so it is registered
-// here instead, not in MANIFEST_SKILLS).
+// tdd regression fixture). A general capability skill authored by the team,
+// same pattern as graphify/mcp-server/hivemind-assimilate-skill.
+//
+// TASK-153 — FRAMEWORK-ONLY, not consumer-shipped: this skill targets the
+// hivemind FRAMEWORK's own components (its src/, tests/, tasks/), so it is
+// meaningless (and misleading) in a downstream consumer project. It now lives
+// in .claude/skills/ ONLY — deliberately ABSENT from plugin-root skills/, which
+// is what ships to consumer installs. See FRAMEWORK_ONLY_SKILLS below.
 const HARDENING_SKILL = 'hive-adversarial-improve';
 // The constructive counterpart to hive-adversarial-improve: raises everyday
 // component QUALITY (simplification, coverage, doc drift, DX, performance) and
 // hands any trust-boundary/security finding off to hive-adversarial-improve.
-// Same repo-local pattern — ships in BOTH skills/ and .claude/skills/ byte-identical.
+// TASK-153 — same framework-only reasoning as HARDENING_SKILL above: lives in
+// .claude/skills/ ONLY.
 const SELF_IMPROVE_SKILL = 'hive-self-improve';
-const REPO_LOCAL_SKILLS = [
+// TASK-153 — the two skills above target the FRAMEWORK's own internals. A
+// consumer project needs the same protocol/mechanic retargeted at ITS OWN
+// project code, never framework internals — hence the -current-project
+// siblings below, which ship in plugin-root skills/ (consumer-visible) and are
+// deliberately NOT dogfooded into .claude/skills/ (the framework repo must not
+// surface -current-project names — it always means the framework itself).
+const SELF_IMPROVE_CURRENT_PROJECT_SKILL = 'hive-self-improve-current-project';
+const ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL = 'hive-adversarial-improve-current-project';
+
+// Framework-only channel: present in .claude/skills/ ONLY, absent from
+// plugin-root skills/ (never shipped to consumer installs).
+const FRAMEWORK_ONLY_SKILLS = [HARDENING_SKILL, SELF_IMPROVE_SKILL].sort();
+
+// Consumer-shipped channel: present in plugin-root skills/ (what a consumer
+// install actually sees). This is the readdirSync(skills/) equality target —
+// the old REPO_LOCAL_SKILLS set minus the two framework-only skills, plus the
+// two -current-project siblings that replace them for consumers.
+const CONSUMER_SHIPPED_SKILLS = [
   BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
-  ...MANIFEST_SKILLS, VERIFIER_SKILL, ASSIMILATE_SKILL, HARDENING_SKILL, SELF_IMPROVE_SKILL,
+  ...MANIFEST_SKILLS, VERIFIER_SKILL, ASSIMILATE_SKILL,
+  SELF_IMPROVE_CURRENT_PROJECT_SKILL, ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL,
 ].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */
@@ -201,15 +224,55 @@ describe('AC3 — agents/ and skills/ live at the plugin root', () => {
   });
 
   it('plugin_skills_dir_does_NOT_sweep_in_global_skills', () => {
-    // Repo-local scope is exactly the two repo-local skills (tech-training-template
-    // + the TASK-025 orchestrator-routing backstop). Global gsd-*/vue/etc. must
-    // NOT be dragged into the plugin (locked decision: verify repo-local vs
-    // user-global).
+    // Repo-local scope is exactly the consumer-shipped skill set (TASK-153: the
+    // two framework-only skills are excluded here — see the two-channel
+    // describe() below). Global gsd-*/vue/etc. must NOT be dragged into the
+    // plugin (locked decision: verify repo-local vs user-global).
     expect(existsSync(PLUGIN_SKILLS_DIR), 'plugin-root skills/ must exist').toBe(true);
     const skillEntries = readdirSync(PLUGIN_SKILLS_DIR)
       .filter((n) => statSync(join(PLUGIN_SKILLS_DIR, n)).isDirectory())
       .sort();
-    expect(skillEntries).toEqual(REPO_LOCAL_SKILLS);
+    expect(skillEntries).toEqual(CONSUMER_SHIPPED_SKILLS);
+  });
+});
+
+// ===========================================================================
+// TASK-153 — two-channel skill delivery: framework-only vs consumer-shipped.
+// ===========================================================================
+// hive-self-improve and hive-adversarial-improve target the hivemind
+// FRAMEWORK's own internals (its src/, tests/, tasks/) and are meaningless in
+// a downstream consumer project, so they ship in .claude/skills/ ONLY. Their
+// -current-project siblings carry the same protocol retargeted at the
+// consumer's OWN project code and ship in plugin-root skills/ ONLY — the
+// framework repo must never surface a -current-project name (it is always the
+// framework itself, never "the current project" in a relative sense).
+describe('TASK-153 — framework-only skills are .claude/skills/-only, absent from plugin-root skills/', () => {
+  it.each(FRAMEWORK_ONLY_SKILLS)('%s exists in .claude/skills/ and is absent from plugin-root skills/', (skill) => {
+    const devSkillMd = join(DEV_SKILLS_DIR, skill, 'SKILL.md');
+    expect(existsSync(devSkillMd), `${devSkillMd} must exist`).toBe(true);
+
+    const pluginSkillDir = join(PLUGIN_SKILLS_DIR, skill);
+    expect(
+      existsSync(pluginSkillDir),
+      `plugin-root skills/${skill}/ must NOT exist (framework-only skill)`,
+    ).toBe(false);
+  });
+});
+
+describe('TASK-153 — -current-project skills ship at plugin-root skills/, not dogfooded into .claude/skills/', () => {
+  const CURRENT_PROJECT_SKILLS = [SELF_IMPROVE_CURRENT_PROJECT_SKILL, ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL];
+
+  it.each(CURRENT_PROJECT_SKILLS)('%s exists in plugin-root skills/', (skill) => {
+    const pluginSkillMd = join(PLUGIN_SKILLS_DIR, skill, 'SKILL.md');
+    expect(existsSync(pluginSkillMd), `${pluginSkillMd} must exist`).toBe(true);
+  });
+
+  it.each(CURRENT_PROJECT_SKILLS)('%s is NOT dogfooded into .claude/skills/ (framework repo never surfaces -current-project)', (skill) => {
+    const devSkillDir = join(DEV_SKILLS_DIR, skill);
+    expect(
+      existsSync(devSkillDir),
+      `.claude/skills/${skill}/ must NOT exist (framework repo is never "the current project")`,
+    ).toBe(false);
   });
 });
 

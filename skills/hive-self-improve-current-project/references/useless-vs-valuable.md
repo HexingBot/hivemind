@@ -14,12 +14,16 @@ ship only cosmetic churn, which carries real regression risk for no real gain.
   finding.
 - **It is speculative abstraction.** A layer, hook, or generalization added for an imagined future
   need with no current second caller is complexity, not simplification — the opposite of the goal.
-- **It would add a spec the new-test budget forbids.** A "coverage" finding that adds a duplicate or
-  vanity spec is a LOW finding at review time, not an improvement. Coverage findings must name a real
-  uncovered AC or regression.
+- **It would add a spec this project's new-test budget forbids.** A "coverage" finding that adds a
+  duplicate or vanity spec is a LOW finding at review time, not an improvement. Coverage findings
+  must name a real uncovered AC or regression.
 - **It is actually a security finding.** If the real issue is a trust boundary, an auth/validation
   seam, or a gate against hostile input, it does not belong here — route it to
-  `hive-adversarial-improve` (step 5). Forcing it through the constructive path under-tests it.
+  `hive-adversarial-improve-current-project` (step 5). Forcing it through the constructive path
+  under-tests it.
+- **It targets the hivemind framework's own internals, not this project.** If the finding is about
+  `src/framework-context.js`, `bin/init.js`, or another file that ships with the hivemind plugin
+  itself, it belongs to `hive-self-improve` (framework repo only), not here.
 - **It bundles many changes into one sweeping refactor.** A large rewrite that touches many concerns
   at once is hard to review, hard to revert, and where quality work turns into risk. Prefer small,
   independently-ticketed findings.
@@ -28,7 +32,7 @@ ship only cosmetic churn, which carries real regression risk for no real gain.
 
 - **Every finding carries inline evidence** — both `file:line`s of a duplication, the exact
   uncovered AC, both sides of a doc drift, a before/after timing — produced this session by running
-  or reading the real code.
+  or reading this project's real code.
 - **It measurably reduces complexity or closes a real gap** — one call site instead of two, a
   deleted unused export, a newly-covered AC, a green doc-lock, a faster hot path — with the baseline
   from step 2 to prove the delta.
@@ -42,7 +46,7 @@ ship only cosmetic churn, which carries real regression risk for no real gain.
 
 ## Severity
 
-Severity for findings reuses this repo's existing reviewer HIGH / MEDIUM / LOW convention (see
-`.claude/agents/reviewer.md`) rather than a numeric rubric. A constructive quality finding is rarely
-HIGH — reserve that for a genuine correctness or data-loss risk uncovered incidentally, and consider
-whether such a finding actually belongs on the adversarial or reviewer path instead.
+Severity for findings reuses this project's reviewer HIGH / MEDIUM / LOW convention (the `reviewer`
+agent shipped with the hivemind plugin) rather than a numeric rubric. A constructive quality finding
+is rarely HIGH — reserve that for a genuine correctness or data-loss risk uncovered incidentally, and
+consider whether such a finding actually belongs on the adversarial or reviewer path instead.

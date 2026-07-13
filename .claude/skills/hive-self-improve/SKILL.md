@@ -5,6 +5,17 @@ description: Load when improving the QUALITY of an already-shipped framework com
 
 # Hive Self-Improve
 
+**Context guard — framework repo only.** This skill targets the hivemind **framework's own**
+components (its `src/`, `tests/`, `tasks/`) — not a downstream project built with hivemind. Before
+proceeding, confirm you are in the framework repo: call `isFrameworkRepo({ repoRoot })` from
+`src/framework-context.js` against the current working repo root. If it returns **false** (a
+consumer project), **STOP** — do not proceed with this skill — and direct the user to the
+`hive-self-improve-current-project` variant instead, which runs the same protocol against the
+consumer's own project code. If `src/framework-context.js` cannot be imported (e.g. a stripped
+checkout), fall back to the equivalent check by hand: the repo root has a `.claude-plugin/plugin.json`
+whose `name` field is `hivemind`, AND a `src/` directory, AND a `bin/init.js` file. All three must
+hold for this skill to apply; if any is missing, STOP and route to the `-current-project` variant.
+
 This skill turns an ad-hoc "this could be cleaner / better covered / clearer" conversation into a
 repeatable, evidence-producing exercise. It is a **durable quality-improvement capability**, not a
 one-off brainstorm: every run is grounded in the real shipped code actually executed, seeded from a

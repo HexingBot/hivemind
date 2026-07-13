@@ -21,6 +21,9 @@ review can be run and still produce zero durable value.
 - **Findings are not converted to replayable regression artifacts.** A gap that lives only in a
   chat transcript or a verbal summary evaporates the moment the session ends — see the skill's
   rule 2.
+- **The target is the hivemind framework's own internals, not this project.** If the component under
+  test is `src/framework-context.js`, `bin/init.js`, or another file that ships with the hivemind
+  plugin itself, this run belongs to `hive-adversarial-improve` (framework repo only), not here.
 
 ## VALUABLE when
 
@@ -28,9 +31,10 @@ review can be run and still produce zero durable value.
   step 3) — this keeps the exercise anchored to input classes that are actually seen in the wild,
   not just ones the Challenger happened to think of.
 - **The pipeline runs the literal shipped code** — the real gate code, the real CLI, the real
-  subagent spawns — never a description of what the pipeline is supposed to do.
+  subagent spawns, all belonging to this project — never a description of what the pipeline is
+  supposed to do.
 - **Every gap is logged with the responsible gate, and becomes a ticket.** Naming the specific
-  gate (a function, a regex, a reviewer step) that missed the probe is what makes the resulting
+  gate (a function, a regex, a review step) that missed the probe is what makes the resulting
   `tdd` ticket's fix targeted rather than a vague hardening pass.
 - **Many short rounds beat one long round.** A stop condition of "N short rounds, each with a fresh
   adaptation" surfaces more distinct gate weaknesses than a single long round spent on one probe.
@@ -42,7 +46,7 @@ review can be run and still produce zero durable value.
 
 ## Severity
 
-Severity for adjudicated findings reuses this repo's existing reviewer HIGH / MEDIUM / LOW
-convention (see `.claude/agents/reviewer.md`) rather than a numeric rubric — the security-testing
+Severity for adjudicated findings reuses this project's reviewer HIGH / MEDIUM / LOW convention (the
+`reviewer` agent shipped with the hivemind plugin) rather than a numeric rubric — the security-testing
 literature this catalog draws from is qualitative, and there is no established cross-project numeric
 scale worth importing in its place.
