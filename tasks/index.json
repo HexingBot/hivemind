@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T15:28:31.856Z",
+  "generated_at": "2026-07-13T16:11:12.524Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -928,7 +928,7 @@
     {
       "key": "TASK-159",
       "title": "Strip invisible Unicode-tag / format control characters from intake values before writing generated files",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
