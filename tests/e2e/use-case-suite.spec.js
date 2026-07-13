@@ -478,3 +478,111 @@ describe('REVIEW FIX — codegen escaping: hostile use-case strings', () => {
     ).toMatch(/^describe\(".*", \(\) => \{$/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-160 (SECURITY, availability) — bound primary_use_cases count
+// ---------------------------------------------------------------------------
+// Replays wargame probe P10: a hostile/oversized --answers-file with a huge
+// primary_use_cases array must NOT mint an unbounded number of spec files.
+// RED reason (before fix): generateUseCaseSuite has no cap, so this test
+// asserts a file count that current main will blow past (2000 files written,
+// confirmed live at ~20.7s for N=2000; see state/sessions/20260708T154259Z-
+// 29a27eda/artifacts/wargame-init-intake-2026-07-12.md, probe P10).
+
+describe('TASK-160 — primary_use_cases count is bounded (answers-file DoS)', () => {
+  it('oversized_primary_use_cases_array_is_capped_not_written_unbounded', async () => {
+    const { generateUseCaseSuite, MAX_PRIMARY_USE_CASES } = await import(
+      new URL('../../src/use-case-specs.js', import.meta.url).href
+    );
+    const repoRoot = makeTmpDir('af-ucs-dos-cap');
+    makeRepoSkeleton(repoRoot);
+
+    const N = 2000;
+    const useCases = Array.from({ length: N }, (_, i) => `Use case ${i}`);
+
+    const originalWarn = console.warn;
+    const warnCalls = [];
+    console.warn = (...args) => {
+      warnCalls.push(args);
+    };
+    let result;
+    try {
+      result = await generateUseCaseSuite({
+        repoRoot,
+        answers: {
+          project_name: 'probe-ten',
+          project_type: 'web',
+          cli_language: 'node',
+          primary_use_cases: useCases,
+        },
+        now: () => FIXED_NOW,
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    // The exported cap must itself be "tens, not thousands".
+    expect(MAX_PRIMARY_USE_CASES).toBeLessThan(N);
+    expect(MAX_PRIMARY_USE_CASES).toBeGreaterThan(0);
+
+    // The generator's own return value must be bounded.
+    expect(
+      result.specPaths.length,
+      'generateUseCaseSuite must not return more spec paths than the documented cap',
+    ).toBeLessThanOrEqual(MAX_PRIMARY_USE_CASES);
+
+    // Files actually written to disk must be bounded (the real DoS surface:
+    // this is what took 20.7s / 2000 files on unpatched main).
+    const specsOnDisk = listUseCaseSpecs(repoRoot);
+    expect(
+      specsOnDisk.length,
+      `expected at most ${MAX_PRIMARY_USE_CASES} spec files on disk, got ${specsOnDisk.length}`,
+    ).toBeLessThanOrEqual(MAX_PRIMARY_USE_CASES);
+
+    // No silent truncation: a loud warning must name the drop count.
+    expect(
+      warnCalls.some((args) =>
+        args.some(
+          (a) => typeof a === 'string' && /use.case/i.test(a) && /\d+/.test(a),
+        ),
+      ),
+      'a silent truncation is not allowed: console.warn must name how many use cases were dropped',
+    ).toBe(true);
+
+    // The manifest must stay in lockstep with the capped spec set: it must
+    // not reference more spec paths than were actually written (else the
+    // use-case-policy meta-sensor would fail on manifest rot).
+    const manifestText = readFileSync(manifestPath(repoRoot), 'utf8');
+    const specPathRefs = manifestText.match(/tests\/use-cases\/[\w-]+\.spec\.js/g) ?? [];
+    expect(
+      new Set(specPathRefs).size,
+      'USE-CASES.md must not reference more spec files than the cap allows',
+    ).toBeLessThanOrEqual(MAX_PRIMARY_USE_CASES);
+  });
+});
+
+describe('TASK-160 — small legitimate primary_use_cases array is unaffected', () => {
+  it('small_use_case_array_still_yields_one_spec_per_use_case', async () => {
+    const { generateUseCaseSuite } = await import(
+      new URL('../../src/use-case-specs.js', import.meta.url).href
+    );
+    const repoRoot = makeTmpDir('af-ucs-cap-small');
+    makeRepoSkeleton(repoRoot);
+
+    const useCases = ['login', 'checkout', 'reporting', 'search', 'onboarding'];
+
+    const result = await generateUseCaseSuite({
+      repoRoot,
+      answers: {
+        project_name: 'small-app',
+        project_type: 'web',
+        cli_language: 'node',
+        primary_use_cases: useCases,
+      },
+      now: () => FIXED_NOW,
+    });
+
+    expect(result.specPaths.length).toBe(useCases.length);
+    expect(listUseCaseSpecs(repoRoot).length).toBe(useCases.length);
+  });
+});

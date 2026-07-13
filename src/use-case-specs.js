@@ -21,6 +21,10 @@
 //   - IDEMPOTENT: if tests/use-cases/USE-CASES.md already exists, the manifest
 //     is not overwritten; similarly each skeleton spec is skipped if the file
 //     exists. A second run with a different `now` value produces no changes.
+//   - BOUNDED (TASK-160): primary_use_cases is capped at MAX_PRIMARY_USE_CASES
+//     entries before it drives either the manifest or the spec-file loop, so
+//     both stay in lockstep. Any drop is reported via console.warn naming the
+//     original, kept, and dropped counts — never silent.
 
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
@@ -40,6 +44,27 @@ const STACK_ANSWER_KEYS = [
 // JS-language signal on any stack key: starts with node/javascript/typescript,
 // case-insensitive.
 const JS_LANGUAGE_RE = /^(node|javascript|typescript)/i;
+
+// TASK-160 (SECURITY, availability) — hard cap on how many primary_use_cases
+// entries generateUseCaseSuite will ever turn into on-disk spec files.
+//
+// Wargame probe P10 fed a hostile/oversized --answers-file with a 2000-entry
+// primary_use_cases array through the real generator: it minted 2000 spec
+// files in ~20s with no upper bound (linear growth), and a 50k-entry array
+// extrapolates to 8+ minutes and 50k files (EMFILE/ENOSPC/inode exhaustion
+// risk). CLAUDE.md's use-case-suite rule is that the manifest tracks PRODUCT
+// SURFACE, not ticket count — real projects have a handful of primary use
+// cases (tens at the outside, never hundreds). 50 is generous headroom over
+// any legitimate project (10x a very large real manifest) while keeping the
+// worst case fast and bounded.
+//
+// CAP-WITH-LOUD-LOG, not reject: init/intake is a one-time author action
+// (not a repeated attacker request), so capping and telling the human
+// exactly how many entries were dropped is friendlier than aborting the
+// entire bootstrap — the author can trim their answers file and re-run.
+// NO SILENT TRUNCATION: every drop is reported via console.warn naming the
+// original count, the kept count, and the dropped count.
+export const MAX_PRIMARY_USE_CASES = 50;
 
 // Frontend frameworks that imply a JS ecosystem (all vitest-compatible).
 // 'other' deliberately does NOT count.
@@ -209,7 +234,25 @@ export async function generateUseCaseSuite({
   // Self-bootstrap: ensure the directory exists before we write into it.
   await mkdir(useCasesDir, { recursive: true });
 
-  const useCases = normalizeUseCases(answers && answers.primary_use_cases);
+  const normalizedUseCases = normalizeUseCases(answers && answers.primary_use_cases);
+
+  // TASK-160: bound the count BEFORE it drives either the manifest or the
+  // spec-file loop below, so the two artifacts stay in lockstep (the manifest
+  // must never reference a spec path that was not actually written).
+  let useCases = normalizedUseCases;
+  if (normalizedUseCases.length > MAX_PRIMARY_USE_CASES) {
+    const droppedCount = normalizedUseCases.length - MAX_PRIMARY_USE_CASES;
+    // eslint-disable-next-line no-console
+    console.warn(
+      `generateUseCaseSuite: primary_use_cases had ${normalizedUseCases.length} entries, ` +
+        `which exceeds the MAX_PRIMARY_USE_CASES cap of ${MAX_PRIMARY_USE_CASES}. ` +
+        `Keeping the first ${MAX_PRIMARY_USE_CASES} and dropping ${droppedCount} entries. ` +
+        'Trim your primary_use_cases answer to the project\'s real product-surface ' +
+        'use cases and re-run if this was unintentional.',
+    );
+    useCases = normalizedUseCases.slice(0, MAX_PRIMARY_USE_CASES);
+  }
+
   const projectName =
     (answers && typeof answers.project_name === 'string'
       ? answers.project_name

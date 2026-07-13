@@ -10582,6 +10582,7 @@ var STACK_ANSWER_KEYS = [
   "processing_framework"
 ];
 var JS_LANGUAGE_RE = /^(node|javascript|typescript)/i;
+var MAX_PRIMARY_USE_CASES = 50;
 var JS_FRONTEND_FRAMEWORKS = /* @__PURE__ */ new Set(["react", "vue", "svelte", "angular"]);
 function isJsStack(answers) {
   if (!answers || typeof answers !== "object") return false;
@@ -10672,7 +10673,15 @@ async function generateUseCaseSuite({
 }) {
   const useCasesDir = (0, import_node_path9.join)(repoRoot, "tests", "use-cases");
   await (0, import_promises3.mkdir)(useCasesDir, { recursive: true });
-  const useCases = normalizeUseCases2(answers && answers.primary_use_cases);
+  const normalizedUseCases = normalizeUseCases2(answers && answers.primary_use_cases);
+  let useCases = normalizedUseCases;
+  if (normalizedUseCases.length > MAX_PRIMARY_USE_CASES) {
+    const droppedCount = normalizedUseCases.length - MAX_PRIMARY_USE_CASES;
+    console.warn(
+      `generateUseCaseSuite: primary_use_cases had ${normalizedUseCases.length} entries, which exceeds the MAX_PRIMARY_USE_CASES cap of ${MAX_PRIMARY_USE_CASES}. Keeping the first ${MAX_PRIMARY_USE_CASES} and dropping ${droppedCount} entries. Trim your primary_use_cases answer to the project's real product-surface use cases and re-run if this was unintentional.`
+    );
+    useCases = normalizedUseCases.slice(0, MAX_PRIMARY_USE_CASES);
+  }
   const projectName = (answers && typeof answers.project_name === "string" ? answers.project_name : null) || "unnamed-project";
   const js = isJsStack(answers);
   const generatedAt = now();
