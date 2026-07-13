@@ -202,6 +202,30 @@ export async function writeProjectMd({ repoRoot, answers, now = () => new Date()
     }
   }
 
+  // TASK-161 — SECURITY: reject \r/\n in perfil_proyecto map keys/values
+  // BEFORE any disk write — the same injection shape as the TASK-157
+  // project_name/project_type/tier guard above, but for the perfil_proyecto
+  // SPECIAL_FRONTMATTER_IDS inline-object map. agent_models (the other
+  // SPECIAL_FRONTMATTER_IDS map) is exempt from needing this check because
+  // its keys/values are ALREADY independently gated by closed sets
+  // (VALID_AGENT_NAMES) and a regex (MODEL_ALIASES/FULL_MODEL_ID_RE) above,
+  // neither of which can contain a control character. perfil_proyecto has no
+  // such gate — renderProjectMd interpolates its entries verbatim into a
+  // single `perfil_proyecto: {${k}: ${v}}` frontmatter line, so an embedded
+  // \r/\n in either the key or the value breaks out of that line and forges
+  // an arbitrary top-level frontmatter key on read-back (e.g. a forged
+  // agent_models map — the identical mechanism as probe P1). Reuses
+  // rejectControlChars (src/intake-sanitizer.js), the SAME shared guard the
+  // TASK-158 Stack-bullet check below calls, rather than duplicating the
+  // \r\n regex a fourth time in this module (AC5).
+  const pp = answers.perfil_proyecto;
+  if (pp && typeof pp === 'object' && !Array.isArray(pp)) {
+    for (const [k, v] of Object.entries(pp)) {
+      rejectControlChars(k, `perfil_proyecto key "${k}"`);
+      rejectControlChars(typeof v === 'string' ? v : String(v), `perfil_proyecto value for "${k}"`);
+    }
+  }
+
   const target = join(repoRoot, PROJECT_MD);
   const createdAt = now();
   const body = renderProjectMd(answers, createdAt);

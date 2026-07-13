@@ -8826,6 +8826,13 @@ async function writeProjectMd({ repoRoot, answers, now = () => (/* @__PURE__ */ 
       }
     }
   }
+  const pp = answers.perfil_proyecto;
+  if (pp && typeof pp === "object" && !Array.isArray(pp)) {
+    for (const [k, v] of Object.entries(pp)) {
+      rejectControlChars(k, `perfil_proyecto key "${k}"`);
+      rejectControlChars(typeof v === "string" ? v : String(v), `perfil_proyecto value for "${k}"`);
+    }
+  }
   const target = (0, import_node_path5.join)(repoRoot, PROJECT_MD);
   const createdAt = now();
   const body = renderProjectMd(answers, createdAt);

@@ -126,6 +126,59 @@ describe('project-md frontmatter injection — adjacent path: tier scalar (same 
   });
 });
 
+describe('project-md frontmatter injection — TASK-161: perfil_proyecto map key/value injection', () => {
+  // renderProjectMd interpolates perfil_proyecto entries VERBATIM into a
+  // single `perfil_proyecto: {${k}: ${v}}` frontmatter line with no
+  // validation (unlike agent_models, whose keys/values are already gated by
+  // a closed set / regex). A value or key containing \r/\n breaks out of
+  // that line and forges an arbitrary top-level frontmatter key on
+  // read-back — the SAME mechanism as probe P1 above, just via
+  // perfil_proyecto instead of project_name.
+  it('perfil_proyecto_value_with_embedded_newline_is_rejected_before_any_disk_write', async () => {
+    const { writeProjectMd, readProjectMd } = await import(PROD.projectMd);
+
+    const repoDir = makeTmpDir('af-pmd-inj-perfil-value');
+    const target = join(repoDir, 'PROJECT.md');
+
+    await expect(
+      writeProjectMd({
+        repoRoot: repoDir,
+        answers: {
+          project_name: 'x',
+          project_type: 'web',
+          perfil_proyecto: { estilo: 'poderoso\ninjected_key: PWNED' },
+        },
+        now: () => FIXED_NOW,
+      }),
+    ).rejects.toThrow(/perfil_proyecto/);
+
+    expect(existsSync(target)).toBe(false);
+    await expect(readProjectMd({ repoRoot: repoDir })).rejects.toThrow(/PROJECT\.md/);
+  });
+
+  it('perfil_proyecto_key_with_embedded_newline_is_rejected_before_any_disk_write', async () => {
+    const { writeProjectMd, readProjectMd } = await import(PROD.projectMd);
+
+    const repoDir = makeTmpDir('af-pmd-inj-perfil-key');
+    const target = join(repoDir, 'PROJECT.md');
+
+    await expect(
+      writeProjectMd({
+        repoRoot: repoDir,
+        answers: {
+          project_name: 'x',
+          project_type: 'web',
+          perfil_proyecto: { 'estilo\ninjected_key': 'PWNED' },
+        },
+        now: () => FIXED_NOW,
+      }),
+    ).rejects.toThrow(/perfil_proyecto/);
+
+    expect(existsSync(target)).toBe(false);
+    await expect(readProjectMd({ repoRoot: repoDir })).rejects.toThrow(/PROJECT\.md/);
+  });
+});
+
 describe('project-md frontmatter injection — AC5: legitimate values unaffected', () => {
   it('legitimate_multiline_free_values_still_round_trip', async () => {
     // A sanity check that the new guard is scoped to project_name/project_type
