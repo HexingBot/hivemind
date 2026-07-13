@@ -35,7 +35,7 @@ tags:
 projects:
   - hivemind
 created_at: '2026-07-07T05:30:00.000Z'
-last_seen_at: '2026-07-07T05:30:00.000Z'
+last_seen_at: '2026-07-12T18:10:41.317Z'
 source_tier: T1
 ---
 Observed live 2026-07-07 during the goal-sweep2 drive: dev-101's full TASK-101 hand-off (verbatim red run, per-file breakdown) was delivered under dev-097's envelope minutes after dev-097 honestly disclaimed all TASK-101 knowledge. dev-101 confirmed both its sends showed sender:dev-101 in its own tool results. The recovery hinged on dev-097 refusing to vouch for work it never did — an agent less honest would have poisoned the close. Recorded in the session bundle grant_note and TASK-101's close comment.

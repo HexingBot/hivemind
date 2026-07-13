@@ -1,0 +1,49 @@
+{
+  "key": "TASK-142",
+  "title": "assimilate integrity is unenforceable: record content-hash of the owned artifact + re-verify staged→live on materialize",
+  "description": "WARGAME FINDINGS A3 + A4 (severity MEDIUM; supply-chain TOCTOU). Corroborated by the AI-wargaming research brief 2026-07-12 (OWASP ASI02; 'assume breach' framing).\\n\\nTwo coupled defects make the recorded `integrity` decorative rather than enforceable:\\n\\nA4 — WRONG SUBJECT: `src/assimilate.js:332` computes `computeProvenanceFields(source, …)` → `sha256:hashDir(source)` BEFORE `tagDescriptionForHivemind` + `appendProvenanceBlock` rewrite the owned SKILL.md (lines 340-342). So the lock/provenance `integrity` describes the UPSTREAM source, but the staged copy in `assimilated-skills/<id>/` (and later the live copy) has DIFFERENT content. That hash can never verify the owned copy — it will always mismatch.\\n\\nA3 — NO RE-VERIFICATION (TOCTOU): `src/pack-apply.js:131` at materialize recomputes `integrity: sha256:hashDir(liveDir)` — it hashes whatever it just copied, and never compares against the lock's stage-time integrity. So content tampered in `assimilated-skills/<id>/` AFTER the human approved at `stage` but BEFORE `reconcile-apply` is silently materialized and blessed with a fresh hash. The human approved content X; content Y goes live, invisibly. (This naive re-hash exists precisely BECAUSE A4 made the stage-time hash un-comparable — the two must be fixed together.)\\n\\nFIX: record TWO hashes on the lock/provenance entry:\\n- `source_integrity` = sha256 of the UNMODIFIED upstream source (verifies the pin against upstream; keep current pre-rewrite computation).\\n- `content_integrity` = sha256 of the OWNED artifact computed AFTER the description-tag + provenance-block rewrite (the exact bytes staged).\\nThen `reconcile-apply` (src/pack-apply.js / pack-orchestrator) MUST verify that the staged dir's current content hashes to the recorded `content_integrity` BEFORE materializing, and FAIL CLOSED (a hard resource failure, leave-and-report, no live write) on mismatch — never re-bless with a fresh hash.\\n\\nNote the provenance-block chicken-and-egg: content_integrity is over bytes that include the provenance block, which itself would contain content_integrity. Resolve by hashing everything EXCEPT the integrity line (or hashing the pre-provenance-append but post-description-tag content) — pick one, document it, and make both writer and verifier use the identical definition. This is a lock-schema + security-invariant change → run npm run test:all; touches integrations.lock.json shape so treat as schema-adjacent.\\n\\ntdd — state mutation + hashing + schema.",
+  "acceptance_criteria": [
+    "The lock entry + provenance block for an assimilated skill carry BOTH `source_integrity` (unmodified upstream) and `content_integrity` (the owned, post-rewrite artifact); a test proves content_integrity actually matches a fresh hash of the staged assimilated-skills/<id>/ bytes under the documented hashing definition, and source_integrity matches the upstream source.",
+    "A red test proves the CURRENT TOCTOU: tamper with assimilated-skills/<id>/ after stage-approve, run reconcile-apply, and today the tampered content materializes with a fresh hash and no error — after the fix this same scenario FAILS CLOSED (hard resource failure, nothing materialized to .claude/skills/<id>/, reported in the apply result).",
+    "reconcile-apply verifies staged content against the recorded content_integrity BEFORE copy; on match it materializes normally; on mismatch it leaves the live tree untouched and surfaces the failure (consistent with applyPlan's existing leave-and-report guarantee).",
+    "The provenance-block self-reference (content_integrity over bytes that include the block) is resolved by one documented, single-definition rule used identically by writer (assimilate.js) and verifier (pack-apply.js); a round-trip test (stage → reconcile-apply, untampered) passes cleanly with no false mismatch.",
+    "integrations.lock.json schema/consumers updated for the two-field integrity; existing lock readers/writers (src/integrations-lock.js) stay consistent; backward-compat for pre-existing single-integrity entries is handled (documented behavior, tested).",
+    "Security-invariant + schema-adjacent change → npm run test:all green; dist rebuilt if an affected bundle changed (dist-parity confirms)."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "wargame",
+    "security",
+    "assimilate",
+    "supply-chain",
+    "integrity"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "ef7c843",
+    "fd5ba6e",
+    "5c00e89",
+    "25efac9"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T18:50:07.775Z",
+      "body": "VERIFIED BY EXECUTION (self-wargame round 1, 2026-07-12). Assimilated a fixture skill, then compared hashes: the recorded lock/provenance integrity == sha256(unmodified source) EXACTLY (05d0f84f…), and != sha256(staged assimilated-skills/ copy) (fdfdd07a…). This proves BOTH halves: A4 — integrity hashes the pre-rewrite source, not the owned artifact; A3 — the recorded value can never match the staged/live copy, so no re-verify step could ever use it (which is why pack-apply.js re-hashes blindly). Finding CONFIRMED."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T20:09:23.359Z",
+      "body": "CLOSED after 1 RC loop. review_depth = FULL; rubric inputs: SECURITY surface (assimilate integrity / supply-chain TOCTOU) + schema surface (state/integrations-lock.schema.json) + core tdd logic.\n\nOutcome: two-hash integrity — source_integrity (unmodified upstream) + content_integrity (owned post-rewrite artifact); reconcile-apply now verifies the staged dir against the recorded content_integrity BEFORE materializing and FAILS CLOSED (E_PACK_APPLY_CONTENT_INTEGRITY_MISMATCH, leave-and-report, nothing written to .claude/skills/) on mismatch. Backward-compat via schema anyOf: legacy single-integrity entries (e.g. skill:ui-ux-pro-max) still validate and skip content-verification (fail-safe; a new entry always carries both hashes so it can't fall into the skip). Self-reference resolved by canonicalizing only a well-formed content_integrity value, scoped to the provenance block, exactly-one-match-or-fail-closed; the final text is rebuilt via buildProvenanceBlock (no body-splice).\n\nCommits (single-active-tree, two rounds): test ef7c843 -> impl fd5ba6e (round 1) -> test 5c00e89 -> fix 25efac9 (fix-round). Two-commit discipline held each round; test strictly precedes impl.\n\nReview: round 1 REQUEST-CHANGES on 1 HIGH — the initial whole-line canonicalization (/^- content_integrity:.*$/m) left a post-approve tamper hole the reviewer REPRODUCED end-to-end (appended attacker text to the staged content_integrity line materialized verbatim into the live skill undetected). Fix-round APPROVE: reviewer re-ran the exact exploit — now caught (report mismatch, nothing materialized, injected text absent from all live files). HIGH + MEDIUM (decoy-line) both resolved; the backward-compat-skip threat model was reviewed and ruled ACCEPTABLE (skip is keyed on trusted lock fields; a staged-dir-only attacker cannot downgrade a baseline entry). Gate: test:since -- eb57193 = 93 passed; npm test = 905 passed/2 skip; npm run test:all = 1667 passed/4 skip incl dist-parity green.\n\nKnowledge capture (TASK-105 — triggered by the HIGH + RC loop): draft written to knowledge/proposed/self-referential-integrity-hash-must-exclude-only-a-wellformed-value-in-a-fixed-location.md. New LOW (PROVENANCE_HEADING cross-file drift coupling) tracked as TASK-149 fast-follow."
+    }
+  ],
+  "created_at": "2026-07-12T18:24:06.529Z",
+  "updated_at": "2026-07-12T20:09:23.359Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-09T14:26:39.743Z",
+  "generated_at": "2026-07-12T22:04:41.909Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -822,6 +822,60 @@
       "title": "design-pack usability: surface skills-needing-assimilation + route to hivemind-assimilate-skill",
       "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-140",
+      "title": "assimilate security gate fails OPEN: make verdict check default-deny (block unless verdict === 'safe')",
+      "status": "done",
+      "priority": "critical"
+    },
+    {
+      "key": "TASK-141",
+      "title": "skill-scan: close pattern-evasion gaps + add smuggling categories (improve pattern-finding recall)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-142",
+      "title": "assimilate integrity is unenforceable: record content-hash of the owned artifact + re-verify staged→live on materialize",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-143",
+      "title": "provenance spoofing: parseProvenance takes first-match block; reject pre-seeded provenance heading in source",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-144",
+      "title": "harden the assimilate LLM-glue: first-class security-reviewer agent + enforced verdict schema + DATA fencing",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-147",
+      "title": "author a reusable wargame-a-component skill from the AI-wargaming research (durable red-team capability)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-148",
+      "title": "simplify tdd for speed: narrow the tier rubric + collapse the two-commit discipline to a single commit (keep red-run evidence)",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-149",
+      "title": "guard PROVENANCE_HEADING drift across pack-apply/assimilate/pack-reconcile (content_integrity hashing coupling)",
+      "status": "done",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-150",
+      "title": "license-detect: SPDX-header spoof shadows the real LICENSE file — surface the conflict instead of a clean permissive verdict",
+      "status": "done",
+      "priority": "medium"
     }
   ]
 }

@@ -1,0 +1,47 @@
+{
+  "key": "TASK-141",
+  "title": "skill-scan: close pattern-evasion gaps + add smuggling categories (improve pattern-finding recall)",
+  "description": "WARGAME FINDING A6 (severity MEDIUM as a gate, HIGH as the user's stated goal 'mejorar búsqueda de patrones'). Corroborated by the AI-wargaming research brief 2026-07-12 (Snyk/ToxicSkills, CSA SKILL.md briefing, MalSkillBench, reversec labs 'Skill Issues').\\n\\n`src/skill-scan.js` is a per-line regex scanner. It is trivially evadable and its clean result gives the human/reviewer false comfort ('the scan came back clean'). Concrete evasions verified against the current PATTERN_DEFS:\\n- env-credential-access matches `process.env.X` AND `process.env['X']` (literal bracket) but NOT destructuring `const {SECRET}=process.env`, aliasing `const e=process.env; e.TOKEN`, or `import.meta.env`. [Corrected 2026-07-12 after execution: literal-bracket access IS caught; my original 'bracket-via-variable' claim was wrong.]\\n- shell-exec matches `child_process.exec(` but NOT `require('child_process')['exec'](`, destructured `const {exec}=require('child_process')`, or `eval(...)` / `new Function(...)` / `vm.runInNewContext(...)` (no category exists for these at all).\\n- network-fetch matches only a LITERAL URL string arg; `fetch(url)` or template `fetch(`+backtick+`${b}/x`+backtick+`)` evade.\\n- obfuscated-blob is per-line: a base64 payload wrapped at 76 columns (standard MIME) or split across lines fully evades the 80-char single-line regex.\\n\\nNEW inject classes from the 2026 research to add as categories:\\n- Hidden Unicode-tag injection (U+E0000–U+E007F) that renders as whitespace but is semantically processed by the LLM.\\n- DDIPE (Document-Driven Implicit Payload Execution): malicious logic embedded in code examples/config templates inside skill docs.\\n- Persistence writes into OTHER local context files (e.g. `.claude/settings.json` hooks, other skills) — filesystem-write outside the skill's own dir aimed at agent config.\\n\\nDESIGN CONSTRAINT (keep the module's stated invariant): scanSkillContent must stay PURE, sync, dependency-free, and low-false-positive on ordinary prose. New patterns must be anchored to avoid flagging normal doc content. The honest framing to preserve/strengthen: the scanner is LOW-RECALL TRIAGE whose job is to RAISE THE REVIEWER'S PRIOR, never to gate — make skill-scan.js's header and the hivemind-assimilate-skill Step 3 text say a clean scan means little. This is the (b) half of the wargame's 'red-team output becomes detection signal' loop: each accepted evasion here should ship WITH the inject as a test fixture.\\n\\nSCOPE this to detection breadth + honest framing; do NOT change the assimilate gate's decision logic (that's TASK-140). tdd — parsing/pattern logic.",
+  "acceptance_criteria": [
+    "New/expanded categories detect (with anchored, low-FP regexes) at minimum: destructured and aliased env-credential reads (const {SECRET}=process.env; const e=process.env then e.X) and import.meta.env — NOTE the literal-bracket process.env['X'] is ALREADY caught by the current regex, do not treat it as a gap; require('child_process') + destructured exec; eval / new Function / vm.runInNewContext; fetch/axios/requests with a non-literal (variable or template-literal) URL argument; a base64 blob split across multiple lines or wrapped at 76 cols; Unicode Tag-block characters (U+E0000–U+E007F); and a filesystem WRITE targeting another agent-config file outside the skill dir (e.g. .claude/settings.json).",
+    "Each new detection ships with a fixture that is the actual evasion artifact (a crafted SKILL.md/reference snippet) as its test case — red before, caught after — per the wargame replay-as-regression discipline.",
+    "A false-positive guard suite proves the new patterns do NOT flag representative ordinary skill prose/docs (a URL in a markdown link, the word 'eval' in a sentence, a 64-hex sha256 digest, a normal code fence without exec) — the module's low-FP invariant is preserved.",
+    "scanSkillContent stays pure/sync/dependency-free (no fs/network/LLM added); the existing findings shape {category,severity,location,snippet} + summary is unchanged (additive only).",
+    "src/skill-scan.js header AND skills/hivemind-assimilate-skill/SKILL.md Step 3 (+ .claude/skills parity copy) are updated to state explicitly that the scanner is low-recall triage that raises the reviewer's prior and that a clean scan is NOT a safety assurance; parity sensor green.",
+    "Per-ticket gate green: test:changed + npm test + affected e2e; npm run test:all green given the skill-parity + doc-lock surfaces."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "wargame",
+    "security",
+    "assimilate",
+    "pattern-finding",
+    "skill-scan"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "c57aa20",
+    "c2d5251"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T18:49:52.068Z",
+      "body": "CORRECTION + VERIFICATION BY EXECUTION (self-wargame rounds 1-2, 2026-07-12). Ran the real scanSkillContent() on each evasion.\n\nCORRECTION (my original over-claim): `process.env['X']` LITERAL bracket access IS already caught (the regex matches `process\\.env\\[`). REMOVE 'bracket' from the env-gap list — AC1 should NOT claim bracket access as a gap.\n\nCONFIRMED real misses (scanner returned findings=0): destructured `const {SECRET}=process.env`; aliased `const e=process.env; e.SECRET`; `import.meta.env.X`; `require('child_process')['exec'](...)`; destructured `const {exec}=require('child_process')`; `eval(...)`; `new Function(...)`; `fetch(u)` (variable url); fetch with a template-literal url; Unicode Tag-block chars U+E0000–U+E007F; a base64 blob wrapped at 76 cols across multiple lines. Baselines (process.env.X, child_process.exec(, fetch('https://…'), a 90-char single-line blob) all caught as expected. Finding CONFIRMED with the one correction above."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T20:50:36.962Z",
+      "body": "CLOSED on green review. review_depth = FULL; rubric inputs: SECURITY surface (src/skill-scan.js risky-pattern scanner) + core parsing/regex logic. First ticket run under the NEW single-commit tdd discipline (TASK-148): tests+impl in one commit, red-run evidence is the tests-first proof.\n\nOutcome ('mejorar búsqueda de patrones'): skill-scan recall broadened with anchored, low-FP patterns for the execution-confirmed misses — destructured/aliased env reads + import.meta.env; require('child_process')/destructured exec; eval/new Function/vm.runInNewContext; non-literal (variable/template) fetch URLs; multi-line/76-col base64 (new whole-text pass); plus two new smuggling categories: Unicode Tag-block U+E0000–E007F and persistence-write (fs write targeting an out-of-dir agent-config path). Honest-framing added to skill-scan.js header + hivemind-assimilate-skill Step 3 (both parity copies): the scanner is LOW-RECALL TRIAGE that raises the reviewer's prior; a clean scan is NOT a safety assurance. DDIPE deliberately NOT added (semantic, no anchored regex signature; would violate the low-FP invariant — covered by the honest framing + the human security-reviewer boundary); reviewer ruled this AC-compliant (not in AC1's 'at minimum' list).\n\nCommits (single-active-tree): c57aa20 (feat: categories + fixtures + framing) then c2d5251 (fix: MEDIUM fold-in — persistence-write no longer FPs on a skill's OWN settings.json; anchored to .claude/ or ../ escape). Reviewer: APPROVE, 0 HIGH / 1 MEDIUM (the FP, folded in) / 2 LOW (network-fetch API-doc examples = inherent precision cost, accepted; sha512 128-hex flags as blob = PRE-EXISTING TASK-122 behavior, out of scope). Reviewer independently probed 18+ prose snippets and confirmed the FP-guard suite is NON-VACUOUS. Orchestrator self-verified the MEDIUM fix by execution (own settings.json clean; .claude/ + ../ escape flag). Gate: test:since -- 912f32a = 74/78 passed; npm test = 937 passed/2 skip; npm run test:all = 1699 passed/4 skip incl dist-parity; dist/pack-ctl.cjs rebuilt (skill-scan bundles via assimilate). SKILL.md copies byte-identical. Knowledge capture (TASK-105): not triggered (APPROVE, no HIGH, no RC loop — the MEDIUM was a voluntary quality fold-in)."
+    }
+  ],
+  "created_at": "2026-07-12T18:23:35.844Z",
+  "updated_at": "2026-07-12T20:50:36.962Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

@@ -1,0 +1,45 @@
+{
+  "key": "TASK-148",
+  "title": "simplify tdd for speed: narrow the tier rubric + collapse the two-commit discipline to a single commit (keep red-run evidence)",
+  "description": "Human directive (2026-07-12): make development faster by simplifying tdd, WITHOUT losing the anti-test-laundering signal. Chosen approach: (1) bias tier assignment to the lightest defensible tier, and (2) collapse the tdd two-commit discipline to a single test+impl commit while STILL requiring captured red-run evidence. The red-run evidence — proof the tests failed for the right reason before impl — is the load-bearing signal and is KEPT; only the separate test:/impl commit ceremony is dropped.\\n\\nThis is a policy/docs change across every site that states the current rubric or the two-commit discipline. The parity copies (skills/ vs .claude/skills/, agents/ vs .claude/agents/) must stay byte-identical and all doc-lock/calibration sensors must stay green — that's why this goes through the loop rather than a hand-edit.\\n\\nDO NOT change the src/ code default: CLAUDE.md's 'Absent verification_tier defaults to tdd (backward-compatible)' stays — a ticket with no tier still defaults to tdd (fail-safe). Only the ORCHESTRATOR'S ASSIGNMENT GUIDANCE and the commit discipline change.\\n\\nSites to update (find them all; grep 'two-commit', 'strictly before', 'strictly precedes', 'test: commit', 'verification_tier', 'tier rubric'): CLAUDE.md (Workflow step 1 tier assignment, step 4 tdd, the 'Verification tier rubric' section); skills/orchestrator-routing/SKILL.md + .claude/skills/orchestrator-routing/SKILL.md (the 'Single developer spawn, two-commit discipline' section, the Workflow, the tier rubric); agents/developer.md + .claude/agents/developer.md; agents/reviewer.md + .claude/agents/reviewer.md (what the reviewer verifies for tests-first). Also check for any doc-lock/calibration spec that asserts the OLD text and update it in lockstep.",
+  "acceptance_criteria": [
+    "Tier-assignment guidance (CLAUDE.md Workflow step 1 + 'Verification tier rubric' section, and the orchestrator-routing skill's tier guidance) instructs the orchestrator to assign the LIGHTEST DEFENSIBLE tier: tdd RESERVED for security-sensitive logic, parsing, schema/state-schema changes, and state mutation with real edge-risk; tests-after as the default for behavior provable by running the code with low edge-risk; uat-only for glue/config/docs/prototypes. The src/ absent-tier default stays tdd (backward-compat) and is NOT changed — only the assignment guidance.",
+    "The two-commit discipline is replaced by a SINGLE-COMMIT tdd discipline at every site: a tdd ticket writes failing tests, CAPTURES the red-run evidence (tests failing for the right reason BEFORE impl), then implements, and MAY commit test+impl together in one commit. The captured red-run evidence in the hand-off is the tests-first proof; a separate test:-before-impl commit is no longer required (but remains allowed).",
+    "The reviewer's tests-first verification is updated everywhere it appears (agents/reviewer.md + parity, the skill, CLAUDE.md): instead of 'the test: commit strictly precedes the impl commit', the reviewer verifies the captured red-run evidence is present AND, when the hand-off looks suspicious, reproduces the red state by reverting/stashing the implementation hunks (not by checking out a prior test-only commit). No site still instructs the reviewer to check commit ordering as the tests-first proof.",
+    "No leftover contradictory language remains: a repo-wide grep for 'two-commit', 'strictly precedes', 'strictly before' (in the tdd/test-ordering context) returns only historical/changelog references, not live policy. All parity copies (skills/ vs .claude/skills/, agents/ vs .claude/agents/) are byte-identical — parity sensors green.",
+    "Any doc-lock or calibration spec that asserted the retired two-commit text is updated in lockstep so it now asserts the single-commit policy (not deleted to dodge the check — re-pointed). npm run test:all green (parity + doc-lock + calibration surfaces). Docs-only: confirm no dist bundle changed (dist-parity green regardless).",
+    "UAT: a read-through of the four canonical sites (CLAUDE.md, orchestrator-routing SKILL.md, developer.md, reviewer.md) confirms they tell a consistent story — narrowed rubric + single-commit tdd + red-run-evidence-as-the-proof + reviewer-reproduces-by-revert — with no internal contradiction."
+  ],
+  "status": "done",
+  "priority": "high",
+  "labels": [
+    "policy",
+    "workflow",
+    "tdd",
+    "developer-velocity"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "912f32a"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-12T20:20:21.272Z",
+      "body": "UAT (verified by Orchestrator at the human's request — uat_delegated_to_orchestrator). Verified against the actual on-disk files (grep + read), not the hand-off. 6/6 PASS.\n\nStep 1 (AC1 — narrow rubric): CLAUDE.md Workflow step 1 + \"Verification tier rubric\" section now say \"assign the lightest defensible tier\": tdd RESERVED for security/parsing/schema/state-mutation; tests-after the DEFAULT; uat-only for glue/docs. The src/ absent-tier default explicitly stays tdd (line 83). PASS.\nStep 2 (AC2 — single commit): \"single commit\"/\"single-commit\" present as live tdd policy in all four sites (CLAUDE.md, orchestrator-routing SKILL.md, developer.md, reviewer.md). PASS.\nStep 3 (AC3 — reviewer verifies evidence, reproduces by revert): reviewer.md:26 — \"this captured evidence, not commit ordering, is the tests-first proof... reproduce the red state by reverting or stashing the implementation hunks... do not require strict ordering as a gate.\" A missing red-run artifact stays a HIGH. PASS.\nStep 4 (AC4 — no leftover live contradiction; parity byte-identical): the only remaining \"strictly before\" (SKILL.md:320) is explicit retired-framing (\"originally also carried a two-commit discipline... retired as of TASK-148\"). All three parity pairs (SKILL.md, developer.md, reviewer.md vs .claude/ copies) confirmed byte-identical via cmp. PASS.\nStep 5 (AC5 — doc-lock spec updated + gate green): the one spec that hard-asserted the retired text (tests/orchestrator-skill-v2.spec.js's /strictly (before|precede)/ check) was re-pointed to assert the single-commit policy (reviewer will confirm non-vacuity); dev reported npm run test:all 1667 passed/4 skip incl dist-parity; no dist bundle changed. PASS (spec non-vacuity delegated to the gating review).\nStep 6 (AC6 — consistent story): the four sites agree — narrowed rubric + single-commit + red-run-evidence-as-proof + reviewer-reproduces-by-revert, no internal contradiction. PASS.\n\nOverall: PASS (6/6). Remaining \"two-commit\"/\"strictly precedes\" hits repo-wide are only in historical audit records (tasks/*.json, state/sessions/*, knowledge/graph) and the explicit retired-framing above."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T20:24:48.080Z",
+      "body": "CLOSED on green review. review_depth = FULL; rubric inputs: 211 changed lines (>150) AND a sensor-spec modification (tests/orchestrator-skill-v2.spec.js) — the calibration-laundering/vacuous-sensor risk class forces full.\n\nOutcome (human directive, TASK-148): tdd simplified for speed WITHOUT losing the anti-laundering signal. (1) Tier-assignment guidance now biases to the LIGHTEST DEFENSIBLE tier — tdd reserved for security/parsing/schema/state-mutation, tests-after the default, uat-only for glue/docs (the src/ absent-tier default stays tdd, unchanged). (2) The two-commit discipline is collapsed to a SINGLE test+impl commit; the captured RED-RUN EVIDENCE (kept, mandatory) is the tests-first proof, and the reviewer reproduces red by reverting/stashing impl hunks rather than checking out a prior test-only commit. Single commit 912f32a across 10 files (CLAUDE.md, orchestrator-routing SKILL.md +parity, developer.md +parity, reviewer.md +parity, the re-pointed doc-lock spec orchestrator-skill-v2.spec.js, a comment-only e2e-install.spec.js, docs/index.html).\n\nUAT: 6/6 PASS (verified by Orchestrator; uat_delegated). Review: APPROVE, 0 HIGH/0 MED/0 LOW. Reviewer PROVED the modified sensor is non-vacuous (0 single-commit/no-longer-required hits at base 25efac9 vs 2 each now — a policy revert would fail it at two assertions), confirmed src/tasks-schema tdd default untouched, all 3 parity pairs byte-identical, and only historical/retired-framed 'two-commit' references remain. Gate: npm test 905 passed/2 skip; npm run test:all 1667 passed/4 skip incl dist-parity; no dist bundle changed (docs-only). Knowledge capture (TASK-105): not triggered (clean APPROVE, no HIGH, no RC).\n\nApplies to the rest of THIS loop: TASK-141 onward run under the single-commit discipline."
+    }
+  ],
+  "created_at": "2026-07-12T20:04:04.304Z",
+  "updated_at": "2026-07-12T20:24:48.080Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

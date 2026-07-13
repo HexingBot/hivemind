@@ -1,0 +1,47 @@
+{
+  "key": "TASK-140",
+  "title": "assimilate security gate fails OPEN: make verdict check default-deny (block unless verdict === 'safe')",
+  "description": "WARGAME FINDING A1 (severity HIGH; corroborated by OWASP ASI02 tool-misuse + the repo's own license-is-not-a-safety-gate KB entry, and by the AI-wargaming research brief 2026-07-12).\\n\\nThe content-security gate in `src/assimilate.js:322` blocks an approve ONLY on the exact string `'suspicious'`:\\n```js\\nif (reviewerVerdict?.verdict === 'suspicious' && securityOverride !== true) { …block… }\\n```\\nThis is fail-OPEN. Any security-reviewer verdict string that is not literally `'suspicious'` — including strictly scarier ones like `'unsafe'`, `'malicious'`, `'reject'`, a typo, a differently-cased `'Suspicious'`, or an ABSENT verdict (documented in the header as 'approve proceeds unblocked') — is treated as 'not a block', so the approve writes. The default posture is permit, not deny.\\n\\nThe `pack-ctl` CLI partially masks this by validating `--security-verdict` to `safe|suspicious` (bin/pack-ctl.js ~L327), but `src/assimilate.js` is also called directly (bin/assimilate-skill.js and as a library), and the absent-verdict default is fail-open at the primitive level regardless of caller.\\n\\nFIX: invert to DEFAULT-DENY at the primitive. On `decision: 'approve'`, proceed only when `reviewerVerdict?.verdict === 'safe'`. ANY other value — absent, unknown string, differently-cased, or 'suspicious' — blocks with `status: 'blocked_security'` unless `securityOverride === true` (boolean). Preserve the existing override semantics (strict boolean true only) and the existing `blocked_security` shape/reason. This is a behavior change to a security invariant, so it also needs the skill (`skills/hivemind-assimilate-skill/SKILL.md` + `.claude/skills/` parity copy) and the assimilate.js header/JSDoc updated to state the new default-deny contract, and a plugin rebuild if the change reaches a bundled entrypoint (assimilate.js is not currently bundled — confirm via scripts/build-plugin.mjs before assuming a rebuild is needed).\\n\\nTOUCHES A SECURITY GATE — tdd, tests-first, red-run captured.",
+  "acceptance_criteria": [
+    "A red test proves the CURRENT fail-open: an approve call with `reviewerVerdict:{verdict:'unsafe'}` (any non-'safe', non-'suspicious' string) and no securityOverride currently WRITES (assimilates) — this test fails (i.e. is red) after the fix because the write is now blocked.",
+    "After the fix, `assimilateSkill({decision:'approve', reviewerVerdict:{verdict:'safe'}})` proceeds and writes (green path preserved).",
+    "After the fix, `decision:'approve'` with each of: absent reviewerVerdict, `{verdict:'suspicious'}`, `{verdict:'unsafe'}`, `{verdict:'Safe'}` (wrong case), and `{verdict:''}` — ALL return `status:'blocked_security'` and write NOTHING, unless `securityOverride === true`.",
+    "`securityOverride === true` (strict boolean) still lets an approve proceed despite a non-'safe' verdict; any looser value (string 'true' at the primitive level, '1', missing) does NOT override. The pack-ctl CLI continues to map `--security-override true` (exact string) to boolean true.",
+    "The assimilate.js CONTENT SECURITY GATE header comment, the assimilateSkill JSDoc, and skills/hivemind-assimilate-skill/SKILL.md (+ .claude/skills parity copy) are updated to state the default-deny contract verbatim; the agent/skill parity byte-identity sensor stays green.",
+    "Per-ticket gate green: npm run test:changed + npm test + named affected e2e (assimilate e2e). Because this touches a security invariant and skill parity, npm run test:all is run and green. dist rebuilt only if an affected bundle changed (verify via dist-parity)."
+  ],
+  "status": "done",
+  "priority": "critical",
+  "labels": [
+    "wargame",
+    "security",
+    "assimilate",
+    "supply-chain"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "1dc884a",
+    "ae10791",
+    "eb57193"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T18:49:40.989Z",
+      "body": "VERIFIED BY EXECUTION (self-wargame round 1, 2026-07-12). Ran the real assimilateSkill() against a fixture skill: decision:'approve' + reviewerVerdict:{verdict:'unsafe'} + no override → status='assimilated' and SKILL.md WAS WRITTEN to assimilated-skills/. Control: same call with verdict:'suspicious' → status='blocked_security'. Fail-open is real and reproduced — the gate keys on the exact string 'suspicious'. Ready-made red test for the developer: the 'unsafe' (any non-'safe') case must return blocked_security / write nothing after the fix. Finding CONFIRMED."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T19:21:59.941Z",
+      "body": "CLOSED on green review. review_depth = FULL; rubric inputs: touches a SECURITY surface (src/assimilate.js content-security gate) + core tdd-tier logic (both force full regardless of the ~line count). \n\nOutcome: default-deny inversion — assimilateSkill now proceeds on decision:'approve' ONLY when reviewerVerdict.verdict === 'safe'; every other value (absent, 'suspicious', unknown string, wrong-case, '') returns status:'blocked_security' and writes nothing, unless securityOverride === true (strict boolean). Two-commit tdd discipline: test 1dc884a strictly precedes impl ae10791; a doc-staleness fold-in (eb57193) corrected two MEDIUM stale references to the retired fail-open contract in bin/pack-ctl.js + bin/assimilate-skill.js.\n\nReviewer: APPROVE, 0 HIGH / (2 MEDIUM doc-staleness, both folded in before close) / 1 LOW (benign test overlap, accepted under new-test budget). The reviewer INDEPENDENTLY REPRODUCED the red state (pre-fix approve+verdict:'unsafe' → assimilated+lock written), proving the specs non-vacuous. Gate: test:since -- 1fda827 = 81 passed; npm test = 900 passed/2 skip; npm run test:all = 1651 passed/4 skip incl dist-parity green. SKILL.md parity byte-identical (both copies state default-deny). Knowledge capture (TASK-105): NOT triggered (clean first-pass APPROVE, no HIGH, no RC loop). Verified-by-execution provenance recorded in the pre-close comments."
+    }
+  ],
+  "created_at": "2026-07-12T18:23:04.402Z",
+  "updated_at": "2026-07-12T19:21:59.941Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

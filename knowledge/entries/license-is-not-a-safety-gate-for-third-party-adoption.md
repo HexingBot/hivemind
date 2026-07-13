@@ -39,7 +39,7 @@ projects:
   - hivemind
 source_tier: T2
 created_at: '2026-07-08T18:38:12.142Z'
-last_seen_at: '2026-07-08T18:38:12.142Z'
+last_seen_at: '2026-07-12T18:10:41.297Z'
 ---
 ## Why it happens
 License detection is easy and feels like due diligence, so it gets overloaded into a trust decision it cannot bear. "Permissive" answers "may I legally copy this," not "is this safe to run." And the cheapest license signal — a self-declared field in the artifact itself — is exactly the one an attacker controls, so ranking it as authoritative inverts the trust model.

@@ -1,0 +1,40 @@
+{
+  "key": "TASK-150",
+  "title": "license-detect: SPDX-header spoof shadows the real LICENSE file — surface the conflict instead of a clean permissive verdict",
+  "description": "WARGAME FINDING (surfaced by dogfooding the new wargame-a-component skill as TASK-147's AC4 smoke test, 2026-07-12). Component: src/license-detect.js. Trust boundary: an untrusted third-party skill's own files → license classification → the assimilation APPROVAL PACKAGE the human reads.\\n\\nRED INJECT (taxonomy: license-field spoofing): a skill ships a forged `// SPDX-License-Identifier: MIT` header in a source file (e.g. helper.js) WHILE its real LICENSE file is GPL-3.0. BLUE (real detectLicense run end-to-end): the 6-step fallback chain's Step 1 (SPDX header in the skill's own files) WINS UNCONDITIONALLY over Step 2 (the LICENSE/COPYING file). Observed: detectLicense returns spdx_id='MIT', detected_via='spdx-header'; classifyLicense='permissive' — the GPL-3.0 LICENSE file is never consulted. RED WINS: the approval package shows a clean 'permissive' verdict for a copyleft-licensed skill.\\n\\nADJUDICATION (bounded impact, not a critical bypass): classifyLicense is DECISION-SUPPORT ONLY (per knowledge/entries/license-is-not-a-safety-gate-for-third-party-adoption.md) — it never auto-adopts, and TASK-140 means only a security-reviewer 'safe' verdict authorizes an approve. So a spoofed 'permissive' does NOT bypass adoption. BUT it feeds the HUMAN a misleadingly-clean license in the approval package, which can lower their guard — the 'wargame the sign-off gate: does the approval package give the human what they need to catch it' concern (references/useless-vs-valuable.md).\\n\\nFIX (surface, don't silently prefer): when Step 1 finds an in-source SPDX header AND a Step-2 LICENSE/COPYING file ALSO exists and classifies DIFFERENTLY, detectLicense should surface the CONFLICT (e.g. a `conflict: { header_spdx, license_file_spdx }` field on the result, or return the more-restrictive of the two) so the approval package can show 'SPDX header says MIT but the LICENSE file says GPL-3.0 — possible license spoof' rather than a clean MIT. Preferring the LICENSE file (the canonical, harder-to-casually-forge artifact) over a one-line in-source header when they conflict is also defensible. Keep the no-conflict fast path unchanged (a skill with only a header, or only a LICENSE file, behaves exactly as today).\\n\\nREPLAYABLE INJECT (attach as the test fixture): skillDir containing SKILL.md + helper.js with `// SPDX-License-Identifier: MIT` + a LICENSE file whose body is 'GNU GENERAL PUBLIC LICENSE / Version 3'. Assert the pre-fix behavior (returns MIT/permissive, LICENSE ignored) is replaced by a surfaced conflict / restrictive-wins.\\n\\ntdd — parsing/classification logic on a security-adjacent path.",
+  "acceptance_criteria": [
+    "A red test replays the inject (skillDir with a forged in-source SPDX-License-Identifier header + a conflicting GPL LICENSE file): today detectLicense returns MIT/permissive with the LICENSE file ignored — after the fix it either surfaces a conflict (a structured field naming both the header spdx and the license-file spdx) OR resolves to the more-restrictive/gating classification (GPL/copyleft or unknown), so the approval package can no longer present a clean 'permissive' for this skill.",
+    "The no-conflict fast paths are unchanged and tested: a skill with ONLY an in-source SPDX header still classifies from it; a skill with ONLY a LICENSE file still classifies from it; a header and LICENSE file that AGREE produce no conflict and the same result as today.",
+    "The chosen behavior (surface-conflict vs restrictive-wins) is documented in src/license-detect.js and threads through to whatever consumes detectLicense for the approval package (src/assimilate.js pending_approval payload) so a human reviewer actually SEES the discrepancy — or, if that wiring is deferred, it's explicitly noted with the reason.",
+    "Consistent with the decision-support invariant: this does NOT auto-block adoption (license is never a safety gate) — it only removes the false-clean signal. classifyLicense's existing fail-safe (unknown/copyleft gate to a human decision) is preserved.",
+    "Per-ticket gate green (single-commit tdd); npm run test:all green. dist rebuilt only if an affected bundle changed (license-detect bundles into pack-ctl.cjs via assimilate — expect a rebuild; confirm dist-parity)."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "wargame",
+    "security",
+    "assimilate",
+    "license",
+    "dogfood-finding"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "2578d0a"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-12T22:04:41.909Z",
+      "body": "CLOSED on green review. review_depth = FULL; rubric inputs: SECURITY-adjacent (license verdict feeds the assimilation approval package) + core parsing logic. Single-commit tdd.\n\nOutcome (closes the wargame loop: a dogfood Red-win from TASK-147's smoke test → a fix that replays the inject as a regression): detectLicense now surfaces a CONFLICT (additive field {header_spdx, header_source_path, license_file_spdx, license_file_source_path}) when an in-source SPDX header hit disagrees (different spdx_id) with a same-dir LICENSE/COPYING file, instead of silently letting the forged header's clean 'permissive' shadow the real license. spdx_id/detected_via unchanged (backward-compat). Threaded into src/assimilate.js's base object → surfaces in pending_approval AND every other status, so a human reviewer SEES the discrepancy. Decision-support only: no auto-block (an approve with a 'safe' verdict still assimilates with the conflict attached); classifyLicense untouched.\n\nCommit 2578d0a (single). New replayable fixture tests/fixtures/skills/spoofed-license-skill/ (forged // SPDX-License-Identifier: MIT header + genuine GPL-3.0 LICENSE) = the inject-as-fixture discipline. Reviewer: APPROVE, 0 HIGH/0 MED/2 LOW (conflict fires on spdx-id inequality not bucket, e.g. BSD-2 vs BSD-3 — deliberate + decision-support, acceptable; minor dir re-walk duplication — justified). Adversarial verdicts all PASS: (a) precision — fires only on genuine disagreement, no FP on agree/header-only/license-only/unparseable-LICENSE; (b) id-not-bucket documented + sensible; (c) no auto-block confirmed; (d) threading reaches pending_approval + all statuses. Non-vacuity reproduced (4 red at base d58c937, 45 pre-existing green = backward-compat). Gate: test:since -- d58c937 = 102 passed; npm test = 949 passed/2 skip; npm run test:all = 1722 passed/4 skip incl dist-parity; dist/pack-ctl.cjs rebuilt. Knowledge capture (TASK-105): not triggered (APPROVE, no HIGH, no RC)."
+    }
+  ],
+  "created_at": "2026-07-12T21:34:56.285Z",
+  "updated_at": "2026-07-12T22:04:41.909Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

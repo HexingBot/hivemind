@@ -158,6 +158,24 @@
       "label": "Phase G (addon surface): ship pack-ctl CLI wrapper + hivemind-assimilate-skill + design-power install flow + orchestrator-routing pointer — the wired surface over the FP machinery, blessed loop-ctl dist-wrapper pattern"
     },
     {
+      "id": "decision-20260712-simplify-tdd-single-commit",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Simplify tdd: narrow rubric + single-commit discipline"
+    },
+    {
+      "id": "decision-20260712-wargame-newest-surfaces",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Wargame newest surfaces (assimilate+design), execution-verified"
+    },
+    {
+      "id": "ke-a-format-sensor-authoritative-schema",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/a-format-sensor-must-be-checked-against-the-authoritative-schema.md",
+      "label": "Format sensors must check the authoritative schema, not the artifact"
+    },
+    {
       "id": "ke-claude-headless-bridge",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/claude-headless-stream-json-bridge.md",
@@ -170,6 +188,12 @@
       "label": "Cross-reference validators must exclude self + enforce id uniqueness"
     },
     {
+      "id": "ke-dogfood-skill-parity-byte-identity-sensor",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/dogfood-skill-parity-needs-byte-identity-sensor-not-listing.md",
+      "label": "Dogfood skill parity needs a byte-identity sensor, not a listing entry"
+    },
+    {
       "id": "ke-license-not-safety-gate",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/license-is-not-a-safety-gate-for-third-party-adoption.md",
@@ -180,6 +204,12 @@
       "type": "knowledge_entry",
       "ref": "knowledge/entries/reconcile-removal-needs-desired-not-just-ownership.md",
       "label": "Reconciler removal needs not-desired AND unowned AND safe (conjunction)"
+    },
+    {
+      "id": "ke-self-referential-hash-excludes-wellformed-value",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/self-referential-hash-excludes-only-a-wellformed-value.md",
+      "label": "Self-referential integrity hash must exclude only a well-formed value in a fixed location"
     },
     {
       "id": "ke-session-audit-logs-gitignore",
@@ -204,6 +234,12 @@
       "type": "knowledge_entry",
       "ref": "knowledge/entries/vacuous-sensor-assertion-swallowed-by-product-catch.md",
       "label": "Vacuous sensor: assertion swallowed by product catch (TASK-101 HIGH class)"
+    },
+    {
+      "id": "ke-verify-findings-by-executing",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/verify-findings-by-executing-not-by-reading-code.md",
+      "label": "Verify findings by executing, not by reading code (or stale comments)"
     },
     {
       "id": "ke-windows-atomic-rename",
@@ -714,6 +750,60 @@
       "type": "task",
       "ref": "tasks/TASK-137.json",
       "label": "Wire the design-power addon-install flow + orchestrator-routing pointer"
+    },
+    {
+      "id": "task-140",
+      "type": "task",
+      "ref": "tasks/TASK-140.json",
+      "label": "assimilate gate default-deny (fail-open fix)"
+    },
+    {
+      "id": "task-141",
+      "type": "task",
+      "ref": "tasks/TASK-141.json",
+      "label": "skill-scan recall + smuggling categories"
+    },
+    {
+      "id": "task-142",
+      "type": "task",
+      "ref": "tasks/TASK-142.json",
+      "label": "assimilate dual-hash integrity + TOCTOU re-verify"
+    },
+    {
+      "id": "task-143",
+      "type": "task",
+      "ref": "tasks/TASK-143.json",
+      "label": "provenance spoofing: refuse pre-seeded + last-match"
+    },
+    {
+      "id": "task-144",
+      "type": "task",
+      "ref": "tasks/TASK-144.json",
+      "label": "first-class security-reviewer agent + verdict schema"
+    },
+    {
+      "id": "task-147",
+      "type": "task",
+      "ref": "tasks/TASK-147.json",
+      "label": "wargame-a-component skill (durable capability)"
+    },
+    {
+      "id": "task-148",
+      "type": "task",
+      "ref": "tasks/TASK-148.json",
+      "label": "simplify tdd: single-commit + narrowed rubric"
+    },
+    {
+      "id": "task-149",
+      "type": "task",
+      "ref": "tasks/TASK-149.json",
+      "label": "guard PROVENANCE_HEADING cross-file drift"
+    },
+    {
+      "id": "task-150",
+      "type": "task",
+      "ref": "tasks/TASK-150.json",
+      "label": "license-detect: surface SPDX/LICENSE conflict"
     }
   ],
   "edges": [
@@ -1175,6 +1265,51 @@
     {
       "from": "task-137",
       "to": "decision-20260709-phase-g-addon-surface",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-140",
+      "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-141",
+      "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-142",
+      "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-143",
+      "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-144",
+      "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-147",
+      "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-148",
+      "to": "decision-20260712-simplify-tdd-single-commit",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-149",
+      "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-150",
+      "to": "decision-20260712-wargame-newest-surfaces",
       "relation": "produced-by"
     }
   ]

@@ -32,7 +32,7 @@ tags:
 projects:
   - hivemind
 created_at: '2026-07-07T05:30:00.000Z'
-last_seen_at: '2026-07-07T05:30:00.000Z'
+last_seen_at: '2026-07-12T18:10:41.327Z'
 source_tier: T1
 ---
 Found as the sole HIGH in TASK-101 review (2026-07-07): the AC1 default-repo wiring spec asserted inside the mocked gh runner; fileFrameworkBug's inner catch swallowed the AssertionError and the test passed while DEFAULT_REPO was still wrong. Proven empirically by the reviewer (scratchpad probe + the developer's own red run showing AC1 x3 failures where 4 specs existed). Fixed in commits 276afad/9a22f14 with a mutant-plant red proof. Related: the five recurring HIGH classes list (TASK-078) — this is the canonical vacuous-sensor exemplar.
