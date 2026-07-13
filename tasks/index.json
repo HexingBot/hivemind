@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T03:46:46.690Z",
+  "generated_at": "2026-07-13T03:51:42.078Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -904,6 +904,12 @@
     {
       "key": "TASK-155",
       "title": "Document the framework-vs-current-project skill convention in routing + CLAUDE.md",
+      "status": "done",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-156",
+      "title": "Propagate the ~7s wall-clock fast-tier timing correction to agent docs (developer.md, reviewer.md + mirrors)",
       "status": "done",
       "priority": "low"
     }

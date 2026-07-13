@@ -1,0 +1,44 @@
+{
+  "key": "TASK-156",
+  "title": "Propagate the ~7s wall-clock fast-tier timing correction to agent docs (developer.md, reviewer.md + mirrors)",
+  "description": "Follow-up to TASK-151 (which corrected the stale \"~2s\" fast-tier claim to \"~2s test-execution / ~7s wall-clock\" in CLAUDE.md and vitest.config.js). The developer's punch list flagged that the agent definition docs still carry the old phrasing: agents/developer.md:46 and agents/reviewer.md:23 say \"(fast tier, ~2s ...)\" when describing the per-ticket gate, and the .claude/agents/ parity mirrors carry the same text. Update those spots to match TASK-151's corrected wording so the timing claim is consistent across all process docs. CRITICAL: agents/ and .claude/agents/ copies must stay byte-identical — tests/agents-parity.spec.js enforces this; edit both copies of each file identically. Docs-only, no behavior change -> uat-only.",
+  "acceptance_criteria": [
+    "agents/developer.md and agents/reviewer.md no longer claim the fast tier is \"~2s\" bare; each corrected spot matches TASK-151's convention (~2s test-execution / ~7s wall-clock, or the honest wall-clock figure)",
+    "The .claude/agents/ mirror copies receive byte-identical edits (tests/agents-parity.spec.js stays green)",
+    "No other content in the agent files changes; grep for \"~2s\" across the repo's md docs finds no remaining bare stale claims about the fast tier",
+    "UAT: the timing claim is consistent across CLAUDE.md, vitest.config.js, and all four agent files"
+  ],
+  "status": "done",
+  "priority": "low",
+  "labels": [
+    "docs",
+    "dx",
+    "follow-up"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-151"
+  ],
+  "linked_commits": [
+    "0f24b1a"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-13T03:51:32.564Z",
+      "body": "UAT script (one step per AC), overall result: PASS (4/4). All steps verified by Orchestrator at the human's request (\"push and do the follow-up\").\n\n1. AC1 — grep agents/developer.md + agents/reviewer.md for \"~2s\". Expected: no bare claim; corrected spots match TASK-151's convention. Observed: both now read \"(fast tier, ~2s test-execution / ~7s wall-clock — ...)\". PASS.\n2. AC2 — byte-identity of .claude/agents/ mirrors. Expected: identical; agents-parity spec green. Observed: SHA-256 equal for both pairs (independently re-hashed by Orchestrator); tests/agents-parity.spec.js 3/3 green. PASS.\n3. AC3 — no other content changed; repo-wide md grep for stale \"~2s\". Expected: only correct \"test-execution\" mentions remain. Observed: commit 0f24b1a is a single-line edit per file (×4); remaining \"~2s\" hits are the corrected phrasings (CLAUDE.md ×3, vitest.config.js, 4 agent files) plus historical records (a dated 2026-07-02 session artifact and ticket bodies) which are not live process docs. PASS.\n4. AC4 — consistency across CLAUDE.md, vitest.config.js, and all four agent files. Expected: one timing convention everywhere. Observed: all seven live docs use \"~2s test-execution / ~7s wall-clock\". PASS.\n\nGate: npm run test:changed = no specs selected (expected for md-only diff); npm test = 977 passed / 2 skipped. Affected-e2e: none (only fast-tier parity/permissions specs reference these files)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T03:51:42.078Z",
+      "body": "Closed on UAT 4/4 PASS (uat-only tier — no reviewer spawn, no new specs; review_depth: n/a per tier; all UAT steps delegated to Orchestrator by the human). Developer commit 0f24b1a: single-line timing correction in agents/developer.md:46 + agents/reviewer.md:23 and their .claude/agents/ mirrors, byte-identity independently re-verified by SHA-256 + agents-parity.spec.js 3/3 green. Gate: npm test 977 passed / 2 skipped; test:changed selected zero specs (expected md-only); affected-e2e none. Timing claim now consistent across CLAUDE.md, vitest.config.js, and all four agent files; no dist/ impact (no bundle embeds these md files). No punch-list items."
+    }
+  ],
+  "created_at": "2026-07-13T03:48:27.956Z",
+  "updated_at": "2026-07-13T03:51:42.078Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}
