@@ -1,0 +1,31 @@
+{
+  "key": "TASK-157",
+  "title": "Harden PROJECT.md frontmatter: reject/escape control chars in project_name & project_type (YAML key injection)",
+  "description": "SECURITY — found by hive-adversarial-improve run against bin/init.js intake (probe P1/P2), verified by running the REAL runInit({answers}) end-to-end. src/project-md.js#renderProjectMd interpolates `name: ${name}` and `type: ${type}` into the YAML frontmatter with NO escaping/quoting and NO post-render re-validation. A newline in project_name therefore forges arbitrary top-level frontmatter keys, and readProjectMd restores them.\\n\\nCONFIRMED live: project_name = \\\"MyProj\\\\nagent_models: {developer: opus, reviewer: haiku}\\\\ntier: uat-only\\\\nschema_version: 999\\\\ninjected_name: PWNED\\\" produced a PROJECT.md whose frontmatter carries a forged agent_models map + tier; readProjectMd returned frontmatter.agent_models={developer:opus,reviewer:haiku}, tier='uat-only'. IMPACT: `node bin/init.js --apply-models` reads agent_models from PROJECT.md and patches the reviewer/developer/researcher model frontmatter — so a forged project name can DOWNGRADE the independent review gate's model (e.g. reviewer inherit->haiku), bypassing writeProjectMd's agent_models validation (which only runs on answers.agent_models, never on content smuggled through name/type). Probe P2 (project_type containing `\\\\n---\\\\n...`) corroborates the same root cause: the injected `---` closes the frontmatter early, displacing created_at/schema_version into the body and letting the attacker forge a `## Description` — a document-integrity corruption from the same unescaped interpolation.\\n\\nROOT CAUSE: src/project-md.js:189-233 (renderProjectMd frontmatter lines) treat scalar values as trusted single-line strings. FIX DIRECTION (developer's choice): at the intake/write boundary, reject frontmatter scalar values that contain \\\\r/\\\\n (loud error naming the field) OR escape/quote them so read-back yields the literal string. Prefer a shared boundary sanitizer so this composes with the sibling tickets (Unicode-tag stripping, structural-forgery neutralization). Ensure created_at & schema_version always remain in the frontmatter block. tdd tier: this is parsing/schema-security logic.\\n\\nFIXTURE: replay the exact P1 and P2 answer objects (documented above and in the session's probe harness scratchpad/probe-harness.mjs). Acceptance = replaying these inputs no longer injects any extra frontmatter key and never displaces the writer's own frontmatter fields.",
+  "acceptance_criteria": [
+    "Replaying probe P1 (project_name with embedded newlines spelling `agent_models: {...}`, `tier:`, `schema_version:`, `injected_name:`) yields a PROJECT.md whose parsed frontmatter contains NO attacker-forged keys: readProjectMd returns exactly the writer's own keys (name, type, created_at, schema_version) plus only legitimately-supplied ones — no agent_models, no tier, no injected_name from the name field",
+    "The writer either rejects control characters (\\r/\\n) in project_name/project_type with a loud error that names the offending field BEFORE any disk write, or escapes/encodes them so readProjectMd round-trips the value as the exact literal string the caller supplied",
+    "Replaying probe P2 (project_type containing `\\n---\\ninjected_key: ...\\n---`) never produces a PROJECT.md where the writer's own created_at/schema_version are displaced out of the frontmatter block, and no attacker-controlled `## Description` or `injected_key` appears from the type field",
+    "A red-first regression test replays P1 and P2 against the real writer/reader and asserts the injection is caught; it fails against current main for the right reason (shows the forged agent_models/tier) before the fix",
+    "Existing PROJECT.md round-trip tests still pass (legitimate project_name/project_type/agent_models/tier/perfil_proyecto values are unaffected)"
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "security",
+    "hive-adversarial-improve",
+    "init",
+    "parsing"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T04:08:09.919Z",
+  "updated_at": "2026-07-13T04:08:09.919Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

@@ -1,0 +1,30 @@
+{
+  "key": "TASK-160",
+  "title": "Bound primary_use_cases count to cap unbounded file generation (answers-file DoS)",
+  "description": "SECURITY (availability) — found by hive-adversarial-improve run against bin/init.js intake (probe P10), verified by running the REAL runInit({answers}). generateUseCaseSuite (src/use-case-specs.js) mints one tests/use-cases/<slug>.spec.js per primary_use_cases entry with NO upper bound on the count. A hostile --answers-file / project template with a large primary_use_cases array causes unbounded file creation and wall-clock.\\n\\nCONFIRMED live: primary_use_cases of length 2000 minted 2000 spec files in 20.7s (linear, no cap); a 50k array extrapolates to ~8+ minutes and 50k files, risking EMFILE/ENOSPC/inode exhaustion. (Note: seedBacklog uses fixed seed templates and minted only 1 task regardless — the DoS is specifically in generateUseCaseSuite's per-use-case spec emission.)\\n\\nSeverity LOW: the realistic vector is a shared/hostile answers-file or project template (not an interactive user typing 2000 use cases), impact is recoverable disk/time exhaustion. Still a real missing input bound (catalog: Denial of Service; OWASP ASI02: no legitimacy check on input volume).\\n\\nROOT CAUSE: no count guard in generateUseCaseSuite (and none upstream in validateSuppliedAnswers). FIX DIRECTION: enforce a sane cap on the number of primary_use_cases (e.g. reject or truncate-with-loud-warning above a documented limit) at the intake boundary or in generateUseCaseSuite, and log clearly what was dropped (no silent truncation). tdd tier: input-bound validation on a generation path.\\n\\nFIXTURE: replay probe P10 (documented above; scratchpad/probe-harness.mjs takes P10_N env to size the array).",
+  "acceptance_criteria": [
+    "Replaying probe P10 with a primary_use_cases array far above the cap (e.g. 2000) does NOT generate an unbounded number of spec files: the run either rejects the oversized input with a loud, count-naming error before writing, or caps generation at a documented limit and logs exactly how many use cases were dropped (no silent truncation)",
+    "The chosen cap is documented (a named constant + comment) and reasonable for real projects (well above any plausible legitimate use-case count, e.g. tens, not thousands)",
+    "A red-first regression test replays P10 and asserts the file-count bound holds; it fails against current main for the right reason (thousands of files generated) before the fix",
+    "A legitimate small primary_use_cases array (e.g. 3–5 use cases) still generates exactly one spec per use case — the cap does not disturb normal projects; existing generateUseCaseSuite tests pass"
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "security",
+    "hive-adversarial-improve",
+    "init",
+    "dos"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T04:09:15.878Z",
+  "updated_at": "2026-07-13T04:09:15.878Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

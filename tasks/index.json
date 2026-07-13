@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T03:51:42.078Z",
+  "generated_at": "2026-07-13T04:09:15.878Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -911,6 +911,30 @@
       "key": "TASK-156",
       "title": "Propagate the ~7s wall-clock fast-tier timing correction to agent docs (developer.md, reviewer.md + mirrors)",
       "status": "done",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-157",
+      "title": "Harden PROJECT.md frontmatter: reject/escape control chars in project_name & project_type (YAML key injection)",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-158",
+      "title": "Neutralize markdown structure/directive forgery from intake values in agent-facing files (PROJECT.md + project-context.md)",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-159",
+      "title": "Strip invisible Unicode-tag / format control characters from intake values before writing generated files",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-160",
+      "title": "Bound primary_use_cases count to cap unbounded file generation (answers-file DoS)",
+      "status": "todo",
       "priority": "low"
     }
   ]
