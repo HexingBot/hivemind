@@ -8606,6 +8606,48 @@ var import_promises = require("node:fs/promises");
 var import_node_fs7 = require("node:fs");
 var import_node_path5 = require("node:path");
 
+// src/intake-sanitizer.js
+var ATX_HEADING_RE = /^( {0,3})(#{1,6})(\s|$)/;
+var CODE_FENCE_RE = /^( {0,3})(`{3,}|~{3,})/;
+var SETEXT_OR_BREAK_RE = /^( {0,3})([=\-*_])(?:[ \t]*\2)*[ \t]*$/;
+function rejectControlChars(value, label) {
+  if (typeof value === "string" && /[\r\n]/.test(value)) {
+    throw new Error(
+      `${label} must not contain newline or carriage-return characters \u2014 they would let the value escape its single-line Stack bullet and forge arbitrary new lines/headings/fences (control-character injection)`
+    );
+  }
+}
+function escapeStructuralLine(line) {
+  const h = line.match(ATX_HEADING_RE);
+  if (h) {
+    const idx = h[1].length;
+    return line.slice(0, idx) + "\\" + line.slice(idx);
+  }
+  const f = line.match(CODE_FENCE_RE);
+  if (f) {
+    const idx = f[1].length;
+    return line.slice(0, idx) + "\\" + line.slice(idx);
+  }
+  const s = line.match(SETEXT_OR_BREAK_RE);
+  if (s) {
+    const idx = s[1].length;
+    return line.slice(0, idx) + "\\" + line.slice(idx);
+  }
+  return line;
+}
+function escapeMarkdownStructure(text) {
+  if (typeof text !== "string" || text.length === 0) return text;
+  return text.split(/\r?\n/).map(escapeStructuralLine).join("\n");
+}
+function renderBulletLines(item) {
+  const lines = String(item).split(/\r?\n/).map(escapeStructuralLine);
+  const out = [`- ${lines[0]}`];
+  for (let i = 1; i < lines.length; i++) {
+    out.push(lines[i].length === 0 ? "" : `  ${lines[i]}`);
+  }
+  return out;
+}
+
 // state/PROJECT.schema.json
 var PROJECT_schema_default = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -8795,13 +8837,13 @@ function renderProjectMd(answers, createdAt) {
       if (items.length === 0) continue;
       out.push(`## ${sec.heading}`);
       for (const item of items) {
-        out.push(`- ${item}`);
+        out.push(...renderBulletLines(item));
       }
     } else {
       const str = String(value);
       if (str.length === 0) continue;
       out.push(`## ${sec.heading}`);
-      out.push(str);
+      out.push(escapeMarkdownStructure(str));
     }
     out.push("");
   }
@@ -8816,7 +8858,13 @@ function renderProjectMd(answers, createdAt) {
   if (stackKeys.length > 0) {
     out.push("## Stack");
     for (const key of stackKeys) {
-      out.push(`- ${key}: ${formatStackValue(answers[key])}`);
+      rejectControlChars(key, `Stack key "${key}"`);
+      const rawValue = answers[key];
+      const valuesToCheck = Array.isArray(rawValue) ? rawValue : [rawValue];
+      for (const v of valuesToCheck) {
+        rejectControlChars(typeof v === "string" ? v : String(v), `Stack value for "${key}"`);
+      }
+      out.push(`- ${key}: ${formatStackValue(rawValue)}`);
     }
     out.push("");
   }
@@ -9702,22 +9750,22 @@ function renderProjectContext(answers, generatedAt) {
   if (hasProblem || hasGoals || hasScopeIn || hasScopeOut) {
     out.push("## Problem");
     if (hasProblem) {
-      out.push(String(answers.problem_statement));
+      out.push(escapeMarkdownStructure(String(answers.problem_statement)));
       out.push("");
     }
     if (hasGoals) {
       out.push("### Goals");
-      for (const g of answers.goals) out.push(`- ${g}`);
+      for (const g of answers.goals) out.push(...renderBulletLines(g));
       out.push("");
     }
     if (hasScopeIn) {
       out.push("### Scope (in)");
-      for (const s of answers.scope_in) out.push(`- ${s}`);
+      for (const s of answers.scope_in) out.push(...renderBulletLines(s));
       out.push("");
     }
     if (hasScopeOut) {
       out.push("### Scope (out)");
-      for (const s of answers.scope_out) out.push(`- ${s}`);
+      for (const s of answers.scope_out) out.push(...renderBulletLines(s));
       out.push("");
     }
   }
@@ -9732,6 +9780,11 @@ function renderProjectContext(answers, generatedAt) {
     out.push("- (none specified)");
   } else {
     for (const [key, value] of stackEntries) {
+      rejectControlChars(key, `Stack key "${key}"`);
+      const valuesToCheck = Array.isArray(value) ? value : [value];
+      for (const v of valuesToCheck) {
+        rejectControlChars(typeof v === "string" ? v : String(v), `Stack value for "${key}"`);
+      }
       out.push(`- ${key}: ${formatStackValue2(value)}`);
     }
   }

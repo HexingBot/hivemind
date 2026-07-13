@@ -42,6 +42,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { atomicWriteFile } from './atomic-write.js';
+import { rejectControlChars, escapeMarkdownStructure, renderBulletLines } from './intake-sanitizer.js';
 
 // TASK-023 — the frontmatter schema is INLINED via a JSON import rather than
 // read at runtime from an `import.meta.url`-relative path, so esbuild can bundle
@@ -281,14 +282,34 @@ function renderProjectMd(answers, createdAt) {
       const items = Array.isArray(value) ? value : [value];
       if (items.length === 0) continue;
       out.push(`## ${sec.heading}`);
+      // TASK-158 — SECURITY: an item embedding a newline can otherwise break
+      // out of its bullet into a free-standing, unattributed paragraph that
+      // reads as framework-authored prose (probe P8). renderBulletLines
+      // heading/fence-escapes and re-indents any continuation line so it
+      // stays attached to THIS bullet.
       for (const item of items) {
-        out.push(`- ${item}`);
+        out.push(...renderBulletLines(item));
       }
     } else {
       const str = String(value);
       if (str.length === 0) continue;
       out.push(`## ${sec.heading}`);
-      out.push(str);
+      // TASK-158 — SECURITY: neutralize any line-start `#`/```/setext-
+      // underline marker so prose cannot forge a new framework-authored
+      // heading or fence (probes P4, P4-setext). Legitimate multi-paragraph
+      // prose is left readable. ROUND-TRIP NOTE (RC-loop MEDIUM, decided
+      // option B): this is a ONE-WAY transform — readProjectMd does NOT
+      // unescape a leading `\#`/`\```/`\-`/`\=` on read, so a legitimate
+      // value whose line happens to start with a structural-marker
+      // character is persisted (and read back) in its escaped form, not
+      // byte-identical to the original input. This is intentional: a
+      // security sanitizer's job is to make the on-disk form safe, not to
+      // reproduce coincidentally-structural input verbatim. The transform
+      // IS idempotent (escaping an already-escaped line is a no-op), so a
+      // re-run against an already-sanitized PROJECT.md is stable. Pinned by
+      // tests/e2e/intake-structure-forgery.spec.js's "round-trip decision"
+      // cases.
+      out.push(escapeMarkdownStructure(str));
     }
     out.push('');
   }
@@ -311,7 +332,19 @@ function renderProjectMd(answers, createdAt) {
   if (stackKeys.length > 0) {
     out.push('## Stack');
     for (const key of stackKeys) {
-      out.push(`- ${key}: ${formatStackValue(answers[key])}`);
+      // TASK-158 — SECURITY: a Stack bullet is a single-line context
+      // (`- key: value`); a newline in the key or value lets it escape that
+      // one line and forge arbitrary new markdown lines/headings/fences
+      // directly in the ## Stack section (probe P3). REJECT before any
+      // disk write, same chokepoint shape as TASK-157's project_name/
+      // project_type/tier guard above.
+      rejectControlChars(key, `Stack key "${key}"`);
+      const rawValue = answers[key];
+      const valuesToCheck = Array.isArray(rawValue) ? rawValue : [rawValue];
+      for (const v of valuesToCheck) {
+        rejectControlChars(typeof v === 'string' ? v : String(v), `Stack value for "${key}"`);
+      }
+      out.push(`- ${key}: ${formatStackValue(rawValue)}`);
     }
     out.push('');
   }

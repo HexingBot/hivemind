@@ -39,6 +39,7 @@ import { dirname, join } from 'node:path';
 
 import { atomicWriteFile } from './atomic-write.js';
 import { readProjectMd } from './project-md.js';
+import { rejectControlChars, escapeMarkdownStructure, renderBulletLines } from './intake-sanitizer.js';
 
 const PROJECT_CONTEXT_REL = ['.claude', 'agents', 'project-context.md'];
 const SCHEMA_VERSION = 1;
@@ -183,23 +184,30 @@ function renderProjectContext(answers, generatedAt) {
   const hasScopeOut = Array.isArray(answers.scope_out) && answers.scope_out.length > 0;
   if (hasProblem || hasGoals || hasScopeIn || hasScopeOut) {
     out.push('## Problem');
+    // TASK-158 — SECURITY: this whole block renders untrusted intake prose.
+    // escapeMarkdownStructure neutralizes any line-start `#`/``` marker so it
+    // cannot forge a new framework-authored heading/fence; renderBulletLines
+    // does the same per bullet item AND re-indents any embedded continuation
+    // line so it stays attached to its own bullet rather than breaking out
+    // into a free-standing, unattributed directive-shaped paragraph
+    // (probe P8).
     if (hasProblem) {
-      out.push(String(answers.problem_statement));
+      out.push(escapeMarkdownStructure(String(answers.problem_statement)));
       out.push('');
     }
     if (hasGoals) {
       out.push('### Goals');
-      for (const g of answers.goals) out.push(`- ${g}`);
+      for (const g of answers.goals) out.push(...renderBulletLines(g));
       out.push('');
     }
     if (hasScopeIn) {
       out.push('### Scope (in)');
-      for (const s of answers.scope_in) out.push(`- ${s}`);
+      for (const s of answers.scope_in) out.push(...renderBulletLines(s));
       out.push('');
     }
     if (hasScopeOut) {
       out.push('### Scope (out)');
-      for (const s of answers.scope_out) out.push(`- ${s}`);
+      for (const s of answers.scope_out) out.push(...renderBulletLines(s));
       out.push('');
     }
   }
@@ -216,6 +224,16 @@ function renderProjectContext(answers, generatedAt) {
     out.push('- (none specified)');
   } else {
     for (const [key, value] of stackEntries) {
+      // TASK-158 — SECURITY: same single-line-context guard as
+      // project-md.js's Stack loop — generateProjectContext can be called
+      // with a fresh `answers` map directly (bypassing writeProjectMd), so
+      // it must independently reject a newline-bearing Stack key/value
+      // before it can forge new markdown lines/headings/fences (probe P3).
+      rejectControlChars(key, `Stack key "${key}"`);
+      const valuesToCheck = Array.isArray(value) ? value : [value];
+      for (const v of valuesToCheck) {
+        rejectControlChars(typeof v === 'string' ? v : String(v), `Stack value for "${key}"`);
+      }
       out.push(`- ${key}: ${formatStackValue(value)}`);
     }
   }
