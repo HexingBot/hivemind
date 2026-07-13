@@ -8,7 +8,7 @@
     "A red-first regression test replays P10 and asserts the file-count bound holds; it fails against current main for the right reason (thousands of files generated) before the fix",
     "A legitimate small primary_use_cases array (e.g. 3–5 use cases) still generates exactly one spec per use case — the cap does not disturb normal projects; existing generateUseCaseSuite tests pass"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "security",
@@ -18,11 +18,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "5689158"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T20:00:17.447Z",
+      "body": "Closed on a clean first-pass APPROVE (review_depth: FULL; rubric inputs: touches the use-case-suite manifest surface guarded by the tests/use-case-policy.spec.js meta-sensor + bundled dist + availability/security fix). Final commit 5689158 (tdd single-commit). Fix: exported MAX_PRIMARY_USE_CASES=50 in src/use-case-specs.js; caps normalizedUseCases immediately after normalizeUseCases() and BEFORE both buildManifest and the spec-write loop, so the manifest and on-disk specs stay in lockstep (no dangling ref). CAP-WITH-LOUD-LOG (console.warn names original/kept/dropped), no silent truncation; cap-vs-reject justified (init is a one-time author action). Reviewer independently reproduced the red proof (reverse-applied only the cap hunk: MAX undefined + ~2000 files written in 17.75s), and confirmed the lockstep invariant against the REAL generator: N=2000 -> 50 specs/50 manifest refs/0 dangling/warn fired; N=5 -> 5 specs; non-JS stack -> 0 specs (manifest-only, unaffected). Gate: test:since -- 5689158~1 = 16 passed; npm test 977/2 skip; use-case-policy meta-sensor 7 passed; dist-parity green (dist/init.cjs fresh); developer also ran test:all 1775 passed. 0 HIGH/0 MEDIUM. No RC loop -> knowledge capture (TASK-105) NOT triggered. This is the LAST wargame-fix ticket; protocol step 9 (re-run full probe set) is next. LOCAL/unpushed pending human push."
+    }
+  ],
   "created_at": "2026-07-13T04:09:15.878Z",
-  "updated_at": "2026-07-13T04:09:15.878Z",
+  "updated_at": "2026-07-13T20:00:17.447Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

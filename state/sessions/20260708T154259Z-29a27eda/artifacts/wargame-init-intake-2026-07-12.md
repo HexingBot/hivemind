@@ -54,3 +54,29 @@ becomes a permanent rule in that sanitizer.
 **Step 9 (re-run after fixes land):** once TASK-157..160 close, replay THIS exact probe set (all 10,
 not a fresh one) via `wargame-init-intake-probes.mjs` and confirm every previously-missed input is
 caught AND P5/P6/P7 still pass.
+
+## Step 9 re-verification — PASSED (2026-07-13, after TASK-157..161 landed)
+
+Re-ran the identical probe set via `wargame-init-intake-probes.mjs` against the fixed pipeline.
+**All 7 original misses are now caught; all 3 confirmed-good defenses held (no regression).**
+
+| Probe | Original verdict | Re-run verdict | Mechanism (ticket) |
+|---|---|---|---|
+| P1 name→frontmatter | MISSED (HIGH) | **CAUGHT** — `writeProjectMd` throws control-char reject | TASK-157 |
+| P2 type→fence breakout | MISSED | **CAUGHT** — throws | TASK-157 |
+| P3 Stack directive+curl\|sh | MISSED (MED) | **CAUGHT** — Stack value reject throws | TASK-158 |
+| P4 `## License` heading forge | MISSED | **CAUGHT** — escaped to `\## License`, no top-level heading | TASK-158 |
+| P5 codegen into .spec.js | caught | **still caught** — JSON.stringify | (unchanged) |
+| P6 path traversal via slug | caught | **still caught** — slugify, no `..` | (unchanged) |
+| P7 JSON forgery/proto-pollution | caught | **still caught** — `({}).polluted` undefined | (unchanged) |
+| P8 briefing HITL-waiver | MISSED (MED) | **CAUGHT** — re-indented as bullet continuation, not a free directive | TASK-158 |
+| P9 hidden Unicode-tag | MISSED (MED) | **CAUGHT** — `PROJECT.md raw contains U+E00xx? false` | TASK-159 |
+| P10 2000 use-cases | MISSED (LOW) | **CAUGHT** — capped at 50, 932ms (was 20.7s), loud warn | TASK-160 |
+
+Residual (by design, in scope-bounds): P4's typosquat prose (`npm install expres`) and P8's directive
+*words* still appear as user-supplied content — TASK-158's guarantee is that untrusted text cannot forge
+FRAMEWORK structure/authority (headings/fences/directive-blocks), not that arbitrary prose is deleted.
+The structure forgery is neutralized; the content is now clearly attributed as user input.
+
+Plus TASK-161 closed the perfil_proyecto frontmatter-key residual the P1 fix's reviewer surfaced (same
+injection class, separate sink). The adversarial-improve cycle for this component is complete.
