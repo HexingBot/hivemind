@@ -69,7 +69,7 @@ To self-drive this loop across multiple tickets toward a stated goal instead of 
 
 The suite is split into two tiers **by directory** (see `vitest.config.js` for the rationale):
 
-- **Fast tier** — `tests/*.spec.js`: pure logic, no real disk I/O (~2s).
+- **Fast tier** — `tests/*.spec.js`: pure logic, no real disk I/O (~2s test-execution; ~7s wall-clock once process startup and collect are counted — collect scales with spec-file count).
 - **Slow tier** — `tests/e2e/**`: real `mkdtemp` disk I/O and process spawns.
 
 ### Verification tier rubric
@@ -94,7 +94,7 @@ The Orchestrator and the Developer/Reviewer subagents **must pick the command by
 |---|---|---|
 | Writing code, TDD inner loop | `npm run test:watch` | only specs affected by each save (auto, via import graph) |
 | One-shot check of code you just edited | `npm run test:changed` | only specs related to your **uncommitted** changes |
-| Fast confidence / pre-deploy smoke | `npm test` | the whole fast tier (~2s) |
+| Fast confidence / pre-deploy smoke | `npm test` | the whole fast tier (~2s test-execution; ~7s wall-clock) |
 | Iterating on one slow spec | `vitest run --config vitest.config.all.js tests/e2e/<file>` | that single e2e spec |
 | Re-verifying a committed diff (Reviewer) | `npm run test:since -- <base-ref>` | specs affected since `<base-ref>`, including committed changes |
 | **Per-ticket hand-off gate** | `npm run test:changed` (or `test:since` post-commit) + `npm test` + named affected e2e specs | changed + fast tier + targeted slow specs |
@@ -114,7 +114,7 @@ Rules:
 
 ### Rules
 
-- **The scaled gate applies per ticket:** the Developer runs `npm run test:changed` plus `npm test` (fast tier, ~2s) plus any affected e2e specs explicitly named at hand-off. The Reviewer re-runs the equivalent selection against the committed diff with `npm run test:since -- <base-ref>` plus `npm test` plus the named e2e specs — a green Developer hand-off must reproduce as green here. The Developer proposes the affected-e2e list; the Reviewer independently assesses its sufficiency and may expand it or escalate to the Orchestrator if under-scoped. `npm test` is mandatory at both steps because the `--changed`/`--since` import graph is blind to files read via `fs` rather than imported (agent/skill parity sensors, doc-lock specs) — an md-only ticket would otherwise run zero sensors. This keeps per-ticket verification time roughly constant regardless of project age.
+- **The scaled gate applies per ticket:** the Developer runs `npm run test:changed` plus `npm test` (fast tier, ~2s test-execution / ~7s wall-clock) plus any affected e2e specs explicitly named at hand-off. The Reviewer re-runs the equivalent selection against the committed diff with `npm run test:since -- <base-ref>` plus `npm test` plus the named e2e specs — a green Developer hand-off must reproduce as green here. Because the fast tier runs once at hand-off and again at review, budget roughly its wall-clock figure twice per ticket, not once. The Developer proposes the affected-e2e list; the Reviewer independently assesses its sufficiency and may expand it or escalate to the Orchestrator if under-scoped. `npm test` is mandatory at both steps because the `--changed`/`--since` import graph is blind to files read via `fs` rather than imported (agent/skill parity sensors, doc-lock specs) — an md-only ticket would otherwise run zero sensors. Scoped test selection (`test:changed` / `test:since`) is what keeps per-ticket verification time bounded to the affected specs; the fast tier's own startup/collect cost still scales with spec-file count as the suite grows, so its wall-clock figure is not fixed forever.
 - **`npm run test:all` is reserved for release, milestone, and publish points**, and for any ticket that touches test infrastructure or `tasks/schema.json`. `test:changed` and `test:watch` are inner-loop accelerators — the import graph cannot see fixture / data-file / dynamic-path coupling and would silently skip affected specs, which is why full `test:all` still runs at those checkpoints.
 - New slow specs (anything calling `makeTmpDir` or spawning a process) go under `tests/e2e/`; pure-logic specs stay at the top level of `tests/`. The folder *is* the tier — keep the boundary clean so the fast tier stays fast.
 
