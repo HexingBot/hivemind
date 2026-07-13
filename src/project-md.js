@@ -127,6 +127,39 @@ export async function writeProjectMd({ repoRoot, answers, now = () => new Date()
     }
   }
 
+  // TASK-157 — SECURITY: reject \r/\n in plain-scalar frontmatter fields
+  // BEFORE any disk write. renderProjectMd interpolates project_name/
+  // project_type/tier directly into `name: ${name}` / `type: ${type}` /
+  // `tier: ${tier}` frontmatter lines with no escaping; an embedded newline
+  // lets an attacker forge arbitrary top-level frontmatter keys
+  // (agent_models, tier, schema_version, ...) that readProjectMd then
+  // restores as if the writer itself had emitted them, or (via an embedded
+  // `\n---\n`) close the frontmatter block early and forge body content.
+  // `tier` is included alongside the two AC-mandated fields (project_name,
+  // project_type) because it is the identical one-line scalar-injection
+  // shape confirmed live while exercising this adjacent path, and guarding
+  // it here is a trivial addition to the same loop (see TASK-157 hand-off:
+  // agent_models is exempt because its values are already independently
+  // gated by the alias/full-model-id regex below, which cannot contain
+  // control characters; perfil_proyecto's map-value injection is a distinct,
+  // more involved fix and is tracked as a follow-up rather than folded in
+  // here). REJECT (not escape/quote) was chosen over encoding the value: it
+  // is the simplest fix, matches this module's existing strict-throw
+  // philosophy (see the missing-field checks above and the
+  // nested-yaml/invalid-agent_models rejections below), and avoids adding
+  // per-field quoting/unquoting rules to the tiny in-house YAML subset that
+  // the reader would then also need to reverse losslessly.
+  for (const id of ['project_name', 'project_type', 'tier']) {
+    const v = answers[id];
+    if (typeof v === 'string' && /[\r\n]/.test(v)) {
+      throw new Error(
+        `writeProjectMd: ${id} must not contain newline or carriage-return ` +
+        'characters — they would corrupt the PROJECT.md YAML frontmatter ' +
+        '(control-character injection)',
+      );
+    }
+  }
+
   // TASK-036 — write-time validation of the agent_models map (AC1): reject an
   // invalid shape, unknown agent names, or invalid model values BEFORE any
   // disk write, naming the offender. null means "wizard question skipped" and

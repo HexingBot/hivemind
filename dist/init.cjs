@@ -8722,6 +8722,14 @@ async function writeProjectMd({ repoRoot, answers, now = () => (/* @__PURE__ */ 
       throw new Error(`writeProjectMd: missing required answer: ${id}`);
     }
   }
+  for (const id of ["project_name", "project_type", "tier"]) {
+    const v = answers[id];
+    if (typeof v === "string" && /[\r\n]/.test(v)) {
+      throw new Error(
+        `writeProjectMd: ${id} must not contain newline or carriage-return characters \u2014 they would corrupt the PROJECT.md YAML frontmatter (control-character injection)`
+      );
+    }
+  }
   const am = answers ? answers.agent_models : void 0;
   if (am !== void 0 && am !== null) {
     if (typeof am !== "object" || Array.isArray(am)) {
