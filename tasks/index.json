@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-12T22:04:41.909Z",
+  "generated_at": "2026-07-13T02:39:02.854Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -876,6 +876,36 @@
       "title": "license-detect: SPDX-header spoof shadows the real LICENSE file — surface the conflict instead of a clean permissive verdict",
       "status": "done",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-151",
+      "title": "Correct stale \"~2s\" fast-tier timing claim (real wall-clock ~7s) across process docs",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-152",
+      "title": "Add isFrameworkRepo detector (src/framework-context.js)",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-153",
+      "title": "Split hive-self-improve & hive-adversarial-improve into framework + -current-project variants by delivery channel",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-154",
+      "title": "Add assimilate-current-project consumer variant; scope hivemind-assimilate-skill to framework without breaking design-pack",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-155",
+      "title": "Document the framework-vs-current-project skill convention in routing + CLAUDE.md",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }

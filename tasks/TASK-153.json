@@ -1,0 +1,33 @@
+{
+  "key": "TASK-153",
+  "title": "Split hive-self-improve & hive-adversarial-improve into framework + -current-project variants by delivery channel",
+  "description": "Make the two improvement skills context-scoped so the framework repo and downstream consumer projects see different, correctly-targeted variants. Mechanism (confirmed by investigation): plugin-root skills/ ships to consumer installs; .claude/skills/ is framework-repo-only. Currently both skills sit in BOTH dirs byte-identical, so they appear everywhere. Change:\\n\\n(1) FRAMEWORK VARIANTS: relocate skills/hive-self-improve and skills/hive-adversarial-improve OUT of plugin-root skills/ so they live in .claude/skills/ ONLY (framework-repo-only). Add a context self-guard at the top of each: call isFrameworkRepo (TASK-152); if FALSE, STOP and direct the user to the -current-project variant. They keep targeting framework internals (src/, tests/, tasks/).\\n\\n(2) CONSUMER VARIANTS: author skills/hive-self-improve-current-project and skills/hive-adversarial-improve-current-project in plugin-root skills/ (shipped to consumers). Same protocol/mechanic as their siblings but retargeted to the CONSUMER'S OWN project code only (their src/tests/tasks), never framework internals. Inverse self-guard: if isFrameworkRepo is TRUE, STOP and point to the plain variant. Do NOT dogfood these into .claude/skills/ (the framework repo should not surface -current-project names).\\n\\n(3) SENSOR: redesign tests/plugin-scaffold.spec.js REPO_LOCAL_SKILLS (currently a single fixed set asserted == plugin-root skills/, lines ~90-93 + the readdirSync equality at ~203-206) into TWO channels: FRAMEWORK_ONLY_SKILLS (must be present in .claude/skills/, ABSENT from plugin-root skills/) and CONSUMER_SHIPPED_SKILLS (present in plugin-root skills/). hive-self-improve + hive-adversarial-improve move to the framework-only set; the two -current-project skills join the consumer-shipped set. Drop the byte-identity dogfood assertion for the relocated skills. Keep hivemind-assimilate-skill unchanged in THIS ticket (handled separately in its own ticket to avoid breaking the design-pack flow).\\n\\nAll file moves + sensor changes MUST land atomically (removing a skill from plugin-root skills/ breaks the sensor unless the sensor changes in the same commit). tdd: packaging-invariant + sensor-infra change; run test:all (touches test infrastructure).",
+  "acceptance_criteria": [
+    "skills/hive-self-improve and skills/hive-adversarial-improve are removed from plugin-root skills/ and present in .claude/skills/ only",
+    "Each framework variant opens with an isFrameworkRepo guard that stops + points to the -current-project variant when run in a consumer project",
+    "skills/hive-self-improve-current-project and skills/hive-adversarial-improve-current-project exist in plugin-root skills/, retarget to the consumer's own project code only, and guard-stop + point to the plain variant when isFrameworkRepo is true",
+    "tests/plugin-scaffold.spec.js asserts the two-channel invariant: framework-only skills present in .claude/skills/ and absent from plugin-root skills/; consumer-shipped skills (incl. the two -current-project) present in plugin-root skills/",
+    "The -current-project variants are NOT added to .claude/skills/",
+    "npm run test:all is green (fast + slow + dist-parity); the change is atomic in its commit(s)",
+    "No behavioral change to hivemind-assimilate-skill in this ticket"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "skill-scoping",
+    "packaging"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-152"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T02:26:10.246Z",
+  "updated_at": "2026-07-13T02:26:10.246Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

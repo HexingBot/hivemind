@@ -1,0 +1,39 @@
+{
+  "key": "TASK-152",
+  "title": "Add isFrameworkRepo detector (src/framework-context.js)",
+  "description": "The framework has no primitive that answers \"is the current repo the hivemind framework itself, or a project built with it?\" (confirmed by investigation: no isFrameworkRepo/frameworkRepo function exists in src/). This detector is the seam the new framework-vs-consumer skill guards depend on (see the sibling scoping tickets). Add src/framework-context.js exporting isFrameworkRepo({ repoRoot }) -> boolean. TRUE iff repoRoot is the hivemind framework: `.claude-plugin/plugin.json` exists AND parses AND its name === 'hivemind', AND `src/` is a directory AND `bin/init.js` exists. Must be robust: a missing/malformed plugin.json, a plugin.json whose name !== 'hivemind' (a consumer project that installed the plugin and has its OWN name), or a project with PROJECT.md but no src/+bin/ all return FALSE without throwing. Do NOT rely on CLAUDE_PROJECT_NAME env (a consumer can set any name) or CWD. tdd: this is a classification seam that parses JSON and gates security-relevant skill behavior downstream.",
+  "acceptance_criteria": [
+    "isFrameworkRepo({repoRoot}) returns true for the hivemind repo root (plugin.json name==='hivemind' + src/ + bin/init.js all present)",
+    "Returns false for a consumer-project fixture: PROJECT.md present, no src/ + bin/init.js, or a plugin.json whose name !== 'hivemind'",
+    "Returns false (never throws) when .claude-plugin/plugin.json is missing or malformed JSON",
+    "Returns false when src/ is absent even if plugin.json name==='hivemind' (guards against a partial checkout)",
+    "Pure and synchronous or clearly async; no dependence on CLAUDE_PROJECT_NAME, CWD, or process env for the verdict",
+    "Fast-tier spec covers all above branches with a tmp-dir or fixture layout; npm test green"
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "skill-scoping",
+    "framework-context"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "369640a",
+    "80b07b6"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T02:39:02.854Z",
+      "body": "DONE — isFrameworkRepo detector (src/framework-context.js) landed. Reviewer verdict: APPROVE at review_depth=FULL (rubric inputs: new tdd-tier src/ classification seam that downstream skill-scoping guards depend on; modest changed-line count but security-adjacent surface — it gates which skills run where). tdd single-commit discipline: red-run captured (module-not-found for the right reason), impl 369640a. Reviewer found 0 HIGH, 2 MEDIUM, 1 LOW. MED#1 (relative repoRoot '.' still resolved against process.cwd() → violated the no-CWD-dependence AC) fixed post-approve per the reviewer's prescribed one-liner: added isAbsolute() guard + red-green regression test, commit 80b07b6. MED#2 (hand-off checklist/red-run not visible to the isolated reviewer) discharged — both artifacts were present in the developer hand-off. LOW (redundant module-shape test) accepted as a nit. Gate: npm test 963 passed/2 skipped; test:since non-zero-specs green. Not bundled (no bin/ import) → no dist rebuild. No HIGH and no RC loop → no knowledge draft per TASK-105 trigger."
+    }
+  ],
+  "created_at": "2026-07-13T02:25:44.080Z",
+  "updated_at": "2026-07-13T02:39:02.854Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

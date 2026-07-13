@@ -1,0 +1,34 @@
+{
+  "key": "TASK-154",
+  "title": "Add assimilate-current-project consumer variant; scope hivemind-assimilate-skill to framework without breaking design-pack",
+  "description": "Give consumer projects a local-only skill-adoption entry point, mirroring the framework/-current-project split from TASK-153, but handle the design-pack entanglement deliberately. Context (investigation): hivemind-assimilate-skill already documents two invocation paths (dev-repo bin/*.js vs plugin-install dist/pack-ctl.cjs, SKILL.md lines ~47/60-65) and is referenced in prose by the CONSUMER-facing commands/design-pack.md (lines ~72/77/82/104-107). So unlike the hive-* skills, assimilate already has a consumer path and a consumer caller — a naive relocation would break design-pack for consumers.\\n\\nDeliver: (1) author skills/assimilate-current-project in plugin-root skills/ (shipped to consumers) as the consumer-facing adoption skill — adopts a third-party skill into the CONSUMER'S OWN project only, using the dist/pack-ctl.cjs path, keeping the human-gated security-reviewer + sign-off protocol intact. Inverse guard: if isFrameworkRepo (TASK-152) is TRUE, point to hivemind-assimilate-skill. (2) Keep hivemind-assimilate-skill available (it is the framework-repo path); add a guard/prose note that in a consumer project the -current-project variant is the right entry. Decide + implement the minimal treatment that KEEPS design-pack's consumer flow working — either keep hivemind-assimilate-skill in plugin skills/ too (both shipped) or repoint design-pack.md to assimilate-current-project; whichever the developer chooses, design-pack's documented consumer flow must still resolve to a real, shipped skill. (3) Update the TASK-153 two-channel sensor to include assimilate-current-project in the consumer-shipped set and reflect wherever hivemind-assimilate-skill ends up. tdd: packaging + human-gated-security-surface; run test:all. Preserve all existing assimilate security invariants (default-deny verdict gate, license-not-safety, no auto-adopt).",
+  "acceptance_criteria": [
+    "skills/assimilate-current-project exists in plugin-root skills/, scoped to adopt a skill into the consumer's own project only, preserving the human-gated security-reviewer verdict + explicit sign-off (default-deny) and the license-is-decision-support-not-safety rule",
+    "assimilate-current-project guard-stops + points to hivemind-assimilate-skill when isFrameworkRepo is true",
+    "commands/design-pack.md's consumer-facing assimilate step still resolves to a real shipped skill (either hivemind-assimilate-skill remains shipped, or the command is repointed to assimilate-current-project) — verified by reading the command + confirming the referenced skill ships in plugin-root skills/",
+    "hivemind-assimilate-skill notes/guards that in a consumer project the -current-project variant is the correct entry",
+    "tests/plugin-scaffold.spec.js two-channel sensor updated to include assimilate-current-project (consumer-shipped) and reflect hivemind-assimilate-skill's channel",
+    "No regression to existing assimilate security specs; npm run test:all green"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "skill-scoping",
+    "packaging",
+    "assimilate"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-152",
+    "TASK-153"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T02:26:32.485Z",
+  "updated_at": "2026-07-13T02:26:32.485Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

@@ -1,0 +1,30 @@
+{
+  "key": "TASK-151",
+  "title": "Correct stale \"~2s\" fast-tier timing claim (real wall-clock ~7s) across process docs",
+  "description": "hive-self-improve run (target: the development process; dimension: performance/doc-accuracy) measured the fast tier at 6.9-7.4s wall-clock, not the \"~2s\" the docs claim in four places: CLAUDE.md:72 (\"pure logic, no real disk I/O (~2s)\"), CLAUDE.md:97 (\"the whole fast tier (~2s)\"), CLAUDE.md:117 (\"fast tier, ~2s\"), and vitest.config.js:4/11 (\"~2s\" / \"keeps the inner loop and deploy smoke at ~2s\"). The \"~2s\" reflects test-EXECUTION time (vitest reports ~2.1s tests / ~2.9s collect / ~0.8s transform); wall-clock incl. vitest startup is ~7s. Because the per-ticket gate runs the fast tier twice (developer hand-off + reviewer re-verify), the stale figure understates per-ticket gate cost ~3x. Also: the cost is dominated by startup/collect which scales with spec-file count (71 fast specs today), so CLAUDE.md:117's \"keeps per-ticket verification time roughly constant regardless of project age\" and vitest.config.js:11's premise are drifting and should be softened to reflect that scoped test selection (test:changed/test:since), not the tier split alone, is what bounds inner-loop time. NOTE (measurement, do NOT act on it as a speedup): parallelizing the fast tier was tested and is WORSE on Windows — pool=threads 15.4s, forks singleFork=false 16.6s vs 7.0s baseline; only --no-isolate helped (~10%, 6.3s) at a shared-module-state correctness risk. So the fix here is doc-accuracy only, not a config change. Pure docs -> uat-only.",
+  "acceptance_criteria": [
+    "CLAUDE.md's three '~2s' references (lines ~72, ~97, ~117) are corrected to distinguish ~2s test-execution from ~7s wall-clock (or updated to the honest wall-clock figure)",
+    "vitest.config.js's comment (~lines 4, 11) no longer claims the split alone 'keeps the inner loop ... at ~2s'; it credits scoped test selection for bounding inner-loop time",
+    "CLAUDE.md:117's 'roughly constant regardless of project age' is softened to acknowledge fast-tier startup/collect scales with spec-file count",
+    "No vitest config/pool change is made (measurement showed parallelism is ~2x slower on Windows); this ticket is documentation-only",
+    "UAT: a reader following the docs would budget the per-ticket gate realistically (~7s x2 fast tier) rather than ~2s"
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "hive-self-improve",
+    "docs",
+    "dx"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T02:17:15.182Z",
+  "updated_at": "2026-07-13T02:17:15.182Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

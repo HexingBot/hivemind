@@ -1,0 +1,32 @@
+{
+  "key": "TASK-155",
+  "title": "Document the framework-vs-current-project skill convention in routing + CLAUDE.md",
+  "description": "Teach the orchestrator and future contributors the two-variant convention introduced by TASK-153/154 so the right skill is picked in each context. Update: (1) .claude/skills/orchestrator-routing/SKILL.md — a short subsection noting that hive-self-improve / hive-adversarial-improve / hivemind-assimilate-skill are FRAMEWORK-repo-only, and their -current-project counterparts (hive-self-improve-current-project, hive-adversarial-improve-current-project, assimilate-current-project) are the CONSUMER-project entry points, gated by isFrameworkRepo (src/framework-context.js). (2) CLAUDE.md — a brief pointer in the Knowledge Sharing or Workflow area to the same convention. Keep it terse; the skills themselves carry the operational detail. uat-only: pure docs, no code; verify via a short UAT script that a reader can tell which variant to invoke from which context. If any doc-lock sensor guards these files, keep it green.",
+  "acceptance_criteria": [
+    "orchestrator-routing SKILL.md explains the framework vs -current-project variant split and names isFrameworkRepo as the gate",
+    "CLAUDE.md carries a brief pointer to the convention (which skills are framework-only vs consumer-facing)",
+    "Docs name all six skills correctly and match the actual shipped/relocated layout from TASK-153/154",
+    "Any doc-lock/parity sensor over these files stays green; npm test green",
+    "UAT: from the docs alone, a reader correctly picks hive-self-improve in the framework repo and hive-self-improve-current-project in a consumer project"
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "skill-scoping",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-153",
+    "TASK-154"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T02:26:47.150Z",
+  "updated_at": "2026-07-13T02:26:47.150Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
