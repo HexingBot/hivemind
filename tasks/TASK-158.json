@@ -9,7 +9,7 @@
     "A red-first regression test replays P3/P4/P8 against the real generators and asserts the structural/directive forgery is neutralized; it fails against current main for the right reason first",
     "Legitimate multi-line prose (a normal project_description with paragraphs, a normal goals list) still renders readably and existing generator tests pass"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "security",
@@ -19,11 +19,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "108322a"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T15:28:31.856Z",
+      "body": "Closed on APPROVE after ONE RC loop (review_depth: FULL; rubric inputs: security fix for a confirmed markdown structure/directive-forgery vuln + NEW shared module src/intake-sanitizer.js + two bundled sinks project-md.js/agent-generator.js + committed dist rebuild). Final commit 108322a (amended tdd single-commit). Fix: new src/intake-sanitizer.js seam — rejectControlChars on single-line Stack keys/values in BOTH sinks; escapeMarkdownStructure + renderBulletLines neutralize structure-forging in prose/bullet sections; generateProjectContext's independent-call path guarded (defense-in-depth). RC LOOP: first pass (53cce37) APPROVE-blocked on 1 HIGH — setext heading forgery ('License\\n---' → live <h2>) bypassed the ATX-only escape, defeating AC3; plus 1 MEDIUM round-trip asymmetry. Developer amended to 108322a: escapeStructuralLine now also escapes bare underline/thematic-break lines /^ {0,3}([=\\-*_])(?:[ \\t]*\\2)*[ \\t]*$/ (closes setext '='/'-' AND thematic breaks '-'/'*'/'_') on both prose and bullet paths; round-trip MEDIUM resolved via option-B (deliberate one-way transform, documented in 3 sites + pinned by 2 non-vacuous tests). Re-review: independent red-state reproduction of the setext case + 12 evasion payloads (trailing spaces, space-separated 'a - - -', post-blank, indented) through the REAL writers — no bypass; 0 HIGH / 0 MEDIUM. Gate: test:since -- 108322a~1 = 80 passed/4 files; npm test 977/2 skip; named e2e 85 passed/1 skip; dist-parity green (dist/init.cjs fresh). Spec tests/e2e/intake-structure-forgery.spec.js 10/10. Knowledge capture (TASK-105) TRIGGERED by the RC loop — draft written to knowledge/proposed/. LOCAL/unpushed pending human push."
+    }
+  ],
   "created_at": "2026-07-13T04:08:31.826Z",
-  "updated_at": "2026-07-13T04:08:31.826Z",
+  "updated_at": "2026-07-13T15:28:31.856Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

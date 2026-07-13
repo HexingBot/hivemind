@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T14:47:10.937Z",
+  "generated_at": "2026-07-13T15:28:31.856Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -922,7 +922,7 @@
     {
       "key": "TASK-158",
       "title": "Neutralize markdown structure/directive forgery from intake values in agent-facing files (PROJECT.md + project-context.md)",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
