@@ -1,0 +1,33 @@
+{
+  "key": "TASK-161",
+  "title": "Gate perfil_proyecto frontmatter map values against control-char key injection (TASK-157 residual)",
+  "description": "SECURITY — residual of the same YAML-frontmatter key-injection class TASK-157 fixed for name/type/tier, surfaced by the TASK-157 gating reviewer (verdict APPROVE, 1 MEDIUM). src/project-md.js#renderProjectMd writes `perfil_proyecto: {${k}: ${v}}` interpolating the inline-object map's values VERBATIM with no validation. Unlike agent_models (whose values are regex-gated by MODEL_ALIASES/FULL_MODEL_ID_RE, so control chars cannot survive), perfil_proyecto values receive NO validation. A value like `poderoso\\ninjected_key: PWNED` breaks out of the frontmatter line and forges a top-level frontmatter key on read-back — the SAME mechanism as probe P1, and a forged agent_models key (157's headline 'downgrade the reviewer's model' exploit) is reachable this way.\\n\\nWHY NOT ALREADY COVERED: the reviewer explicitly checked — TASK-158 covers markdown BODY/context structure forgery (## headings, curl|sh, directives in Stack bullets + project-context.md), NOT the frontmatter-key path in perfil_proyecto. So this residual falls in the gap between 157 (name/type/tier scalars only) and 158 (body/context). It needs its own fix.\\n\\nSeverity MEDIUM: requires the design-power pack active (perfil_proyecto only written when the profile is present), and the inline-object trailing-brace partially mangles a naive payload — but it is a real frontmatter-key forgery path with the reviewer-downgrade impact.\\n\\nROOT CAUSE: src/project-md.js perfil_proyecto render loop (~:225-231 write side) interpolates map values raw. FIX DIRECTION: reject control chars (\\\\r/\\\\n) in perfil_proyecto keys AND values with a loud, field-naming error before write — reuse/extend the TASK-157 guard helper. This is a natural member of the shared intake-boundary sanitizer (protocol step 8, alongside TASK-158/159); factor accordingly. tdd tier: frontmatter parsing/schema security.\\n\\nFIXTURE: replay a perfil_proyecto payload with an embedded newline in a value (e.g. {estilo: 'poderoso\\\\ninjected_key: PWNED'}) through writeProjectMd -> readProjectMd and assert no forged top-level frontmatter key appears (mirror tests/e2e/project-md-frontmatter-injection.spec.js).",
+  "acceptance_criteria": [
+    "Replaying a perfil_proyecto map whose key or value contains \\r/\\n (e.g. {estilo: 'poderoso\\ninjected_key: PWNED'}) through writeProjectMd -> readProjectMd yields a PROJECT.md whose parsed frontmatter contains NO attacker-forged top-level key (no injected_key, no smuggled agent_models)",
+    "writeProjectMd rejects control chars in perfil_proyecto keys/values with a loud error naming the field, BEFORE any disk write (consistent with the TASK-157 name/type/tier guard), OR escapes them so read-back round-trips the literal",
+    "A red-first regression test replays the perfil_proyecto injection payload against the real writer/reader and fails against current main for the right reason (forged key present) before the fix; it mirrors tests/e2e/project-md-frontmatter-injection.spec.js",
+    "Legitimate perfil_proyecto maps (the design-power profile fields, no control chars) still round-trip unchanged; existing design-profile-frontmatter / design-profile-round-trip e2e specs pass",
+    "The fix reuses/extends the TASK-157 control-char guard rather than duplicating the check (shared intake-sanitizer direction)"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "security",
+    "hive-adversarial-improve",
+    "init",
+    "parsing"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-157"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T14:46:54.931Z",
+  "updated_at": "2026-07-13T14:46:54.931Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

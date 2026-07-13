@@ -9,7 +9,7 @@
     "A red-first regression test replays P1 and P2 against the real writer/reader and asserts the injection is caught; it fails against current main for the right reason (shows the forged agent_models/tier) before the fix",
     "Existing PROJECT.md round-trip tests still pass (legitimate project_name/project_type/agent_models/tier/perfil_proyecto values are unaffected)"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "security",
@@ -19,11 +19,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "0c1e8c0"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T14:47:10.937Z",
+      "body": "Closed on a clean first-pass APPROVE (review_depth: FULL; rubric inputs: security fix for a confirmed YAML-frontmatter key-injection vuln + parsing/schema logic in src/project-md.js + new e2e regression spec + committed dist rebuild — any one justifies full). Developer commit 0c1e8c0 (single tdd commit, tests+impl together): writeProjectMd now rejects \\r/\\n in project_name/project_type/tier with a loud field-naming error BEFORE any disk write (reject-over-escape, matching the module's strict-throw philosophy); tier folded in as same-class. New spec tests/e2e/project-md-frontmatter-injection.spec.js (5 tests) replays probes P1/P2 + tier variant + 2 legitimate-value sanity checks. Reviewer independently reproduced the tests-first red proof by reverse-applying ONLY the impl hunk (git apply -R) and re-running: 3 injection tests failed for the right reason (writeProjectMd silently wrote forged frontmatter), sanity tests stayed green (non-vacuous); then restored. Gate on committed diff: test:since -- 0c1e8c0~1 = 4 files/75 passed (non-vacuous, incl. injection spec); npm test = 977 passed/2 skip; dist-parity green (dist/init.cjs byte-fresh). Single chokepoint confirmed: renderProjectMd is private, both init paths converge on the one writeProjectMd call, no bypass. Findings: 0 HIGH in-scope, 1 MEDIUM (perfil_proyecto map values are the identical injection class, NOT covered by TASK-158's body/context scope — minted as dedicated follow-up TASK-161), 1 LOW (verbose comment, non-blocking). Knowledge capture (TASK-105) NOT triggered: no HIGH, zero RC loops. LOCAL/unpushed pending human push."
+    }
+  ],
   "created_at": "2026-07-13T04:08:09.919Z",
-  "updated_at": "2026-07-13T04:08:09.919Z",
+  "updated_at": "2026-07-13T14:47:10.937Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

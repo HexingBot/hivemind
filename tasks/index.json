@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T04:09:15.878Z",
+  "generated_at": "2026-07-13T14:47:10.937Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -916,7 +916,7 @@
     {
       "key": "TASK-157",
       "title": "Harden PROJECT.md frontmatter: reject/escape control chars in project_name & project_type (YAML key injection)",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -936,6 +936,12 @@
       "title": "Bound primary_use_cases count to cap unbounded file generation (answers-file DoS)",
       "status": "todo",
       "priority": "low"
+    },
+    {
+      "key": "TASK-161",
+      "title": "Gate perfil_proyecto frontmatter map values against control-char key injection (TASK-157 residual)",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }
