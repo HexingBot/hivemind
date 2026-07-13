@@ -11,7 +11,7 @@
     "npm run test:all is green (fast + slow + dist-parity); the change is atomic in its commit(s)",
     "No behavioral change to hivemind-assimilate-skill in this ticket"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "skill-scoping",
@@ -21,11 +21,19 @@
   "depends_on": [
     "TASK-152"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "96318eb"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T02:53:16.850Z",
+      "body": "DONE — hive-self-improve + hive-adversarial-improve split into framework (.claude/skills/ only) + -current-project consumer variants (plugin skills/), with the plugin-scaffold sensor redesigned into FRAMEWORK_ONLY_SKILLS vs CONSUMER_SHIPPED_SKILLS channels. Single commit 96318eb (tdd single-commit: sensor written first, 5 right-reason red failures captured, then file moves + consumer skills authored to green). Reviewer verdict: APPROVE at review_depth=FULL (rubric inputs: packaging + test-infrastructure change, ~297 ins/179 del across 10 files, ships/relocates skills across delivery channels). 0 HIGH, 0 MEDIUM, 1 LOW (informational: red-run capture confirmed present in the developer hand-off). Reviewer independently confirmed in-code: correct channel placement on disk, both framework guards + both inverse consumer guards present as executable prose with graceful degradation, and — the highest-value check — the consumer variants are GENUINELY retargeted to the consumer's own src/tests/tasks (every residual 'framework' mention is negative disambiguation steering away from framework internals), plus non-vacuous two-channel sensor assertions. hivemind-assimilate-skill untouched (its own ticket TASK-154). Gate: npm run test:all 1742 passed/4 skipped (dist-parity + use-cases green); test:since non-zero-specs green; check:calibration clean. Verified live: this framework-repo session now surfaces only the plain variants, not the -current-project ones. No HIGH, no RC loop → no knowledge draft."
+    }
+  ],
   "created_at": "2026-07-13T02:26:10.246Z",
-  "updated_at": "2026-07-13T02:26:10.246Z",
+  "updated_at": "2026-07-13T02:53:16.850Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

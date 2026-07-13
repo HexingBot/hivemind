@@ -10,7 +10,7 @@
     "tests/plugin-scaffold.spec.js two-channel sensor updated to include assimilate-current-project (consumer-shipped) and reflect hivemind-assimilate-skill's channel",
     "No regression to existing assimilate security specs; npm run test:all green"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "skill-scoping",
@@ -22,11 +22,19 @@
     "TASK-152",
     "TASK-153"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "14ceebf"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T03:13:22.234Z",
+      "body": "DONE — assimilate-current-project (consumer-shipped, plugin skills/) split out from hivemind-assimilate-skill (now framework-only, .claude/skills/), with inverse/framework guards and a full consumer-facing reference sweep. Single commit 14ceebf (tdd single-commit: sensor + assimilate-skill.spec rewritten first, 10 right-reason red failures captured, then skill authored + relocation + reference repoint to green). Reviewer verdict: APPROVE at review_depth=FULL (rubric inputs: packaging + test-infra change on a human-gated SECURITY surface + cross-repo reference sweep). 0 HIGH, 0 MEDIUM, 0 LOW. Reviewer independently confirmed the two highest risks: (1) all three security invariants preserved verbatim in intent in the consumer variant (default-deny 'safe'-only verdict gate, license-is-decision-support-not-safety, no auto-adopt without human sign-off, assimilation carved out of every loop_auth grant) — only surface adaptations (dist/pack-ctl.cjs path vs bin/*.js), no weakening; (2) reference sweep COMPLETE — independent grep found every consumer-facing reference (commands/design-pack.md ×4, both security-reviewer.md copies, both orchestrator-routing copies) isFrameworkRepo-gated and routing consumers to the shipped assimilate-current-project; no dangling consumer pointer. Both guards present as executable prose; channels + byte-identical parity (orchestrator-routing ×2, security-reviewer ×2) confirmed; sensor + assimilate-skill.spec non-vacuous. Gate: npm run test:all 1750 passed/4 skipped (dist-parity + use-cases green); test:since non-zero green. Note: the 154 developer already added the assimilate-specific piece of the framework-vs-current-project convention to orchestrator-routing, shrinking TASK-155's remaining scope. No HIGH, no RC loop → no knowledge draft."
+    }
+  ],
   "created_at": "2026-07-13T02:26:32.485Z",
-  "updated_at": "2026-07-13T02:26:32.485Z",
+  "updated_at": "2026-07-13T03:13:22.234Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

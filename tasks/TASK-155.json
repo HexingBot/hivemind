@@ -9,7 +9,7 @@
     "Any doc-lock/parity sensor over these files stays green; npm test green",
     "UAT: from the docs alone, a reader correctly picks hive-self-improve in the framework repo and hive-self-improve-current-project in a consumer project"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "skill-scoping",
@@ -20,11 +20,24 @@
     "TASK-153",
     "TASK-154"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "6bb5fd0"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-13T03:17:42.734Z",
+      "body": "UAT (verified by Orchestrator at the human's request; uat delegated per loop_auth.uat_delegated_to_orchestrator). Docs read directly from commit 6bb5fd0.\n\nStep 1 (AC1) — Run: read skills/orchestrator-routing/SKILL.md. Expect: a subsection explaining the framework vs -current-project split and naming isFrameworkRepo as the gate. Observed: new subsection \"Framework-only vs current-project skill variants (TASK-152/153/154/155)\" with a routing table + isFrameworkRepo (src/framework-context.js) gate described. Verdict: PASS.\n\nStep 2 (AC2) — Run: read CLAUDE.md Knowledge Sharing section. Expect: a brief pointer to the convention naming which skills are framework-only vs consumer-facing + the gate. Observed: bullet added naming all six skills, both delivery channels, the isFrameworkRepo gate, and cross-referencing the routing table. Verdict: PASS.\n\nStep 3 (AC3) — Run: cross-check the six skill names + channels against disk. Expect: hive-self-improve / hive-adversarial-improve / hivemind-assimilate-skill = framework-only (.claude/skills/); hive-self-improve-current-project / hive-adversarial-improve-current-project / assimilate-current-project = consumer (plugin skills/). Observed: docs name all six exactly and assign the correct channel, matching the TASK-153/154 layout. Verdict: PASS.\n\nStep 4 (AC4) — Run: npm test + parity/doc-lock sensors. Expect: green incl. orchestrator-routing byte-identity. Observed: 977 passed / 2 skipped; skills/ and .claude/skills/ orchestrator-routing SKILL.md byte-identical (diff empty); tests/orchestrator-routing-skill.spec.js + docs.spec.js green. Verdict: PASS.\n\nStep 5 (AC5) — Run: from the docs alone, pick the right variant per context. Expect: hive-self-improve in the framework repo, hive-self-improve-current-project in a consumer project. Observed: the routing table + \"route to the framework variant when isFrameworkRepo is true, otherwise the -current-project variant\" makes the choice unambiguous. Verdict: PASS.\n\nOVERALL: PASS (5/5 ACs covered, all PASS)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T03:17:58.505Z",
+      "body": "DONE — framework-vs-current-project skill convention documented in orchestrator-routing/SKILL.md (both byte-identical parity copies) + a CLAUDE.md Knowledge Sharing pointer. Single commit 6bb5fd0. verification_tier=uat-only: no new specs; verified via the UAT step above (author 'uat', 5/5 ACs covered, all PASS, verified by Orchestrator per loop_auth.uat_delegated_to_orchestrator). review_depth=LIGHT (rubric inputs: pure-docs uat-only change; objective parity byte-identity + orchestrator-routing-skill + docs doc-lock sensors gate it, and the Orchestrator read the rendered docs directly rather than trusting the hand-off). New subsection names all six skills, their delivery channel, and the isFrameworkRepo (src/framework-context.js) gate; TASK-154's earlier assimilate-only mention folded in (no duplication). Gate: npm test 977 passed/2 skipped; orchestrator-routing SKILL.md parity byte-identical. Docs not bundled → no dist rebuild. No HIGH, no RC loop → no knowledge draft."
+    }
+  ],
   "created_at": "2026-07-13T02:26:47.150Z",
-  "updated_at": "2026-07-13T02:26:47.150Z",
+  "updated_at": "2026-07-13T03:17:58.505Z",
   "jira_key": null,
   "verification_tier": "uat-only",
   "marker": "[EXPLICIT]",
