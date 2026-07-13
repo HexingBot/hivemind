@@ -79,7 +79,7 @@ const VERIFIER_SKILL = 'manifest-verifier';
 // §4/§7). Ships in BOTH skills/ and .claude/skills/ byte-identical (dev
 // dogfood mirror, same pattern as orchestrator-routing/mcp-server/graphify).
 const ASSIMILATE_SKILL = 'hivemind-assimilate-skill';
-// TASK-147 (renamed from wargame-a-component) — hive-self-improve: a durable
+// TASK-147 (renamed from wargame-a-component → hive-self-improve → hive-adversarial-improve): a durable
 // self-hardening capability skill (the 9-step component-hardening protocol that
 // stress-tests trust boundaries against hostile inputs and locks each gap as a
 // tdd regression fixture). A general capability skill authored by the team, same
@@ -87,7 +87,7 @@ const ASSIMILATE_SKILL = 'hivemind-assimilate-skill';
 // skills/ and .claude/skills/ byte-identical (see manifest-skills.spec.js sibling
 // pattern; it is NOT one of the six manifest-policy skills, so it is registered
 // here instead, not in MANIFEST_SKILLS).
-const HARDENING_SKILL = 'hive-self-improve';
+const HARDENING_SKILL = 'hive-adversarial-improve';
 const REPO_LOCAL_SKILLS = [
   BACKSTOP_SKILL, REPO_LOCAL_SKILL, MCP_SKILL, GRAPHIFY_SKILL, CONTEXT_MONITOR_SKILL,
   ...MANIFEST_SKILLS, VERIFIER_SKILL, ASSIMILATE_SKILL, HARDENING_SKILL,

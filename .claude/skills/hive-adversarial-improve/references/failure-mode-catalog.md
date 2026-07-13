@@ -1,6 +1,6 @@
 # Failure-mode catalog (supply-chain / third-party content inputs)
 
-Seed step 3 of the hive-self-improve protocol from this list, not from improvisation. Each category
+Seed step 3 of the hive-adversarial-improve protocol from this list, not from improvisation. Each category
 below is a concrete, cited class of untrusted input that a trust-boundary gate must reject — not a
 hypothetical. Chain categories together in a single probe where plausible: the finding that **~91%
 of malicious skills combine prompt-injection WITH traditional malware** (rather than relying on

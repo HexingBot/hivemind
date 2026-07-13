@@ -1,9 +1,9 @@
 ---
-name: hive-self-improve
-description: Load when hardening a specific framework component/pipeline by stress-testing it against difficult and hostile inputs — especially a trust boundary where untrusted content crosses into trusted execution (third-party skill adoption, tool-use pipelines, installers, parsers). Triggers on "hive-self-improve this", "harden this component", "stress-test this boundary", "find failure modes in <component>".
+name: hive-adversarial-improve
+description: Load when hardening a specific framework component/pipeline by stress-testing it against difficult and hostile inputs — especially a trust boundary where untrusted content crosses into trusted execution (third-party skill adoption, tool-use pipelines, installers, parsers). Triggers on "hive-adversarial-improve this", "harden this component", "stress-test this boundary", "find failure modes in <component>".
 ---
 
-# Hive Self-Improve
+# Hive Adversarial Improve
 
 This skill turns an ad-hoc "let's think about how this could break" conversation into a
 repeatable, evidence-producing exercise. It is a **durable self-hardening capability**, not a
