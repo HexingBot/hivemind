@@ -3,9 +3,17 @@
   "name": "hivemind",
   "displayName": "Hivemind",
   "description": "Multi-agent orchestrated dev loop: intake wizard, seeded backlog, orchestrator + developer/reviewer/researcher subagents, portable session state.",
-  "author": { "name": "Rafael Matovelle" },
+  "author": {
+    "name": "Rafael Matovelle"
+  },
   "license": "MIT",
-  "keywords": ["orchestration", "subagents", "workflow", "tasks", "tdd"],
-  "version": "0.14.2",
+  "keywords": [
+    "orchestration",
+    "subagents",
+    "workflow",
+    "tasks",
+    "tdd"
+  ],
+  "version": "0.15.0",
   "mcpServers": "./.mcp.json"
 }
