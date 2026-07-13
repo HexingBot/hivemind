@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T16:11:12.524Z",
+  "generated_at": "2026-07-13T16:22:26.011Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -940,8 +940,14 @@
     {
       "key": "TASK-161",
       "title": "Gate perfil_proyecto frontmatter map values against control-char key injection (TASK-157 residual)",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-162",
+      "title": "coerceFrontmatterScalar naive comma/colon split mis-parses inline-object values containing commas (perfil_proyecto/agent_models)",
+      "status": "todo",
+      "priority": "low"
     }
   ]
 }

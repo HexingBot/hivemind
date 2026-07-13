@@ -1,0 +1,32 @@
+{
+  "key": "TASK-162",
+  "title": "coerceFrontmatterScalar naive comma/colon split mis-parses inline-object values containing commas (perfil_proyecto/agent_models)",
+  "description": "CORRECTNESS (not security) — surfaced by the TASK-161 developer + gating reviewer, both independently reproduced. src/project-md.js#coerceFrontmatterScalar parses SPECIAL_FRONTMATTER_IDS inline-object frontmatter (`{k: v, k: v}`) with a naive split on ',' then ':'. A map VALUE (or key) containing a literal comma or brace is mis-parsed: e.g. a perfil_proyecto value 'bold, sleek' passes the TASK-161 control-char guard and writes fine, but readProjectMd then THROWS on read-back (`perfil_proyecto entry \\\"sleek\\\" is missing a colon`). The failure mode is a LOUD read-time throw, NOT a silent forged top-level key (control chars are the injection vector that TASK-157/161 close; commas only mangle within the map) — so this is a robustness/correctness bug, not a security gap.\\n\\nCurrently LATENT: perfil_proyecto values come from deriveProfileFields (controlled profile tags, no commas today) and agent_models values are model aliases/IDs (no commas). It becomes a real bug only if either map's values ever admit free-form text with commas/braces. Minted LOW to track rather than lose the finding.\\n\\nROOT CAUSE: src/project-md.js#coerceFrontmatterScalar inline-object branch (the `raw.slice(1,-1).split(',')` then `indexOf(':')` logic, ~lines 514-530) assumes no literal commas/colons/braces inside keys/values. The writer side (renderProjectMd) also does a naive `${k}: ${v}` join with no escaping. FIX DIRECTION: either escape commas/braces symmetrically on write+read (like the inline-array encodeArrayItem/decodeArrayItem scheme already in this module), or constrain+validate perfil_proyecto/agent_models values to a no-comma charset at write. Prefer the escape scheme for consistency with the existing array handling. verification_tier tdd if an escape scheme is added (parsing change); tests-after acceptable if it is a pure validation-reject.",
+  "acceptance_criteria": [
+    "A perfil_proyecto (or agent_models) map value containing a literal comma round-trips losslessly through writeProjectMd -> readProjectMd (no read-time throw, no split into extra pairs), OR is rejected at write with a loud field-naming error if the map is intentionally constrained to a no-comma charset",
+    "The chosen approach (escape-on-write/unescape-on-read, or validate-and-reject) is symmetric between renderProjectMd and coerceFrontmatterScalar so writer and reader cannot drift",
+    "A regression test round-trips a comma-bearing inline-object value (and a brace-bearing one) through the real writer/reader",
+    "Existing design-profile-frontmatter / design-profile-round-trip / agent-models-config e2e specs still pass; legitimate no-comma maps are unaffected"
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "correctness",
+    "init",
+    "parsing",
+    "follow-up"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-161"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-13T16:22:11.596Z",
+  "updated_at": "2026-07-13T16:22:11.596Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

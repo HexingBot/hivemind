@@ -9,7 +9,7 @@
     "Legitimate perfil_proyecto maps (the design-power profile fields, no control chars) still round-trip unchanged; existing design-profile-frontmatter / design-profile-round-trip e2e specs pass",
     "The fix reuses/extends the TASK-157 control-char guard rather than duplicating the check (shared intake-sanitizer direction)"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "security",
@@ -21,11 +21,19 @@
   "depends_on": [
     "TASK-157"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "c32ec18"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-13T16:22:26.011Z",
+      "body": "Closed on a clean first-pass APPROVE (review_depth: FULL; rubric inputs: security fix for a confirmed YAML-frontmatter key-injection residual + frontmatter rendering in bundled src/project-md.js + committed dist rebuild). Final commit c32ec18 (tdd single-commit). Fix: 6-line guard in writeProjectMd before disk write, iterating perfil_proyecto entries and calling the SHARED rejectControlChars (src/intake-sanitizer.js — same helper as TASK-157/158) on BOTH key and value; no duplicated logic (AC5). agent_models needs no guard (keys/values already constrained by VALID_AGENT_NAMES + MODEL_ALIASES/FULL_MODEL_ID_RE). Reviewer independently reproduced the red proof (reverse-applied only the guard hunk: both new tests wrote the forged file instead of rejecting), confirmed AC1 (newline in value AND key rejected before write; legit no-comma profile round-trips with no forged top-level key), non-vacuous assertions, and AC4 (design-profile-frontmatter + design-profile-round-trip green). Gate: test:since -- c32ec18~1 = 4 files/77 passed; npm test 977/2 skip; dist-parity green (dist/init.cjs fresh). 0 HIGH/0 MEDIUM/0 LOW. No RC loop -> knowledge capture (TASK-105) NOT triggered. Punch-list residual (agreed correctness follow-up, NOT security): coerceFrontmatterScalar's naive {k:v} comma/colon split mis-parses a legit comma-bearing inline-object value (loud read-time throw, not a forged key) -> minted TASK-162 (LOW). LOCAL/unpushed pending human push."
+    }
+  ],
   "created_at": "2026-07-13T14:46:54.931Z",
-  "updated_at": "2026-07-13T14:46:54.931Z",
+  "updated_at": "2026-07-13T16:22:26.011Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
