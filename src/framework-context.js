@@ -23,7 +23,7 @@
 // state internally.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 /**
  * @param {{ repoRoot: string }} args
@@ -35,6 +35,11 @@ export function isFrameworkRepo({ repoRoot }) {
   // exactly the CWD dependence the contract forbids. Reject before any fs
   // call reaches that footgun.
   if (typeof repoRoot !== 'string' || repoRoot.trim() === '') return false;
+
+  // A non-empty but RELATIVE repoRoot (e.g. '.') has the same footgun: fs
+  // resolves it against process.cwd() rather than treating it as opaque.
+  // Only an absolute path can ever produce a true verdict.
+  if (!isAbsolute(repoRoot)) return false;
 
   try {
     const pluginJsonPath = join(repoRoot, '.claude-plugin', 'plugin.json');

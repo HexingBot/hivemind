@@ -113,6 +113,20 @@ describe('isFrameworkRepo — empty/invalid repoRoot never falls back to cwd', (
     const { isFrameworkRepo } = await import(FRAMEWORK_CONTEXT_URL);
     expect(isFrameworkRepo({})).toBe(false);
   });
+
+  it('returns false for a relative repoRoot like "." (guards against path.join()+fs silently resolving against cwd)', async () => {
+    const { isFrameworkRepo } = await import(FRAMEWORK_CONTEXT_URL);
+    const prevCwd = process.cwd();
+    try {
+      // Point cwd at the real framework repo so a cwd-fallback bug would
+      // wrongly return true here; the correct behavior is false regardless —
+      // only an absolute repoRoot may ever produce a true verdict.
+      process.chdir(REPO_ROOT);
+      expect(isFrameworkRepo({ repoRoot: '.' })).toBe(false);
+    } finally {
+      process.chdir(prevCwd);
+    }
+  });
 });
 
 describe('isFrameworkRepo — no dependence on env or cwd', () => {
