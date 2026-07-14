@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T17:33:04.218Z",
+  "generated_at": "2026-07-14T17:50:37.438Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -634,7 +634,7 @@
     {
       "key": "TASK-108",
       "title": "close-guard: narrow the uat-comment fabrication channel — append_comment accepts author:'uat' from any caller in loop mode (Gate 2 residual)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -946,6 +946,12 @@
     {
       "key": "TASK-162",
       "title": "coerceFrontmatterScalar naive comma/colon split mis-parses inline-object values containing commas (perfil_proyecto/agent_models)",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-163",
+      "title": "close_task comment write-channel: apply the loop-mode author:'uat' guard to close_task's comment param (TASK-108 defense-in-depth)",
       "status": "todo",
       "priority": "low"
     }

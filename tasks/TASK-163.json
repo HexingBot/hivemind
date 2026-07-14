@@ -1,0 +1,30 @@
+{
+  "key": "TASK-163",
+  "title": "close_task comment write-channel: apply the loop-mode author:'uat' guard to close_task's comment param (TASK-108 defense-in-depth)",
+  "description": "Follow-up minted from the TASK-108 gating review (rev-108, APPROVE, 2026-07-14). TASK-108 narrowed the loop-mode uat-comment fabrication channel at the append_comment write seam (loopModeUatCommentGuard refuses author:'uat' in loop mode without a uat_delegated_to_orchestrator grant). The reviewer confirmed a SECOND, still-open write path: close_task's own `comment` param reaches appendComment via closeTask WITHOUT passing through loopModeUatCommentGuard.\\n\\nThis is NOT exploitable for a one-shot self-authorized uat-only close: closeTask runs loopModeCloseGuard (Gate 2 read-time check on PRE-EXISTING on-disk comments) and only appends the new comment AFTER the guard passes, atomically — so a loop caller cannot plant its own marker and pass Gate 2 in the same call (the existing TASK-082 regression lock proves this). The residual leak is cosmetic/defense-in-depth: a close_task call can still land an author:'uat' comment on disk (e.g. on a non-uat-only ticket, where Gate 2 consults no uat comments) with no delegation check. Wiring the same guard into close_task's comment path closes the write-channel asymmetry so both append seams enforce the identical loop-mode author:'uat' rule.\\n\\nROOT CAUSE / FIX DIRECTION: src/mcp-server.js close_task handler (and/or src/task-store.js closeTask) appends comment.author without the loopModeUatCommentGuard check that append_comment now has. Apply loopModeUatCommentGuard({ repoRoot, author: comment.author }) before the close's comment write, keeping task-store decoupled (inject via the MCP layer, same pattern as loopModeCloseGuard/loopModeUatCommentGuard). Must NOT break the legitimate close flow: the orchestrator's own author:'orchestrator' closing comment is unaffected (only author:'uat' is gated), and a delegated loop close (uat_delegated_to_orchestrator=true) must still record. Keep all TASK-099 + TASK-108 matrix specs green. Rebuild+commit dist/ (mcp-server bundles); dist-parity green.",
+  "acceptance_criteria": [
+    "In loop mode without a uat_delegated_to_orchestrator grant, a close_task call whose comment.author==='uat' is refused at the same guard seam as append_comment (typed error, e.g. reuse UatCommentGuardError / LOOP_UAT_COMMENT_DENIED) BEFORE the comment is written to disk — red-first spec against today's ungated close_task comment path.",
+    "The legitimate close flow is unaffected: author:'orchestrator' (and any non-'uat' author) closing comments still land in loop mode; a delegated loop close (uat_delegated_to_orchestrator===true) still records an author:'uat' comment; harness mode is unaffected — each proven by spec.",
+    "All existing TASK-099 and TASK-108 matrix specs remain unmodified and green (close-guard / mcp-close-task / mcp-append-comment-uat-guard / task-board).",
+    "dist/ rebuilt and committed if src/mcp-server.js or src/task-store.js changed; dist-parity green.",
+    "SKILL.md Gate 2 documentation (both parity copies) updated to note that BOTH write seams (append_comment and close_task's comment) now enforce the loop-mode author:'uat' rule, so no residual write-channel asymmetry remains."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "review-followup",
+    "security",
+    "task-108-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-14T17:50:37.438Z",
+  "updated_at": "2026-07-14T17:50:37.438Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
