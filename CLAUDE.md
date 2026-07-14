@@ -126,7 +126,7 @@ Rules:
 
 Each subagent declares its model in the `model:` frontmatter field of its agent definition file:
 
-- **reviewer** → `inherit` — the independent quality gate runs on the session's main model (currently Opus 4.8); `inherit` tracks whatever model the session runs on so the gate stays on the strongest available model without re-pinning every time the default moves. (TASK-042: retired the `fable` pin — Fable 5 is no longer available to this account.)
+- **reviewer** → `fable` — the independent quality gate runs on **Fable 5**, the most capable model, regardless of the session's main model, so the gate stays on the strongest available model and gains model-diversity from the Opus-run orchestrator. Pinned via `PROJECT.md`'s `agent_models` map (`node bin/init.js --apply-models`). (History: TASK-042 had retired the `fable` pin to `inherit` while Fable 5 was unavailable to this account; it is available again as of 2026-07-14, so the explicit pin was restored on human directive.)
 - **developer** → `sonnet` — high-volume role (spawned once per ticket; `tdd`-tier work uses a single-commit discipline where captured red-run evidence, not commit ordering, is the tests-first proof); Sonnet delivers strong coding capability at a lower cost tier.
 - **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
 - **orchestrator** — no agent file; it runs as the main session thread and inherits whatever model the session is started with (Opus 4.8 in production). TASK-032 removed the orchestrator agent file — the role is the session itself, equipped with the orchestrator-routing skill.

@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Independent code reviewer. Runs in a fresh context (no exposure to the Developer's reasoning) and critically evaluates a diff against the ticket's acceptance criteria. Uses only read-only file tools and pre-approved verification scripts (tests, linters, type checkers). Returns severity-classified findings.
-model: inherit
+model: fable
 tools: Read, Grep, Glob, Bash(npm test:*), Bash(npm run test:*), Bash(npm run lint:*), Bash(npm run typecheck:*), Bash(npm run check:*), Bash(pytest:*), Bash(ruff:*), Bash(mypy:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*)
 ---
 

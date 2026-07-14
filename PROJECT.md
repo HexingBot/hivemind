@@ -3,6 +3,7 @@ name: hivemind
 type: other
 created_at: 2026-06-15T18:30:00.000Z
 schema_version: 1
+agent_models: {reviewer: fable}
 ---
 
 # hivemind

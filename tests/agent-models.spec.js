@@ -1,11 +1,15 @@
 // tests/agent-models.spec.js
-// TASK-031 — Per-agent model assignment: reviewer on inherit (default main model), developer/researcher on Sonnet.
-// TASK-042 — Retired reviewer's fable pin → inherit (Fable 5 no longer available).
+// TASK-031 — Per-agent model assignment: reviewer, developer/researcher on Sonnet.
+// TASK-042 — Retired reviewer's fable pin → inherit (Fable 5 was unavailable).
+// 2026-07-14 — Re-pinned reviewer to fable (human directive): Fable 5 is available
+//   again to this account and is the most capable model, so the independent quality
+//   gate runs on it — the same "gate on the strongest model" rationale TASK-042 served
+//   via inherit, now expressed as an explicit pin (via PROJECT.md agent_models).
 //
 // AC map:
-//   AC1 — reviewer.md frontmatter assigns model: inherit
-//          (alias verified against code.claude.com sub-agents docs — `inherit`
-//          tracks the session's main model, currently Opus 4.8)
+//   AC1 — reviewer.md frontmatter assigns model: fable
+//          (alias verified against code.claude.com sub-agents docs — `fable`
+//          pins the reviewer to Fable 5 regardless of the session's main model)
 //   AC2 — developer.md and researcher.md frontmatter assign model: sonnet
 //   AC3 — orchestrator.md must be ABSENT (TASK-032 removed the orchestrator agent
 //          file entirely; the Orchestrator is the main session thread, not a
@@ -51,14 +55,15 @@ function readFrontmatter(agentName) {
   return lines.slice(1, closeIdx).join('\n');
 }
 
-describe('TASK-031/TASK-042 — AC1: reviewer.md frontmatter assigns model: inherit', () => {
-  it('reviewer_md_has_model_inherit', () => {
+describe('TASK-031/TASK-042 — AC1: reviewer.md frontmatter assigns model: fable', () => {
+  it('reviewer_md_has_model_fable', () => {
     const fm = readFrontmatter('reviewer');
-    // model: inherit — tracks the session's main model (currently Opus 4.8).
-    // TASK-042: retired fable pin; fable is no longer available to this account.
+    // model: fable — pins the independent quality gate to Fable 5, the most
+    // capable model, independent of the session's main model (2026-07-14 human
+    // directive; applied via PROJECT.md agent_models + `node bin/init.js --apply-models`).
     expect(
-      /^model:\s*inherit\s*$/m.test(fm),
-      `reviewer.md frontmatter must contain "model: inherit" — got:\n${fm}`,
+      /^model:\s*fable\s*$/m.test(fm),
+      `reviewer.md frontmatter must contain "model: fable" — got:\n${fm}`,
     ).toBe(true);
   });
 });
@@ -106,7 +111,7 @@ describe('TASK-031/TASK-032 — AC3: orchestrator agent file is absent', () => {
 // CLAUDE.md (e.g. the First-chat routing section mentions "developer").
 //
 // Assertions:
-//   (a) reviewer + inherit appear together in the section (TASK-042: was fable).
+//   (a) reviewer + fable appear together in the section (2026-07-14 re-pin; TASK-042 had inherit).
 //   (b) developer + researcher + sonnet appear together in the section.
 //   (c) PROJECT.md is named as the canonical knob (TASK-036 AC5).
 //   (d) The per-project override clause mentions --apply-models (TASK-032).
@@ -135,14 +140,15 @@ describe('TASK-031 — AC4: CLAUDE.md Per-Agent Model Assignment section documen
     ).toMatch(/^## Per-Agent Model Assignment\s*$/m);
   });
 
-  it('section_documents_reviewer_on_inherit', () => {
+  it('section_documents_reviewer_on_fable', () => {
     const section = readPerAgentModelSection();
     expect(section, 'Per-Agent Model Assignment section must be present').not.toBeNull();
-    // reviewer → inherit: both words must appear within the section body.
-    // TASK-042: retired fable pin; reviewer now inherits the session's main model.
+    // reviewer → fable: both words must appear within the section body.
+    // 2026-07-14: re-pinned reviewer to Fable 5 (most capable model) via
+    // PROJECT.md agent_models; TASK-042 had used inherit while fable was unavailable.
     expect(
-      /reviewer/i.test(section) && /inherit/i.test(section),
-      '"## Per-Agent Model Assignment" section must mention both "reviewer" and "inherit"',
+      /reviewer/i.test(section) && /fable/i.test(section),
+      '"## Per-Agent Model Assignment" section must mention both "reviewer" and "fable"',
     ).toBe(true);
   });
 

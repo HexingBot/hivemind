@@ -200,6 +200,12 @@
       "label": "License is a legal signal, not a safety gate for third-party adoption"
     },
     {
+      "id": "ke-markdown-escape-setext-headings",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/markdown-escape-must-cover-setext-headings.md",
+      "label": "Markdown structure escaping must cover setext headings, not just ATX/fences"
+    },
+    {
       "id": "ke-reconcile-removal-needs-desired",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/reconcile-removal-needs-desired-not-just-ownership.md",
@@ -228,6 +234,12 @@
       "type": "knowledge_entry",
       "ref": "knowledge/entries/teammate-envelope-misattribution-verify-against-git.md",
       "label": "Teammate envelope misattribution: verify identity against git, self-authenticating hand-offs"
+    },
+    {
+      "id": "ke-unicode-cf-assigned-codepoints",
+      "type": "knowledge_entry",
+      "ref": "knowledge/entries/unicode-cf-property-matches-only-assigned-codepoints.md",
+      "label": "Unicode \\p{Cf} matches only ASSIGNED codepoints; strip the numeric tag range explicitly"
     },
     {
       "id": "ke-vacuous-sensor-swallowed-assertion",
