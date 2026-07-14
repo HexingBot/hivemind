@@ -321,9 +321,42 @@ describe('compact-bundle (TASK-103)', () => {
     const result = runCli(['compact-bundle', '--repo-root', root, '--max-decisions', '15']);
     expect(result.status).toBe(0);
     expect(result.json).toEqual({
-      ok: true, sessionId: SESSION_ID, archivedDecisions: 5, archivedSubagentResults: 0, compacted: true,
+      ok: true,
+      sessionId: SESSION_ID,
+      archivedDecisions: 5,
+      archivedSubagentResults: 0,
+      archivedBetaFindings: 0,
+      archivedNote: false,
+      compacted: true,
     });
     expect(readBundle(root).decisions.length).toBe(15);
+    expect(existsSync(join(root, 'state', 'sessions', SESSION_ID, 'archive.jsonl'))).toBe(true);
+  });
+
+  it('compact_bundle_rotates_loop_state_beta_findings_via_max_beta_findings_flag (TASK-110)', () => {
+    const root = makeProject();
+    const bundle = readBundle(root);
+    bundle.loop_state = {
+      current_ticket: 'TASK-110',
+      phase: 'test',
+      beta_findings: Array.from({ length: 10 }, (_, i) => `finding ${i}`),
+    };
+    writeFileSync(join(root, 'state', 'sessions', SESSION_ID, 'session.json'), JSON.stringify(bundle, null, 2), 'utf8');
+
+    const result = runCli(['compact-bundle', '--repo-root', root, '--max-beta-findings', '4']);
+    expect(result.status).toBe(0);
+    expect(result.json).toEqual({
+      ok: true,
+      sessionId: SESSION_ID,
+      archivedDecisions: 0,
+      archivedSubagentResults: 0,
+      archivedBetaFindings: 6,
+      archivedNote: false,
+      compacted: true,
+    });
+    const after = readBundle(root);
+    expect(after.loop_state.beta_findings.length).toBe(4);
+    expect(after.loop_state.current_ticket).toBe('TASK-110');
     expect(existsSync(join(root, 'state', 'sessions', SESSION_ID, 'archive.jsonl'))).toBe(true);
   });
 

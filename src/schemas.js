@@ -189,8 +189,30 @@ export const bundleStateSchema = {
       type: 'object',
       description:
         'Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle ' +
-        'so crash-recovery can resume. Free-form — contents evolve with the loop implementation.',
+        'so crash-recovery can resume. Free-form — contents evolve with the loop implementation. ' +
+        'TASK-110 (R10 one level down): beta_findings/note grew unbounded the same way ' +
+        'decisions/subagent_results did (TASK-103) — beta_findings now carries maxItems and ' +
+        'note carries maxLength, the enforced size sensors. Keep in lock-step with ' +
+        'src/bundle-compaction.js#MAX_BETA_FINDINGS/MAX_NOTE_LENGTH and ' +
+        'state/bundle.schema.json. src/bundle-compaction.js#compactLoopState rotates overflow ' +
+        'into the SAME archive.jsonl the decisions/subagent_results mechanism uses, tagged ' +
+        "type: 'loop_state_beta_finding' | 'loop_state_note' — no second archive.",
       additionalProperties: true,
+      properties: {
+        beta_findings: {
+          type: 'array',
+          // TASK-110 — enforced size sensor: keep in lock-step with
+          // src/bundle-compaction.js#MAX_BETA_FINDINGS and state/bundle.schema.json.
+          maxItems: 15,
+          items: { type: 'string' },
+        },
+        note: {
+          type: 'string',
+          // TASK-110 — enforced size sensor: keep in lock-step with
+          // src/bundle-compaction.js#MAX_NOTE_LENGTH and state/bundle.schema.json.
+          maxLength: 4000,
+        },
+      },
     },
   },
 };

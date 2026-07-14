@@ -61,7 +61,7 @@ That four-step sequence is the **RESUME-FIRST contract** enshrined in `CLAUDE.md
 
 The two `schema_version` numbers (pointer/bundle state at `2`, manifest at `1`) track independent dimensions on purpose; see the comment block in `src/schemas.js`.
 
-## Compaction (bundle hygiene — TASK-103)
+## Compaction (bundle hygiene — TASK-103, extended by TASK-110)
 
 `writeBundleSession` (`src/bundle.js`) validates every payload against
 `state/bundle.schema.json` (mirrored from `src/schemas.js#bundleStateSchema`)
@@ -71,19 +71,31 @@ schema caps `decisions` and `subagent_results` at 15 entries each
 (`maxItems`); this is the enforced size sensor that replaces the free-text
 length caps removed from `next_action`/`handoff_summary`/
 `subagent_results[].summary` (those stay uncapped — see `src/schemas.js`'s
-comment for why capping prose broke real usage instead).
+comment for why capping prose broke real usage instead). TASK-110 found the
+same unbounded-growth pattern one level down, inside the otherwise free-form
+`loop_state`: `loop_state.beta_findings` now carries `maxItems: 15` and
+`loop_state.note` carries `maxLength: 4000` — the same enforced-sensor
+treatment, one level down.
 
 `src/bundle-compaction.js#compactBundleSession` (also reachable via
-`node dist/loop-ctl.cjs compact-bundle --repo-root <repoRoot>`) keeps a
-bundle within both caps without losing history: it partitions each array by
-most-recent `at`, keeps the 15 newest in `session.json`, and appends
-everything older to `archive.jsonl` — one JSON object per line, tagged
-`type: 'decision' | 'subagent_result'` plus `archived_at`. The archive is
-append-only (repeated compactions never rewrite or drop prior lines) and the
-mechanism is idempotent — a bundle already within both caps is left
-untouched (no write, no archive append). Required fields, `mode`,
-`loop_auth`, `loop_state`, and the current `handoff_summary` are unaffected
-by compaction.
+`node dist/loop-ctl.cjs compact-bundle --repo-root <repoRoot>` — see its
+`--max-beta-findings`/`--max-note-length` flags) keeps a bundle within every
+cap without losing history: it partitions `decisions`/`subagent_results` by
+most-recent `at` (keeping the 15 newest), and `loop_state.beta_findings` by
+append order (keeping the last 15 — no per-item timestamp to sort by), and
+appends everything older to `archive.jsonl` — one JSON object per line,
+tagged `type: 'decision' | 'subagent_result' | 'loop_state_beta_finding' |
+'loop_state_note'` plus `archived_at`. When `loop_state.note` overflows
+`maxLength`, the FULL original string is archived (`type:
+'loop_state_note'`, no truncation loss) and the live field is replaced with
+a short rotation marker. The archive is append-only (repeated compactions
+never rewrite or drop prior lines) and the mechanism is idempotent — a
+bundle already within every cap is left untouched (no write, no archive
+append). Required fields, `mode`, `loop_auth`, and the current
+`handoff_summary` are unaffected by compaction; within `loop_state` itself,
+only `beta_findings`/`note` ever rotate — `current_ticket`, `phase`,
+`iteration`, `completed_this_run`, and `run_started_at` (the TASK-084
+crash-resume checkpoint fields) are always preserved verbatim.
 
 Because `archive.jsonl` lives inside the bundle directory, the bundle stays
 self-contained under the "copy the dir" contract above. A knowledge-graph

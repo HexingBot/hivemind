@@ -61,6 +61,10 @@ Keep the bundle small:
   (`bundleStateSchema`'s `maxItems` — TASK-103's enforced size sensor);
   `writeBundleSession` throws a typed `E_BUNDLE_INVALID` if either array is
   written beyond that cap.
+- `loop_state.beta_findings` is capped at 15 entries (`maxItems`) and
+  `loop_state.note` at 4000 characters (`maxLength`) — TASK-110's enforced
+  size sensor, the same unbounded-growth pattern one level down inside
+  `loop_state`.
 
 Use the lifecycle operations — pause / resume / end are explicit operations on the
 active bundle (each appends to `lifecycle.log` and refreshes the pointer); all
@@ -80,9 +84,18 @@ either array past 15, rotate first: run
 keeps the 15 most-recent-by-`at` entries of each array in `session.json` and
 moves everything older into an append-only `archive.jsonl` inside the same
 bundle directory — no data loss, and idempotent (a no-op when already within
-both caps). Required fields, `mode`, `loop_auth`, `loop_state`, and the
-current `handoff_summary` are untouched by compaction; only the two arrays
-rotate.
+both caps). Required fields, `mode`, `loop_auth`, and the current
+`handoff_summary` are untouched by compaction; only the two arrays rotate.
+
+The SAME command also rotates `loop_state.beta_findings`/`note` (TASK-110)
+into the SAME `archive.jsonl` — no second archive — via
+`--max-beta-findings`/`--max-note-length`: `beta_findings` keeps the last 15
+entries by append order (rotating the head, tagged `type:
+'loop_state_beta_finding'`), and an oversized `note` is archived in full
+(`type: 'loop_state_note'`, no truncation) with a short rotation marker left
+in its place. `current_ticket`, `phase`, `iteration`, `completed_this_run`,
+and `run_started_at` — the TASK-084 crash-resume checkpoint fields — are
+always preserved verbatim, never rotated.
 
 A knowledge-graph decision node whose `ref` names the bundle's
 `session.json` may point at an entry that has since rotated into

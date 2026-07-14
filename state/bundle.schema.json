@@ -100,8 +100,19 @@
     },
     "loop_state": {
       "type": "object",
-      "description": "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form — contents evolve with the loop implementation. The mid-ticket crash-resume checkpoint contract (TASK-084) is written by src/loop-checkpoint.js's writeLoopCheckpoint, which merges five fields into this object at every phase boundary: current_ticket (the ticket key being driven), phase (a LOOP_PHASES key, mapped onto the sibling workflow_step enum), iteration, completed_this_run, and run_started_at. Other keys (e.g. goal, maxIterations) may coexist and are preserved verbatim by the writer.",
-      "additionalProperties": true
+      "description": "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form — contents evolve with the loop implementation. The mid-ticket crash-resume checkpoint contract (TASK-084) is written by src/loop-checkpoint.js's writeLoopCheckpoint, which merges five fields into this object at every phase boundary: current_ticket (the ticket key being driven), phase (a LOOP_PHASES key, mapped onto the sibling workflow_step enum), iteration, completed_this_run, and run_started_at. Other keys (e.g. goal, maxIterations) may coexist and are preserved verbatim by the writer. TASK-110 (R10 one level down): beta_findings/note grew unbounded the same way decisions/subagent_results did (TASK-103) — beta_findings now carries maxItems and note carries maxLength, the enforced size sensors. Keep in lock-step with src/bundle-compaction.js#MAX_BETA_FINDINGS/MAX_NOTE_LENGTH and src/schemas.js. src/bundle-compaction.js#compactLoopState rotates overflow into the SAME archive.jsonl the decisions/subagent_results mechanism uses, tagged type: 'loop_state_beta_finding' | 'loop_state_note' — no second archive.",
+      "additionalProperties": true,
+      "properties": {
+        "beta_findings": {
+          "type": "array",
+          "maxItems": 15,
+          "items": { "type": "string" }
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      }
     }
   }
 }

@@ -11700,8 +11700,23 @@ var bundleStateSchema = {
     },
     loop_state: {
       type: "object",
-      description: "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form \u2014 contents evolve with the loop implementation.",
-      additionalProperties: true
+      description: "Runtime state for the autonomous drive loop (TASK-062). Stored in the bundle so crash-recovery can resume. Free-form \u2014 contents evolve with the loop implementation. TASK-110 (R10 one level down): beta_findings/note grew unbounded the same way decisions/subagent_results did (TASK-103) \u2014 beta_findings now carries maxItems and note carries maxLength, the enforced size sensors. Keep in lock-step with src/bundle-compaction.js#MAX_BETA_FINDINGS/MAX_NOTE_LENGTH and state/bundle.schema.json. src/bundle-compaction.js#compactLoopState rotates overflow into the SAME archive.jsonl the decisions/subagent_results mechanism uses, tagged type: 'loop_state_beta_finding' | 'loop_state_note' \u2014 no second archive.",
+      additionalProperties: true,
+      properties: {
+        beta_findings: {
+          type: "array",
+          // TASK-110 — enforced size sensor: keep in lock-step with
+          // src/bundle-compaction.js#MAX_BETA_FINDINGS and state/bundle.schema.json.
+          maxItems: 15,
+          items: { type: "string" }
+        },
+        note: {
+          type: "string",
+          // TASK-110 — enforced size sensor: keep in lock-step with
+          // src/bundle-compaction.js#MAX_NOTE_LENGTH and state/bundle.schema.json.
+          maxLength: 4e3
+        }
+      }
     }
   }
 };
@@ -11974,6 +11989,9 @@ var import_node_fs5 = require("node:fs");
 var import_node_path5 = require("node:path");
 var MAX_DECISIONS = 15;
 var MAX_SUBAGENT_RESULTS = 15;
+var MAX_BETA_FINDINGS = 15;
+var MAX_NOTE_LENGTH = 4e3;
+var ROTATED_NOTE_MARKER = '(rotated: prior note archived to archive.jsonl \u2014 see type: "loop_state_note" entries)';
 function partitionMostRecent(items, maxItems) {
   const list = Array.isArray(items) ? items : [];
   if (list.length <= maxItems) return { kept: [...list], archived: [] };
@@ -11991,6 +12009,29 @@ function partitionMostRecent(items, maxItems) {
     (keptIndexes.has(index) ? kept : archived).push(item);
   });
   return { kept, archived };
+}
+function partitionArrayTail(items, maxItems) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length <= maxItems) return { kept: [...list], archived: [] };
+  return {
+    kept: list.slice(list.length - maxItems),
+    archived: list.slice(0, list.length - maxItems)
+  };
+}
+function compactLoopState(bundle, opts = {}) {
+  const maxBetaFindings = opts.maxBetaFindings ?? MAX_BETA_FINDINGS;
+  const maxNoteLength = opts.maxNoteLength ?? MAX_NOTE_LENGTH;
+  const loopState = bundle && bundle.loop_state || {};
+  const hasBetaFindings = Array.isArray(loopState.beta_findings);
+  const { kept: keptBetaFindings, archived: archivedBetaFindings } = hasBetaFindings ? partitionArrayTail(loopState.beta_findings, maxBetaFindings) : { kept: void 0, archived: [] };
+  const hasNote = typeof loopState.note === "string";
+  const noteOverflows = hasNote && loopState.note.length > maxNoteLength;
+  const archivedNote = noteOverflows ? loopState.note : null;
+  const nextLoopState = { ...loopState };
+  if (hasBetaFindings) nextLoopState.beta_findings = keptBetaFindings;
+  if (noteOverflows) nextLoopState.note = ROTATED_NOTE_MARKER;
+  const compacted = bundle && bundle.loop_state !== void 0 ? { ...bundle, loop_state: nextLoopState } : { ...bundle };
+  return { compacted, archivedBetaFindings, archivedNote };
 }
 function compactBundleState(bundle, opts = {}) {
   const maxDecisions = opts.maxDecisions ?? MAX_DECISIONS;
@@ -12010,14 +12051,23 @@ function compactBundleState(bundle, opts = {}) {
   };
   return { compacted, archivedDecisions, archivedSubagentResults };
 }
-function appendBundleArchive(repoRoot, sessionId, { decisions = [], subagentResults = [] }, archivedAt) {
-  if (decisions.length === 0 && subagentResults.length === 0) return 0;
+function appendBundleArchive(repoRoot, sessionId, {
+  decisions = [],
+  subagentResults = [],
+  betaFindings = [],
+  note = null
+}, archivedAt) {
+  if (decisions.length === 0 && subagentResults.length === 0 && betaFindings.length === 0 && note === null) {
+    return 0;
+  }
   const p = bundleArchivePath(repoRoot, sessionId);
   if (!(0, import_node_fs5.existsSync)((0, import_node_path5.dirname)(p))) (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(p), { recursive: true });
   const at = archivedAt || (/* @__PURE__ */ new Date()).toISOString();
   const lines = [
     ...decisions.map((d) => JSON.stringify({ type: "decision", archived_at: at, ...d })),
-    ...subagentResults.map((s) => JSON.stringify({ type: "subagent_result", archived_at: at, ...s }))
+    ...subagentResults.map((s) => JSON.stringify({ type: "subagent_result", archived_at: at, ...s })),
+    ...betaFindings.map((text) => JSON.stringify({ type: "loop_state_beta_finding", archived_at: at, text })),
+    ...note !== null ? [JSON.stringify({ type: "loop_state_note", archived_at: at, text: note })] : []
   ];
   (0, import_node_fs5.appendFileSync)(p, lines.join("\n") + "\n", "utf8");
   return lines.length;
@@ -12026,18 +12076,27 @@ async function compactBundleSession({
   repoRoot,
   sessionId,
   maxDecisions,
-  maxSubagentResults
+  maxSubagentResults,
+  maxBetaFindings,
+  maxNoteLength
 }) {
   const bundle = readBundleSessionOrThrow(repoRoot, sessionId, "compactBundleSession");
-  const { compacted, archivedDecisions, archivedSubagentResults } = compactBundleState(
+  const { compacted: arraysCompacted, archivedDecisions, archivedSubagentResults } = compactBundleState(
     bundle,
     { maxDecisions, maxSubagentResults }
   );
-  if (archivedDecisions.length === 0 && archivedSubagentResults.length === 0) {
+  const { compacted, archivedBetaFindings, archivedNote } = compactLoopState(
+    arraysCompacted,
+    { maxBetaFindings, maxNoteLength }
+  );
+  const nothingArchived = archivedDecisions.length === 0 && archivedSubagentResults.length === 0 && archivedBetaFindings.length === 0 && archivedNote === null;
+  if (nothingArchived) {
     return {
       sessionId,
       archivedDecisions: 0,
       archivedSubagentResults: 0,
+      archivedBetaFindings: 0,
+      archivedNote: false,
       compacted: false
     };
   }
@@ -12045,7 +12104,12 @@ async function compactBundleSession({
   appendBundleArchive(
     repoRoot,
     sessionId,
-    { decisions: archivedDecisions, subagentResults: archivedSubagentResults },
+    {
+      decisions: archivedDecisions,
+      subagentResults: archivedSubagentResults,
+      betaFindings: archivedBetaFindings,
+      note: archivedNote
+    },
     archivedAt
   );
   await writeBundleSession(repoRoot, sessionId, { ...compacted, updated_at: archivedAt });
@@ -12053,6 +12117,8 @@ async function compactBundleSession({
     sessionId,
     archivedDecisions: archivedDecisions.length,
     archivedSubagentResults: archivedSubagentResults.length,
+    archivedBetaFindings: archivedBetaFindings.length,
+    archivedNote: archivedNote !== null,
     compacted: true
   };
 }
@@ -12226,7 +12292,7 @@ var FLAG_SPEC = {
   "resume-point": ["--repo-root"],
   "landed-commits": ["--key"],
   "grant-unattended": ["--repo-root"],
-  "compact-bundle": ["--repo-root", "--max-decisions", "--max-subagent-results"],
+  "compact-bundle": ["--repo-root", "--max-decisions", "--max-subagent-results", "--max-beta-findings", "--max-note-length"],
   "drafts-count": ["--repo-root"]
 };
 function kebabToCamel(flag) {
@@ -12375,6 +12441,16 @@ async function run(subcommand, flags) {
         const n = Number(flags.maxSubagentResults);
         if (!Number.isFinite(n)) throw new Error(`--max-subagent-results must be a number, got: ${flags.maxSubagentResults}`);
         opts.maxSubagentResults = n;
+      }
+      if (flags.maxBetaFindings !== void 0) {
+        const n = Number(flags.maxBetaFindings);
+        if (!Number.isFinite(n)) throw new Error(`--max-beta-findings must be a number, got: ${flags.maxBetaFindings}`);
+        opts.maxBetaFindings = n;
+      }
+      if (flags.maxNoteLength !== void 0) {
+        const n = Number(flags.maxNoteLength);
+        if (!Number.isFinite(n)) throw new Error(`--max-note-length must be a number, got: ${flags.maxNoteLength}`);
+        opts.maxNoteLength = n;
       }
       return compactBundleSession(opts);
     }

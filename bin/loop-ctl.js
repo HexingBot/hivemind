@@ -22,9 +22,11 @@
 //                    needed)
 //   grant-unattended --repo-root <path> [--opt-in <switch>]...
 //   compact-bundle   --repo-root <path> [--max-decisions <n>] [--max-subagent-results <n>]
+//                    [--max-beta-findings <n>] [--max-note-length <n>]
 //                    (TASK-103 — rotates decisions/subagent_results beyond the
 //                    documented cap into the bundle's archive.jsonl; see
-//                    src/bundle-compaction.js)
+//                    src/bundle-compaction.js. TASK-110 extends the same
+//                    subcommand to also rotate loop_state.beta_findings/note.)
 //   drafts-count     --repo-root <path>
 //                    (TASK-111 AC4 — wraps listDraftEntries (src/knowledge.js)
 //                    so a live draftEntryCount can feed consolidationGate at
@@ -76,7 +78,7 @@ const FLAG_SPEC = {
   'resume-point': ['--repo-root'],
   'landed-commits': ['--key'],
   'grant-unattended': ['--repo-root'],
-  'compact-bundle': ['--repo-root', '--max-decisions', '--max-subagent-results'],
+  'compact-bundle': ['--repo-root', '--max-decisions', '--max-subagent-results', '--max-beta-findings', '--max-note-length'],
   'drafts-count': ['--repo-root'],
 };
 
@@ -259,6 +261,16 @@ async function run(subcommand, flags) {
         const n = Number(flags.maxSubagentResults);
         if (!Number.isFinite(n)) throw new Error(`--max-subagent-results must be a number, got: ${flags.maxSubagentResults}`);
         opts.maxSubagentResults = n;
+      }
+      if (flags.maxBetaFindings !== undefined) {
+        const n = Number(flags.maxBetaFindings);
+        if (!Number.isFinite(n)) throw new Error(`--max-beta-findings must be a number, got: ${flags.maxBetaFindings}`);
+        opts.maxBetaFindings = n;
+      }
+      if (flags.maxNoteLength !== undefined) {
+        const n = Number(flags.maxNoteLength);
+        if (!Number.isFinite(n)) throw new Error(`--max-note-length must be a number, got: ${flags.maxNoteLength}`);
+        opts.maxNoteLength = n;
       }
       return compactBundleSession(opts);
     }

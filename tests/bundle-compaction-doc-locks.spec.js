@@ -46,6 +46,17 @@ describe('AC5 — orchestrator-routing SKILL.md documents the rotation lifecycle
     expect(text).toMatch(/knowledge-graph decision node/);
     expect(text).toMatch(/#<at>/);
   });
+
+  // TASK-110 (R10 one level down) — extends this SAME describe block rather
+  // than adding a parallel one, per the "extend, don't duplicate" convention
+  // documented at the top of this file.
+  it('documents the loop_state.beta_findings/note bound and its rotation into the SAME archive.jsonl', () => {
+    const text = load(SKILL_PATH);
+    expect(text).toMatch(/loop_state\.beta_findings.*capped at 15 entries|beta_findings.*15 entries/s);
+    expect(text).toMatch(/loop_state\.note.*4000|note.*maxLength/s);
+    expect(text).toMatch(/loop_state_beta_finding/);
+    expect(text).toMatch(/loop_state_note/);
+  });
 });
 
 describe('AC5 — state/README.md documents compaction (bundle hygiene)', () => {
@@ -64,5 +75,15 @@ describe('AC5 — state/README.md documents compaction (bundle hygiene)', () => 
     const text = load(README_PATH);
     expect(text).toMatch(/compactBundleSession/);
     expect(text).toMatch(/append-only/);
+  });
+
+  // TASK-110 (R10 one level down) — extends this SAME describe block rather
+  // than adding a parallel one.
+  it('documents the loop_state.beta_findings/note bound and its rotation into the SAME archive.jsonl', () => {
+    const text = load(README_PATH);
+    expect(text).toMatch(/maxItems: 15/);
+    expect(text).toMatch(/maxLength: 4000/);
+    expect(text).toMatch(/loop_state_beta_finding/);
+    expect(text).toMatch(/loop_state_note/);
   });
 });

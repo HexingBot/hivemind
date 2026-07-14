@@ -372,4 +372,253 @@ describe('AC3 — schema maxItems enforces the documented caps', () => {
     expect(jsonSchema.properties.decisions.maxItems).toBe(bundleStateSchema.properties.decisions.maxItems);
     expect(jsonSchema.properties.subagent_results.maxItems).toBe(bundleStateSchema.properties.subagent_results.maxItems);
   });
+
+  // TASK-110 (R10 one level down) — extends the parity assertion above with the
+  // loop_state.beta_findings/note caps rather than duplicating a new test.
+  it('the loop_state.beta_findings/note bounds stay parity-identical between src/schemas.js and state/bundle.schema.json', async () => {
+    const { bundleStateSchema } = await import(pathToFileURL(join(__srcDir, 'schemas.js')).href);
+    const jsonSchema = JSON.parse(readFileSync(join(REPO_ROOT, 'state', 'bundle.schema.json'), 'utf8'));
+
+    expect(bundleStateSchema.properties.loop_state.properties.beta_findings.maxItems).toBeDefined();
+    expect(bundleStateSchema.properties.loop_state.properties.note.maxLength).toBeDefined();
+    expect(jsonSchema.properties.loop_state.properties.beta_findings.maxItems).toBe(
+      bundleStateSchema.properties.loop_state.properties.beta_findings.maxItems,
+    );
+    expect(jsonSchema.properties.loop_state.properties.note.maxLength).toBe(
+      bundleStateSchema.properties.loop_state.properties.note.maxLength,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-110 (R10 one level down) — loop_state.beta_findings/note enforced
+// bound + lossless overflow path, extending the SAME archive.jsonl mechanism
+// TASK-103 built for decisions/subagent_results (no second archive).
+// ---------------------------------------------------------------------------
+
+describe('TASK-110 AC1 — loop_state.beta_findings/note have an enforced bound (schema cap), red-proven against a synthetic oversized loop_state', () => {
+  it('writeBundleSession throws E_BUNDLE_INVALID when loop_state.beta_findings exceeds the documented cap (synthetic oversized array)', async () => {
+    const { writeBundleSession } = await import(BUNDLE_URL);
+    const { MAX_BETA_FINDINGS } = await import(COMPACTION_URL);
+    const root = makeTmpDir('af-bundle-oversized-beta-findings');
+    const sessionId = SESSION_ID;
+    mkdirSync(join(root, 'state', 'sessions', sessionId), { recursive: true });
+
+    const oversized = {
+      schema_version: 2,
+      session_id: sessionId,
+      lifecycle_state: 'active',
+      updated_at: new Date().toISOString(),
+      active_task: null,
+      workflow_step: 'idle',
+      next_action: null,
+      handoff_summary: 'hi',
+      loop_state: {
+        current_ticket: 'TASK-110',
+        beta_findings: Array.from({ length: MAX_BETA_FINDINGS + 1 }, (_, i) => `finding ${i}`),
+      },
+    };
+
+    let caughtErr;
+    try {
+      await writeBundleSession(root, sessionId, oversized);
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'must throw for a beta_findings array beyond the documented cap').toBeDefined();
+    expect(caughtErr.code).toBe('E_BUNDLE_INVALID');
+    expect(caughtErr.message).toMatch(/beta_findings/);
+  });
+
+  it('writeBundleSession throws E_BUNDLE_INVALID when loop_state.note exceeds the documented maxLength (synthetic oversized string)', async () => {
+    const { writeBundleSession } = await import(BUNDLE_URL);
+    const { MAX_NOTE_LENGTH } = await import(COMPACTION_URL);
+    const root = makeTmpDir('af-bundle-oversized-note');
+    const sessionId = SESSION_ID;
+    mkdirSync(join(root, 'state', 'sessions', sessionId), { recursive: true });
+
+    const oversized = {
+      schema_version: 2,
+      session_id: sessionId,
+      lifecycle_state: 'active',
+      updated_at: new Date().toISOString(),
+      active_task: null,
+      workflow_step: 'idle',
+      next_action: null,
+      handoff_summary: 'hi',
+      loop_state: {
+        current_ticket: 'TASK-110',
+        note: 'x'.repeat(MAX_NOTE_LENGTH + 1),
+      },
+    };
+
+    let caughtErr;
+    try {
+      await writeBundleSession(root, sessionId, oversized);
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'must throw for a note string beyond the documented maxLength').toBeDefined();
+    expect(caughtErr.code).toBe('E_BUNDLE_INVALID');
+    expect(caughtErr.message).toMatch(/note/);
+  });
+
+  it('a loop_state within both caps still validates and writes successfully (no false positive)', async () => {
+    const { writeBundleSession, readBundleSession } = await import(BUNDLE_URL);
+    const root = makeTmpDir('af-bundle-loopstate-valid');
+    const sessionId = SESSION_ID;
+    mkdirSync(join(root, 'state', 'sessions', sessionId), { recursive: true });
+
+    const validPayload = {
+      schema_version: 2,
+      session_id: sessionId,
+      lifecycle_state: 'active',
+      updated_at: new Date().toISOString(),
+      active_task: null,
+      workflow_step: 'idle',
+      next_action: null,
+      handoff_summary: 'hi',
+      loop_state: {
+        current_ticket: 'TASK-110',
+        beta_findings: ['one finding', 'another finding'],
+        note: 'a short note',
+      },
+    };
+
+    await expect(writeBundleSession(root, sessionId, validPayload)).resolves.toBeUndefined();
+    const readBack = readBundleSession(root, sessionId);
+    expect(readBack.loop_state.beta_findings).toEqual(['one finding', 'another finding']);
+    expect(readBack.loop_state.note).toBe('a short note');
+  });
+});
+
+describe('TASK-110 AC2 — compactLoopState/compactBundleSession rotate loop_state overflow into the SAME archive.jsonl, no data loss', () => {
+  it('partitionArrayTail keeps the last maxItems entries (append order) and archives the head, preserving relative order in both buckets', async () => {
+    const { partitionArrayTail } = await import(COMPACTION_URL);
+    const items = ['a', 'b', 'c', 'd', 'e'];
+    const { kept, archived } = partitionArrayTail(items, 3);
+    expect(kept).toEqual(['c', 'd', 'e']);
+    expect(archived).toEqual(['a', 'b']);
+  });
+
+  it('partitionArrayTail is a no-op when the array is already within the cap', async () => {
+    const { partitionArrayTail } = await import(COMPACTION_URL);
+    const items = ['a', 'b'];
+    const { kept, archived } = partitionArrayTail(items, 5);
+    expect(kept).toEqual(items);
+    expect(archived).toEqual([]);
+  });
+
+  it('compactBundleSession rotates loop_state.beta_findings beyond the cap into archive.jsonl (type loop_state_beta_finding), no data loss, resume-point fields intact', async () => {
+    const { compactBundleSession, MAX_BETA_FINDINGS } = await import(COMPACTION_URL);
+    const { readBundleSession, bundleArchivePath } = await import(BUNDLE_URL);
+
+    const root = makeTmpDir('af-bundle-compact-beta-findings');
+    const sessionId = SESSION_ID;
+    const bundleDir = bundlePath(root, sessionId);
+
+    const betaFindingsCount = MAX_BETA_FINDINGS + 6;
+    const betaFindings = Array.from({ length: betaFindingsCount }, (_, i) => `finding number ${i}`);
+
+    seedActiveBundle(bundleDir, {
+      session_id: sessionId,
+      session_json_extra: {
+        loop_state: {
+          current_ticket: 'TASK-110',
+          phase: 'test',
+          iteration: 3,
+          completed_this_run: 2,
+          run_started_at: '2026-07-01T00:00:00Z',
+          beta_findings: betaFindings,
+        },
+      },
+    });
+
+    const result = await compactBundleSession({ repoRoot: root, sessionId });
+
+    expect(result.compacted).toBe(true);
+    expect(result.archivedBetaFindings).toBe(betaFindingsCount - MAX_BETA_FINDINGS);
+
+    const after = readBundleSession(root, sessionId);
+    expect(after.loop_state.beta_findings.length).toBe(MAX_BETA_FINDINGS);
+    // resume-point / get-mode fields untouched by the rotation.
+    expect(after.loop_state.current_ticket).toBe('TASK-110');
+    expect(after.loop_state.phase).toBe('test');
+    expect(after.loop_state.iteration).toBe(3);
+    expect(after.loop_state.completed_this_run).toBe(2);
+    expect(after.loop_state.run_started_at).toBe('2026-07-01T00:00:00Z');
+
+    const archivePath = bundleArchivePath(root, sessionId);
+    expect(existsSync(archivePath)).toBe(true);
+    const archiveLines = readFileSync(archivePath, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const archivedFindingLines = archiveLines.filter((l) => l.type === 'loop_state_beta_finding');
+    expect(archivedFindingLines.length).toBe(betaFindingsCount - MAX_BETA_FINDINGS);
+
+    // Union of kept + archived reconstructs the full original set, no loss.
+    const allFindingsAfter = [...archivedFindingLines.map((l) => l.text), ...after.loop_state.beta_findings];
+    expect(new Set(allFindingsAfter).size).toBe(betaFindingsCount);
+    expect(allFindingsAfter).toEqual(betaFindings); // exact order preserved across the split
+  });
+
+  it('compactBundleSession rotates loop_state.note beyond maxLength into archive.jsonl (type loop_state_note), no data loss, live note trimmed', async () => {
+    const { compactBundleSession, MAX_NOTE_LENGTH } = await import(COMPACTION_URL);
+    const { readBundleSession, bundleArchivePath } = await import(BUNDLE_URL);
+
+    const root = makeTmpDir('af-bundle-compact-note');
+    const sessionId = SESSION_ID;
+    const bundleDir = bundlePath(root, sessionId);
+
+    const oversizedNote = 'y'.repeat(MAX_NOTE_LENGTH + 500);
+
+    seedActiveBundle(bundleDir, {
+      session_id: sessionId,
+      session_json_extra: {
+        loop_state: {
+          current_ticket: 'TASK-110',
+          phase: 'update',
+          note: oversizedNote,
+        },
+      },
+    });
+
+    const result = await compactBundleSession({ repoRoot: root, sessionId });
+
+    expect(result.compacted).toBe(true);
+    expect(result.archivedNote).toBe(true);
+
+    const after = readBundleSession(root, sessionId);
+    expect(after.loop_state.note.length).toBeLessThanOrEqual(MAX_NOTE_LENGTH);
+    expect(after.loop_state.current_ticket).toBe('TASK-110');
+    expect(after.loop_state.phase).toBe('update');
+
+    const archivePath = bundleArchivePath(root, sessionId);
+    const archiveLines = readFileSync(archivePath, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const archivedNoteLines = archiveLines.filter((l) => l.type === 'loop_state_note');
+    expect(archivedNoteLines.length).toBe(1);
+    expect(archivedNoteLines[0].text).toBe(oversizedNote); // full original text preserved, no truncation loss
+  });
+
+  it('compactBundleSession is idempotent for loop_state: a bundle already within both loop_state caps is left untouched (no write, no archive)', async () => {
+    const { compactBundleSession } = await import(COMPACTION_URL);
+    const { bundleArchivePath } = await import(BUNDLE_URL);
+
+    const root = makeTmpDir('af-bundle-compact-loopstate-noop');
+    const sessionId = SESSION_ID;
+    const bundleDir = bundlePath(root, sessionId);
+    seedActiveBundle(bundleDir, {
+      session_id: sessionId,
+      session_json_extra: {
+        loop_state: { current_ticket: 'TASK-110', beta_findings: ['fine'], note: 'short' },
+      },
+    });
+
+    const result = await compactBundleSession({ repoRoot: root, sessionId });
+
+    expect(result.compacted).toBe(false);
+    expect(result.archivedBetaFindings).toBe(0);
+    expect(result.archivedNote).toBe(false);
+    expect(existsSync(bundleArchivePath(root, sessionId))).toBe(false);
+  });
 });
