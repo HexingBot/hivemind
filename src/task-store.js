@@ -308,11 +308,38 @@ export async function listTodos({ repoRoot }) {
 }
 
 /**
+ * TASK-107 (L1) — thrown by listReady when a task's depends_on references a
+ * key absent from the on-disk task set. Mirrors the contract src/drive-loop.js's
+ * depsAreDone already established for the same "dangling depends_on" defect
+ * class (TASK-096, R1 HIGH): a depKey with no matching on-disk task can never
+ * reach status='done', so silently excluding the ticket from list_ready left
+ * it invisibly stranded with no signal why. Failing loudly here (rather than
+ * a third silent-omission convention) surfaces the typo/removed-task bug at
+ * the call site instead. `.code` lets callers (and tests) distinguish this
+ * from any other listReady failure programmatically, same convention as
+ * KeyCollisionError/UatGuardError above.
+ */
+export class DanglingDependencyError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'DanglingDependencyError';
+    this.code = 'E_DANGLING_DEPENDS_ON';
+  }
+}
+
+/**
  * AC4 — return all status=='todo' tasks whose depends_on entries each point at
  * an existing on-disk task with status=='done'. Tasks with no depends_on are
- * trivially ready. A depends_on key with no matching on-disk file is by
- * definition unsatisfied (the dep can never reach done), so the task is
- * excluded. Sorted by numeric key (AC6).
+ * trivially ready. A depends_on key that resolves to an existing task but is
+ * not yet 'done' is the normal in-progress case (excluded, no throw). A
+ * depends_on key with NO matching on-disk task at all is a dangling reference
+ * (typo, or the dep was deleted) — by definition it can never reach 'done', so
+ * TASK-107 makes this throw a DanglingDependencyError naming the stranded
+ * ticket and the missing dep, instead of silently omitting the ticket from
+ * the ready list (mirrors depsAreDone's contract in src/drive-loop.js).
+ * Sorted by numeric key (AC6).
+ * @throws {DanglingDependencyError} If any todo task's depends_on references
+ *   a key absent from the on-disk task set.
  */
 export async function listReady({ repoRoot }) {
   // Mirror the listTodos housekeeping so listReady is a safe stand-alone call
@@ -327,7 +354,15 @@ export async function listReady({ repoRoot }) {
     const deps = Array.isArray(t.depends_on) ? t.depends_on : [];
     for (const depKey of deps) {
       const dep = byKey.get(depKey);
-      if (!dep) return false; // unknown dep -> unsatisfied
+      if (!dep) {
+        throw new DanglingDependencyError(
+          `listReady: task ${t.key} depends_on "${depKey}", which does not exist `
+          + `as an on-disk task (no tasks/${depKey}.json). Fix the dangling `
+          + 'depends_on reference (typo, or the dependency was deleted) — a '
+          + 'ticket can never become ready while it points at a task that does '
+          + 'not exist.',
+        );
+      }
       if (dep.status !== 'done') return false;
     }
     return true;

@@ -243,6 +243,46 @@ describe('goalStuck', () => {
     const tasks = [task({ labels: ['epic'], status: 'todo' })];
     expect(goalStuck(tasks, goal)).toBe(false);
   });
+
+  // TASK-107 (L2) — goalStuck calls selectNextTicket internally (via
+  // goalSatisfied+selectNextTicket), so it propagates depsAreDone's throw
+  // exactly like selectNextTicket does when called with a partial list. This
+  // locks in the propagation behavior the new @throws JSDoc line documents.
+  it('propagates depsAreDone throw when called standalone with a partial list', () => {
+    const tasks = [
+      task({ key: 'TASK-002', labels: ['epic'], status: 'todo', depends_on: ['TASK-001'] }),
+      // TASK-001 (the dep) is deliberately absent from this partial list.
+    ];
+    expect(() => goalStuck(tasks, goal)).toThrow(/depends_on "TASK-001"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-107 (L2) doc-lock — goalStuck's JSDoc must document the propagated
+// throw (@throws), consistent with selectNextTicket's own @throws line. Grep
+// the source directly rather than re-parsing comment text so this rots if the
+// tag is ever deleted, mirroring the doc-lock convention in
+// tests/agility-doc-locks.spec.js et al.
+// ---------------------------------------------------------------------------
+describe('goalStuck JSDoc — @throws doc-lock', () => {
+  it('documents the propagated depsAreDone throw with an @throws tag', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { REPO_ROOT } = await import('./helpers/repoRoot.js');
+    const src = readFileSync(join(REPO_ROOT, 'src', 'drive-loop.js'), 'utf8');
+
+    // Isolate the JSDoc block immediately preceding `export function goalStuck`.
+    const fnIdx = src.indexOf('export function goalStuck');
+    expect(fnIdx, 'goalStuck export must exist').toBeGreaterThan(-1);
+    const docStart = src.lastIndexOf('/**', fnIdx);
+    const jsdoc = src.slice(docStart, fnIdx);
+
+    expect(
+      /@throws/.test(jsdoc),
+      'goalStuck JSDoc must carry an @throws tag documenting the propagated '
+      + 'depsAreDone throw, consistent with selectNextTicket\'s @throws line',
+    ).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

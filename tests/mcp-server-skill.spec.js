@@ -114,3 +114,34 @@ describe('TASK-093 — mcp-server references/ files are mirrored in parity', () 
     }
   });
 });
+
+// TASK-107 (N2) — ground-truth doc-lock: tool-contract.md's "Result shaping"
+// section previously said BOTH `list_todos` and `list_ready` wrap
+// `listTodos({ repoRoot })`, but src/mcp-server.js's `list_ready` tool handler
+// actually wraps `listReady({ repoRoot })` (see src/mcp-server.js's
+// `server.registerTool('list_ready', ..., async () => ok(await
+// listReady({ repoRoot })))`). This is a doc-drift regression lock (not just
+// byte-parity — parity alone would happily keep both copies wrong together):
+// it fails if either copy regresses back to claiming list_ready wraps
+// listTodos, independent of whether the two copies still match each other.
+describe('TASK-107 (N2) — tool-contract.md list_ready ground truth', () => {
+  const TOOL_CONTRACT_REL = join(REFERENCES_REL, 'tool-contract.md');
+  const PLUGIN_TOOL_CONTRACT = join(REPO_ROOT, 'skills', TOOL_CONTRACT_REL);
+  const DEV_TOOL_CONTRACT = join(REPO_ROOT, '.claude', 'skills', TOOL_CONTRACT_REL);
+
+  it.each([
+    ['plugin-root copy', PLUGIN_TOOL_CONTRACT],
+    ['.claude parity copy', DEV_TOOL_CONTRACT],
+  ])('%s documents list_ready as wrapping listReady, not listTodos', (_label, path) => {
+    const text = readFileSync(path, 'utf8');
+    expect(
+      /list_ready.*→.*ok\(await listReady\(\{ repoRoot \}\)\)/.test(text),
+      `${path} must document list_ready as wrapping listReady({ repoRoot }) `
+      + '(ground truth: src/mcp-server.js registers list_ready against listReady)',
+    ).toBe(true);
+    expect(
+      /list_todos \/ list_ready.*→.*listTodos/.test(text),
+      `${path} must NOT claim list_ready wraps listTodos (stale doc drift)`,
+    ).toBe(false);
+  });
+});

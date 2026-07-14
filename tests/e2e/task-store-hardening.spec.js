@@ -345,11 +345,15 @@ describe('AC4 — listReady honors depends_on', () => {
     expect(ready.map((t) => t.key)).toEqual(['TASK-202']);
   });
 
-  it('list_ready_excludes_tasks_with_missing_dep_keys', async () => {
-    // Defensive: a depends_on entry that points at a non-existent task key is
-    // by definition unsatisfied (the dep can never reach status=done). Ready
-    // must exclude this case too.
-    const { listReady } = await import(PROD.taskStore);
+  // TASK-107 (L1) — a depends_on entry that points at a non-existent task key
+  // used to be silently treated as "unsatisfied" (ready excluded the task with
+  // no signal why). That is the same silent-stranding class TASK-096 fixed in
+  // drive-loop's depsAreDone (which throws naming the ticket and the missing
+  // dep). listReady is now aligned: it throws a typed DanglingDependencyError
+  // naming both the stranded ticket and the dangling depends_on key, instead
+  // of letting the ticket vanish from list_ready with zero signal.
+  it('list_ready_throws_on_dangling_depends_on', async () => {
+    const { listReady, DanglingDependencyError } = await import(PROD.taskStore);
 
     const repoDir = makeTmpDir('af-ts9-ready-missing-dep');
     makeRepoSkeleton(repoDir, {
@@ -358,8 +362,37 @@ describe('AC4 — listReady honors depends_on', () => {
       },
     });
 
+    let caught;
+    try {
+      await listReady({ repoRoot: repoDir });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'listReady must throw rather than silently omit the stranded ticket').toBeDefined();
+    expect(caught).toBeInstanceOf(DanglingDependencyError);
+    expect(caught.message).toContain('TASK-201');
+    expect(caught.message).toContain('TASK-999');
+  });
+
+  it('list_ready_still_lists_a_valid_dependency_graph_correctly', async () => {
+    // Regression lock: a legitimate graph (satisfied dep + a genuinely
+    // pending dep, no dangling keys) must NOT trip the new loud-throw path.
+    const { listReady } = await import(PROD.taskStore);
+
+    const repoDir = makeTmpDir('af-ts9-ready-valid-graph');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-301': buildTask({ key: 'TASK-301', status: 'done', depends_on: [] }),
+        'TASK-302': buildTask({ key: 'TASK-302', status: 'todo', depends_on: ['TASK-301'] }),
+        'TASK-303': buildTask({ key: 'TASK-303', status: 'todo', depends_on: ['TASK-302'] }),
+      },
+    });
+
     const ready = await listReady({ repoRoot: repoDir });
-    expect(ready).toEqual([]);
+    // TASK-302's dep (TASK-301) is done -> ready. TASK-303's dep (TASK-302) is
+    // still todo -> excluded, but must not throw (a pending-but-real dep is a
+    // normal in-progress case, not a dangling reference).
+    expect(ready.map((t) => t.key)).toEqual(['TASK-302']);
   });
 });
 

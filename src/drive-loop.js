@@ -166,6 +166,10 @@ export function goalSatisfied(tasks, goal) {
  * @param {object[]} tasks
  * @param {{ label?: string, keys?: string[] }} goal
  * @returns {boolean}
+ * @throws {Error} Propagates selectNextTicket's throw (via depsAreDone) if a
+ *   candidate's depends_on references a key absent from `tasks` — e.g. when
+ *   goalStuck is called standalone with a partial list. Same contract as
+ *   selectNextTicket's own @throws (TASK-107, L2).
  */
 export function goalStuck(tasks, goal) {
   if (goalSatisfied(tasks, goal)) return false;

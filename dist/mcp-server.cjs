@@ -25785,6 +25785,13 @@ async function listTodos({ repoRoot }) {
   await verifyAndRepairIndex(repoRoot, tasks);
   return tasks.filter((t) => t.status === "todo").sort(numericKeyOrder);
 }
+var DanglingDependencyError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "DanglingDependencyError";
+    this.code = "E_DANGLING_DEPENDS_ON";
+  }
+};
 async function listReady({ repoRoot }) {
   await sweepTasksTmpFiles({ repoRoot });
   const tasks = await readAllTasks(repoRoot);
@@ -25795,7 +25802,11 @@ async function listReady({ repoRoot }) {
     const deps = Array.isArray(t.depends_on) ? t.depends_on : [];
     for (const depKey of deps) {
       const dep = byKey.get(depKey);
-      if (!dep) return false;
+      if (!dep) {
+        throw new DanglingDependencyError(
+          `listReady: task ${t.key} depends_on "${depKey}", which does not exist as an on-disk task (no tasks/${depKey}.json). Fix the dangling depends_on reference (typo, or the dependency was deleted) \u2014 a ticket can never become ready while it points at a task that does not exist.`
+        );
+      }
       if (dep.status !== "done") return false;
     }
     return true;

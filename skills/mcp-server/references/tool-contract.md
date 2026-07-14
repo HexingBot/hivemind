@@ -115,7 +115,8 @@ Wrap the returned value in the MCP content envelope and stringify:
 const ok = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value) }] });
 ```
 
-- `list_todos` / `list_ready` → `ok(await listTodos({ repoRoot }))`
+- `list_todos` → `ok(await listTodos({ repoRoot }))`
+- `list_ready` → `ok(await listReady({ repoRoot }))`
 - `get_task` → `ok(await readTask(repoRoot, key))` (may be `null`)
 - `create_task` → `ok(await createTask({ repoRoot, ... }))` → `{ key, path }`
 - `transition_status` → `await transitionStatus(...); return ok({ ok: true });`
