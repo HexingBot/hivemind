@@ -8,7 +8,7 @@
     "The live bundle's current beta_findings are rotated once via the new path on the record; resume-point/get-mode verified intact afterwards.",
     "Docs: the TASK-103 compaction sections (both SKILL.md copies + state/README.md) gain the loop_state bound — existing doc-lock spec extended, not duplicated."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "bundle-hygiene",
@@ -16,11 +16,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "712edb6"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-14T18:22:44.263Z",
+      "body": "CLOSED on green review. Reviewer verdict APPROVE (review_depth=full; rubric inputs: bundle STATE-SCHEMA change — loop_state maxItems/maxLength caps; new lossless rotation path on append-only archive.jsonl; moderate multi-surface diff schema+compaction+loop-ctl CLI+docs+dist). 0 HIGH / 0 MEDIUM / 2 LOW (no CLI e2e for --max-note-length — module-level covered, flag handling byte-identical to tested --max-beta-findings, reviewer ruled optional-not-warranted; commit not formatted as explicit 5-item checklist but all items covered in substance). Clean first-pass, no RC loop — no knowledge draft.\n\nImplementation (commit 712edb6, tdd single-commit): loop_state.beta_findings gets maxItems:15, loop_state.note gets maxLength:4000 in src/schemas.js + state/bundle.schema.json (additionalProperties:true preserved so other loop_state keys stay free-form). New partitionArrayTail + compactLoopState (pure) in src/bundle-compaction.js; appendBundleArchive EXTENDED IN PLACE (same archive.jsonl, two new type tags loop_state_beta_finding/loop_state_note) and compactBundleSession extended — coordinates with the TASK-103 mechanism, no second archive (explicit AC, reviewer-confirmed via git grep: exactly one archive writer). Crash-safe ordering verified: archive-append precedes in-bundle trim, so a crash leaves duplicates (recoverable) never data loss; append-only via appendFileSync. Resume counters (current_ticket/phase/iteration/completed_this_run/run_started_at) provably untouched. AC3 (rotate live bundle once) vacuously N/A and honest — reviewer independently confirmed the live bundle's loop_state has no beta_findings/note key. loop-ctl compact-bundle gains --max-beta-findings/--max-note-length flags. dist/init.cjs + dist/loop-ctl.cjs rebuilt+committed, dist-parity green. Docs: state/README.md + orchestrator-routing SKILL.md (both parity copies) compaction section extended (doc-lock extended not duplicated). Gate: test:all 1809 passed / 4 skip; reviewer re-ran test:since -- 21e18ea (146) + fast tier (983) + named e2e (55), all green."
+    }
+  ],
   "created_at": "2026-07-07T04:29:57.886Z",
-  "updated_at": "2026-07-07T04:29:57.886Z",
+  "updated_at": "2026-07-14T18:22:44.263Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T18:05:37.816Z",
+  "generated_at": "2026-07-14T18:22:44.263Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -646,7 +646,7 @@
     {
       "key": "TASK-110",
       "title": "bound loop_state growth: beta_findings/note accumulation is the residual R10 pattern one level down",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
