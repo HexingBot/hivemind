@@ -1,5 +1,18 @@
 # Observability Standard
 
+## Scope
+
+This standard governs **code the framework generates for target projects** — the manifest
+and code-writer flow described under "Enforcement" below (`SCREEN_SPECS.md`, `BLOCK_TASKS.md`,
+`code-writer`, `code-reviewer`). It does **not** govern the hivemind framework's own repo:
+this repo carries zero OpenTelemetry dependencies or instrumentation, and its own observability
+convention is **structured JSON result envelopes + typed errors with codes** (e.g. `{ ok: false,
+error }` returns and `Error` subclasses that set `this.code`, as used throughout `src/`). A
+reviewer auditing a diff to this repo's own `src/`, `bin/`, or `agents/` should not raise an
+OTel-span/log finding against it — only diffs that touch the generated-target-project flow
+(the `impl-*` skills, `code-writer`, `code-reviewer`) are in scope for the OTel requirements
+below.
+
 **Instrument with OpenTelemetry (vendor-neutral). Export to SigNoz (the backend decision —
 recorded as a project decision, like any ADR stack choice).** Because instrumentation is
 OTel, manifests stay language-agnostic: they say "trace span" / "structured log" / "metric",

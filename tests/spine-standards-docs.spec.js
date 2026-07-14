@@ -26,6 +26,15 @@ describe('P4.1 — vendored Spine standards', () => {
     expect(md).toMatch(/structured log/i);
   });
 
+  it('OBSERVABILITY.md scopes the standard to generated target-project code (TASK-112)', () => {
+    const p = join(REPO_ROOT, '.claude', 'shared', 'OBSERVABILITY.md');
+    const md = readFileSync(p, 'utf8');
+    expect(md).toMatch(/## Scope/);
+    expect(md).toMatch(/generates for target projects/i);
+    expect(md).toMatch(/does not.{0,20}govern the hivemind framework's own repo|does \*\*not\*\* govern/i);
+    expect(md).toMatch(/structured JSON result envelopes \+ typed errors with codes/i);
+  });
+
   it('MINIMALISM.md exists and states the Ponytail 6-rung ladder', () => {
     const p = join(REPO_ROOT, '.claude', 'shared', 'MINIMALISM.md');
     expect(existsSync(p)).toBe(true);

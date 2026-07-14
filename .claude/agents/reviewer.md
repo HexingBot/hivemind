@@ -67,7 +67,7 @@ npm run check:calibration -- --forward <source-file> <derived-file>
 
 Both standards live in `.claude/shared/`:
 
-- **Observability (`OBSERVABILITY.md`) → BLOCK.** Any functionality (user action, API call, task, integration) that emits no OpenTelemetry **span** or no **correlated structured log** is a HIGH finding. A missing **metric** on a key path is MEDIUM. Flag any PII/secrets in span attributes, logs, or metric labels.
+- **Observability (`OBSERVABILITY.md`) → BLOCK, scoped.** Check the doc's **Scope** section first: the OTel span/log/metric requirements apply only to code the framework generates for target projects (the `impl-*` manifest/code-writer flow) — not to hivemind's own `src/`, `bin/`, or `agents/`, whose convention is structured JSON result envelopes + typed errors with codes. For in-scope diffs, any functionality (user action, API call, task, integration) that emits no OpenTelemetry **span** or no **correlated structured log** is a HIGH finding, and a missing **metric** on a key path is MEDIUM. For diffs to the framework's own repo, do not raise an OTel finding — instead confirm errors are typed (carry a `.code`) and results are structured JSON, per the doc's Scope section. Flag any PII/secrets in span attributes, logs, or metric labels.
 - **Minimalism (`MINIMALISM.md`, Ponytail) — always answer "what can be removed?"** Gold-plating, unsourced complexity, an abstraction with a single caller, a dependency that isn't sanctioned, or speculative scope is a **HIGH** finding — a first-class blocker, not a nit.
 
 ## Guardrails
