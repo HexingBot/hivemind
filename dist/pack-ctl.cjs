@@ -7910,6 +7910,47 @@ function decodeArrayItem(s) {
   }
   return out;
 }
+function decodeMapEntry(s) {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "\\" && i + 1 < s.length) {
+      const next = s[i + 1];
+      if (next === "\\" || next === "," || next === "{" || next === "}") {
+        out += next;
+        i++;
+        continue;
+      }
+      out += "\\";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+function splitInlineMapPairs(inner) {
+  const pairs = [];
+  let buf = "";
+  let i = 0;
+  while (i < inner.length) {
+    const ch = inner[i];
+    if (ch === "\\" && i + 1 < inner.length) {
+      buf += ch + inner[i + 1];
+      i += 2;
+      continue;
+    }
+    if (ch === ",") {
+      pairs.push(buf);
+      buf = "";
+      i++;
+      continue;
+    }
+    buf += ch;
+    i++;
+  }
+  pairs.push(buf);
+  return pairs;
+}
 function splitInlineArray(inner) {
   const items = [];
   let buf = "";
@@ -8026,15 +8067,15 @@ function coerceFrontmatterScalar(raw, fieldName) {
     const inner = raw.slice(1, -1).trim();
     if (inner.length === 0) return {};
     const result = {};
-    for (const pair of inner.split(",")) {
+    for (const pair of splitInlineMapPairs(inner)) {
       const colonIdx = pair.indexOf(":");
       if (colonIdx === -1) {
         throw new Error(
           `PROJECT.md frontmatter ${fieldName} entry ${JSON.stringify(pair.trim())} is missing a colon \u2014 expected the form {key: value, ...}`
         );
       }
-      const k = pair.slice(0, colonIdx).trim();
-      const v = pair.slice(colonIdx + 1).trim();
+      const k = decodeMapEntry(pair.slice(0, colonIdx).trim());
+      const v = decodeMapEntry(pair.slice(colonIdx + 1).trim());
       if (k.length > 0 && v.length > 0) result[k] = v;
     }
     return result;

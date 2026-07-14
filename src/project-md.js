@@ -272,10 +272,13 @@ function renderProjectMd(answers, createdAt) {
   // so the in-house YAML subset parser (which only handles scalars/arrays at
   // the top level) can restore it losslessly. Format: `{key: value, ...}`.
   // Only write when the map is present and non-null with at least one key.
+  // TASK-162 — keys/values are escaped (encodeMapEntry) so a literal comma or
+  // brace round-trips losslessly instead of corrupting the naive comma/colon
+  // split; symmetric with coerceFrontmatterScalar's decodeMapEntry on read.
   if (answers.agent_models && typeof answers.agent_models === 'object' &&
       Object.keys(answers.agent_models).length > 0) {
     const mapStr = Object.entries(answers.agent_models)
-      .map(([k, v]) => `${k}: ${v}`)
+      .map(([k, v]) => `${encodeMapEntry(String(k))}: ${encodeMapEntry(String(v))}`)
       .join(', ');
     fmLines.push(`agent_models: {${mapStr}}`);
   }
@@ -288,12 +291,15 @@ function renderProjectMd(answers, createdAt) {
   }
 
   // TASK-124 — perfil_proyecto: same inline-object treatment as agent_models
-  // (see comment above). Values must contain no commas or braces — the
-  // parser does a naive split on the same assumption as agent_models.
+  // (see comment above). TASK-162 — keys/values are escaped (encodeMapEntry)
+  // exactly like agent_models above, so a comma- or brace-bearing value (e.g.
+  // a free-form design-profile tag) round-trips losslessly instead of
+  // corrupting the naive comma/colon split or (in the comma case) throwing on
+  // read-back.
   if (answers.perfil_proyecto && typeof answers.perfil_proyecto === 'object' &&
       Object.keys(answers.perfil_proyecto).length > 0) {
     const profileStr = Object.entries(answers.perfil_proyecto)
-      .map(([k, v]) => `${k}: ${v}`)
+      .map(([k, v]) => `${encodeMapEntry(String(k))}: ${encodeMapEntry(String(v))}`)
       .join(', ');
     fmLines.push(`perfil_proyecto: {${profileStr}}`);
   }
@@ -432,6 +438,73 @@ function decodeArrayItem(s) {
     out += ch;
   }
   return out;
+}
+
+// TASK-162 — Encode an inline-OBJECT (map) key or value: backslash first,
+// then comma, then both braces. Mirrors encodeArrayItem's ordering rationale
+// (escape the backslash before the delimiter chars we're about to introduce,
+// so we never double-escape the backslash we just added). Symmetric with
+// decodeMapEntry below; the two must never drift.
+function encodeMapEntry(s) {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/,/g, '\\,')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}');
+}
+
+// Decode a single inline-object key or value. Single left-to-right scan, same
+// rationale as decodeArrayItem: a naive multi-pass replaceAll mishandles
+// adjacent escape sequences (e.g. the on-disk `\\,` must resolve to a literal
+// backslash followed by a literal comma, not the reverse).
+function decodeMapEntry(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\' && i + 1 < s.length) {
+      const next = s[i + 1];
+      if (next === '\\' || next === ',' || next === '{' || next === '}') {
+        out += next;
+        i++;
+        continue;
+      }
+      // Lone backslash followed by anything else: emit the backslash
+      // literally and let the next iteration handle `next`.
+      out += '\\';
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+// Split an inline-object inner string ("k: v, k: v") on UNESCAPED top-level
+// commas — same escape-aware scan as splitInlineArray below, so a comma
+// inside an escaped key/value is never mistaken for a pair separator. Returns
+// the raw (still-encoded) pair strings; the colon-split + decodeMapEntry
+// happens per-pair in coerceFrontmatterScalar.
+function splitInlineMapPairs(inner) {
+  const pairs = [];
+  let buf = '';
+  let i = 0;
+  while (i < inner.length) {
+    const ch = inner[i];
+    if (ch === '\\' && i + 1 < inner.length) {
+      buf += ch + inner[i + 1];
+      i += 2;
+      continue;
+    }
+    if (ch === ',') {
+      pairs.push(buf);
+      buf = '';
+      i++;
+      continue;
+    }
+    buf += ch;
+    i++;
+  }
+  pairs.push(buf);
+  return pairs;
 }
 
 // Split an inline-array inner string on UNESCAPED commas. Any comma preceded
@@ -607,15 +680,18 @@ function parseFrontmatter(fmLines) {
 function coerceFrontmatterScalar(raw, fieldName) {
   // TASK-036 — Inline object map: {key: value, key: value}. Originally used
   // exclusively for agent_models; TASK-124 reuses the identical treatment
-  // for perfil_proyecto (both are SPECIAL_FRONTMATTER_IDS). Parsing is
-  // simple (values are identifiers/model-IDs/profile tags with no commas or
-  // braces), so a naive split is safe. A pair without a colon throws loudly
-  // (matching parseFrontmatter's strictness) rather than dropping silently.
+  // for perfil_proyecto (both are SPECIAL_FRONTMATTER_IDS). TASK-162 — a
+  // comma or brace inside a key/value is escaped by the writer
+  // (encodeMapEntry) so splitInlineMapPairs (an escape-aware scan, mirroring
+  // splitInlineArray) only splits on genuine top-level pair separators, and
+  // decodeMapEntry reverses the escaping per key/value. A pair without a
+  // colon still throws loudly (matching parseFrontmatter's strictness)
+  // rather than dropping silently.
   if (SPECIAL_FRONTMATTER_IDS.has(fieldName) && raw.startsWith('{') && raw.endsWith('}')) {
     const inner = raw.slice(1, -1).trim();
     if (inner.length === 0) return {};
     const result = {};
-    for (const pair of inner.split(',')) {
+    for (const pair of splitInlineMapPairs(inner)) {
       const colonIdx = pair.indexOf(':');
       if (colonIdx === -1) {
         throw new Error(
@@ -623,8 +699,8 @@ function coerceFrontmatterScalar(raw, fieldName) {
           `is missing a colon — expected the form {key: value, ...}`,
         );
       }
-      const k = pair.slice(0, colonIdx).trim();
-      const v = pair.slice(colonIdx + 1).trim();
+      const k = decodeMapEntry(pair.slice(0, colonIdx).trim());
+      const v = decodeMapEntry(pair.slice(colonIdx + 1).trim());
       if (k.length > 0 && v.length > 0) result[k] = v;
     }
     return result;
