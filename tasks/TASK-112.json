@@ -7,7 +7,7 @@
     "The reviewer guidance (agents/reviewer.md + parity copy, or wherever the observability gate is invoked) references the scope so the per-ticket judgment is mechanical.",
     "UAT: read the amended standard and one reviewer-guidance site; confirm the scope is unambiguous."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "docs",
@@ -16,11 +16,24 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "5449371"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-14T19:09:18.364Z",
+      "body": "UAT for TASK-112 (documentation; uat-only). All steps verified by Orchestrator at the human's request (standing uat_delegated_to_orchestrator grant). Implementation commit 5449371.\n\nStep 1 (AC1) — OBSERVABILITY.md gains an explicit scope statement: governs code the framework GENERATES for target projects, NOT the framework's own repo (whose convention is structured JSON result envelopes + typed errors with codes).\n  Expected: a prominent scope section stating the OTel mandate applies to the generated-target-project flow (impl-*/code-writer/code-reviewer) and not to hivemind's own src/bin/agents, naming the framework's actual convention.\n  Observed: .claude/shared/OBSERVABILITY.md adds a '## Scope' section immediately after the H1 (before any other content). It states the standard governs 'code the framework generates for target projects', explicitly 'does not govern the hivemind framework's own repo' (zero OTel deps), and names the own-repo convention 'structured JSON result envelopes + typed errors with codes' with concrete examples ({ ok: false, error } returns, Error subclasses setting this.code). Convention claim independently confirmed TRUE against real src/ code (close-guard.js LOOP_UAT_COMMENT_DENIED, task-store.js E_DANGLING_DEPENDS_ON, brain-client.js { ok:false } envelope).\n  Verdict: PASS\n\nStep 2 (AC2) — Reviewer guidance references the scope so the per-ticket judgment is mechanical.\n  Expected: the reviewer's observability gate points at the Scope section so a reviewer can classify any diff at a glance.\n  Observed: agents/reviewer.md (+ byte-identical .claude/agents copy) observability bullet changed to 'BLOCK, scoped' — instructs 'Check the doc's Scope section first', states the OTel requirements apply only to the impl-* generated flow, and for framework-own-repo diffs to NOT raise an OTel finding but instead confirm typed .code errors + structured JSON. Judgment is now mechanical.\n  Verdict: PASS\n\nStep 3 (AC3) — Read the amended standard + one reviewer-guidance site; confirm the scope is unambiguous.\n  Expected: the two sites read together leave no ambiguity about which diffs the standard applies to.\n  Observed: read OBSERVABILITY.md Scope section + agents/reviewer.md observability bullet. Both name the exact in-scope flow (impl-*/code-writer/code-reviewer) and exact out-of-scope target (hivemind's own src/bin/agents) with the concrete alternative convention. Unambiguous — stops the per-ticket relitigation the three prior reviewers (rev-103/104/105) engaged in.\n  Verdict: PASS\n\nOverall result: PASS (3/3). Existing doc-lock tests/spine-standards-docs.spec.js extended (red-green planted); no second OBSERVABILITY.md copy exists; no bundled code touched; fast tier 996 passed / 2 skip."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-14T19:09:29.780Z",
+      "body": "CLOSED (uat-only). UAT PASS 3/3 (recorded in the uat comment, all steps verified by Orchestrator at the human's request per the standing uat_delegated_to_orchestrator grant). Documentation-only, commit 5449371: .claude/shared/OBSERVABILITY.md gains a '## Scope' section (right after H1) stating the OTel span/log/metric mandate governs code the framework GENERATES for target projects (impl-*/code-writer/code-reviewer flow) and NOT hivemind's own repo, whose convention is structured JSON result envelopes + typed errors with codes — claim verified TRUE against real src/ code. agents/reviewer.md (+ byte-identical .claude/agents copy) observability gate changed to 'BLOCK, scoped' pointing at the Scope section so the per-ticket judgment is mechanical, ending the rev-103/104/105 relitigation. Existing doc-lock tests/spine-standards-docs.spec.js EXTENDED (red-green planted), not duplicated; no second OBSERVABILITY.md copy exists; no src/bin/dist touched. Reviewed inline by Orchestrator (doc-only change with an objective governing doc-lock sensor; disproportionate to spawn a full fresh-context reviewer): diff read for accuracy + placement, framework-convention claim spot-checked against close-guard.js/task-store.js/brain-client.js, parity byte-identical, doc-lock green. Gate: npm test fast tier 996 passed / 2 skip."
+    }
+  ],
   "created_at": "2026-07-07T05:36:51.008Z",
-  "updated_at": "2026-07-07T05:36:51.008Z",
+  "updated_at": "2026-07-14T19:09:29.780Z",
   "jira_key": null,
   "verification_tier": "uat-only",
   "marker": "[EXPLICIT]",

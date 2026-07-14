@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T19:04:09.091Z",
+  "generated_at": "2026-07-14T19:09:29.780Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -658,7 +658,7 @@
     {
       "key": "TASK-112",
       "title": "scope OBSERVABILITY.md to generated target-project code — stop per-ticket relitigation in reviews (human ruling 2026-07-07)",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
