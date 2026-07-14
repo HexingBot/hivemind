@@ -39,6 +39,22 @@ export class UatDelegationGuardError extends Error {
   }
 }
 
+/**
+ * TASK-108 — thrown by loopModeUatCommentGuard (the write-side seam for
+ * append_comment) when loop mode is active, the comment's `author` is
+ * `'uat'`, and the active bundle's `loop_auth.uat_delegated_to_orchestrator`
+ * is not `true`. Distinct `.code` from both LoopCloseGuardError and
+ * UatDelegationGuardError so callers can tell this write-side guard apart
+ * from the two read-time close guards.
+ */
+export class UatCommentGuardError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'UatCommentGuardError';
+    this.code = 'LOOP_UAT_COMMENT_DENIED';
+  }
+}
+
 // The SKILL.md UAT-step convention: a step the human verified themselves is
 // recorded as a bare "PASS"; a step the Orchestrator verified on the human's
 // behalf (only permitted once uat_delegated_to_orchestrator is granted) is
@@ -52,7 +68,12 @@ const DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
 // M1 requires: a per-step "PASS" inside an otherwise-failing UAT (or a
 // "FAIL — but PASS on retry" aside) must not satisfy the marker.
 const OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
-const FAIL_VERDICT_RE = /\bfail\b/i;
+// TASK-108 (fix-round scope addition, folded in here) — widened from
+// /\bfail\b/i so a self-contradictory body ("Step 2 FAILED ... Overall
+// result: PASS") cannot satisfy the marker: FAILED/failing/fails are the
+// same textual-convention class of gap as this ticket's core write-side
+// narrowing, so both land together.
+const FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 
 /**
  * TASK-099 Gate 2 — a uat-only ticket's `uat` comment carries an "explicit
@@ -84,6 +105,26 @@ function hasExplicitHumanVerdictMarker(task) {
 }
 
 /**
+ * Read the active bundle's `loop_auth` object (or `{}` on any missing/corrupt
+ * pointer or bundle). Shared by loopModeCloseGuard and loopModeUatCommentGuard
+ * so both guards read the exact same source of truth via the same
+ * readPointer/readBundleSession primitives operating-mode.js and
+ * loop-auth.js already use.
+ */
+function readLoopAuth(repoRoot) {
+  try {
+    const pointer = readPointer(repoRoot);
+    if (pointer && pointer.active_session_id != null) {
+      const bundle = readBundleSession(repoRoot, pointer.active_session_id);
+      return (bundle && bundle.loop_auth) || {};
+    }
+  } catch (_err) {
+    // fall through to {}
+  }
+  return {};
+}
+
+/**
  * loopModeCloseGuard({ repoRoot, task, key }) — the closeGuard implementation
  * for autonomous loop mode.
  *
@@ -104,16 +145,7 @@ export async function loopModeCloseGuard({ repoRoot, task }) {
   const mode = await getMode({ repoRoot });
   if (mode !== 'loop') return;
 
-  let loopAuth = {};
-  try {
-    const pointer = readPointer(repoRoot);
-    if (pointer && pointer.active_session_id != null) {
-      const bundle = readBundleSession(repoRoot, pointer.active_session_id);
-      loopAuth = (bundle && bundle.loop_auth) || {};
-    }
-  } catch (_err) {
-    loopAuth = {};
-  }
+  const loopAuth = readLoopAuth(repoRoot);
 
   if (loopAuth.auto_close_on_green_review !== true) {
     throw new LoopCloseGuardError(
@@ -129,5 +161,46 @@ export async function loopModeCloseGuard({ repoRoot, task }) {
           + 'verdict recorded on the uat comment',
       );
     }
+  }
+}
+
+/**
+ * TASK-108 — loopModeUatCommentGuard({ repoRoot, author }): the write-side
+ * seam that narrows the uat-comment fabrication channel left open by Gate 2
+ * (TASK-099 review MEDIUM-2). append_comment previously accepted
+ * author:'uat' from ANY caller regardless of operating mode, so a loop-mode
+ * orchestrator could append a convention-format all-PASS uat comment itself
+ * and pass Gate 2 with no human involvement.
+ *
+ *   - Reads the operating mode via getMode (defaults to 'harness' on any
+ *     missing/corrupt pointer or bundle).
+ *   - mode !== 'loop' (including 'harness' or no active session) -> resolves
+ *     without throwing (no-op) REGARDLESS of author — the normal
+ *     human-present UAT-recording flow is unaffected.
+ *   - mode === 'loop' && author !== 'uat' -> resolves without throwing
+ *     (no-op) — only author:'uat' is gated; every other author (orchestrator,
+ *     developer, reviewer, ...) writes normally in loop mode.
+ *   - mode === 'loop' && author === 'uat' -> throws UatCommentGuardError
+ *     unless loop_auth.uat_delegated_to_orchestrator === true (the human-set
+ *     delegation grant — the ONLY way to record a uat comment during an
+ *     autonomous loop, which keeps the human as the gate).
+ *
+ * This complements Gate 2's read-time check in loopModeCloseGuard (which
+ * inspects the CONTENT of an already-written uat comment at close time)
+ * rather than replacing it: this guard closes the write seam itself so an
+ * unauthorized loop-mode caller can never get a self-authored uat comment
+ * onto disk in the first place.
+ */
+export async function loopModeUatCommentGuard({ repoRoot, author }) {
+  const mode = await getMode({ repoRoot });
+  if (mode !== 'loop') return;
+  if (author !== 'uat') return;
+
+  const loopAuth = readLoopAuth(repoRoot);
+  if (loopAuth.uat_delegated_to_orchestrator !== true) {
+    throw new UatCommentGuardError(
+      'loop mode is active and this comment is authored "uat" — recording a uat comment during '
+        + 'an autonomous loop requires loop_auth.uat_delegated_to_orchestrator to be granted',
+    );
   }
 }

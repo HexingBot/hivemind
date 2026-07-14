@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T20:00:17.447Z",
+  "generated_at": "2026-07-14T17:33:04.218Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -634,7 +634,7 @@
     {
       "key": "TASK-108",
       "title": "close-guard: narrow the uat-comment fabrication channel — append_comment accepts author:'uat' from any caller in loop mode (Gate 2 residual)",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium"
     },
     {

@@ -743,9 +743,31 @@ compose the three deterministic mutation-seam guards below; a direct hand
   `loop_auth.uat_delegated_to_orchestrator === true`, or the ticket's `uat`
   comment to carry an explicit human-verdict marker: it states an "Overall
   result: PASS" line per the UAT-recording convention above, has no FAIL
-  verdict anywhere in the body, and is not qualified anywhere by "verified by
+  verdict anywhere in the body (the token match was widened, TASK-108, to
+  also catch FAILED/failing/fails — not just a bare "fail" — so a
+  self-contradictory "Step 2 FAILED ... Overall result: PASS" body no longer
+  slips past the marker), and is not qualified anywhere by "verified by
   Orchestrator at the human's request"; otherwise it's blocked with a typed
   `UatDelegationGuardError` (`code: 'LOOP_UAT_DELEGATION_REQUIRED'`).
+- **The loop-mode uat-comment write guard (Gate 2's write-side companion,
+  TASK-108)** — Gate 2 above is a *read-time* check: it inspects the content
+  of an already-written `uat` comment at close time. Until TASK-108, the
+  write side was unnarrowed: `append_comment` accepted `author: 'uat'` from
+  ANY caller regardless of operating mode, so a loop-mode orchestrator could
+  fabricate a convention-format all-PASS `uat` comment itself and pass Gate 2
+  with no human involvement. `append_comment` now refuses `author: 'uat'`
+  while the session's operating mode is `loop` UNLESS
+  `loop_auth.uat_delegated_to_orchestrator === true` — blocked with a typed
+  `UatCommentGuardError` (`code: 'LOOP_UAT_COMMENT_DENIED'`). The delegation
+  grant is itself a human-set authorization, so it remains the only way to
+  record a `uat` comment during an autonomous loop. Harness mode (a human
+  present) is unaffected — `author: 'uat'` stays freely writable there, and
+  every other author (`orchestrator`, `developer`, `reviewer`, ...) is
+  unaffected in loop mode too; only `author: 'uat'` without the delegation
+  grant is gated. Residual: this narrows, it does not eliminate, the
+  fabrication surface — a human who grants
+  `uat_delegated_to_orchestrator` is trusting the Orchestrator's own
+  delegated verification, same as Gate 2's read-time check already assumed.
 
 **On a clean review (closing a ticket)**, call the `close_task` tool once —
 it performs the transition, the closing comment, the `linked_commits`/
@@ -767,16 +789,20 @@ mcp__plugin_hivemind_hivemind-tasks__close_task({
 `append_comment`. `transition_status` runs the same uat-only and loop-mode
 guards as `close_task` whenever its target status is `done` (e.g. a direct
 `transition_status` call to `done` outside `close_task`), and is a no-op for
-any other status. `append_comment` has no `status` argument and never runs
-any guard — it is purely additive and cannot close a ticket by itself.
+any other status. `append_comment` has no `status` argument and cannot close
+a ticket by itself, but (TASK-108) it is no longer unconditionally guard-free:
+it runs the loop-mode uat-comment write guard above on every call — a no-op
+unless the comment's `author` is `'uat'` AND the session is in loop mode AND
+`uat_delegated_to_orchestrator` is not granted.
 
 **Fallback (documented, not preferred):** if the MCP server is unavailable,
 a direct `Edit` of `tasks/<KEY>.json` following the old six-step pattern
 (set `status`, append the comment, append `linked_commits`/`linked_prs`,
 refresh `updated_at`, regenerate `tasks/index.json`) is acceptable — but it
-bypasses all three guards above, so the orchestrator must manually verify the
-uat-only, loop-mode Gate 1, and loop-mode Gate 2 preconditions before
-hand-editing a ticket to `done`.
+bypasses all four guards above, so the orchestrator must manually verify the
+uat-only, loop-mode Gate 1, loop-mode Gate 2, and the Gate 2 write-side
+preconditions before hand-editing a ticket to `done` or fabricating a `uat`
+comment.
 
 ## Recording decision→task edges at ticket close (TASK-035, id convention fixed by TASK-104)
 

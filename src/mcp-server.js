@@ -51,7 +51,7 @@ import {
   appendComment,
   closeTask,
 } from './task-store.js';
-import { loopModeCloseGuard } from './close-guard.js';
+import { loopModeCloseGuard, loopModeUatCommentGuard } from './close-guard.js';
 import { lookupKnowledge, recordKbReuse } from './knowledge.js';
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
@@ -207,6 +207,15 @@ export function createServer({ repoRoot }) {
       },
     },
     async ({ key, author, body }) => {
+      // TASK-108 — narrows the write-side uat-comment fabrication channel
+      // (Gate 2 residual): a loop-mode caller may not author:'uat' unless
+      // loop_auth.uat_delegated_to_orchestrator is granted. Composed
+      // unconditionally, same pattern as loopModeCloseGuard on
+      // transition_status/close_task — it decides for itself whether loop
+      // mode is even active, so this is safe in harness mode / with no
+      // active session and only bites when author === 'uat' AND loop mode
+      // is active AND unauthorized.
+      await loopModeUatCommentGuard({ repoRoot, author });
       await appendComment({ repoRoot, key, author, body });
       return ok({ ok: true });
     },

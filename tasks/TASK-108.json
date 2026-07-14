@@ -9,7 +9,7 @@
     "dist/ rebuilt and committed if src/mcp-server.js or src/close-guard.js changed; dist-parity green.",
     "SKILL.md's Gate 2 documentation (both copies) updated to describe the narrowed channel honestly — including what residual (if any) remains."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "medium",
   "labels": [
     "review-followup",
@@ -24,10 +24,15 @@
       "author": "orchestrator",
       "at": "2026-07-07T01:14:18.170Z",
       "body": "Scope addition from the TASK-099 fix-round re-verify (rev-099, 2026-07-07): the tightened marker's FAIL-rejection uses /\\bfail\\b/i, which does not match \"FAILED\"/\"failing\" — a self-contradictory body (\"Step 2 FAILED ... Overall result: PASS\") would still satisfy the marker. Same textual-convention class as this ticket's core gap; fold the token-widening (fail|failed|failing) into whatever narrowing design is chosen here."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-14T17:33:02.733Z",
+      "body": "DESIGN DECISION (human directive 2026-07-14: \"keep the human in the loop at the key gates\"). Chosen narrowing = candidate (a), fail-closed: append_comment REFUSES author:'uat' while operating mode === 'loop' UNLESS loop_auth.uat_delegated_to_orchestrator === true. Rationale: the delegation grant is itself a human-set authorization, so it remains the ONLY way to record a uat comment during an autonomous loop — which keeps the human as the gate. Harness mode (human present) is unaffected: author:'uat' stays freely writable there, preserving the normal UAT-recording flow. This closes the self-authored-all-PASS fabrication path at the write seam (append_comment), complementing Gate 2's read-time check in loopModeCloseGuard rather than replacing it.\n\nImplementation shape: add a sibling guard in src/close-guard.js (e.g. loopModeUatCommentGuard({ repoRoot, author })) that throws a typed error (new .code, e.g. LOOP_UAT_COMMENT_DENIED) when mode==='loop' && author==='uat' && loop_auth.uat_delegated_to_orchestrator !== true; wire it into the append_comment handler in src/mcp-server.js BEFORE appendComment, keeping task-store.js decoupled (same injection pattern as loopModeCloseGuard). Also fold in this ticket's scope addition: widen close-guard.js FAIL_VERDICT_RE from /\\bfail\\b/i to also match FAILED/failing (fail|failed|failing) so a self-contradictory \"Step 2 FAILED ... Overall result: PASS\" body cannot satisfy hasExplicitHumanVerdictMarker.\n\nMust keep all TASK-099 matrix cells green; harness-mode UAT recording specced unaffected; the granted-delegation loop path (uat_delegated=true) must still record its delegated PASS. Rebuild + commit dist/ (mcp-server bundles) and keep dist-parity green. Update SKILL.md Gate 2 docs (both copies) to describe the narrowed write-side channel honestly."
     }
   ],
   "created_at": "2026-07-07T01:04:04.549Z",
-  "updated_at": "2026-07-07T01:14:18.170Z",
+  "updated_at": "2026-07-14T17:33:04.218Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[INFERRED:strong]",

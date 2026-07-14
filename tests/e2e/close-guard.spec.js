@@ -451,3 +451,162 @@ describe('AC4 (TASK-099) — transitionStatus composed with loopModeCloseGuard e
     expect(after.status).toBe('done');
   });
 });
+
+// ===========================================================================
+// TASK-108 — loopModeUatCommentGuard: narrow the write-side uat-comment
+// fabrication channel (Gate 2 residual). append_comment must REFUSE
+// author:'uat' while mode === 'loop' UNLESS
+// loop_auth.uat_delegated_to_orchestrator === true. Harness mode (mode !==
+// 'loop') is UNAFFECTED — author:'uat' stays freely writable there. Only
+// author === 'uat' is gated; any other author is unaffected in loop mode.
+//
+// TEST MODE — src/close-guard.js does NOT yet export
+// `loopModeUatCommentGuard`/`UatCommentGuardError`. These imports fail
+// (undefined destructure -> "is not a function" on call) until IMPL adds
+// them — the expected tests-first failure for a new export on an
+// already-existing module.
+// ===========================================================================
+describe('TASK-108 — loopModeUatCommentGuard', () => {
+  it('throws UatCommentGuardError when mode is loop, author is "uat", and delegation is not granted', async () => {
+    const { loopModeUatCommentGuard, UatCommentGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: {} });
+
+    let caught;
+    try {
+      await loopModeUatCommentGuard({ repoRoot: root, author: 'uat' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatCommentGuardError);
+    expect(caught.code).toBe('LOOP_UAT_COMMENT_DENIED');
+  });
+
+  it('throws UatCommentGuardError when mode is loop, author is "uat", and uat_delegated_to_orchestrator is explicitly false', async () => {
+    const { loopModeUatCommentGuard, UatCommentGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { uat_delegated_to_orchestrator: false },
+    });
+
+    await expect(
+      loopModeUatCommentGuard({ repoRoot: root, author: 'uat' }),
+    ).rejects.toBeInstanceOf(UatCommentGuardError);
+  });
+
+  it('resolves when mode is loop, author is "uat", and uat_delegated_to_orchestrator is granted (the delegated-recording path)', async () => {
+    const { loopModeUatCommentGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { uat_delegated_to_orchestrator: true },
+    });
+
+    await expect(
+      loopModeUatCommentGuard({ repoRoot: root, author: 'uat' }),
+    ).resolves.not.toThrow();
+  });
+
+  it('resolves when mode is harness, author "uat", no delegation granted (harness mode is unaffected)', async () => {
+    const { loopModeUatCommentGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({ mode: 'harness' });
+
+    await expect(
+      loopModeUatCommentGuard({ repoRoot: root, author: 'uat' }),
+    ).resolves.not.toThrow();
+  });
+
+  it('is a no-op when there is no active session at all (fresh repo, no pointer), even with author "uat"', async () => {
+    const { loopModeUatCommentGuard } = await import(CLOSE_GUARD_URL);
+    const root = makeTmpDir('af-uatcommentguard-nosession');
+    mkdirSync(join(root, 'state'), { recursive: true });
+
+    await expect(
+      loopModeUatCommentGuard({ repoRoot: root, author: 'uat' }),
+    ).resolves.not.toThrow();
+  });
+
+  it('resolves when mode is loop but author is NOT "uat" (e.g. orchestrator), even without delegation granted', async () => {
+    const { loopModeUatCommentGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: {} });
+
+    await expect(
+      loopModeUatCommentGuard({ repoRoot: root, author: 'orchestrator' }),
+    ).resolves.not.toThrow();
+  });
+
+  it('resolves when mode is loop but author is NOT "uat" (e.g. developer/reviewer), even without delegation granted', async () => {
+    const { loopModeUatCommentGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: {} });
+
+    await expect(
+      loopModeUatCommentGuard({ repoRoot: root, author: 'developer' }),
+    ).resolves.not.toThrow();
+    await expect(
+      loopModeUatCommentGuard({ repoRoot: root, author: 'reviewer' }),
+    ).resolves.not.toThrow();
+  });
+});
+
+// ===========================================================================
+// TASK-108 (scope addition, fix-round fold-in) — FAIL_VERDICT_RE widened from
+// /\bfail\b/i to also match FAILED/failing/fails, so a self-contradictory
+// "Step 2 FAILED ... Overall result: PASS" body no longer satisfies
+// hasExplicitHumanVerdictMarker (and thus no longer bypasses Gate 2's
+// loopModeCloseGuard).
+// ===========================================================================
+describe('TASK-108 — FAIL_VERDICT_RE widened to FAILED/failing/fails', () => {
+  it('a body with "Step 2 FAILED" (past tense) does NOT satisfy the marker, even though the overall line says PASS', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-231', [{
+      author: 'uat',
+      at: '2026-07-14T00:00:00Z',
+      body: 'Step 1: expected X, observed X, verdict PASS.\nStep 2: expected Y, observed Z, verdict FAILED.\nOverall result: PASS.',
+    }]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
+  });
+
+  it('a body with "failing" (present participle) does NOT satisfy the marker', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-232', [{
+      author: 'uat',
+      at: '2026-07-14T00:01:00Z',
+      body: 'Step 1: expected X, observed a failing endpoint.\nOverall result: PASS.',
+    }]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
+  });
+
+  it('a body with "fails" (present tense, third person) does NOT satisfy the marker', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-233', [{
+      author: 'uat',
+      at: '2026-07-14T00:02:00Z',
+      body: 'Step 1: this fails intermittently but retry PASS.\nOverall result: PASS.',
+    }]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
+  });
+
+  it('a clean all-PASS body with no FAIL/FAILED/failing/fails token anywhere still satisfies the marker (positive control, unaffected by the widening)', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-234', [BARE_HUMAN_UAT_COMMENT]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+});

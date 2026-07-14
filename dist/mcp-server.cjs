@@ -26082,9 +26082,16 @@ var UatDelegationGuardError = class extends Error {
     this.code = "LOOP_UAT_DELEGATION_REQUIRED";
   }
 };
+var UatCommentGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UatCommentGuardError";
+    this.code = "LOOP_UAT_COMMENT_DENIED";
+  }
+};
 var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
 var OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
-var FAIL_VERDICT_RE = /\bfail\b/i;
+var FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
   const uatComments = comments.filter((c) => c && c.author === "uat");
@@ -26095,19 +26102,21 @@ function hasExplicitHumanVerdictMarker(task) {
   if (FAIL_VERDICT_RE.test(body)) return false;
   return OVERALL_PASS_RE.test(body);
 }
-async function loopModeCloseGuard({ repoRoot, task }) {
-  const mode = await getMode({ repoRoot });
-  if (mode !== "loop") return;
-  let loopAuth = {};
+function readLoopAuth(repoRoot) {
   try {
     const pointer = readPointer(repoRoot);
     if (pointer && pointer.active_session_id != null) {
       const bundle = readBundleSession(repoRoot, pointer.active_session_id);
-      loopAuth = bundle && bundle.loop_auth || {};
+      return bundle && bundle.loop_auth || {};
     }
   } catch (_err) {
-    loopAuth = {};
   }
+  return {};
+}
+async function loopModeCloseGuard({ repoRoot, task }) {
+  const mode = await getMode({ repoRoot });
+  if (mode !== "loop") return;
+  const loopAuth = readLoopAuth(repoRoot);
   if (loopAuth.auto_close_on_green_review !== true) {
     throw new LoopCloseGuardError(
       "loop mode is active but auto_close_on_green_review has not been granted \u2014 cannot close this task automatically"
@@ -26119,6 +26128,17 @@ async function loopModeCloseGuard({ repoRoot, task }) {
         `task ${task && task.key || ""} is verification_tier "uat-only" and loop mode is active \u2014 closing it requires loop_auth.uat_delegated_to_orchestrator or an explicit human verdict recorded on the uat comment`
       );
     }
+  }
+}
+async function loopModeUatCommentGuard({ repoRoot, author }) {
+  const mode = await getMode({ repoRoot });
+  if (mode !== "loop") return;
+  if (author !== "uat") return;
+  const loopAuth = readLoopAuth(repoRoot);
+  if (loopAuth.uat_delegated_to_orchestrator !== true) {
+    throw new UatCommentGuardError(
+      'loop mode is active and this comment is authored "uat" \u2014 recording a uat comment during an autonomous loop requires loop_auth.uat_delegated_to_orchestrator to be granted'
+    );
   }
 }
 
@@ -26367,6 +26387,7 @@ function createServer({ repoRoot }) {
       }
     },
     async ({ key, author, body }) => {
+      await loopModeUatCommentGuard({ repoRoot, author });
       await appendComment({ repoRoot, key, author, body });
       return ok({ ok: true });
     }

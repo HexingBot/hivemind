@@ -12,7 +12,7 @@ with the verified `src/task-store.js` export names and call signatures.
 | `get_task` | `{ key: string }` | `Task \| null` | read `tasks/<key>.json` |
 | `create_task` | `{ title, description, acceptance_criteria: string[], priority, labels?: string[], depends_on?: string[], verification_tier?: "tdd"\|"tests-after"\|"uat-only", marker?: string, source_tier?: "T1"\|"T2"\|"T3"\|"T4"\|"TX", confidence?: { source_credibility?, assertion_strength?, corroboration?, verification_status? } }` | `{ key, path }` | `createTask({repoRoot, …})` |
 | `transition_status` | `{ key: string, status: "todo"\|"in_progress"\|"in_review"\|"blocked"\|"done" }` | `{ ok: true }` | `transitionStatus({repoRoot, key, status, closeGuard: loopModeCloseGuard})` (TASK-082 — closeGuard wired through unconditionally; no-ops outside loop mode) |
-| `append_comment` | `{ key: string, author: string, body: string }` | `{ ok: true }` | `appendComment({repoRoot, key, author, body})` |
+| `append_comment` | `{ key: string, author: string, body: string }` | `{ ok: true }` | `loopModeUatCommentGuard({repoRoot, author})` (TASK-108, no-op unless loop mode + author:'uat' + undelegated) then `appendComment({repoRoot, key, author, body})` |
 | `close_task` | `{ key: string, comment: { author: string, body: string }, linked_commits?: string[], linked_prs?: string[] }` | `{ ok: true }` | `closeTask({repoRoot, key, comment, linked_commits, linked_prs, closeGuard})` |
 | `kb_lookup` (TASK-106) | `{ question: string }` | `{ query: string, kb_hits: [{ id, path, score }] }` (sorted score desc, then id asc) | `lookupKnowledge({repoRoot, question})` then `recordKbReuse({repoRoot, entryId})` for every returned hit |
 
@@ -53,6 +53,15 @@ reproducible lookup instead of hand-emulating the scoring algorithm.
   - Returns nothing → the `transition_status` wrapper synthesizes `{ ok: true }`.
 - `appendComment({ repoRoot, key, author, body, now? })` → `Promise<void>`.
   - Throws `unknown task key: <key>` if absent. Wrapper synthesizes `{ ok: true }`.
+  - **TASK-108 — the `append_comment` tool handler (not `appendComment`
+    itself; task-store.js stays decoupled) calls
+    `loopModeUatCommentGuard({ repoRoot, author })` BEFORE `appendComment(...)`**
+    to narrow the Gate 2 uat-comment fabrication channel (see
+    `src/close-guard.js`): a no-op unless `author === 'uat'` AND the active
+    session is in loop mode, in which case it throws `UatCommentGuardError`
+    (`code: 'LOOP_UAT_COMMENT_DENIED'`) unless the bundle's
+    `loop_auth.uat_delegated_to_orchestrator === true`. Harness mode and every
+    non-`'uat'` author are unaffected.
 - `closeTask({ repoRoot, key, comment: { author, body }, linked_commits = [],
   linked_prs = [], now?, closeGuard? })` → `Promise<void>` (TASK-082).
   - Atomically transitions the task to `done`, appends `comment`, appends
@@ -110,7 +119,7 @@ const ok = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value) }
 - `get_task` → `ok(await readTask(repoRoot, key))` (may be `null`)
 - `create_task` → `ok(await createTask({ repoRoot, ... }))` → `{ key, path }`
 - `transition_status` → `await transitionStatus(...); return ok({ ok: true });`
-- `append_comment` → `await appendComment(...); return ok({ ok: true });`
+- `append_comment` → `await loopModeUatCommentGuard({ repoRoot, author }); await appendComment(...); return ok({ ok: true });` (TASK-108 — guard runs first, narrows the Gate 2 write-side channel)
 - `close_task` → `await closeTask({ ..., closeGuard: loopModeCloseGuard }); return ok({ ok: true });`
 
 Errors: let the wrapped function throw; the SDK converts a thrown error to

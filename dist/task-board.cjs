@@ -8217,7 +8217,7 @@ var UatDelegationGuardError = class extends Error {
 };
 var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
 var OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
-var FAIL_VERDICT_RE = /\bfail\b/i;
+var FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
   const uatComments = comments.filter((c) => c && c.author === "uat");
@@ -8228,19 +8228,21 @@ function hasExplicitHumanVerdictMarker(task) {
   if (FAIL_VERDICT_RE.test(body)) return false;
   return OVERALL_PASS_RE.test(body);
 }
-async function loopModeCloseGuard({ repoRoot, task }) {
-  const mode = await getMode({ repoRoot });
-  if (mode !== "loop") return;
-  let loopAuth = {};
+function readLoopAuth(repoRoot) {
   try {
     const pointer = readPointer(repoRoot);
     if (pointer && pointer.active_session_id != null) {
       const bundle = readBundleSession(repoRoot, pointer.active_session_id);
-      loopAuth = bundle && bundle.loop_auth || {};
+      return bundle && bundle.loop_auth || {};
     }
   } catch (_err) {
-    loopAuth = {};
   }
+  return {};
+}
+async function loopModeCloseGuard({ repoRoot, task }) {
+  const mode = await getMode({ repoRoot });
+  if (mode !== "loop") return;
+  const loopAuth = readLoopAuth(repoRoot);
   if (loopAuth.auto_close_on_green_review !== true) {
     throw new LoopCloseGuardError(
       "loop mode is active but auto_close_on_green_review has not been granted \u2014 cannot close this task automatically"
