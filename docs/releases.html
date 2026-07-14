@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hivemind — Release Notes</title>
+<meta name="description" content="Hivemind release notes: the full history of changes across every version.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { margin: 0; padding: 0; background: #05060a; overflow-x: hidden; }
+  ::selection { background: #ff9a1f; color: #05060a; }
+  a { color: #b07fff; text-decoration: none; }
+  a:hover { color: #ff9a1f; }
+  ::-webkit-scrollbar { width: 12px; }
+  ::-webkit-scrollbar-track { background: #0a0d16; }
+  ::-webkit-scrollbar-thumb { background: #ff9a1f; border: 2px solid #0a0d16; }
+</style>
+</head>
+<body>
+
+<div style="position:fixed; inset:0; z-index:2; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0px, rgba(0,0,0,.28) 1px, transparent 1px, transparent 3px);"></div>
+
+<div id="app" style="position:relative; z-index:3; min-height:100vh; padding:0 20px 56px; font-family:'VT323',monospace; color:#cfe3ff;"></div>
+
+<script>
+// The canonical human record is CHANGELOG.md at the repo root. This array is the
+// site-rendered mirror. When you cut a release: bump SITE_VERSION here + in
+// index.html, prepend the new entry below, and update CHANGELOG.md to match.
+const RELEASES = [
+  {
+    v: "0.16.0", date: "2026-07-14", tag: "Security hardening & self-improvement",
+    highlights: [
+      "New constructive self-improve skill (hive-self-improve) with a hard hand-off gate to the security-focused hive-adversarial-improve.",
+      "Framework-vs-consumer skill scoping (isFrameworkRepo): framework-only skills stay local, -current-project variants ship to consumers.",
+      "Reviewer subagent re-pinned to Fable 5 — the independent quality gate runs on the strongest model.",
+      "Init intake trust-boundary hardening: reject control chars, strip invisible/Unicode-tag chars, escape Markdown structure; use-case DoS cap.",
+      "Loop-mode uat-comment fabrication channel closed; symmetric comma/brace frontmatter escaping; KB seam polish; bounded loop_state growth.",
+    ],
+  },
+  { v: "0.15.0", date: "2026-07-12", tag: "Wargame security hardening", highlights: [
+    "Hardened the skill-assimilation supply chain and design-pack surfaces: default-deny verdict gate, dual-hash integrity + TOCTOU re-verify, provenance-spoof refusal, first-class security-reviewer agent.",
+  ]},
+  { v: "0.14.2", date: "2026-07-09", tag: "Design-pack usability fix", highlights: ["Usability fixes for the design-power pack install flow."] },
+  { v: "0.14.1", date: "2026-07-09", tag: "hooks.json hotfix", highlights: ["Hotfix for plugin hooks configuration."] },
+  { v: "0.14.0", date: "2026-07-09", tag: "Phase G addon surface", highlights: ["Shipped the pack-ctl CLI, hivemind-assimilate-skill, and the design-power install flow."] },
+  { v: "0.13.0", date: "2026-07-08", tag: "Design-power pack", highlights: ["Diseño Poderoso design-power pack: design profiling + reconciled skill resources."] },
+  { v: "0.12.0", date: "2026-07-08", tag: "Skills & packs sub-page", highlights: ["Added the skills & packs sub-page on the site; packaging polish."] },
+  { v: "0.11.0", date: "2026-07-07", tag: "goal-sweep2 drive", highlights: ["Loop selection fix, shipped dist/loop-ctl.cjs, revived calibration gate, guarded ticket-close path, crash-resume correctness, KB lookup/capture seam."] },
+  { v: "0.10.0", date: "2026-07-04", tag: "Session-lock & state resilience", highlights: ["Session-lock hardening (exclusive acquire + CAS steal), loop crash-resume via loop_state, deterministic close gate + atomic close_task."] },
+  { v: "0.9.0", date: "2026-06-23", tag: "Lock & store robustness", highlights: ["Session-lock and state-store robustness."] },
+  { v: "0.8.0", date: "2026-06-23", tag: "Context auto-flush", highlights: ["Context auto-flush + path-healing."] },
+  { v: "0.7.0", date: "2026-06-17", tag: "Agentic framework", highlights: ["Promoted the beta line to the agentic framework: loop engine, harness/loop modes, app-preview."] },
+  { v: "0.6.0", date: "2026-06-16", tag: "OS-ergonomics trio", highlights: ["Console launcher into projects, /update, and the graphify skill + /graph."] },
+  { v: "0.5.0", date: "2026-06-15", tag: "Web-console epic", highlights: ["One-click launcher + /console (later removed)."] },
+  { v: "0.4.0", date: "2026-06-15", tag: "Discovery-first init", highlights: ["Discovery-first init + the dist/ parity gate."] },
+  { v: "0.3.0", date: "2026-06-12", tag: "Deep-workflows", highlights: ["Deep-review / deep-research + --apply-workflows retrofit; reviewer model set to inherit."] },
+  { v: "0.2.0", date: "2026-06-11", tag: "Refinement epic", highlights: ["Refinement epic."] },
+  { v: "0.1.1", date: "2026-06-08", tag: "Packaging fixes", highlights: ["Early packaging fixes."] },
+  { v: "0.1.0", date: "", tag: "Initial release", highlights: ["Intake wizard, seeded backlog, orchestrator + developer/reviewer/researcher subagents, portable session state, local task store."] },
+];
+
+const PS = "font-family:'Press Start 2P',monospace;";
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+const cards = RELEASES.map((r, i) => {
+  const latest = i === 0;
+  const accent = latest ? "#ff9a1f" : "#b07fff";
+  const items = r.highlights.map(h =>
+    `<li style="font-size:20px; line-height:1.4; color:#9fb4d8; margin:0 0 8px; list-style:none; position:relative; padding-left:22px;">
+       <span style="position:absolute; left:0; color:${accent};">▚</span>${esc(h)}</li>`).join("");
+  return `
+  <article style="border:2px solid ${latest ? "#ff9a1f" : "#1d2740"}; background:linear-gradient(180deg,rgba(13,18,32,.92),rgba(8,11,20,.92)); padding:20px 22px 22px; margin-bottom:20px; box-shadow:${latest ? "0 0 26px rgba(255,154,31,.14)" : "inset 0 0 40px rgba(176,127,255,.05)"};">
+    <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+      <span style="${PS} font-size:16px; color:${accent}; letter-spacing:1px;">v${esc(r.v)}</span>
+      ${latest ? `<span style="${PS} font-size:9px; color:#05060a; background:#ff9a1f; padding:5px 8px; letter-spacing:1px;">LATEST</span>` : ""}
+      <span style="font-size:19px; color:#e9f1ff;">${esc(r.tag)}</span>
+      <span style="font-size:18px; color:#5a6f9c; margin-left:auto;">${esc(r.date)}</span>
+    </div>
+    <ul style="margin:0; padding:0;">${items}</ul>
+  </article>`;
+}).join("");
+
+document.getElementById("app").innerHTML = `
+  <div style="max-width:900px; margin:0 auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 2px 0; flex-wrap:wrap; gap:10px;">
+      <a href="index.html" style="${PS} font-size:11px; letter-spacing:1px; padding:10px 14px; background:#0d1220; color:#8bd6ff; border:2px solid #2b4a66; box-shadow:3px 3px 0 #061019;">◄ HOME</a>
+      <a href="skills.html" style="${PS} font-size:11px; letter-spacing:1px; padding:10px 14px; background:#0d1220; color:#8bd6ff; border:2px solid #2b4a66; box-shadow:3px 3px 0 #061019;">SKILLS &amp; PACKS</a>
+    </div>
+
+    <header style="text-align:center; padding:30px 0 24px;">
+      <h1 style="${PS} font-size:clamp(22px,5vw,40px); margin:0; letter-spacing:2px; color:#ff9a1f; text-shadow:3px 3px 0 #7a3d00, 0 0 22px rgba(255,154,31,.5); -webkit-text-stroke:1px #ffd39a;">RELEASE NOTES</h1>
+      <p style="${PS} font-size:clamp(8px,1.5vw,11px); color:#b07fff; letter-spacing:2px; margin:16px 0 0;">H I V E M I N D&nbsp;&nbsp;·&nbsp;&nbsp;T H E&nbsp;&nbsp;H I S T O R Y</p>
+    </header>
+
+    <div style="height:2px; background:repeating-linear-gradient(90deg,#ff9a1f 0 14px,transparent 14px 22px); margin-bottom:26px;"></div>
+
+    ${cards}
+
+    <div style="text-align:center; margin-top:30px; border-top:2px solid #1d2740; padding-top:22px;">
+      <p style="font-size:19px; color:#5a6f9c; margin:0;">The full canonical changelog lives in
+        <a href="https://github.com/HexingBot/hivemind/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">CHANGELOG.md</a>.</p>
+    </div>
+  </div>`;
+</script>
+</body>
+</html>
