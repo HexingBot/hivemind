@@ -11,6 +11,25 @@ const PLAIN_INFERRED = /\[INFERRED\](?!:(strong|weak))/g;
  * carries markers but no source_tier, so the tier-ceiling rules stay reachable there too. */
 const ANY_EPISTEMIC_MARKER = /\[(EXPLICIT|INFERRED(:strong|:weak)?|ASSUMED|MISSING_INFO)\]/;
 
+/** A marker literal wrapped in matching quotes, e.g. `'[EXPLICIT]'` or
+ * `"[INFERRED:weak]"` — the shape a zod enum / vocabulary array uses to
+ * declare the marker VOCABULARY as code, never how a real prose annotation
+ * writes a marker (those are always bare: `[EXPLICIT]`). */
+const QUOTED_MARKER_LITERAL = /(['"])\[(?:EXPLICIT|INFERRED(?::strong|:weak)?|ASSUMED|MISSING_INFO)\]\1/g;
+
+/**
+ * (TASK-113 f) A line enumerating >=2 quoted marker literals (e.g.
+ * `z.enum(['[EXPLICIT]', '[INFERRED:strong]', ...])`) is code declaring the
+ * marker vocabulary itself, not a calibrated claim — exempt from every
+ * marker/tier check below. Deliberately narrow: a single quoted marker, or
+ * any bare (unquoted) marker — the shape every real prose annotation uses —
+ * is NOT a vocabulary line and still triggers normal detection.
+ */
+export function isMarkerVocabularyLine(line) {
+  const matches = line.match(QUOTED_MARKER_LITERAL);
+  return !!matches && matches.length >= 2;
+}
+
 /** Per-tier marker ceiling: which markers a file/claim of each source tier may carry. */
 export const TIER_MARKER_CEILING = {
   T1: ['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]'],
@@ -28,6 +47,10 @@ export function validateMarkers(filePath, content) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
+
+    // (TASK-113 f) A marker-vocabulary line (e.g. a zod enum literal
+    // enumerating every marker string) is code, not a claim — skip it.
+    if (isMarkerVocabularyLine(line)) continue;
 
     // G5/PG5 — plain [INFERRED] without calibration (flag, not block — some uses are valid)
     for (const match of line.matchAll(PLAIN_INFERRED)) {
@@ -163,6 +186,16 @@ export function isExemptTierSurface(filePath, content) {
   return !!obj && obj.status === 'done';
 }
 
+/** (TASK-113 f) Same as ANY_EPISTEMIC_MARKER.test(content), but ignores marker
+ * occurrences confined to a marker-vocabulary line (isMarkerVocabularyLine)
+ * so a code file enumerating the marker vocabulary as a zod enum / array
+ * literal does not falsely read as "this file makes epistemic claims". */
+function hasRealEpistemicMarker(content) {
+  return content
+    .split('\n')
+    .some((line) => !isMarkerVocabularyLine(line) && ANY_EPISTEMIC_MARKER.test(line));
+}
+
 /** Source-tier ceiling: T3/T4 can't be [EXPLICIT], T4 can't be [INFERRED], TX is rejected. */
 export function validateTiers(filePath, content) {
   const violations = [];
@@ -174,7 +207,7 @@ export function validateTiers(filePath, content) {
         rule: 'source_tier missing from a mandated surface — add T1/T2/T3/T4/TX or document an exemption',
         severity: 'BLOCKER',
       });
-    } else if (!isMandatedTierSurface(filePath) && ANY_EPISTEMIC_MARKER.test(content)) {
+    } else if (!isMandatedTierSurface(filePath) && hasRealEpistemicMarker(content)) {
       // (M2, review follow-up) A non-mandated "context" doc (agents/reviewer.md:54 names
       // "context" as a calibrated surface) that carries epistemic markers but no
       // source_tier makes the ceiling rules below unreachable for it — flag it (not
@@ -195,6 +228,11 @@ export function validateTiers(filePath, content) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
+
+    // (TASK-113 f) Same vocabulary-line exemption as validateMarkers — a
+    // quoted enum literal enumerating markers is code, not a claim, so it
+    // never trips a tier-ceiling violation either.
+    if (isMarkerVocabularyLine(line)) continue;
 
     if (tier === 'T3' || tier === 'T4') {
       if (line.includes('[EXPLICIT]')) {

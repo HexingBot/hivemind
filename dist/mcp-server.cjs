@@ -26239,16 +26239,12 @@ async function lookupKnowledge({ repoRoot, question }) {
     }
     score = tagHits * 3 + symptomHits * 2 + bodyHits * 1;
     if (score > 0) {
-      candidates.push({
-        id,
-        score,
-        last_seen_at: String(data.last_seen_at || "")
-      });
+      candidates.push({ id, score });
     }
   }
   candidates.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return (b.last_seen_at || "").localeCompare(a.last_seen_at || "");
+    return a.id.localeCompare(b.id);
   });
   return {
     kb_hits: candidates.slice(0, 3).map((c) => ({
@@ -26434,7 +26430,7 @@ function createServer({ repoRoot }) {
   server.registerTool(
     "kb_lookup",
     {
-      description: "Look up the local grep knowledge base (knowledge/entries/) for a question. Runs the deterministic three-pass tag/symptom/body scoring in code and returns the top hits as { id, path, score }, sorted score desc then id asc. As a side effect, bumps last_seen_at on every returned entry (its reuse signal).",
+      description: "Look up the local grep knowledge base (knowledge/entries/) for a question. Runs the deterministic three-pass tag/symptom/body scoring in code and returns the top hits as { id, path, score }, sorted score desc then id asc. As a side effect, bumps last_seen_at on every returned entry (its reuse signal); the { reuse: { bumped, failed } } field in the response states which hits actually bumped and which failed, so one throwing bump never silently swallows the others.",
       inputSchema: {
         question: external_exports.string()
       }
@@ -26442,8 +26438,15 @@ function createServer({ repoRoot }) {
     async ({ question }) => {
       const { kb_hits } = await lookupKnowledge({ repoRoot, question });
       const ranked = kb_hits.slice().sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+      const bumped = [];
+      const failed = [];
       for (const hit of ranked) {
-        await recordKbReuse({ repoRoot, entryId: hit.id });
+        try {
+          await recordKbReuse({ repoRoot, entryId: hit.id });
+          bumped.push(hit.id);
+        } catch (err) {
+          failed.push({ id: hit.id, error: err.message });
+        }
       }
       return ok({
         query: question,
@@ -26451,7 +26454,8 @@ function createServer({ repoRoot }) {
           id: hit.id,
           path: (0, import_node_path6.join)(repoRoot, "knowledge", "entries", `${hit.id}.md`),
           score: hit.score
-        }))
+        })),
+        reuse: { bumped, failed }
       });
     }
   );

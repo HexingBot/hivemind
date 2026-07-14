@@ -8,6 +8,7 @@ import {
   extractTier,
   isMandatedTierSurface,
   isExemptTierSurface,
+  isMarkerVocabularyLine,
   partition,
   renderViolations,
 } from '../src/calibration.js';
@@ -235,6 +236,60 @@ describe('AC2 — knowledge/schema.json permits source_tier (currently additiona
   it('defers to .knowledge/meta/SOURCE_TIERS.md as the canonical tier scale', () => {
     const schema = JSON.parse(readFileSync(join(REPO_ROOT, 'knowledge', 'schema.json'), 'utf8'));
     expect(schema.properties.source_tier.description).toMatch(/SOURCE_TIERS\.md/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-113(f) — marker-vocabulary exemption: a line enumerating >=2 quoted
+// marker literals (a zod enum / vocabulary array declaring the marker
+// VOCABULARY ITSELF, e.g. skills/mcp-server/references/tool-contract.md's
+// `const MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', ...])`) is code,
+// not a calibrated claim, and must not FLAG. Scope is deliberately narrow: a
+// single quoted marker, or any BARE (unquoted) marker — the shape every real
+// prose annotation uses — is unaffected and must still FLAG (the ticket's
+// explicit scope-locking requirement).
+// ---------------------------------------------------------------------------
+describe('TASK-113(f) — isMarkerVocabularyLine + the marker-vocabulary exemption', () => {
+  it('identifies a line with >=2 quoted marker literals as a vocabulary line', () => {
+    const line = "const MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]']);";
+    expect(isMarkerVocabularyLine(line)).toBe(true);
+  });
+
+  it('does NOT treat a single quoted marker, or any bare marker, as a vocabulary line', () => {
+    expect(isMarkerVocabularyLine("the marker is '[ASSUMED]' in this doc")).toBe(false);
+    expect(isMarkerVocabularyLine('x [INFERRED]')).toBe(false);
+    expect(isMarkerVocabularyLine('- The retry limit was confirmed to be 3.')).toBe(false);
+  });
+
+  it('validateMarkers does not FLAG an uncalibrated-looking [INFERRED] inside a vocabulary line', () => {
+    const line = "const MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]']);";
+    expect(validateMarkers('f.md', line)).toEqual([]);
+  });
+
+  it('a REAL bare [INFERRED] on another line in the same file still FLAGs (scope-locking)', () => {
+    const content = "const MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]']);\nSomething uncalibrated here [INFERRED].";
+    const v = validateMarkers('f.md', content);
+    expect(v).toHaveLength(1);
+    expect(v[0].line).toBe(2);
+  });
+
+  it('validateTiers does not FLAG a missing source_tier on a non-mandated file whose ONLY marker occurrence is a vocabulary line', () => {
+    const content = "# Some doc\n\nconst MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]']);";
+    expect(validateTiers('skills/x/references/y.md', content)).toEqual([]);
+  });
+
+  it('validateTiers STILL FLAGs a missing source_tier when a real bare marker also appears (scope-locking)', () => {
+    const content = "# Some doc\n\nconst MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]']);\n\nThe API caches responses [INFERRED:weak].";
+    const v = validateTiers('skills/x/references/y.md', content);
+    expect(v).toHaveLength(1);
+    expect(v[0].severity).toBe('FLAG');
+  });
+
+  it('real repo check: skills/mcp-server/references/tool-contract.md runs clean once source_tier is added', () => {
+    const path = join(REPO_ROOT, 'skills', 'mcp-server', 'references', 'tool-contract.md');
+    const content = readFileSync(path, 'utf8');
+    const noise = [...validateMarkers(path, content), ...validateTiers(path, content)];
+    expect(noise, `expected zero calibration findings, got:\n${renderViolations(noise)}`).toEqual([]);
   });
 });
 

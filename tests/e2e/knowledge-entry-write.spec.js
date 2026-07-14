@@ -285,6 +285,85 @@ describe('TASK-111 AC2 — promoteDraftEntry: validate + write-to-entries + unli
   });
 });
 
+describe('TASK-113(d) — promoteDraftEntry rejects a frontmatter-id/arg-id mismatch before any write', () => {
+  // Pre-fix, a hand-edited draft whose frontmatter `id` disagrees with the
+  // `id` argument silently promotes under the FRONTMATTER id (writes
+  // entries/<frontmatter-id>.md, unlinks proposed/<arg-id>.md) and returns an
+  // internally inconsistent `{ id: <arg-id>, path: <frontmatter-id path> }` —
+  // this spec is RED against that: it expects a typed rejection BEFORE any
+  // write, so it fails today because the call instead succeeds.
+  it('rejects_a_hand_edited_mismatched_draft_with_a_typed_error_and_writes_nothing', async () => {
+    const repoRoot = makeTmpDir('ke-promote-id-mismatch');
+    seedSchema(repoRoot);
+
+    await writeKnowledgeEntry({ repoRoot, entry: validEntry('draft-arg-id') });
+    const draftPath = join(repoRoot, 'knowledge', 'proposed', 'draft-arg-id.md');
+
+    // Hand-edit the draft's frontmatter id so it disagrees with the filename
+    // (and with the `id` argument promoteDraftEntry will be called with).
+    const raw = readFileSync(draftPath, 'utf8');
+    const mismatched = raw.replace('id: draft-arg-id', 'id: draft-frontmatter-id');
+    writeFileSync(draftPath, mismatched, 'utf8');
+
+    await expect(
+      promoteDraftEntry({ repoRoot, id: 'draft-arg-id' }),
+    ).rejects.toMatchObject({ code: 'E_KB_DRAFT_ID_MISMATCH' });
+
+    // No write landed under knowledge/entries/ under EITHER id, and the
+    // draft copy is untouched.
+    expect(existsSync(join(repoRoot, 'knowledge', 'entries', 'draft-arg-id.md'))).toBe(false);
+    expect(existsSync(join(repoRoot, 'knowledge', 'entries', 'draft-frontmatter-id.md'))).toBe(false);
+    expect(existsSync(draftPath), 'the mismatched draft must survive a rejected promotion').toBe(true);
+  });
+});
+
+describe('TASK-113(e) — promoteDraftEntry: an unlink failure after a landed write reports "already landed"', () => {
+  // Pre-fix, an unlink that throws AFTER writeKnowledgeEntry already landed
+  // durably (the AV-handle class documented in the
+  // windows-atomic-rename-not-truly-atomic KB entry) rejects with the RAW
+  // unlink error, giving no indication the promotion actually succeeded — a
+  // caller who retries then hits E_KB_EXISTS with no context. RED against
+  // that: expects a typed error whose message states the promotion landed
+  // and names the leftover proposed copy.
+  it('states_the_promotion_landed_and_names_the_leftover_proposed_copy_when_unlink_throws', async () => {
+    const repoRoot = makeTmpDir('ke-promote-unlink-fails');
+    seedSchema(repoRoot);
+
+    await writeKnowledgeEntry({ repoRoot, entry: validEntry('unlink-fails') });
+    const draftPath = join(repoRoot, 'knowledge', 'proposed', 'unlink-fails.md');
+    const entriesPath = join(repoRoot, 'knowledge', 'entries', 'unlink-fails.md');
+
+    const throwingUnlink = () => {
+      const err = new Error('EBUSY: resource busy or locked, unlink');
+      err.code = 'EBUSY';
+      throw err;
+    };
+
+    let firstError = null;
+    try {
+      await promoteDraftEntry({ repoRoot, id: 'unlink-fails', unlink: throwingUnlink });
+    } catch (err) {
+      firstError = err;
+    }
+    expect(firstError, 'promoteDraftEntry must reject when unlink throws').not.toBeNull();
+    expect(firstError.code).toBe('E_KB_PROMOTE_UNLINK_FAILED');
+    expect(firstError.message).toMatch(/already/i);
+    expect(firstError.message).toContain(draftPath);
+
+    // The write landed durably despite the rejection — that's the whole
+    // point of the improved error: it must be truthful about this.
+    expect(existsSync(entriesPath), 'the entry must have landed durably in knowledge/entries/').toBe(true);
+    expect(existsSync(draftPath), 'the leftover proposed copy must still be named accurately').toBe(true);
+
+    // A retry now correctly surfaces E_KB_EXISTS (from writeKnowledgeEntry) —
+    // not a repeat of the unlink error — because the promotion already
+    // landed; this is the documented "delete manually, or retry" contract.
+    await expect(
+      promoteDraftEntry({ repoRoot, id: 'unlink-fails', unlink: throwingUnlink }),
+    ).rejects.toMatchObject({ code: 'E_KB_EXISTS' });
+  });
+});
+
 describe('TASK-105 AC1 — listDraftEntries', () => {
   it('lists ids of every draft under knowledge/proposed/', async () => {
     const repoRoot = makeTmpDir('ke-list-drafts');

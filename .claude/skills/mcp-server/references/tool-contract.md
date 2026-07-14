@@ -1,5 +1,7 @@
 # MCP tool contract + task-store.js signatures (TASK-026)
 
+source_tier: T2
+
 Authoritative tool surface is `tasks/TASK-020.research.md` §E.1, reproduced here
 with the verified `src/task-store.js` export names and call signatures.
 
@@ -14,7 +16,7 @@ with the verified `src/task-store.js` export names and call signatures.
 | `transition_status` | `{ key: string, status: "todo"\|"in_progress"\|"in_review"\|"blocked"\|"done" }` | `{ ok: true }` | `transitionStatus({repoRoot, key, status, closeGuard: loopModeCloseGuard})` (TASK-082 — closeGuard wired through unconditionally; no-ops outside loop mode) |
 | `append_comment` | `{ key: string, author: string, body: string }` | `{ ok: true }` | `loopModeUatCommentGuard({repoRoot, author})` (TASK-108, no-op unless loop mode + author:'uat' + undelegated) then `appendComment({repoRoot, key, author, body})` |
 | `close_task` | `{ key: string, comment: { author: string, body: string }, linked_commits?: string[], linked_prs?: string[] }` | `{ ok: true }` | `closeTask({repoRoot, key, comment, linked_commits, linked_prs, closeGuard})` |
-| `kb_lookup` (TASK-106) | `{ question: string }` | `{ query: string, kb_hits: [{ id, path, score }] }` (sorted score desc, then id asc) | `lookupKnowledge({repoRoot, question})` then `recordKbReuse({repoRoot, entryId})` for every returned hit |
+| `kb_lookup` (TASK-106) | `{ question: string }` | `{ query: string, kb_hits: [{ id, path, score }], reuse: { bumped: string[], failed: [{ id, error }] } }` (kb_hits sorted score desc, then id asc) | `lookupKnowledge({repoRoot, question})` then `recordKbReuse({repoRoot, entryId})` for every returned hit, one bump at a time (TASK-113(c): a throwing bump is caught per-hit and reported in `reuse.failed` — it does not abort the other hits or the call) |
 
 The first seven map 1:1 onto the Jira-compatible field names in `tasks/schema.json`, so
 that surface survives the eventual Atlassian-MCP migration (backend swaps from local

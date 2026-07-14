@@ -79,7 +79,10 @@ export function validateEntry({ repoRoot, entryPath }) {
  *        - tag matches      → weight 3
  *        - symptom matches  → weight 2
  *        - problem/body     → weight 1
- *   3. Rank by score; tie-break by recent last_seen_at.
+ *   3. Rank by score; tie-break by id ascending (TASK-113 b: deterministic
+ *      and independent of last_seen_at, which recordKbReuse — called on
+ *      every hit this same lookup returns — mutates; a recency tie-break
+ *      would make the top-3 CUT self-reinforcing across repeated lookups).
  *   4. Return the top-3 candidate hits as { id, score, used: false }.
  *      (The Researcher decides `used` on the way back; the Orchestrator
  *       then calls recordKbReuse on the entry that answered the question.)
@@ -136,18 +139,21 @@ export async function lookupKnowledge({ repoRoot, question }) {
     score = tagHits * 3 + symptomHits * 2 + bodyHits * 1;
 
     if (score > 0) {
-      candidates.push({
-        id,
-        score,
-        last_seen_at: String(data.last_seen_at || ''),
-      });
+      candidates.push({ id, score });
     }
   }
 
   candidates.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    // Tie-break by most recent last_seen_at.
-    return (b.last_seen_at || '').localeCompare(a.last_seen_at || '');
+    // TASK-113(b): tie-break by id ascending — deterministic and immune to
+    // the last_seen_at bump this same call's caller (kb_lookup) performs on
+    // every returned hit. A recency tie-break here would make the top-3 CUT
+    // (not just its final order) self-reinforcing: whichever entries won a
+    // prior tied lookup get their last_seen_at bumped, biasing them to win
+    // the next identically-scored lookup too. Matches kb_lookup's own
+    // score-desc/id-asc re-sort (src/mcp-server.js, TASK-106) so there is a
+    // single tie-break rule, not two that could disagree.
+    return a.id.localeCompare(b.id);
   });
 
   return {
@@ -327,10 +333,27 @@ export function listDraftEntries({ repoRoot }) {
  * worst a harmless duplicate (the entry exists in both directories) —
  * never a lost draft.
  *
- * @param {{ repoRoot: string, id: string }} args
+ * TASK-113(d): rejects with a typed E_KB_DRAFT_ID_MISMATCH BEFORE any write
+ * when the draft's own frontmatter `id` disagrees with the `id` argument (a
+ * hand-edited draft) — otherwise the write would silently land under
+ * `entries/<frontmatter-id>.md` while unlinking `proposed/<id argument>.md`,
+ * returning an internally inconsistent `{ id, path }`.
+ *
+ * TASK-113(e): if `unlink` throws AFTER writeKnowledgeEntry has already
+ * landed durably (the AV-handle class documented in the
+ * windows-atomic-rename-not-truly-atomic KB entry — an antivirus scan can
+ * briefly hold a handle open on the just-closed proposed/ file), the
+ * rejection states that the promotion LANDED and names the surviving
+ * proposed/ copy, instead of surfacing the raw unlink error with no context
+ * — a caller must be able to tell this apart from a promotion that never
+ * happened (e.g. the E_KB_EXISTS case above).
+ *
+ * @param {{ repoRoot: string, id: string, unlink?: (path: string) => void }} args
+ *   `unlink` defaults to `node:fs`'s `unlinkSync`; injectable for tests that
+ *   need to simulate an unlink failure deterministically.
  * @returns {Promise<{ id: string, path: string }>}
  */
-export async function promoteDraftEntry({ repoRoot, id }) {
+export async function promoteDraftEntry({ repoRoot, id, unlink = unlinkSync }) {
   if (!repoRoot) throw makeErr('E_KB_ARGS', 'promoteDraftEntry: repoRoot is required');
   if (!id) throw makeErr('E_KB_ARGS', 'promoteDraftEntry: id is required');
 
@@ -341,10 +364,33 @@ export async function promoteDraftEntry({ repoRoot, id }) {
 
   const raw = readFileSync(draftPath, 'utf8');
   const parsed = matter(raw);
+
+  // TASK-113(d): guard BEFORE any write. A missing frontmatter id is left to
+  // writeKnowledgeEntry's existing "entry.id is required" check below; only a
+  // PRESENT, DIFFERING id is this guard's concern.
+  if (parsed.data && parsed.data.id !== undefined && parsed.data.id !== id) {
+    throw makeErr(
+      'E_KB_DRAFT_ID_MISMATCH',
+      `promoteDraftEntry: draft at ${draftPath} has frontmatter id "${parsed.data.id}" `
+        + `which does not match the requested id "${id}"`,
+    );
+  }
+
   const entry = { ...parsed.data, body: parsed.content };
 
   const result = await writeKnowledgeEntry({ repoRoot, entry, draft: false });
-  unlinkSync(draftPath);
+
+  try {
+    unlink(draftPath);
+  } catch (err) {
+    throw makeErr(
+      'E_KB_PROMOTE_UNLINK_FAILED',
+      `promoteDraftEntry: entry "${id}" was already promoted to ${result.path} — the `
+        + `promotion landed — but removing the leftover draft at ${draftPath} failed `
+        + `(${err.message}). Delete ${draftPath} manually, or retry: a future call will `
+        + 'hit E_KB_EXISTS (the promotion already happened), not a fresh promotion.',
+    );
+  }
 
   return { id, path: result.path };
 }
