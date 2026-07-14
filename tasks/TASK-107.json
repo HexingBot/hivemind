@@ -7,18 +7,26 @@
     "goalStuck's JSDoc documents the propagated throw (@throws) consistently with selectNextTicket's.",
     "tool-contract.md's list_ready row (both parity copies) matches src/mcp-server.js ground truth (wraps listReady, not listTodos); the references/ parity sensor stays green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "review-followup"
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "3aaf12f"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-14T18:05:37.816Z",
+      "body": "CLOSED on green review. Reviewer verdict APPROVE (review_depth=light; rubric inputs: small changed-line count — new error class + one throw in listReady + JSDoc @throws + two byte-identical doc-drift fixes; single core surface task-store; no new security boundary). 0 HIGH / 0 MEDIUM / 0 LOW, clean first-pass, no RC loop — no knowledge draft.\n\nImplementation (commit 3aaf12f, tdd single-commit): new DanglingDependencyError in src/task-store.js; listReady now throws naming the ticket + missing dep on a dangling depends_on key instead of silently omitting the stranded ticket — aligned exactly with drive-loop.js depsAreDone's existing contract (dep present-but-not-done still returns false, no throw). goalStuck JSDoc gained @throws consistent with selectNextTicket. tool-contract.md (both parity copies, byte-identical) corrected: list_ready wraps listReady, not listTodos. Caller safety verified independently by the reviewer: listReady's sole real caller is the MCP list_ready handler, which surfaces the throw as isError (no server crash); selectNextTicket already throws on the same condition since TASK-096, so no new loop-halting regression. dist/mcp-server.cjs rebuilt+committed, dist-parity green. Gate: test:all 1797 passed / 4 skip; reviewer re-ran test:since -- c65809f (163) + fast tier (981) + named e2e (28), all green."
+    }
+  ],
   "created_at": "2026-07-06T23:28:44.083Z",
-  "updated_at": "2026-07-06T23:28:44.083Z",
+  "updated_at": "2026-07-14T18:05:37.816Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[INFERRED:strong]",

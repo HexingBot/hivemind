@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T17:50:37.438Z",
+  "generated_at": "2026-07-14T18:05:37.816Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -628,7 +628,7 @@
     {
       "key": "TASK-107",
       "title": "task-store: listReady silently swallows dangling depends_on (same stranding class as TASK-096) + goalStuck @throws JSDoc + tool-contract list_ready doc fix",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
