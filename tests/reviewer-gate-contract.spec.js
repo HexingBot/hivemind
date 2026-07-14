@@ -134,6 +134,20 @@ describe('TASK-081 (ii) — CLAUDE.md per-ticket gate row requires test:since + 
     expect(section, 'CLAUDE.md must contain a "### Which command, when" section').not.toBeNull();
     expect(section).toMatch(/zero-specs result from `test:since` is a gate FAILURE/);
   });
+
+  // TASK-109 — the third (computed-dynamic-import) blind-spot class, distinct
+  // from the fs-read blind spot this same section already documents.
+  it('which_command_when_section_documents_the_computed_dynamic_import_blind_spot', () => {
+    const text = loadFile('CLAUDE.md');
+    const section = sliceSection(text, '### Which command, when');
+    expect(section, 'CLAUDE.md must contain a "### Which command, when" section').not.toBeNull();
+    expect(section).toMatch(/computed dynamic import/i);
+    expect(section).toMatch(/pathToFileURL/);
+    // Must state it defeats BOTH test:changed and test:since.
+    expect(section).toMatch(/defeats \*\*both\*\* `test:changed`[\s\S]{0,400}`test:since`/);
+    // Must document the compensation recipe: run the affected spec directly.
+    expect(section).toMatch(/npx vitest run/);
+  });
 });
 
 describe('TASK-081 (ii) — reviewer.md step 2 requires test:since + npm test + zero-specs-is-failure', () => {
@@ -145,6 +159,17 @@ describe('TASK-081 (ii) — reviewer.md step 2 requires test:since + npm test + 
     expect(step2).toMatch(/npm test/);
     expect(step2).toMatch(/fast tier/i);
     expect(step2).toMatch(/gate FAILURE/);
+  });
+
+  // TASK-109 — step 2 also names the computed-dynamic-import blind spot so
+  // re-verification does not silently under-select on a src-only change whose
+  // spec is outside the diff range.
+  it('step2_names_the_computed_dynamic_import_blind_spot_class', () => {
+    const text = loadFile('.claude/agents/reviewer.md');
+    const step2 = sliceBetween(text, '2. **Re-run verification', '3. **Read the diff.**');
+    expect(step2, 'reviewer.md must have step 2, "Re-run verification..."').toBeTruthy();
+    expect(step2).toMatch(/dynamic import/i);
+    expect(step2).toMatch(/npx vitest run/);
   });
 });
 
