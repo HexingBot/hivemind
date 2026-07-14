@@ -10,7 +10,7 @@
     "promoteDraftEntry's unlink-failure path reports that the promotion landed (entry written durably) and names the surviving proposed copy, distinguishing it from a failed promotion — red-first spec injecting an unlink failure.",
     "bin/check-calibration.js gains a marker-vocabulary exemption so enum/vocabulary literals (tool-contract.md:127 exemplar) no longer FLAG; tool-contract.md gains its missing source_tier frontmatter; check:calibration runs clean on the file — red spec locking the exemption's scope (a real bare marker still FLAGs)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "kb-process",
@@ -19,11 +19,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "7f281eb"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-14T18:45:10.588Z",
+      "body": "CLOSED on green review. Reviewer verdict APPROVE (review_depth=full; rubric inputs: six behavioral sub-items across src/knowledge.js, src/mcp-server.js, src/calibration.js + doc/parity changes — moderate-to-large multi-surface, typed-error and file-write logic). 0 HIGH / 0 MEDIUM / 2 LOW (both notes, no change requested: (f) isMarkerVocabularyLine fires on ≥2 quoted marker literals/line — negligible, scope-locked by specs; commit trailer attribution cosmetic). Clean first-pass, no RC loop — no knowledge draft. Both riskiest sub-items (b, d) independently reproduced RED against pre-fix and GREEN post-fix by the reviewer.\n\nImplementation (commit 7f281eb, tdd single-commit), all six ACs SATISFIED:\n(a) researcher.md (both copies, byte-identical): dropped hand-simulation 'as code'/neighbors/nodesByType phrasing; honest no-execution-grant fallback + direct Read of graph.json preserving neighbor semantics via edge-scan. DESIGN CALL: honest-fallback over a new MCP seam (minimalism; low-traffic graph read) — reviewer SOUND.\n(b) lookupKnowledge top-3 cut now deterministic: tie-break score desc then id asc (localeCompare), last_seen_at removed from candidates entirely — matches kb_lookup's own re-sort (TASK-106 precedent), severs the self-reinforcement loop (call bumped the field it sorted on). DESIGN CALL: deterministic-cut — reviewer SOUND. Red uses >3 score-tied entries, proves SELECTION not just display order.\n(c) recordKbReuse partial-report: per-hit try/catch, additive reuse:{bumped,failed} response, no bump lost/double-counted, happy path unchanged. DESIGN CALL: partial-report over all-or-nothing (each bump independently atomic; rollback would add a failure surface) — reviewer SOUND.\n(d) promoteDraftEntry: E_KB_DRAFT_ID_MISMATCH thrown BEFORE any write/unlink when frontmatter id != arg id (missing id left to existing required-field check).\n(e) promoteDraftEntry unlink-after-durable-write: E_KB_PROMOTE_UNLINK_FAILED states promotion LANDED, names leftover proposed copy, points at E_KB_EXISTS-on-retry; injectable unlink param is test-only, default unchanged.\n(f) calibration: isMarkerVocabularyLine exemption in validateMarkers+validateTiers so enum/vocabulary literals no longer FLAG; tool-contract.md gained source_tier:T2 (both copies); real BARE markers still FLAG (scope-locked). check:calibration clean.\ndist/mcp-server.cjs rebuilt+committed, dist-parity green; both parity pairs byte-identical. Gate: test:all 1824 passed / 4 skip; reviewer re-ran test:since -- 01ea1e8 (165) + fast tier (993) + named e2e, all green."
+    }
+  ],
   "created_at": "2026-07-07T13:33:53.185Z",
-  "updated_at": "2026-07-07T13:33:53.185Z",
+  "updated_at": "2026-07-14T18:45:10.588Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

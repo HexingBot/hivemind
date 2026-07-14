@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T18:22:44.263Z",
+  "generated_at": "2026-07-14T18:45:10.588Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -664,7 +664,7 @@
     {
       "key": "TASK-113",
       "title": "KB seam polish: graph-query executability, deterministic top-3 selection, recordKbReuse/promoteDraftEntry hardening, calibration-checker exemption (rev-106 + rev-111 LOWs)",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
