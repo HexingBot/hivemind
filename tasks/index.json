@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T18:45:10.588Z",
+  "generated_at": "2026-07-14T18:58:10.059Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -946,12 +946,18 @@
     {
       "key": "TASK-162",
       "title": "coerceFrontmatterScalar naive comma/colon split mis-parses inline-object values containing commas (perfil_proyecto/agent_models)",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
       "key": "TASK-163",
       "title": "close_task comment write-channel: apply the loop-mode author:'uat' guard to close_task's comment param (TASK-108 defense-in-depth)",
+      "status": "todo",
+      "priority": "low"
+    },
+    {
+      "key": "TASK-164",
+      "title": "deriveProfileFields: relax the now-over-conservative comma/brace reject guard + fix its stale comment (TASK-162 follow-up)",
       "status": "todo",
       "priority": "low"
     }

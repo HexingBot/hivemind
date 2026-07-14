@@ -8,7 +8,7 @@
     "A regression test round-trips a comma-bearing inline-object value (and a brace-bearing one) through the real writer/reader",
     "Existing design-profile-frontmatter / design-profile-round-trip / agent-models-config e2e specs still pass; legitimate no-comma maps are unaffected"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "correctness",
@@ -20,11 +20,19 @@
   "depends_on": [
     "TASK-161"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "00cbdba"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-14T18:57:50.132Z",
+      "body": "CLOSED on green review. Reviewer verdict APPROVE (review_depth=full; rubric inputs: parsing change to schema-adjacent inline-object frontmatter — writer renderProjectMd + reader coerceFrontmatterScalar; symmetric writer/reader correctness risk; bundles into two dist entrypoints). 0 HIGH / 0 MEDIUM / 2 LOW (deriveProfileFields reject-guard now over-conservative + stale comment — follow-up minted TASK-164; pre-existing leading/trailing-whitespace trim, out of scope). Clean first-pass, no RC loop — no knowledge draft.\n\nImplementation (commit 00cbdba, tdd single-commit): approach = escape-on-write/unescape-on-read, mirroring the existing inline-ARRAY scheme (encodeArrayItem/decodeArrayItem). New encodeMapEntry (escapes \\ first, then , { }), decodeMapEntry (single L-to-R reverse), splitInlineMapPairs (escape-aware top-level comma split). Applied SYMMETRICALLY: renderProjectMd encodes every key+value for agent_models AND perfil_proyecto; coerceFrontmatterScalar splits+decodes both per pair — reviewer confirmed no drift path and verified the adjacent-escape edge case (literal backslash + comma round-trips losslessly). encodeMapEntry is a no-op on clean input so legitimate no-comma maps ({reviewer: fable}, deriveProfileFields output) write byte-identically (regression guard 66/66; dist-parity byte-match). Reviewer independently reproduced the red in-memory: comma value throws 'entry \"sleek\" is missing a colon' pre-fix (genuine red); brace-only case was green pre-fix too (naive parser only split on comma; braces never an internal delimiter — kept as AC3-mandated regression lock, honestly disclosed by developer). dist/init.cjs + dist/pack-ctl.cjs rebuilt+committed (pack-ctl tree-shakes the writer, parity-validated), dist-parity green. Gate: test:all 1827 passed / 4 skip; reviewer re-ran test:since -- b861675 (73) + fast tier (993) + named e2e (51), all green."
+    }
+  ],
   "created_at": "2026-07-13T16:22:11.596Z",
-  "updated_at": "2026-07-13T16:22:11.596Z",
+  "updated_at": "2026-07-14T18:57:50.132Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
