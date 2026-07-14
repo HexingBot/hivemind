@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T18:58:10.059Z",
+  "generated_at": "2026-07-14T19:04:09.091Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -640,7 +640,7 @@
     {
       "key": "TASK-109",
       "title": "document the third import-graph blind spot: computed dynamic imports defeat test:changed AND test:since for src-only changes",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {

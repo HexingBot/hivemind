@@ -7,7 +7,7 @@
     "The documented compensation recipe: run the affected spec file directly (npx vitest run <spec>) in addition to the mandatory npm test fast tier; zero-specs stays a gate FAILURE to investigate, never a green.",
     "The reviewer guidance (agents/reviewer.md and its .claude/agents/ parity copy, or the orchestrator-routing skill's gate section — whichever carries the test:since instruction) gains one sentence pointing at the same class so re-verification does not silently under-select."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "docs",
@@ -16,11 +16,24 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "4943acf"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-14T19:03:57.520Z",
+      "body": "UAT for TASK-109 (documentation; uat-only). All steps verified by Orchestrator at the human's request (standing uat_delegated_to_orchestrator grant). Implementation commit 4943acf.\n\nStep 1 (AC1) — CLAUDE.md test-command section names the computed-dynamic-import blind-spot class with the TASK-101 example and states it defeats BOTH test:changed and test:since.\n  Expected: a paragraph in the \"Which command, when\" section naming the class, citing tests/framework-bug-report.spec.js's `await import(pathToFileURL(...).href)`, explicitly stating it defeats test:changed (uncommitted src-only → zero specs) AND test:since (committed src-only when the spec file sits outside the diff range).\n  Observed: CLAUDE.md line 105 adds exactly that paragraph — names it \"A third, distinct blind-spot class\", cites the pathToFileURL(join(REPO_ROOT,'src',...)).href form, states BOTH test:changed and test:since select ZERO specs, and distinguishes it from the fs-read class.\n  Verdict: PASS\n\nStep 2 (AC2) — Compensation recipe documented; zero-specs stays a gate FAILURE.\n  Expected: instruction to run the affected spec directly (npx vitest run <spec>) IN ADDITION to the mandatory npm test fast tier, and that a zero-specs result is a failure to investigate, never a green.\n  Observed: same CLAUDE.md paragraph closes with \"Compensation: run the affected spec file directly (npx vitest run <spec>) in addition to the mandatory npm test fast tier; a zero-specs result stays a gate FAILURE to investigate, never a green.\"\n  Verdict: PASS\n\nStep 3 (AC3) — Reviewer guidance gains one sentence pointing at the same class.\n  Expected: one sentence added to the reviewer's test:since re-verification instruction (agents/reviewer.md + .claude/agents parity copy) naming the class so committed-diff re-verification does not silently under-select.\n  Observed: agents/reviewer.md step 2 (and its byte-identical .claude/agents/ copy) now names the third blind-spot class, cites the pathToFileURL(...).href example, states it defeats both test:changed and test:since when the spec sits outside the diff range, and instructs running the spec directly (npx vitest run <spec>). Parity confirmed byte-identical.\n  Verdict: PASS\n\nOverall result: PASS (3/3). Doc-lock sensor tests/reviewer-gate-contract.spec.js extended with two assertions (red-green planted); fast tier 995 passed / 2 skip; no bundled code touched."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-14T19:04:09.091Z",
+      "body": "CLOSED (uat-only). UAT PASS 3/3 (recorded in the uat comment, all steps verified by Orchestrator at the human's request per the standing uat_delegated_to_orchestrator grant). Documentation-only, commit 4943acf: CLAUDE.md 'Which command, when' section gains a paragraph naming the THIRD import-graph blind-spot class — computed dynamic imports (tests/framework-bug-report.spec.js's await import(pathToFileURL(...).href)) — stating it defeats BOTH test:changed and test:since, distinct from the fs-read class, plus the compensation recipe (run the spec directly + mandatory npm test; zero-specs = failure). agents/reviewer.md step 2 (+ byte-identical .claude/agents copy) gains one sentence pointing at the same class. Existing doc-lock sensor tests/reviewer-gate-contract.spec.js (TASK-081) EXTENDED with two assertions (red-green planted by stashing the doc edits), not a redundant new spec. No src/bin touched, no dist rebuild. Reviewed inline by Orchestrator (light-equivalent: doc-only change with an objective governing doc-lock sensor — disproportionate to spawn a full fresh-context reviewer for a 29-line doc diff): diff read for accuracy + placement, parity confirmed byte-identical, doc-lock green. Gate: npm test fast tier 995 passed / 2 skip."
+    }
+  ],
   "created_at": "2026-07-07T03:33:46.605Z",
-  "updated_at": "2026-07-07T03:33:46.605Z",
+  "updated_at": "2026-07-14T19:04:09.091Z",
   "jira_key": null,
   "verification_tier": "uat-only",
   "marker": "[EXPLICIT]",
