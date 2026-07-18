@@ -7713,7 +7713,9 @@ var require_dist = __commonJS({
 // bin/init.js
 var init_exports = {};
 __export(init_exports, {
+  buildScopeOverlapWarning: () => buildScopeOverlapWarning,
   buildUnderspecifiedWarning: () => buildUnderspecifiedWarning,
+  findScopeOverlap: () => findScopeOverlap,
   isDefinitionUnderspecified: () => isDefinitionUnderspecified,
   runInit: () => runInit
 });
@@ -11280,6 +11282,37 @@ function buildUnderspecifiedWarning(answers) {
   const verb = emptyLabels.length === 1 ? "is" : "are all";
   return `Warning: a problem statement is defined, but ${emptyLabels.join(", ")} ${verb} empty. Goals/scope stay optional \u2014 confirm to proceed anyway, or go back and fill them in.`;
 }
+function normalizeScopeToken(s) {
+  return String(s).trim().toLowerCase();
+}
+function toScopeList(v) {
+  if (v === null || v === void 0) return [];
+  if (Array.isArray(v)) return v.map((s) => String(s));
+  const str = typeof v === "string" ? v : String(v);
+  return str.split(",").map((s) => s.trim()).filter(Boolean);
+}
+function findScopeOverlap(answers) {
+  if (!answers || typeof answers !== "object") return [];
+  const scopeIn = toScopeList(answers.scope_in);
+  const scopeOut = toScopeList(answers.scope_out);
+  if (scopeIn.length === 0 || scopeOut.length === 0) return [];
+  const inSet = new Set(scopeIn.map(normalizeScopeToken));
+  const seen = /* @__PURE__ */ new Set();
+  const conflicts = [];
+  for (const raw of scopeOut) {
+    const norm = normalizeScopeToken(raw);
+    if (norm.length > 0 && inSet.has(norm) && !seen.has(norm)) {
+      seen.add(norm);
+      conflicts.push(norm);
+    }
+  }
+  return conflicts;
+}
+function buildScopeOverlapWarning(answers) {
+  const conflicts = findScopeOverlap(answers);
+  const verb = conflicts.length === 1 ? "appears" : "appear";
+  return `Warning: "${conflicts.join('", "')}" ${verb} in both Scope (in) and Scope (out). Confirm to proceed anyway, or go back and resolve the conflict.`;
+}
 function buildDefinitionSummary(answers) {
   const lines = [];
   const add = (label, value) => {
@@ -11327,6 +11360,9 @@ function buildDefinitionSummary(answers) {
 async function askConfirm({ answers, prompter }) {
   if (isDefinitionUnderspecified(answers)) {
     console.log(buildUnderspecifiedWarning(answers));
+  }
+  if (findScopeOverlap(answers).length > 0) {
+    console.log(buildScopeOverlapWarning(answers));
   }
   const summary = buildDefinitionSummary(answers);
   console.log("\n--- Captured definition ---");
@@ -11384,8 +11420,13 @@ async function runWizardAndWriteProjectMd({
     if (!confirmed) {
       return { aborted: true };
     }
-  } else if (isDefinitionUnderspecified(answers)) {
-    console.warn(buildUnderspecifiedWarning(answers));
+  } else {
+    if (isDefinitionUnderspecified(answers)) {
+      console.warn(buildUnderspecifiedWarning(answers));
+    }
+    if (findScopeOverlap(answers).length > 0) {
+      console.warn(buildScopeOverlapWarning(answers));
+    }
   }
   answers = applyProjectMdContributions(activePacks, answers);
   await writeProjectMd({ repoRoot, answers, now });
@@ -11664,7 +11705,9 @@ if (__isEntryScript) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  buildScopeOverlapWarning,
   buildUnderspecifiedWarning,
+  findScopeOverlap,
   isDefinitionUnderspecified,
   runInit
 });

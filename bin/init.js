@@ -424,6 +424,72 @@ export function buildUnderspecifiedWarning(answers) {
 }
 
 /**
+ * TASK-167 — normalize a single scope-list entry for overlap comparison:
+ * trim whitespace and lowercase. Mirrors the comma-split/trim convention
+ * normalizeDefinitionAnswers already applies (and question-library.js's
+ * agent_models pair parser), plus case-folding per this ticket's AC3.
+ */
+function normalizeScopeToken(s) {
+  return String(s).trim().toLowerCase();
+}
+
+/**
+ * TASK-167 — coerce a scope_in/scope_out answer into a string[] for overlap
+ * comparison. Supports both shapes: an already-normalized array (the
+ * post-normalizeDefinitionAnswers seam this is wired at) and a raw
+ * comma-separated string (defensive — pre-normalization callers), split on
+ * ',' and trimmed the same way normalizeDefinitionAnswers does. null/
+ * undefined/absent yields [].
+ */
+function toScopeList(v) {
+  if (v === null || v === undefined) return [];
+  if (Array.isArray(v)) return v.map((s) => String(s));
+  const str = typeof v === 'string' ? v : String(v);
+  return str.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * TASK-167 — pure predicate: return the normalized tokens that appear in
+ * BOTH scope_in and scope_out (case- and whitespace-insensitive). Returns []
+ * when either list is empty/absent or when the lists are disjoint (AC2). No
+ * I/O — safe to unit-test directly. Order follows scope_out's first
+ * occurrence, deduped.
+ */
+export function findScopeOverlap(answers) {
+  if (!answers || typeof answers !== 'object') return [];
+  const scopeIn = toScopeList(answers.scope_in);
+  const scopeOut = toScopeList(answers.scope_out);
+  if (scopeIn.length === 0 || scopeOut.length === 0) return [];
+
+  const inSet = new Set(scopeIn.map(normalizeScopeToken));
+  const seen = new Set();
+  const conflicts = [];
+  for (const raw of scopeOut) {
+    const norm = normalizeScopeToken(raw);
+    if (norm.length > 0 && inSet.has(norm) && !seen.has(norm)) {
+      seen.add(norm);
+      conflicts.push(norm);
+    }
+  }
+  return conflicts;
+}
+
+/**
+ * TASK-167 — build the warn-and-reconfirm message naming the conflicting
+ * scope item(s). Pure string builder (no I/O); only meaningful when
+ * findScopeOverlap(answers) returns a non-empty array, but does not assume
+ * it — it names whichever conflicts are actually present.
+ */
+export function buildScopeOverlapWarning(answers) {
+  const conflicts = findScopeOverlap(answers);
+  const verb = conflicts.length === 1 ? 'appears' : 'appear';
+  return (
+    `Warning: "${conflicts.join('", "')}" ${verb} in both Scope (in) and ` +
+    'Scope (out). Confirm to proceed anyway, or go back and resolve the conflict.'
+  );
+}
+
+/**
  * TASK-046 — build a compact captured-definition summary to show the operator
  * before asking for confirmation. Each defined field gets one line; undefined /
  * empty fields are omitted so the summary stays terse.
@@ -482,11 +548,20 @@ function buildDefinitionSummary(answers) {
  * summary and the existing "Confirm and create project?" question serves as
  * the reconfirmation. No new prompt/question is introduced — proceeding on
  * empty/Y stays allowed exactly as before (warn-but-allow, never a hard block).
+ *
+ * TASK-167 — same seam, same warn-but-allow posture: when a normalized token
+ * appears in both scope_in and scope_out, that warning is ALSO printed above
+ * the summary (independent of the TASK-166 check — both may fire on the same
+ * gate; neither suppresses the other).
  */
 async function askConfirm({ answers, prompter }) {
   if (isDefinitionUnderspecified(answers)) {
     // eslint-disable-next-line no-console
     console.log(buildUnderspecifiedWarning(answers));
+  }
+  if (findScopeOverlap(answers).length > 0) {
+    // eslint-disable-next-line no-console
+    console.log(buildScopeOverlapWarning(answers));
   }
   const summary = buildDefinitionSummary(answers);
   // eslint-disable-next-line no-console
@@ -601,13 +676,21 @@ async function runWizardAndWriteProjectMd({
     if (!confirmed) {
       return { aborted: true };
     }
-  } else if (isDefinitionUnderspecified(answers)) {
-    // TASK-166 AC3 — non-interactive path (answers-mode / --yes / no-TTY): the
-    // warn-and-reconfirm gate above never fires here, so the underspecified
-    // check degrades to a non-blocking console notice instead of a new
-    // blocking prompt. Never throws, never aborts — warn-but-allow.
-    // eslint-disable-next-line no-console
-    console.warn(buildUnderspecifiedWarning(answers));
+  } else {
+    // TASK-166/TASK-167 AC3 — non-interactive path (answers-mode / --yes /
+    // no-TTY): the warn-and-reconfirm gate above never fires here, so each
+    // check degrades independently to a non-blocking console notice instead
+    // of a new blocking prompt. Never throws, never aborts — warn-but-allow.
+    // Both checks are independent ifs (not else-if) so neither suppresses
+    // the other when both would apply.
+    if (isDefinitionUnderspecified(answers)) {
+      // eslint-disable-next-line no-console
+      console.warn(buildUnderspecifiedWarning(answers));
+    }
+    if (findScopeOverlap(answers).length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(buildScopeOverlapWarning(answers));
+    }
   }
   // TASK-128 — seam 2: merge active-pack PROJECT.md contributions
   // (src/pack-hooks.js#applyProjectMdContributions) before the write. Zero
