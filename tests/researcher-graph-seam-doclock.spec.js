@@ -1,22 +1,19 @@
 // tests/researcher-graph-seam-doclock.spec.js
-// TASK-113(a) — agents/researcher.md's "Graph lookup first" step instructed
-// hand-simulating src/knowledge-graph.js's neighbors()/nodesByType() calls
-// "using `neighbors` and `nodesByType` from `src/knowledge-graph.js`" with no
-// execution grant anywhere in the Researcher's tool list (Read, Grep, Glob,
-// WebSearch, WebFetch, Write, mcp__github__*, mcp__wisearcher-brain__*,
-// mcp__plugin_hivemind_hivemind-tasks__kb_lookup — none of which can invoke
-// an arbitrary JS function) — the same hand-simulation defect class TASK-106
-// fixed for KB scoring (via the kb_lookup MCP seam), but left un-scoped here.
+// TASK-113(a) — agents/researcher.md's "Graph lookup first" step originally
+// instructed hand-simulating src/knowledge-graph.js's neighbors()/
+// nodesByType() calls with no execution grant anywhere in the Researcher's
+// tool list, so the doc-lock below required an honest direct-file-read
+// fallback instead ("Read `knowledge/graph/graph.json` directly").
 //
-// Design judgment (recorded in the TASK-113 hand-off): the honest
-// direct-file-read fallback was chosen over adding a new executable seam —
-// the Researcher already holds a Read grant and knowledge/graph/graph.json
-// is plain, small JSON it can filter by eye (node type + label/ref match,
-// then scan edges for from/to references), so a new MCP tool mirroring
-// kb_lookup would be disproportionate machinery for a low-traffic, LOW-
-// severity bundled follow-up. No new seam -> no red-first execution spec is
-// required by the ticket; this doc-lock is the sensor instead, and it is
-// itself red-first: it fails against the pre-fix prose below.
+// TASK-170 (KB-GRAPH-2) supersedes that design: TASK-168/172 shipped
+// kb_graph_query, a real MCP execution seam wrapping neighbors()/
+// nodesByType() with deterministic output. The Researcher's tool grant now
+// includes mcp__plugin_hivemind_hivemind-tasks__kb_graph_query, so the
+// hand-read fallback is no longer honest-by-necessity — it is a graph query
+// via the tool, never a hand read. This doc-lock is updated (not retired) to
+// assert the NEW contract: the tool call replaces the direct file read, and
+// the hand-simulation phrasing (locked out since TASK-113) still never
+// reappears.
 //
 // Parity note: .claude/agents/researcher.md and the plugin-root
 // agents/researcher.md are already asserted byte-identical by
@@ -35,8 +32,8 @@ function load() {
   return readFileSync(RESEARCHER_PATH, 'utf8');
 }
 
-describe('TASK-113(a) — researcher.md graph-lookup step carries no hand-simulation instruction', () => {
-  it('no longer instructs querying the graph "using neighbors and nodesByType" as an executable call', () => {
+describe('TASK-170 — researcher.md graph-lookup step calls kb_graph_query, never hand-reads the graph', () => {
+  it('no longer instructs querying the graph "using neighbors and nodesByType" as a hand-simulated call', () => {
     const text = load();
     expect(
       text.includes('using `neighbors` and `nodesByType` from `src/knowledge-graph.js`'),
@@ -44,18 +41,22 @@ describe('TASK-113(a) — researcher.md graph-lookup step carries no hand-simula
     ).toBe(false);
   });
 
-  it('states the honest no-execution-grant fallback and instructs a direct file read', () => {
+  it('no longer instructs a direct hand-read of knowledge/graph/graph.json as the query mechanism', () => {
     const text = load();
-    expect(/no execution (seam|grant)/i.test(text), 'must state the no-execution-grant fact').toBe(true);
     expect(
       text.includes('Read `knowledge/graph/graph.json` directly'),
-      'must instruct a direct file read instead of a simulated function call',
-    ).toBe(true);
+      'the pre-TASK-170 hand-read fallback must not survive — kb_graph_query replaced it',
+    ).toBe(false);
   });
 
-  it('still instructs filtering nodes by type (knowledge_entry/skill) and label/ref match', () => {
+  it('instructs calling the kb_graph_query MCP tool as the graph query surface', () => {
     const text = load();
-    expect(text.includes('knowledge_entry')).toBe(true);
-    expect(text.includes('`label` or `ref` matches key terms')).toBe(true);
+    expect(text).toMatch(/mcp__plugin_hivemind_hivemind-tasks__kb_graph_query/);
+    expect(text).toMatch(/never hand-read `knowledge\/graph\/graph\.json`/);
+  });
+
+  it('the tool grant in frontmatter includes kb_graph_query', () => {
+    const text = load();
+    expect(text).toMatch(/tools:.*mcp__plugin_hivemind_hivemind-tasks__kb_graph_query/);
   });
 });

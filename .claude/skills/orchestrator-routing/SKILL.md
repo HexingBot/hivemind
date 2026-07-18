@@ -920,9 +920,10 @@ knowledge graph gets graph node id `ke-<slug>` per the canonical id shapes
 above — never a raw filename or ticket key.
 
 **KB-first contract, now backed by a real write path (was read-only,
-TASK-035):** `lookupKnowledge` remains the mandatory pre-web-search step;
-captured drafts are how the KB grows without waiting on a human to author an
-entry from scratch.
+TASK-035):** `lookupKnowledge` remains the mandatory pre-web-search step, run
+alongside the `kb_graph_query` MCP tool (TASK-170) for graph context — never
+hand-read `knowledge/graph/graph.json`; captured drafts are how the KB grows
+without waiting on a human to author an entry from scratch.
 
 ## Deep workflows
 
@@ -970,9 +971,20 @@ AC-compliance dimension anchored to a ticket.
 The framework also ships a `/deep-research` workflow script for broad research questions that
 benefit from multiple angles simultaneously.
 
-**KB-first contract is UNCHANGED (TASK-035):** always check the `knowledge/` graph and run a KB
-lookup BEFORE considering deep-research. If the KB answers the question, use that — do not reach
-for the workflow.
+**KB-first contract, now graph-tool-backed (TASK-170 — was TASK-035's
+read-only baseline):** before considering deep-research, call the
+`kb_graph_query` MCP tool (`mcp__plugin_hivemind_hivemind-tasks__kb_graph_query`)
+alongside `kb_lookup` — never hand-read `knowledge/graph/graph.json`.
+`kb_graph_query` is the graph's single query surface in BOTH modes:
+canonical-first-then-local (`src/graph-sync.js#neighborsCanonicalFirst`) — an
+`id` query resolves against the canonical wisearcher brain graph first when
+the brain is wired in (opt-in/experimental, off by default), and falls back
+to the deterministic local `knowledge/graph/graph.json` projection when the
+brain is absent (the default) — so call it regardless of whether the brain is
+up. Use `kb_graph_query({ id: 'task-<n>' })` for a ticket's neighbors or
+`kb_graph_query({ type: 'decision' })` to enumerate decisions. If the KB
+(lookup + graph) answers the question, use that — do not reach for the
+workflow.
 
 **OFFER** (do not auto-run) deep-research when ALL of the following hold:
 - The KB lookup misses (no sufficiently relevant existing knowledge entry).
