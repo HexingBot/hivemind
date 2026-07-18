@@ -1268,6 +1268,12 @@
       "label": "KB-GRAPH-2: wire kb_graph_query into the KB-first contract (researcher + orchestrator-routing)"
     },
     {
+      "id": "task-171",
+      "type": "task",
+      "ref": "tasks/TASK-171.json",
+      "label": "KB-GRAPH-4: auto-create the task node inside close_task's guarded write path"
+    },
+    {
       "id": "task-172",
       "type": "task",
       "ref": "tasks/TASK-172.json",
