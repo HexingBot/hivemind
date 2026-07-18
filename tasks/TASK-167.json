@@ -8,7 +8,7 @@
     "Token normalization matches the existing comma-split/trim conventions (src/question-library.js) — proven by fixtures including case and whitespace variants.",
     "tdd: parsing/validation logic + fixtures; existing wizard specs stay green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "intake-improvement",
@@ -16,11 +16,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "c93184aa2ababd2908d664baf32f156e39868489"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T19:07:03.668Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — clean first-pass APPROVE (0 HIGH / 1 procedural MEDIUM / 2 LOW / 2 NIT). review_depth: FULL (528 insertions/9 deletions; >150 lines + packaging/dist [dist/init.cjs]). tdd single-commit. Delivered: pure exported helpers findScopeOverlap (normalized-token intersection, whole-token Set equality, deduped) + buildScopeOverlapWarning (names each conflict) in bin/init.js at the TASK-166 seam. Interactive: warning above summary in the existing askConfirm gate (existing [Y/n] = the re-prompt, per the established TASK-166 interpretation). Non-interactive: console.warn, promptless, answers still written — warn-but-allow verified airtight. Developer refactored the non-interactive branch from else-if into independent ifs so the 166/167 checks cannot suppress each other; reviewer verified the 9 deleted lines are exclusively that refactor (nothing lost), intake-underspecified-warn.spec.js untouched and 16/16 green, and the two predicates are mutually exclusive by construction (underspecified needs all-empty scope; overlap needs both non-empty). tdd red-run CREDIBLE (structural: helpers absent at c93184a^; 13/17 failure signature necessarily follows). Normalization matches question-library conventions char-for-char (split/trim/filter; arrays not re-split); substring tokens cannot false-match; whitespace-only entries guarded. Gates green: fast tier 996/2, 9 named e2e files direct, dist-parity 8 bundles. Procedural MEDIUM (non-blocking): R3 checklist not forwarded into review briefing — developer DID provide it; items independently verified. LOWs (batch at epic end): warning echoes lowercased token not original casing (cosmetic); toScopeList raw-string branch dead in production (defensive, documented). Commit c93184a."
+    }
+  ],
   "created_at": "2026-07-18T17:48:27.152Z",
-  "updated_at": "2026-07-18T17:48:27.152Z",
+  "updated_at": "2026-07-18T19:07:03.668Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
