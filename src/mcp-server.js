@@ -228,7 +228,8 @@ export function createServer({ repoRoot }) {
         'Atomically close a task: transition to done, append the closing '
         + 'comment, and record linked_commits/linked_prs in a single '
         + 'validate-then-write pass (TASK-082). Enforces the uat-only '
-        + 'done-guard and the loop-mode close guard.',
+        + 'done-guard, the loop-mode close guard, and (TASK-163) the '
+        + 'loop-mode uat-comment write guard on comment.author.',
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
         comment: z.object({ author: z.string(), body: z.string() }),
@@ -239,6 +240,16 @@ export function createServer({ repoRoot }) {
     async ({
       key, comment, linked_commits, linked_prs,
     }) => {
+      // TASK-163 — defense-in-depth follow-up from TASK-108: close_task's own
+      // `comment` param reached appendComment via closeTask WITHOUT passing
+      // through loopModeUatCommentGuard, leaving a second write seam open
+      // (append_comment already enforces this rule). Called BEFORE closeTask
+      // so a denial never reaches closeTask's atomic write at all — same
+      // unconditional-composition pattern as loopModeCloseGuard: the guard
+      // decides for itself whether loop mode is even active, so this is safe
+      // in harness mode / with no active session and only bites when
+      // comment.author === 'uat' AND loop mode is active AND unauthorized.
+      await loopModeUatCommentGuard({ repoRoot, author: comment.author });
       await closeTask({
         repoRoot,
         key,

@@ -763,30 +763,43 @@ compose the three deterministic mutation-seam guards below; a direct hand
   Orchestrator at the human's request"; otherwise it's blocked with a typed
   `UatDelegationGuardError` (`code: 'LOOP_UAT_DELEGATION_REQUIRED'`).
 - **The loop-mode uat-comment write guard (Gate 2's write-side companion,
-  TASK-108)** — Gate 2 above is a *read-time* check: it inspects the content
-  of an already-written `uat` comment at close time. Until TASK-108, the
-  write side was unnarrowed: `append_comment` accepted `author: 'uat'` from
-  ANY caller regardless of operating mode, so a loop-mode orchestrator could
-  fabricate a convention-format all-PASS `uat` comment itself and pass Gate 2
-  with no human involvement. `append_comment` now refuses `author: 'uat'`
-  while the session's operating mode is `loop` UNLESS
-  `loop_auth.uat_delegated_to_orchestrator === true` — blocked with a typed
-  `UatCommentGuardError` (`code: 'LOOP_UAT_COMMENT_DENIED'`). The delegation
-  grant is itself a human-set authorization, so it remains the only way to
-  record a `uat` comment during an autonomous loop. Harness mode (a human
-  present) is unaffected — `author: 'uat'` stays freely writable there, and
-  every other author (`orchestrator`, `developer`, `reviewer`, ...) is
-  unaffected in loop mode too; only `author: 'uat'` without the delegation
-  grant is gated. Residual: this narrows, it does not eliminate, the
-  fabrication surface — a human who grants
-  `uat_delegated_to_orchestrator` is trusting the Orchestrator's own
+  TASK-108 + TASK-163)** — Gate 2 above is a *read-time* check: it inspects
+  the content of an already-written `uat` comment at close time. Until
+  TASK-108, the write side was unnarrowed: `append_comment` accepted
+  `author: 'uat'` from ANY caller regardless of operating mode, so a
+  loop-mode orchestrator could fabricate a convention-format all-PASS `uat`
+  comment itself and pass Gate 2 with no human involvement. `append_comment`
+  now refuses `author: 'uat'` while the session's operating mode is `loop`
+  UNLESS `loop_auth.uat_delegated_to_orchestrator === true` — blocked with a
+  typed `UatCommentGuardError` (`code: 'LOOP_UAT_COMMENT_DENIED'`). TASK-163
+  closed the SECOND write seam this guard had left open: `close_task`'s own
+  `comment` param reached `appendComment` via `closeTask` WITHOUT passing
+  through this guard, so a `close_task` call could still land an
+  `author: 'uat'` comment on disk (e.g. on a non-uat-only ticket) with no
+  delegation check — not exploitable for a one-shot self-authorized
+  uat-only close (Gate 2 above already blocks that by inspecting
+  PRE-EXISTING on-disk comments before the new comment is atomically
+  appended, TASK-082), but a defense-in-depth gap. `close_task` now runs the
+  identical guard against `comment.author` before its atomic write, so BOTH
+  write seams (`append_comment` and `close_task`'s `comment` param) enforce
+  the same rule and no residual write-channel asymmetry remains. The
+  delegation grant is itself a human-set authorization, so it remains the
+  only way to record a `uat` comment during an autonomous loop via either
+  seam. Harness mode (a human present) is unaffected — `author: 'uat'` stays
+  freely writable there, and every other author (`orchestrator`,
+  `developer`, `reviewer`, ...) is unaffected in loop mode too; only
+  `author: 'uat'` without the delegation grant is gated. Residual: this
+  narrows, it does not eliminate, the fabrication surface — a human who
+  grants `uat_delegated_to_orchestrator` is trusting the Orchestrator's own
   delegated verification, same as Gate 2's read-time check already assumed.
 
 **On a clean review (closing a ticket)**, call the `close_task` tool once —
 it performs the transition, the closing comment, the `linked_commits`/
 `linked_prs` append, and the `tasks/index.json` regen as a single
 validate-then-atomic pass (all-or-nothing: a guard failure or a malformed
-commit sha leaves the ticket file and the index byte-unchanged):
+commit sha leaves the ticket file and the index byte-unchanged), and (TASK-163)
+runs the loop-mode uat-comment write guard against its own `comment.author`
+before that atomic write — the same rule `append_comment` enforces:
 
 ```
 mcp__plugin_hivemind_hivemind-tasks__close_task({
@@ -806,7 +819,9 @@ any other status. `append_comment` has no `status` argument and cannot close
 a ticket by itself, but (TASK-108) it is no longer unconditionally guard-free:
 it runs the loop-mode uat-comment write guard above on every call — a no-op
 unless the comment's `author` is `'uat'` AND the session is in loop mode AND
-`uat_delegated_to_orchestrator` is not granted.
+`uat_delegated_to_orchestrator` is not granted. `close_task` (TASK-163) runs
+the identical check against its own `comment.author`, so no write seam is
+guard-free.
 
 **Fallback (documented, not preferred):** if the MCP server is unavailable,
 a direct `Edit` of `tasks/<KEY>.json` following the old six-step pattern
@@ -814,7 +829,8 @@ a direct `Edit` of `tasks/<KEY>.json` following the old six-step pattern
 refresh `updated_at`, regenerate `tasks/index.json`) is acceptable — but it
 bypasses all four guards above, so the orchestrator must manually verify the
 uat-only, loop-mode Gate 1, loop-mode Gate 2, and the Gate 2 write-side
-preconditions before hand-editing a ticket to `done` or fabricating a `uat`
+preconditions (both the `append_comment` and `close_task` comment seams)
+before hand-editing a ticket to `done` or fabricating a `uat`
 comment.
 
 ## Recording decision→task edges at ticket close (TASK-035, id convention fixed by TASK-104)

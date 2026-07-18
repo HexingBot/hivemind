@@ -471,4 +471,125 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     expect(readFileSync(taskPath, 'utf8')).toBe(beforeTask);
     expect(readFileSync(indexPath, 'utf8')).toBe(beforeIndex);
   });
+
+  // ---------------------------------------------------------------------------
+  // TASK-163 — defense-in-depth follow-up from TASK-108: close_task's own
+  // `comment` param reaches appendComment via closeTask WITHOUT passing
+  // through loopModeUatCommentGuard. append_comment already refuses
+  // author:'uat' in unauthorized loop mode (TASK-108,
+  // tests/e2e/mcp-append-comment-uat-guard.spec.js) — close_task must enforce
+  // the SAME rule on its own comment.author.
+  //
+  // TEST MODE — the close_task handler does NOT yet call
+  // loopModeUatCommentGuard before closeTask(...). These specs MUST FAIL
+  // against the current mcp-server.js: the "surfaces as isError" assertion
+  // fails because the call currently succeeds (the uat comment is written and
+  // the ticket closes) instead of erroring.
+  //
+  // tdd-tier fixtures are used throughout (not uat-only) so this guard is
+  // isolated from the unrelated uat-only done-guard/Gate 2 checks exercised
+  // above.
+  // ---------------------------------------------------------------------------
+  describe('TASK-163 — close_task comment write-channel: loop-mode uat-comment guard', () => {
+    async function createTddTicket() {
+      const created = parse(await client.callTool({
+        name: 'create_task',
+        arguments: {
+          title: 'TASK-163 fixture ticket',
+          description: 'exercised by the close_task uat-comment guard specs',
+          acceptance_criteria: ['covered by TASK-163 specs'],
+          priority: 'medium',
+          verification_tier: 'tdd',
+        },
+      }));
+      return created.key;
+    }
+
+    // AC1 — blocked at the same guard seam as append_comment, before the
+    // comment is written to disk.
+    it('blocks close_task comment.author:"uat" in loop mode when uat_delegated_to_orchestrator is not granted', async () => {
+      seedBundleMode(repoRoot, { mode: 'loop', loopAuth: { auto_close_on_green_review: true } });
+      const key = await createTddTicket();
+
+      const taskPath = join(repoRoot, 'tasks', `${key}.json`);
+      const indexPath = join(repoRoot, 'tasks', 'index.json');
+      const beforeTask = readFileSync(taskPath, 'utf8');
+      const beforeIndex = readFileSync(indexPath, 'utf8');
+
+      let surfaced = false;
+      try {
+        const res = await client.callTool({
+          name: 'close_task',
+          arguments: { key, comment: { author: 'uat', body: 'All steps PASS.' } },
+        });
+        if (res && res.isError) surfaced = true;
+      } catch {
+        surfaced = true;
+      }
+      expect(surfaced, 'close_task must not accept an unauthorized author:"uat" closing comment in loop mode').toBe(true);
+
+      const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+      expect(task.status).toBe('todo');
+      expect(task.comments.some((c) => c.author === 'uat')).toBe(false);
+      expect(readFileSync(taskPath, 'utf8')).toBe(beforeTask);
+      expect(readFileSync(indexPath, 'utf8')).toBe(beforeIndex);
+    });
+
+    // AC2 — the delegated loop close still records.
+    it('allows close_task comment.author:"uat" in loop mode once uat_delegated_to_orchestrator is granted', async () => {
+      seedBundleMode(repoRoot, {
+        mode: 'loop',
+        loopAuth: { auto_close_on_green_review: true, uat_delegated_to_orchestrator: true },
+      });
+      const key = await createTddTicket();
+
+      const res = await client.callTool({
+        name: 'close_task',
+        arguments: {
+          key,
+          comment: { author: 'uat', body: 'All steps PASS — verified by Orchestrator at the human\'s request.' },
+        },
+      });
+      expect(res.isError).toBeFalsy();
+
+      const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+      expect(task.status).toBe('done');
+      const last = task.comments[task.comments.length - 1];
+      expect(last.author).toBe('uat');
+    });
+
+    // AC2 — harness mode is unaffected.
+    it('allows close_task comment.author:"uat" in harness mode (no active session) — unaffected', async () => {
+      const key = await createTddTicket();
+
+      const res = await client.callTool({
+        name: 'close_task',
+        arguments: { key, comment: { author: 'uat', body: 'All steps PASS.' } },
+      });
+      expect(res.isError).toBeFalsy();
+
+      const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+      expect(task.status).toBe('done');
+      const last = task.comments[task.comments.length - 1];
+      expect(last.author).toBe('uat');
+    });
+
+    // AC2 — only author:'uat' is gated; the legitimate close flow (any other
+    // author) is unaffected, even in unauthorized loop mode.
+    it('allows close_task comment.author:"orchestrator" in unauthorized loop mode (only author:"uat" is gated)', async () => {
+      seedBundleMode(repoRoot, { mode: 'loop', loopAuth: { auto_close_on_green_review: true } });
+      const key = await createTddTicket();
+
+      const res = await client.callTool({
+        name: 'close_task',
+        arguments: { key, comment: { author: 'orchestrator', body: 'Shipped.' } },
+      });
+      expect(res.isError).toBeFalsy();
+
+      const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+      expect(task.status).toBe('done');
+      const last = task.comments[task.comments.length - 1];
+      expect(last.author).toBe('orchestrator');
+    });
+  });
 });

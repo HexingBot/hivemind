@@ -26402,7 +26402,7 @@ function createServer({ repoRoot }) {
   server.registerTool(
     "close_task",
     {
-      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard and the loop-mode close guard.",
+      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard, the loop-mode close guard, and (TASK-163) the loop-mode uat-comment write guard on comment.author.",
       inputSchema: {
         key: external_exports.string().describe("Task key, e.g. TASK-026"),
         comment: external_exports.object({ author: external_exports.string(), body: external_exports.string() }),
@@ -26416,6 +26416,7 @@ function createServer({ repoRoot }) {
       linked_commits,
       linked_prs
     }) => {
+      await loopModeUatCommentGuard({ repoRoot, author: comment.author });
       await closeTask({
         repoRoot,
         key,
