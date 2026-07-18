@@ -1278,6 +1278,12 @@
       "type": "task",
       "ref": "tasks/TASK-172.json",
       "label": "KB-GRAPH-1a: kb_graph_query must not silently drop filters on unsupported arg combinations"
+    },
+    {
+      "id": "task-173",
+      "type": "task",
+      "ref": "tasks/TASK-173.json",
+      "label": "KB-GRAPH-1b: complete the kb_graph_query no-silent-drop invariant for ALL unanchored filter combos"
     }
   ],
   "edges": [

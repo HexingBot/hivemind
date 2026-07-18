@@ -9,7 +9,7 @@
     "New specs lock { relation }-alone and { direction }-alone rejection (red-green planted); all existing TASK-168/172 kb_graph_query specs remain green and unmodified.",
     "dist/mcp-server.cjs rebuilt + committed; dist-parity green. tdd."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "kb-graph",
@@ -20,11 +20,19 @@
   "depends_on": [
     "TASK-168"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "9cc212c8bea8234872c58cdb76bf494cacf09c19"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T20:42:43.925Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — clean APPROVE (0 HIGH / 0 MEDIUM / 1 informational LOW / 2 NIT). review_depth: FULL (121 insertions/26 deletions; mcp-server surface + dist). tdd single-commit. Delivered: the kb_graph_query no-silent-drop invariant is now TOTAL — dropped the type!==undefined conjunct so any relation/direction without an id is rejected ({relation} alone, {direction} alone, {relation,direction}, and all {type,...} variants); rejection carries .code='E_UNANCHORED_EDGE_FILTER' AND embeds the code in the message (the MCP SDK forwards only error.message — verified stronger than the makeErr convention); tool description reconciled to exactly match; TASK-170 NIT folded (id describe-string example lowercased to 'task-168'). Reviewer INDEPENDENTLY enumerated all 16 arg combos via live probes: every filter either takes effect or yields the typed error — no overclaim, no gap; edge filters compose with type post-filter correctly. tdd red-run CREDIBLE (structural pre-image analysis: the old conjunct provably fell through to a silently-empty ok envelope). All 13 prior specs byte-unmodified + green (purely additive hunk); mcp-close-task 20 + close-guard 30 unaffected. Gates green: fast tier 1004/2, test:since 77, dist-parity 8 bundles. This closes the kb_graph_query contract line (168 -> 172 -> 173): the tool now has a total, documented, typed-error filter contract. Commit 9cc212c."
+    }
+  ],
   "created_at": "2026-07-18T18:40:52.680Z",
-  "updated_at": "2026-07-18T18:40:52.680Z",
+  "updated_at": "2026-07-18T20:42:43.925Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

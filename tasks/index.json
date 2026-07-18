@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T20:32:45.217Z",
+  "generated_at": "2026-07-18T20:42:43.925Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1012,7 +1012,7 @@
     {
       "key": "TASK-173",
       "title": "KB-GRAPH-1b: complete the kb_graph_query no-silent-drop invariant for ALL unanchored filter combos",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
