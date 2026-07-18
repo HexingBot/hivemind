@@ -83,6 +83,16 @@ describe('AC1 — plan ticket minted from non-empty definition', () => {
     // Still conforms to the seeder's ticket invariants.
     expect(plan.labels).toContain('seed');
     expect(plan.priority).toBeTruthy();
+
+    // deep-review MEDIUM-2 (pre-v0.17.0 gate) — the plan template
+    // (src/backlog-seeder.js#buildPlanTemplate) sets verification_tier:
+    // 'uat-only' and labels: ['plan'] (merged with 'seed' by mintTicket into
+    // ['seed', 'plan']), but until now no spec asserted either. The tier is
+    // load-bearing: it gates the ticket's done-transition via the uat-only
+    // close guard (src/close-guard.js) — a silent regression to 'tdd' would
+    // block this ticket from ever closing via a normal uat comment.
+    expect(plan.verification_tier).toBe('uat-only');
+    expect(plan.labels).toEqual(['seed', 'plan']);
   });
 
   it('goals_only_without_problem_statement_still_mints_plan_ticket', async () => {

@@ -423,12 +423,20 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
   // READ PATH (the merge seam, per the 2026-07-18 scope refinement,
   // tasks/TASK-168.json comment): an `id` query is routed through
   // src/graph-sync.js#neighborsCanonicalFirst so the SAME tool serves both a
-  // brain-absent mode (this shipped server: falls back to the local
-  // projection — behavior identical to a local-only tool) and a future
-  // brain-present mode (a canonical wisearcher graph, once a caller wires
-  // `brain`/`canonicalId` through createServer — not done here; no brain
-  // connection is stood up by this ticket). A `type`-only query has no
-  // canonical equivalent yet and stays on the local projection
+  // brain-absent mode (falls back to the local projection — behavior
+  // identical to a local-only tool) and a future brain-present mode (a
+  // canonical wisearcher graph). `brain` IS wired through createServer as of
+  // TASK-171 (close_task uses it) and is now forwarded to
+  // neighborsCanonicalFirst here too (deep-review MEDIUM-1 fix — it was
+  // dropped before this fix even when a caller injected one). BUT
+  // neighborsCanonicalFirst's canonical path only engages when BOTH `brain`
+  // AND `canonicalId` are present (`if (brain && canonicalId)` —
+  // src/graph-sync.js), and this tool's schema has no `canonicalId` input, so
+  // forwarding `brain` alone does not yet light up the canonical path: every
+  // call here still resolves via the local-projection fallback today. A
+  // follow-up ticket that plumbs `canonicalId` through would be enough to
+  // engage it without touching neighborsCanonicalFirst itself. A `type`-only
+  // query has no canonical equivalent yet and stays on the local projection
   // (nodesByType). `relation`/`direction` filters ALSO stay local-only for
   // now: neighborsCanonicalFirst's brain path (brain-contract.md's
   // `kb_neighbors`) is `canonical_id`-only with no relation/direction
@@ -477,9 +485,10 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         + 'deterministically. Input: { id?, type?, relation?, direction? }. '
         + 'An `id` query returns connected nodes via '
         + 'graph-sync.js#neighborsCanonicalFirst (canonical-first when a '
-        + 'brain is wired; local-projection fallback otherwise — this '
-        + 'server ships brain-absent, so every call here uses the local '
-        + 'fallback). A `type`-only query returns all nodes of that type '
+        + 'brain AND a canonicalId are both present; local-projection '
+        + 'fallback otherwise — this tool forwards an injected brain but has '
+        + 'no canonicalId input, so every call here still uses the local '
+        + 'fallback today). A `type`-only query returns all nodes of that type '
         + 'via nodesByType (local only). `relation`/`direction` narrow an '
         + '`id` query and are LOCAL-ONLY (no canonical-first equivalent '
         + 'yet). Output is { query, source, nodes } with nodes sorted by '
@@ -549,11 +558,13 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
             }
           }
         } else {
-          // Plain id query — the canonical-first merge seam. No brain is
-          // wired in this shipped server, so this always resolves via the
-          // local-projection fallback (neighborsCanonicalFirst's documented
-          // brain-absent behavior).
-          const result = await neighborsCanonicalFirst({ repoRoot, id });
+          // Plain id query — the canonical-first merge seam. `brain` (when
+          // injected via createServer, TASK-171) is now forwarded here
+          // (deep-review MEDIUM-1 fix). This still resolves via the
+          // local-projection fallback in practice: neighborsCanonicalFirst's
+          // canonical path additionally requires `canonicalId`, which this
+          // tool's schema does not accept — see the doc comment above.
+          const result = await neighborsCanonicalFirst({ brain, repoRoot, id });
           nodes = result.neighbors;
           source = result.source;
         }

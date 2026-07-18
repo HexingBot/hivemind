@@ -27,7 +27,7 @@
 // tests/e2e/kb-lookup-seam.spec.js documents for TASK-106.
 
 import {
-  describe, it, expect, beforeEach, afterEach,
+  describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
 import {
   mkdtempSync, rmSync, mkdirSync, writeFileSync,
@@ -38,7 +38,17 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
+// deep-review MEDIUM-1 (pre-v0.17.0) — wrap the real neighborsCanonicalFirst
+// in a vi.fn so the spec below can inspect the ARGS the kb_graph_query
+// handler actually passes it (specifically: is `brain` forwarded), without
+// changing its real behavior for every other test in this file.
+vi.mock('../../src/graph-sync.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, neighborsCanonicalFirst: vi.fn(actual.neighborsCanonicalFirst) };
+});
+
 import { createServer } from '../../src/mcp-server.js';
+import { neighborsCanonicalFirst } from '../../src/graph-sync.js';
 import { makeRepoSkeleton } from '../helpers/fixtures.js';
 
 function parse(result) {
@@ -85,6 +95,7 @@ describe('TASK-168 — kb_graph_query MCP tool (canonical-first read seam, brain
       server.connect(serverTransport),
       client.connect(clientTransport),
     ]);
+    neighborsCanonicalFirst.mockClear();
   });
 
   afterEach(async () => {
@@ -166,10 +177,67 @@ describe('TASK-168 — kb_graph_query MCP tool (canonical-first read seam, brain
   });
 
   // ---------------------------------------------------------------------------
+  // deep-review MEDIUM-1 (pre-v0.17.0 gate) — kb_graph_query must forward an
+  // injected `brain` (createServer({ repoRoot, brain }), wired since
+  // TASK-171/close_task) to neighborsCanonicalFirst instead of silently
+  // dropping it. Per graph-sync.js's `if (brain && canonicalId)` guard and
+  // this tool's schema having no `canonicalId` input, the canonical path
+  // still never engages THROUGH THIS TOOL today — source stays 'projection'.
+  // That brain+canonicalId branch itself is already covered at the unit level
+  // in tests/graph-sync.spec.js ("prefers the canonical graph..."); this spec
+  // locks only that the forwarding is not dropped.
+  // ---------------------------------------------------------------------------
+  it('forwards_an_injected_brain_to_neighborsCanonicalFirst_instead_of_dropping_it', async () => {
+    if (client) await client.close();
+    const fakeBrain = { neighbors: vi.fn(async () => ({ source: 'unavailable', neighbors: null })) };
+    server = createServer({ repoRoot, brain: fakeBrain });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: 'task-168-brain-forward-test', version: '0.0.0' });
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    neighborsCanonicalFirst.mockClear();
+
+    const result = parse(await client.callTool({
+      name: 'kb_graph_query',
+      arguments: { id: 'task-001' },
+    }));
+
+    expect(neighborsCanonicalFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ brain: fakeBrain, repoRoot, id: 'task-001' }),
+    );
+    // Honest today-reality: brain alone (no canonicalId, which this tool's
+    // schema does not accept) never engages the canonical path.
+    expect(result.source).toBe('projection');
+  });
+
+  // ---------------------------------------------------------------------------
   // AC3 — a missing node id yields empty neighbors, not an exception.
   // ---------------------------------------------------------------------------
   it('missing_id_yields_empty_neighbors_not_an_exception', async () => {
     const res = await client.callTool({ name: 'kb_graph_query', arguments: { id: 'does-not-exist' } });
+    expect(res.isError).toBeFalsy();
+    const result = parse(res);
+    expect(result.nodes).toEqual([]);
+    expect(result.source).toBe('projection');
+  });
+
+  // ---------------------------------------------------------------------------
+  // deep-review MEDIUM-3 (pre-v0.17.0 gate) — the relation/direction-filtered
+  // branch (mcp-server.js) has its OWN UnknownNodeIdError catch, separate from
+  // the plain-id seam-path catch proven above
+  // (missing_id_yields_empty_neighbors_not_an_exception exercises
+  // neighborsCanonicalFirst's catch; this one exercises the local
+  // `neighbors()` catch inside the relation/direction branch). Locks that an
+  // unknown id combined with a direction filter also degrades to an empty
+  // result, not a throw.
+  // ---------------------------------------------------------------------------
+  it('unknown_id_with_a_direction_filter_yields_empty_neighbors_not_an_exception', async () => {
+    const res = await client.callTool({
+      name: 'kb_graph_query',
+      arguments: { id: 'does-not-exist', direction: 'out' },
+    });
     expect(res.isError).toBeFalsy();
     const result = parse(res);
     expect(result.nodes).toEqual([]);
