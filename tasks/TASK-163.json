@@ -9,7 +9,7 @@
     "dist/ rebuilt and committed if src/mcp-server.js or src/task-store.js changed; dist-parity green.",
     "SKILL.md Gate 2 documentation (both parity copies) updated to note that BOTH write seams (append_comment and close_task's comment) now enforce the loop-mode author:'uat' rule, so no residual write-channel asymmetry remains."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "low",
   "labels": [
     "review-followup",
@@ -18,11 +18,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "9e681f6f2ccf3883a6b02d4d0a458aa371c300e9"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T17:30:54.302Z",
+      "body": "CLOSED — clean first-pass APPROVE (0 HIGH / 0 MEDIUM code findings, 1 procedural MEDIUM, 1 NIT). review_depth: FULL (rubric inputs: 207 insertions / 42 deletions across 5 files; forced full by mandatory-FULL surfaces — security surface [loop-mode uat-comment guard], packaging/dist [dist/mcp-server.cjs rebuilt], mcp-server handler). Single developer spawn, tdd single-commit. Fix: src/mcp-server.js close_task handler now calls loopModeUatCommentGuard({repoRoot, author: comment.author}) BEFORE closeTask's atomic write, reusing the identical TASK-108 guard function + typed UatCommentGuardError/LOOP_UAT_COMMENT_DENIED (no reimplementation); task-store stays decoupled (guard injected at MCP layer). Both SKILL.md parity copies updated (byte-identical, hash 39d5a00) documenting that BOTH write seams now enforce the loop-mode author:'uat' rule — no residual write-channel asymmetry. tdd red-run evidence CREDIBLE: developer captured it verbatim, and the reviewer independently reproduced the red state at 9e681f6^ (AC1 'blocks' spec fails for the right reason — ungated close_task wrote the uat comment). Gates green: fast tier 996 passed/2 skip, test:since 55 tests, close-guard 30, dist-parity 8 bundles byte-match, calibration clean. Procedural MEDIUM (non-blocking): developer's red-run capture + R3 checklist reached the orchestrator but were not forwarded into the reviewer briefing — noted for future review spawns; substance discharged by independent reproduction. NIT (non-gap, TASK-108 parity): AC1 spec asserts isError without pinning the .code string, matching the established mcp-append-comment-uat-guard sibling pattern."
+    }
+  ],
   "created_at": "2026-07-14T17:50:37.438Z",
-  "updated_at": "2026-07-14T17:50:37.438Z",
+  "updated_at": "2026-07-18T17:30:54.302Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

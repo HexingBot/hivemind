@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T19:09:29.780Z",
+  "generated_at": "2026-07-18T17:39:06.341Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -952,13 +952,13 @@
     {
       "key": "TASK-163",
       "title": "close_task comment write-channel: apply the loop-mode author:'uat' guard to close_task's comment param (TASK-108 defense-in-depth)",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     },
     {
       "key": "TASK-164",
       "title": "deriveProfileFields: relax the now-over-conservative comma/brace reject guard + fix its stale comment (TASK-162 follow-up)",
-      "status": "todo",
+      "status": "done",
       "priority": "low"
     }
   ]
