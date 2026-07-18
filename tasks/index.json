@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T19:07:03.668Z",
+  "generated_at": "2026-07-18T20:01:27.361Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -988,7 +988,7 @@
     {
       "key": "TASK-169",
       "title": "KB-GRAPH-3: graph-freshness sensor — fail the gate when a done task has no task-&lt;n&gt; graph node",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {

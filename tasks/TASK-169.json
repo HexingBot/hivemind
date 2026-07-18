@@ -10,7 +10,7 @@
     "As part of landing, the currently-missing task nodes for already-done tickets are backfilled so the sensor is GREEN on main at merge.",
     "tdd: sensor logic + fixtures."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "kb-graph",
@@ -18,11 +18,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "243386ac87edaf959aed123de047bf52871404e8"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T20:01:27.361Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — APPROVE (0 HIGH / 0 MEDIUM / 1 LOW / 1 NIT). review_depth: FULL (718 insertions across 5 files; new release-gate sensor + shared state knowledge/graph + >150 lines). tdd single-commit. Delivered: src/graph-freshness.js (pure findDoneTicketsMissingGraphNodes + taskKeyToNodeId), fast-tier sensor spec tests/graph-freshness.spec.js (7 tests: seeded drift fixture names keys, complete fixture passes, non-done statuses ignored, live-repo assertion), one-time idempotent backfill via the real addNode API (scripts/backfill-graph-task-nodes.mjs) adding exactly 74 task nodes, CLAUDE.md sensor doc (dist-parity style). REVIEW NOTE: first reviewer spawn stalled on infrastructure (watchdog, not a finding) mid id-consistency check; orchestrator settled that question deterministically (pre-existing zero-padded convention preserved: task-001 present/task-1 absent, sensor derives identical padded ids, ZERO semantic duplicates, live check 0 missing) and a fresh reviewer completed the review with the ground truth pre-answered. tdd red-run CREDIBLE: replacement reviewer extracted the parent graph and ran the committed pure function — exactly 74 missing keys, first/last entries matching the spec's RED-GREEN EVIDENCE verbatim. dist claim verified TRUE (graph-freshness bundles into no entrypoint). Backfill hygiene clean (addNode-only, no deletions, idempotent early-return). Gates green: fast tier 1003/2 (sensor now live in the release gate), knowledge-graph e2e 41 tests, calibration clean, doc-locks green. LOW (batch at epic end): a done ticket with a malformed key is silently skipped by the sensor (unreachable today; a malformed-key bucket would make it fail-closed). Commit 243386a."
+    }
+  ],
   "created_at": "2026-07-18T17:48:58.675Z",
-  "updated_at": "2026-07-18T17:48:58.675Z",
+  "updated_at": "2026-07-18T20:01:27.361Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
