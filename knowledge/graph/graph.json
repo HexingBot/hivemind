@@ -170,6 +170,12 @@
       "label": "Wargame newest surfaces (assimilate+design), execution-verified"
     },
     {
+      "id": "decision-20260718-intake-kbgraph-epics-drive",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Drive the intake-improvement + kb-graph epics (TASK-165..174): mint-a-plan seeder, warn-but-allow intake checks, kb_graph_query on the merge seam with a total no-silent-drop contract, graph-freshness sensor + backfill, auto task-node on close via recordNode"
+    },
+    {
       "id": "ke-a-format-sensor-authoritative-schema",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/a-format-sensor-must-be-checked-against-the-authoritative-schema.md",
@@ -1796,6 +1802,56 @@
     {
       "from": "task-150",
       "to": "decision-20260712-wargame-newest-surfaces",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-165",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-166",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-167",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-168",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-169",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-170",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-171",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-172",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-173",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-174",
+      "to": "decision-20260718-intake-kbgraph-epics-drive",
       "relation": "produced-by"
     }
   ]
