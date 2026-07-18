@@ -1,0 +1,31 @@
+{
+  "key": "TASK-171",
+  "title": "KB-GRAPH-4: auto-create the task node inside close_task's guarded write path",
+  "description": "From the 2026-07-18 intake+KB-graph design review (Q2, recommended path step 4). HUMAN SCOPE DECISION (2026-07-18): PULL FORWARD (not deferred), given the drift already observed (task nodes at 150 vs tickets at 167). Make close_task (src/mcp-server.js / src/task-store.js) auto-create the task-&lt;digits&gt; node in knowledge/graph/graph.json as PART of its guarded write, so the node exists by construction at close rather than relying on the orchestrator's manual convention (the root cause of the drift). Keep the decoupling pattern (inject the graph writer at the MCP layer, like the loop-mode guards). Must not weaken close_task's atomic all-or-nothing semantics or its existing guards. This complements KB-GRAPH-3's sensor by removing the drift source. Depends on TASK-168 (shared graph query/write surface).",
+  "acceptance_criteria": [
+    "Closing a ticket via close_task idempotently creates a task-<digits> node in knowledge/graph/graph.json for that ticket if absent (id = lowercase task-<n>, ref = the task JSON path, label = the ticket title), as part of the same close operation.",
+    "Idempotent: re-closing or an already-present node neither duplicates nor errors; a graph-node-write failure does not corrupt the atomic ticket close (ordering documented — e.g. ticket close stays all-or-nothing and the node write is best-effort-after, or both are in one validate-then-write pass per the chosen design).",
+    "Existing close_task guards (uat-only done-guard, loop-mode Gate 1/2, invalid-sha atomicity) remain green; the graph write does not bypass or weaken them.",
+    "dist rebuilt + committed if bundled src changed; dist-parity green.",
+    "tdd: state-mutation on the close path + fixtures."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "kb-graph",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-168"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T17:49:24.962Z",
+  "updated_at": "2026-07-18T17:49:24.962Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

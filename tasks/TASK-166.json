@@ -1,0 +1,28 @@
+{
+  "key": "TASK-166",
+  "title": "Intake: warn-and-reconfirm when goals+scope are all empty despite a substantive problem_statement",
+  "description": "From the 2026-07-18 intake+KB-graph design review (Q1 Option 2). No ambiguity/contradiction detection exists in the intake pipeline; src/question-engine.js validation is per-field required/enum/validate only (src/question-engine.js:118-186). Add a lightweight post-definition check: when problem_statement is non-trivial but goals AND scope_in AND scope_out are ALL empty, warn (naming the empty sections) and re-confirm.\n\nHUMAN SCOPE DECISION (2026-07-18): warn-but-allow posture. Do NOT make goals/scope required — TASK-048 deliberately kept them optional; this surfaces the gap without reversing that call.",
+  "acceptance_criteria": [
+    "In the CLI wizard, when problem_statement is non-empty/non-trivial and goals+scope_in+scope_out are all empty, the user sees a warning naming the empty sections and is asked to reconfirm; proceeding is allowed and answers are still written.",
+    "The check NEVER hard-blocks: goals/scope_in/scope_out stay optional (TASK-048 preserved); a user who confirms proceeds with empty sections.",
+    "Non-interactive runs (--yes / answers-mode) are not broken — the warn path degrades to a non-blocking notice or is skipped per existing skipConfirm semantics, proven by spec.",
+    "tdd: validation/flow logic + fixtures; existing wizard specs stay green."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "intake-improvement",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T17:48:16.994Z",
+  "updated_at": "2026-07-18T17:48:16.994Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

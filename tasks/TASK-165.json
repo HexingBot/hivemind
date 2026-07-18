@@ -1,0 +1,29 @@
+{
+  "key": "TASK-165",
+  "title": "Intake: seedBacklog mints an implementation-plan ticket carrying the captured problem/goals/scope",
+  "description": "From the 2026-07-18 intake+KB-graph design review (report: scratchpad/intake-and-kb-graph-review.md, Q1 Option 1 — the highest-value gap). The discovery-first intake epic (TASK-045..048) captures problem_statement/goals/scope_in/scope_out and renders them into PROJECT.md + project-context.md, but src/backlog-seeder.js (seedBacklog) mints tickets purely from answers.primary_use_cases against fixed catalogs (src/backlog-seeder.js:1-100) and NEVER reads the definition prose — the richest data the wizard collects has no backlog consumer.\n\nHUMAN SCOPE DECISION (2026-07-18): the mint-a-plan approach, NOT filter/reword and NOT generate-from-prose. seedBacklog additionally mints exactly ONE 'Draft an implementation plan against the stated goals/scope' ticket whose description carries problem_statement verbatim and whose ACs reference the stated goals/scope_in. The prose is passed through VERBATIM — no LLM generation — so the seeder stays deterministic and fixture-testable.",
+  "acceptance_criteria": [
+    "When the captured definition is non-empty (problem_statement and/or goals/scope_in/scope_out), seedBacklog mints exactly one additional 'implementation plan' ticket whose description contains the problem_statement verbatim and whose acceptance_criteria reference the stated goals/scope_in.",
+    "When the entire definition is empty (no problem_statement, goals, scope_in, scope_out), NO plan ticket is minted (back-compat with definition-less inits).",
+    "The plan ticket is deterministic: identical answers produce a byte-identical ticket body (no generated or nondeterministic content) — proven by a fixture-based spec.",
+    "Existing primary_use_cases-driven seeding is unchanged and existing backlog-seeder specs stay green.",
+    "New fixtures/specs encode the above (tdd)."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "intake-improvement",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T17:47:55.316Z",
+  "updated_at": "2026-07-18T17:47:55.316Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

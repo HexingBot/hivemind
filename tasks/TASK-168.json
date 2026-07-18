@@ -1,0 +1,29 @@
+{
+  "key": "TASK-168",
+  "title": "KB-GRAPH-1: add a kb_graph_query MCP tool wrapping neighbors/nodesByType with deterministic output",
+  "description": "From the 2026-07-18 intake+KB-graph design review (Q2, recommended path step 1). The internal graph (knowledge/graph/graph.json, src/knowledge-graph.js) is WRITE-ONLY: populated manually at ticket-close but never queried at decision time. Unlike the flat KB (kb_lookup MCP tool, src/mcp-server.js:275), the graph has NO MCP tool and no programmatic query surface for agents — 'graph lookup' today means a human/agent reading graph.json by hand.\n\nAdd a kb_graph_query MCP tool mirroring kb_lookup's deterministic/reproducible contract: input { id?, type?, relation?, direction? } -> deterministic result derived from neighbors()/nodesByType() (src/knowledge-graph.js), registered in src/mcp-server.js alongside kb_lookup. This is the foundation ticket for the KB-graph epic (KB-GRAPH-2/4 depend on it).",
+  "acceptance_criteria": [
+    "A kb_graph_query MCP tool is registered in src/mcp-server.js with a documented input schema { id?, type?, relation?, direction? } and returns a deterministic, schema-shaped result derived from neighbors()/nodesByType() (src/knowledge-graph.js).",
+    "Given the same graph.json and same args, the output is byte-stable/reproducible so a reviewer can re-run the identical call — proven by spec.",
+    "Invalid or empty args are handled gracefully (documented typed error or empty result, not a server-crashing throw); a missing node id yields empty neighbors, not an exception.",
+    "dist/mcp-server.cjs (and any other bundle embedding it) rebuilt + committed; dist-parity green.",
+    "tdd: new tool contract + output-shape fixtures."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "kb-graph",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T17:48:44.338Z",
+  "updated_at": "2026-07-18T17:48:44.338Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

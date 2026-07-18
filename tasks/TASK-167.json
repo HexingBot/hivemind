@@ -1,0 +1,28 @@
+{
+  "key": "TASK-167",
+  "title": "Intake: scope_in/scope_out overlap check — warn and re-prompt naming the conflicting item",
+  "description": "From the 2026-07-18 intake+KB-graph design review (Q1 Option 3). Nothing cross-checks scope_in vs scope_out; a normalized token can appear in both lists silently. Add an overlap check mirroring the existing per-question validate() hook pattern (precedent: the agent_models pair parser, src/question-library.js:118-129): when a normalized token appears in both scope_in and scope_out, warn naming the conflicting item(s) and re-prompt.\n\nHUMAN SCOPE DECISION (2026-07-18): warn-but-allow posture (same as the empty-scope check) — the user may still proceed.",
+  "acceptance_criteria": [
+    "When a normalized token (case- and whitespace-insensitive) appears in both scope_in and scope_out, the wizard warns naming the conflicting item(s) and re-prompts; the user may still proceed (warn-but-allow).",
+    "Disjoint lists pass silently (no false warnings); empty lists pass silently.",
+    "Token normalization matches the existing comma-split/trim conventions (src/question-library.js) — proven by fixtures including case and whitespace variants.",
+    "tdd: parsing/validation logic + fixtures; existing wizard specs stay green."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "intake-improvement",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T17:48:27.152Z",
+  "updated_at": "2026-07-18T17:48:27.152Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

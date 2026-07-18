@@ -1,0 +1,29 @@
+{
+  "key": "TASK-170",
+  "title": "KB-GRAPH-2: wire kb_graph_query into the KB-first contract (researcher + orchestrator-routing)",
+  "description": "From the 2026-07-18 intake+KB-graph design review (Q2, recommended path step 2). Once kb_graph_query exists (TASK-168), make it a first-class step: update .claude/agents/researcher.md and the orchestrator-routing SKILL.md KB-first contract so agents CALL kb_graph_query alongside kb_lookup before web search (the same 'query first, then web' precedence already documented for the external brain) instead of 'read graph.json by hand'. Both SKILL.md parity copies updated byte-identical.",
+  "acceptance_criteria": [
+    "researcher.md and the orchestrator-routing SKILL.md KB-first contract instruct calling kb_graph_query alongside kb_lookup before web search (the graph is queried via the tool, not hand-read).",
+    "Both SKILL.md parity copies (.claude/skills and plugin-root skills) are updated byte-identical; the parity/doc-lock sensor is green.",
+    "uat-only: verified by an orchestrator UAT script that exercises a real kb_graph_query call returning expected neighbors and confirms the doc edits; no new specs beyond existing doc-lock/parity sensors."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "kb-graph",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-168"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T17:49:09.119Z",
+  "updated_at": "2026-07-18T17:49:09.119Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

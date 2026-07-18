@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T17:39:06.341Z",
+  "generated_at": "2026-07-18T17:49:24.962Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -960,6 +960,48 @@
       "title": "deriveProfileFields: relax the now-over-conservative comma/brace reject guard + fix its stale comment (TASK-162 follow-up)",
       "status": "done",
       "priority": "low"
+    },
+    {
+      "key": "TASK-165",
+      "title": "Intake: seedBacklog mints an implementation-plan ticket carrying the captured problem/goals/scope",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-166",
+      "title": "Intake: warn-and-reconfirm when goals+scope are all empty despite a substantive problem_statement",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-167",
+      "title": "Intake: scope_in/scope_out overlap check — warn and re-prompt naming the conflicting item",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-168",
+      "title": "KB-GRAPH-1: add a kb_graph_query MCP tool wrapping neighbors/nodesByType with deterministic output",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-169",
+      "title": "KB-GRAPH-3: graph-freshness sensor — fail the gate when a done task has no task-&lt;n&gt; graph node",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-170",
+      "title": "KB-GRAPH-2: wire kb_graph_query into the KB-first contract (researcher + orchestrator-routing)",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-171",
+      "title": "KB-GRAPH-4: auto-create the task node inside close_task's guarded write path",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }

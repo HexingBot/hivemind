@@ -1,0 +1,30 @@
+{
+  "key": "TASK-169",
+  "title": "KB-GRAPH-3: graph-freshness sensor — fail the gate when a done task has no task-&lt;n&gt; graph node",
+  "description": "From the 2026-07-18 intake+KB-graph design review (Q2, recommended path step 3). Nothing keeps knowledge/graph/graph.json synced to tasks/; the graph is already drifting — task nodes stop at task-150 while TASK-160..167 exist on disk. The manual write-at-close protocol is convention, not code. Add a lightweight sensor (in the style of dist-parity / use-case-policy) that fails test:all when a done ticket in tasks/ has no corresponding task-&lt;digits&gt; node in graph.json, converting silent drift into a caught defect.\n\nNOTE: landing this sensor green requires BACKFILLING the currently-missing task nodes for already-done tickets (task-151..167 and any others) so main is green — include that backfill in this ticket.",
+  "acceptance_criteria": [
+    "A sensor spec fails when a tasks/ ticket with status 'done' has no task-<digits> node in knowledge/graph/graph.json, naming the missing ticket key(s).",
+    "The sensor passes when every done ticket has a node; todo/in_progress/blocked/in_review tickets are NOT required to have nodes (only done).",
+    "The sensor is red-green planted: proven to fail on a seeded drift fixture and pass when the node is present.",
+    "The sensor runs within test:all (release gate) and is documented in the CLAUDE.md testing/sensor list (parity if a doc-lock applies).",
+    "As part of landing, the currently-missing task nodes for already-done tickets are backfilled so the sensor is GREEN on main at merge.",
+    "tdd: sensor logic + fixtures."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "kb-graph",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T17:48:58.675Z",
+  "updated_at": "2026-07-18T17:48:58.675Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
