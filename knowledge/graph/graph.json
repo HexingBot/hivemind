@@ -278,16 +278,202 @@
       "label": "orchestrator-routing - the orchestrator operational manual"
     },
     {
+      "id": "task-001",
+      "type": "task",
+      "ref": "tasks/TASK-001.json",
+      "label": "Wire local task store into the Orchestrator workflow"
+    },
+    {
+      "id": "task-002",
+      "type": "task",
+      "ref": "tasks/TASK-002.json",
+      "label": "Add a `new-task` helper script"
+    },
+    {
+      "id": "task-004",
+      "type": "task",
+      "ref": "tasks/TASK-004.json",
+      "label": "Portable session bundles + lifecycle + lessons-learned KB"
+    },
+    {
+      "id": "task-005",
+      "type": "task",
+      "ref": "tasks/TASK-005.json",
+      "label": "Triage and fix 5 moderate npm audit findings"
+    },
+    {
+      "id": "task-008",
+      "type": "task",
+      "ref": "tasks/TASK-008.json",
+      "label": "Polish pass: 5 LOW findings from TASK-004 review"
+    },
+    {
+      "id": "task-009",
+      "type": "task",
+      "ref": "tasks/TASK-009.json",
+      "label": "Hardening pass: task-store findings from TASK-001 + TASK-002 reviews"
+    },
+    {
+      "id": "task-010",
+      "type": "task",
+      "ref": "tasks/TASK-010.json",
+      "label": "Question engine core for project intake wizard"
+    },
+    {
+      "id": "task-011",
+      "type": "task",
+      "ref": "tasks/TASK-011.json",
+      "label": "Question library + project-type taxonomy + PROJECT.md schema/writer"
+    },
+    {
+      "id": "task-012",
+      "type": "task",
+      "ref": "tasks/TASK-012.json",
+      "label": "bin/init.js entrypoint + CLAUDE.md first-chat routing for project intake"
+    },
+    {
+      "id": "task-013",
+      "type": "task",
+      "ref": "tasks/TASK-013.json",
+      "label": "Agent generator per project type — emit .claude/agents/project-context.md from PROJECT.md"
+    },
+    {
+      "id": "task-014",
+      "type": "task",
+      "ref": "tasks/TASK-014.json",
+      "label": "Backlog seeder — generate starter tickets from intake use cases"
+    },
+    {
+      "id": "task-015",
+      "type": "task",
+      "ref": "tasks/TASK-015.json",
+      "label": "UX polish — README quickstart, framework-history archive on init, accumulated punch-list sweep"
+    },
+    {
+      "id": "task-016",
+      "type": "task",
+      "ref": "tasks/TASK-016.json",
+      "label": "Hardening pass: PROJECT.md persistence from TASK-011 review"
+    },
+    {
+      "id": "task-017",
+      "type": "task",
+      "ref": "tasks/TASK-017.json",
+      "label": "Hardening pass: backlog seeder findings from TASK-014 review"
+    },
+    {
+      "id": "task-018",
+      "type": "task",
+      "ref": "tasks/TASK-018.json",
+      "label": "Align corruption-handling policy across bin/init.js#countFrameworkHistory and backlog seeder"
+    },
+    {
+      "id": "task-019",
+      "type": "task",
+      "ref": "tasks/TASK-019.json",
+      "label": "Template-prep command — produce a pristine clone-ready distribution from the dev repo"
+    },
+    {
+      "id": "task-020",
+      "type": "task",
+      "ref": "tasks/TASK-020.json",
+      "label": "Architecture spike: package the framework as a Claude Code plugin (with an MCP seam for later broadening)"
+    },
+    {
+      "id": "task-021",
+      "type": "task",
+      "ref": "tasks/TASK-021.json",
+      "label": "Plugin chain P1: scaffold the Claude Code plugin (manifest + marketplace + component relocation)"
+    },
+    {
+      "id": "task-022",
+      "type": "task",
+      "ref": "tasks/TASK-022.json",
+      "label": "Plugin chain P2: repoRoot retargeting — operate on the user's project, not the plugin dir"
+    },
+    {
+      "id": "task-023",
+      "type": "task",
+      "ref": "tasks/TASK-023.json",
+      "label": "Plugin chain P3: runtime dependency packaging (ajv/ajv-formats/gray-matter resolution at the user's machine)"
+    },
+    {
+      "id": "task-024",
+      "type": "task",
+      "ref": "tasks/TASK-024.json",
+      "label": "Plugin chain P4: /init-project bootstrap slash command"
+    },
+    {
+      "id": "task-025",
+      "type": "task",
+      "ref": "tasks/TASK-025.json",
+      "label": "Plugin chain P5: orchestrator ship + activation (generated project CLAUDE.md + backstop skill + reconcile orchestrator.md)"
+    },
+    {
+      "id": "task-026",
+      "type": "task",
+      "ref": "tasks/TASK-026.json",
+      "label": "Plugin chain P6: MCP task-store server (the broaden-to-non-Code seam)"
+    },
+    {
+      "id": "task-027",
+      "type": "task",
+      "ref": "tasks/TASK-027.json",
+      "label": "Plugin chain P7: end-to-end install test + non-technical quickstart docs + publish prep"
+    },
+    {
+      "id": "task-028",
+      "type": "task",
+      "ref": "tasks/TASK-028.json",
+      "label": "Testing policy v2 — tiered verification (tdd / tests-after / uat-only) + scaled per-ticket gate"
+    },
+    {
+      "id": "task-029",
+      "type": "task",
+      "ref": "tasks/TASK-029.json",
+      "label": "Use-case regression suite — durable E2E spine seeded from PROJECT.md primary use cases"
+    },
+    {
+      "id": "task-030",
+      "type": "task",
+      "ref": "tasks/TASK-030.json",
+      "label": "Conversational UAT step — human-confirmed \"run X, expect Y\" verification recorded on the ticket"
+    },
+    {
+      "id": "task-031",
+      "type": "task",
+      "ref": "tasks/TASK-031.json",
+      "label": "Per-agent model assignment — reviewer on Fable 5, developer/researcher on Sonnet"
+    },
+    {
       "id": "task-032",
       "type": "task",
       "ref": "tasks/TASK-032.json",
       "label": "Orchestrator demotion - main thread + skills"
     },
     {
+      "id": "task-033",
+      "type": "task",
+      "ref": "tasks/TASK-033.json",
+      "label": "Test-debt consolidation — apply the new-test budget retroactively to this repo's 358 specs"
+    },
+    {
+      "id": "task-034",
+      "type": "task",
+      "ref": "tasks/TASK-034.json",
+      "label": "Task board — local kanban HTML served by a zero-dep node server, launched via /task-status"
+    },
+    {
       "id": "task-035",
       "type": "task",
       "ref": "tasks/TASK-035.json",
       "label": "Knowledge graph (graphify propio)"
+    },
+    {
+      "id": "task-036",
+      "type": "task",
+      "ref": "tasks/TASK-036.json",
+      "label": "Configurable per-agent models — agent_models map in PROJECT.md + wizard question + frontmatter applier"
     },
     {
       "id": "task-037",
@@ -324,6 +510,48 @@
       "type": "task",
       "ref": "tasks/TASK-042.json",
       "label": "Retire reviewer fable pin → inherit (default main model)"
+    },
+    {
+      "id": "task-043",
+      "type": "task",
+      "ref": "tasks/TASK-043.json",
+      "label": "Doc-drift cleanup: wizard help text reviewer=fable → inherit"
+    },
+    {
+      "id": "task-044",
+      "type": "task",
+      "ref": "tasks/TASK-044.json",
+      "label": "Twin of TASK-040: --apply-models prints false init epilogue"
+    },
+    {
+      "id": "task-045",
+      "type": "task",
+      "ref": "tasks/TASK-045.json",
+      "label": "PROJECT.md definition sections: problem, goals, scope (in/out) + agent briefing"
+    },
+    {
+      "id": "task-046",
+      "type": "task",
+      "ref": "tasks/TASK-046.json",
+      "label": "Discovery-first intake + confirmation gate (CLI wizard)"
+    },
+    {
+      "id": "task-047",
+      "type": "task",
+      "ref": "tasks/TASK-047.json",
+      "label": "Conversational /init-project: adaptive discovery + confirmation before materializing"
+    },
+    {
+      "id": "task-048",
+      "type": "task",
+      "ref": "tasks/TASK-048.json",
+      "label": "Make problem_statement a required discovery question"
+    },
+    {
+      "id": "task-049",
+      "type": "task",
+      "ref": "tasks/TASK-049.json",
+      "label": "Automated dist-parity spec: fail when committed dist/ is stale vs source"
     },
     {
       "id": "task-050",
@@ -384,6 +612,24 @@
       "type": "task",
       "ref": "tasks/TASK-059.json",
       "label": "graphify skill + /hivemind:graph command"
+    },
+    {
+      "id": "task-060",
+      "type": "task",
+      "ref": "tasks/TASK-060.json",
+      "label": "Beta channel scaffold — hivemind-beta plugin identity"
+    },
+    {
+      "id": "task-061",
+      "type": "task",
+      "ref": "tasks/TASK-061.json",
+      "label": "Single-active-session lock (safety prerequisite for autonomy)"
+    },
+    {
+      "id": "task-062",
+      "type": "task",
+      "ref": "tasks/TASK-062.json",
+      "label": "Goal-driven autonomous drive loop (opt-in beta command)"
     },
     {
       "id": "task-063",
@@ -650,16 +896,88 @@
       "label": "kb_lookup: executable, reproducible KB lookup for the researcher + live recordKbReuse caller (R18)"
     },
     {
+      "id": "task-107",
+      "type": "task",
+      "ref": "tasks/TASK-107.json",
+      "label": "task-store: listReady silently swallows dangling depends_on (same stranding class as TASK-096) + goalStuck @throws JSDoc + tool-contract list_ready doc fix"
+    },
+    {
+      "id": "task-108",
+      "type": "task",
+      "ref": "tasks/TASK-108.json",
+      "label": "close-guard: narrow the uat-comment fabrication channel — append_comment accepts author:'uat' from any caller in loop mode (Gate 2 residual)"
+    },
+    {
+      "id": "task-109",
+      "type": "task",
+      "ref": "tasks/TASK-109.json",
+      "label": "document the third import-graph blind spot: computed dynamic imports defeat test:changed AND test:since for src-only changes"
+    },
+    {
+      "id": "task-110",
+      "type": "task",
+      "ref": "tasks/TASK-110.json",
+      "label": "bound loop_state growth: beta_findings/note accumulation is the residual R10 pattern one level down"
+    },
+    {
       "id": "task-111",
       "type": "task",
       "ref": "tasks/TASK-111.json",
       "label": "KB write-path completion: E_KB_EXISTS overwrite guard + atomic promoteDraftEntry + researcher/loop-ctl wiring"
     },
     {
+      "id": "task-112",
+      "type": "task",
+      "ref": "tasks/TASK-112.json",
+      "label": "scope OBSERVABILITY.md to generated target-project code — stop per-ticket relitigation in reviews (human ruling 2026-07-07)"
+    },
+    {
+      "id": "task-113",
+      "type": "task",
+      "ref": "tasks/TASK-113.json",
+      "label": "KB seam polish: graph-query executability, deterministic top-3 selection, recordKbReuse/promoteDraftEntry hardening, calibration-checker exemption (rev-106 + rev-111 LOWs)"
+    },
+    {
       "id": "task-114",
       "type": "task",
       "ref": "tasks/TASK-114.json",
       "label": "Release hivemind v0.11.0 - version bump + tag + publish"
+    },
+    {
+      "id": "task-115",
+      "type": "task",
+      "ref": "tasks/TASK-115.json",
+      "label": "Addon-pack descriptor schema + validator"
+    },
+    {
+      "id": "task-116",
+      "type": "task",
+      "ref": "tasks/TASK-116.json",
+      "label": "integrations.lock.json schema + atomic store with ownership edges"
+    },
+    {
+      "id": "task-117",
+      "type": "task",
+      "ref": "tasks/TASK-117.json",
+      "label": "Skill license-detection + classification module"
+    },
+    {
+      "id": "task-118",
+      "type": "task",
+      "ref": "tasks/TASK-118.json",
+      "label": "Skills env-probe + reconcile planner (pure)"
+    },
+    {
+      "id": "task-119",
+      "type": "task",
+      "ref": "tasks/TASK-119.json",
+      "label": "Reconcile applier for skills + atomic lock commit"
+    },
+    {
+      "id": "task-120",
+      "type": "task",
+      "ref": "tasks/TASK-120.json",
+      "label": "hivemind-assimilate-skill workflow + end-to-end proof"
     },
     {
       "id": "task-121",
@@ -764,6 +1082,18 @@
       "label": "Wire the design-power addon-install flow + orchestrator-routing pointer"
     },
     {
+      "id": "task-138",
+      "type": "task",
+      "ref": "tasks/TASK-138.json",
+      "label": "Fix malformed plugin hooks/hooks.json (Hook load failed at path [hooks]) + regression sensor"
+    },
+    {
+      "id": "task-139",
+      "type": "task",
+      "ref": "tasks/TASK-139.json",
+      "label": "design-pack usability: surface skills-needing-assimilation + route to hivemind-assimilate-skill"
+    },
+    {
       "id": "task-140",
       "type": "task",
       "ref": "tasks/TASK-140.json",
@@ -816,6 +1146,120 @@
       "type": "task",
       "ref": "tasks/TASK-150.json",
       "label": "license-detect: surface SPDX/LICENSE conflict"
+    },
+    {
+      "id": "task-151",
+      "type": "task",
+      "ref": "tasks/TASK-151.json",
+      "label": "Correct stale \"~2s\" fast-tier timing claim (real wall-clock ~7s) across process docs"
+    },
+    {
+      "id": "task-152",
+      "type": "task",
+      "ref": "tasks/TASK-152.json",
+      "label": "Add isFrameworkRepo detector (src/framework-context.js)"
+    },
+    {
+      "id": "task-153",
+      "type": "task",
+      "ref": "tasks/TASK-153.json",
+      "label": "Split hive-self-improve & hive-adversarial-improve into framework + -current-project variants by delivery channel"
+    },
+    {
+      "id": "task-154",
+      "type": "task",
+      "ref": "tasks/TASK-154.json",
+      "label": "Add assimilate-current-project consumer variant; scope hivemind-assimilate-skill to framework without breaking design-pack"
+    },
+    {
+      "id": "task-155",
+      "type": "task",
+      "ref": "tasks/TASK-155.json",
+      "label": "Document the framework-vs-current-project skill convention in routing + CLAUDE.md"
+    },
+    {
+      "id": "task-156",
+      "type": "task",
+      "ref": "tasks/TASK-156.json",
+      "label": "Propagate the ~7s wall-clock fast-tier timing correction to agent docs (developer.md, reviewer.md + mirrors)"
+    },
+    {
+      "id": "task-157",
+      "type": "task",
+      "ref": "tasks/TASK-157.json",
+      "label": "Harden PROJECT.md frontmatter: reject/escape control chars in project_name & project_type (YAML key injection)"
+    },
+    {
+      "id": "task-158",
+      "type": "task",
+      "ref": "tasks/TASK-158.json",
+      "label": "Neutralize markdown structure/directive forgery from intake values in agent-facing files (PROJECT.md + project-context.md)"
+    },
+    {
+      "id": "task-159",
+      "type": "task",
+      "ref": "tasks/TASK-159.json",
+      "label": "Strip invisible Unicode-tag / format control characters from intake values before writing generated files"
+    },
+    {
+      "id": "task-160",
+      "type": "task",
+      "ref": "tasks/TASK-160.json",
+      "label": "Bound primary_use_cases count to cap unbounded file generation (answers-file DoS)"
+    },
+    {
+      "id": "task-161",
+      "type": "task",
+      "ref": "tasks/TASK-161.json",
+      "label": "Gate perfil_proyecto frontmatter map values against control-char key injection (TASK-157 residual)"
+    },
+    {
+      "id": "task-162",
+      "type": "task",
+      "ref": "tasks/TASK-162.json",
+      "label": "coerceFrontmatterScalar naive comma/colon split mis-parses inline-object values containing commas (perfil_proyecto/agent_models)"
+    },
+    {
+      "id": "task-163",
+      "type": "task",
+      "ref": "tasks/TASK-163.json",
+      "label": "close_task comment write-channel: apply the loop-mode author:'uat' guard to close_task's comment param (TASK-108 defense-in-depth)"
+    },
+    {
+      "id": "task-164",
+      "type": "task",
+      "ref": "tasks/TASK-164.json",
+      "label": "deriveProfileFields: relax the now-over-conservative comma/brace reject guard + fix its stale comment (TASK-162 follow-up)"
+    },
+    {
+      "id": "task-165",
+      "type": "task",
+      "ref": "tasks/TASK-165.json",
+      "label": "Intake: seedBacklog mints an implementation-plan ticket carrying the captured problem/goals/scope"
+    },
+    {
+      "id": "task-166",
+      "type": "task",
+      "ref": "tasks/TASK-166.json",
+      "label": "Intake: warn-and-reconfirm when goals+scope are all empty despite a substantive problem_statement"
+    },
+    {
+      "id": "task-167",
+      "type": "task",
+      "ref": "tasks/TASK-167.json",
+      "label": "Intake: scope_in/scope_out overlap check — warn and re-prompt naming the conflicting item"
+    },
+    {
+      "id": "task-168",
+      "type": "task",
+      "ref": "tasks/TASK-168.json",
+      "label": "KB-GRAPH-1: add a kb_graph_query MCP tool wrapping neighbors/nodesByType with deterministic output"
+    },
+    {
+      "id": "task-172",
+      "type": "task",
+      "ref": "tasks/TASK-172.json",
+      "label": "KB-GRAPH-1a: kb_graph_query must not silently drop filters on unsupported arg combinations"
     }
   ],
   "edges": [

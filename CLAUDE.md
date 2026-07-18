@@ -124,6 +124,10 @@ Rules:
 
 `dist/*.cjs` are committed build artifacts bundled by `npm run build:plugin`. Any source change in `bin/` or `src/` that is not followed by a rebuild ships a stale bundle silently. The automated gate is `tests/e2e/dist-parity.spec.js` (runs under `npm run test:all`): it rebuilds all four bundles into a temp dir using the same esbuild config and byte-compares them against committed `dist/`. If they differ, the gate fails with the bundle name and the instruction to run `npm run build:plugin`. **No manual `git diff --stat dist/` check is needed** — `test:all` catches stale dist/ automatically. Remember to commit updated `dist/` after every `npm run build:plugin` that changes the bundles.
 
+### graph-freshness sensor (TASK-169)
+
+Nothing keeps `knowledge/graph/graph.json` synced to `tasks/` except the manual write-at-close convention — a done ticket can land with no corresponding graph node and nothing catches it. The automated gate is `tests/graph-freshness.spec.js` (fast tier — reads the repo's own `tasks/*.json` + `knowledge/graph/graph.json`, same precedent as `tests/use-case-policy.spec.js` reading `USE-CASES.md`, so it runs in both `npm test` and `npm run test:all`): it fails naming every ticket with `status: "done"` that has no `task-<digits>` node in the graph. Tickets in any other status (`todo`/`in_progress`/`blocked`/`in_review`) are never required to have a node. The pure detection logic lives in `src/graph-freshness.js` (`findDoneTicketsMissingGraphNodes`); a fix is landing the missing node via `src/knowledge-graph.js`'s `addNode` (never a hand-edit of `graph.json`).
+
 ## Per-Agent Model Assignment
 
 Each subagent declares its model in the `model:` frontmatter field of its agent definition file:
