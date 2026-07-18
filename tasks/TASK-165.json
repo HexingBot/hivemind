@@ -9,7 +9,7 @@
     "Existing primary_use_cases-driven seeding is unchanged and existing backlog-seeder specs stay green.",
     "New fixtures/specs encode the above (tdd)."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "intake-improvement",
@@ -17,11 +17,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "d62938fc58b0ff0ca398f9d8a7f157532f5903a0"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T18:14:31.443Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — clean first-pass APPROVE (0 HIGH / 1 procedural MEDIUM / 2 LOW / 1 NIT). review_depth: FULL (rubric inputs: 399 insertions / 3 deletions across 3 files; forced full by >150 changed lines + packaging/dist [dist/init.cjs rebuilt] + ticket-minting logic). tdd single-commit. Fix: seedBacklog (src/backlog-seeder.js) Step 5 mints exactly ONE 'Draft an implementation plan against the stated goals/scope' ticket (verification_tier uat-only) when the captured definition is non-empty, embedding problem_statement VERBATIM and folding goals/scope_in into its acceptance_criteria; mints nothing when the whole definition is empty (back-compat). New normalizeDefinitionList + buildPlanTemplate; mintTicket now forwards verification_tier (omitted when undefined, so existing COMMON/USE_CASE tickets are byte-unchanged — reviewer traced createTask spread at src/task-store.js:664). tdd red-run CREDIBLE: reviewer independently reproduced 4/6 assertion-level failures for the right reason at d62938f~1 (plan ticket not minted / not additive). Gates green: fast tier 996/2, backlog-seeder + init-command + use-case-suite e2e all green (run directly — TASK-109 dynamic-import blind spot), dist-parity 8 bundles byte-match, calibration clean. Procedural MEDIUM (non-blocking): developer's R3 checklist reached the orchestrator but was not forwarded into the reviewer briefing — all five items independently verified green. LOW follow-ups (to batch at epic end): (1) mintTicket docblock 'body MUST contain the tag substring' invariant now contradicts the plan tag's body — scope the invariant to common/use-case tags; (2) whitespace-only problem_statement mints nothing correctly but is unlocked by spec, and the '(none captured)' placeholder branch tests .length>0 not .trim().length>0 (cosmetic). Commit d62938f."
+    }
+  ],
   "created_at": "2026-07-18T17:47:55.316Z",
-  "updated_at": "2026-07-18T17:47:55.316Z",
+  "updated_at": "2026-07-18T18:14:31.443Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

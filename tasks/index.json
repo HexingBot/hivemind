@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T17:57:04.471Z",
+  "generated_at": "2026-07-18T18:14:31.443Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -964,7 +964,7 @@
     {
       "key": "TASK-165",
       "title": "Intake: seedBacklog mints an implementation-plan ticket carrying the captured problem/goals/scope",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
