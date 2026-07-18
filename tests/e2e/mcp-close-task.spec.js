@@ -595,3 +595,286 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-171 (KB-GRAPH-4) — close_task auto-creates the task-<digits> node in
+// knowledge/graph/graph.json as part of the same close operation, via
+// src/graph-sync.js#recordNode (local projection ALWAYS + best-effort
+// canonical kb_assert mirror).
+//
+// ORDERING (AC2): closeTask() itself stays all-or-nothing (unchanged
+// task-store.js code path); the graph-node write happens AFTER a successful
+// close and is best-effort — a failure there (thrown by an injected `brain`
+// or `recordNode`) must NEVER roll back or fail the already-durable close.
+// createServer({ repoRoot, brain, recordNode }) exposes both as injection
+// points at the MCP layer, mirroring the closeGuard injection pattern already
+// used for loopModeCloseGuard/loopModeUatCommentGuard.
+//
+// TEST MODE — these specs MUST FAIL against the current mcp-server.js:
+//   - createServer does not yet accept `brain`/`recordNode` options.
+//   - the close_task handler does not yet call recordNode at all, so no
+//     task-<digits> node is ever created and the tool result carries no
+//     `graph_node` field.
+// ---------------------------------------------------------------------------
+describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node', () => {
+  let repoRoot;
+  let client;
+  let server;
+
+  async function connect(opts = {}) {
+    repoRoot = mkdtempSync(join(tmpdir(), 'mcp-close-task-graph-'));
+    makeRepoSkeleton(repoRoot);
+    server = createServer({ repoRoot, ...opts });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: 'task-171-test', version: '0.0.0' });
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+  }
+
+  afterEach(async () => {
+    if (client) await client.close();
+    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  function loadGraphJson() {
+    const path = join(repoRoot, 'knowledge', 'graph', 'graph.json');
+    if (!existsSync(path)) return { schema_version: 1, nodes: [], edges: [] };
+    return JSON.parse(readFileSync(path, 'utf8'));
+  }
+
+  // -------------------------------------------------------------------------
+  // AC1 — node created on close, brain-absent (default: zero infra).
+  // -------------------------------------------------------------------------
+  it('creates a task-<digits> node with id/ref/label derived from the closed ticket, brain absent', async () => {
+    await connect();
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'TASK-171 graph node fixture',
+        description: 'closed via close_task',
+        acceptance_criteria: ['gets a graph node on close'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+      },
+    }));
+    const key = created.key;
+
+    const result = await client.callTool({
+      name: 'close_task',
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+    });
+    expect(result.isError).toBeFalsy();
+    const parsed = parse(result);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.graph_node).toBe('created');
+
+    const graph = loadGraphJson();
+    const nodeId = key.replace(/^TASK-/, 'task-').toLowerCase();
+    const node = graph.nodes.find((n) => n.id === nodeId);
+    expect(node).toBeTruthy();
+    expect(node.ref).toBe(`tasks/${key}.json`);
+    expect(node.label).toBe('TASK-171 graph node fixture');
+    expect(node.type).toBe('task');
+  });
+
+  // -------------------------------------------------------------------------
+  // AC2 — idempotent: re-closing does not duplicate or error.
+  // -------------------------------------------------------------------------
+  it('is idempotent on re-close: the second close_task call reports "exists" and does not duplicate the node', async () => {
+    await connect();
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'TASK-171 idempotent re-close',
+        description: 'closed twice',
+        acceptance_criteria: ['no duplicate node'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+      },
+    }));
+    const key = created.key;
+
+    const first = parse(await client.callTool({
+      name: 'close_task',
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+    }));
+    expect(first.graph_node).toBe('created');
+
+    const second = await client.callTool({
+      name: 'close_task',
+      arguments: { key, comment: { author: 'developer', body: 'Re-closed.' } },
+    });
+    expect(second.isError).toBeFalsy();
+    expect(parse(second).graph_node).toBe('exists');
+
+    const graph = loadGraphJson();
+    const nodeId = key.replace(/^TASK-/, 'task-').toLowerCase();
+    const matches = graph.nodes.filter((n) => n.id === nodeId);
+    expect(matches).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // AC2 — a node already present (created out-of-band) before the close is
+  // also idempotent: no duplicate, no error.
+  // -------------------------------------------------------------------------
+  it('is idempotent when the node already exists before close_task runs', async () => {
+    await connect();
+    const { addNode } = await import('../../src/knowledge-graph.js');
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'TASK-171 pre-existing node',
+        description: 'node already present',
+        acceptance_criteria: ['no duplicate, no error'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+      },
+    }));
+    const key = created.key;
+    const nodeId = key.replace(/^TASK-/, 'task-').toLowerCase();
+
+    await addNode({
+      repoRoot,
+      node: {
+        id: nodeId, type: 'task', ref: `tasks/${key}.json`, label: 'pre-existing label',
+      },
+    });
+
+    const result = parse(await client.callTool({
+      name: 'close_task',
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+    }));
+    expect(result.ok).toBe(true);
+    expect(result.graph_node).toBe('exists');
+
+    const graph = loadGraphJson();
+    const matches = graph.nodes.filter((n) => n.id === nodeId);
+    expect(matches).toHaveLength(1);
+    // the pre-existing node is left untouched, not overwritten.
+    expect(matches[0].label).toBe('pre-existing label');
+  });
+
+  // -------------------------------------------------------------------------
+  // AC2 — a throwing graph writer must not corrupt close_task's atomicity:
+  // the ticket close (task file + index.json) still succeeds, and the
+  // failure is reported via graph_node instead of thrown.
+  // -------------------------------------------------------------------------
+  it('close_task still succeeds atomically when the injected graph writer throws', async () => {
+    const throwingRecordNode = async () => {
+      const err = new Error('disk full');
+      err.code = 'E_DISK_FULL';
+      throw err;
+    };
+    await connect({ recordNode: throwingRecordNode });
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'TASK-171 throwing graph writer',
+        description: 'graph write fails, close must not',
+        acceptance_criteria: ['close still succeeds'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+      },
+    }));
+    const key = created.key;
+
+    const result = await client.callTool({
+      name: 'close_task',
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+    });
+    expect(result.isError).toBeFalsy();
+    const parsed = parse(result);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.graph_node).toBe('failed:E_DISK_FULL');
+
+    const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+    expect(task.status).toBe('done');
+    const last = task.comments[task.comments.length - 1];
+    expect(last.body).toBe('Shipped.');
+  });
+
+  // -------------------------------------------------------------------------
+  // AC2 — brain present but throwing: the canonical kb_assert mirror is
+  // best-effort and must never block or fail the close; the LOCAL node is
+  // still created.
+  // -------------------------------------------------------------------------
+  it('close_task still succeeds and still creates the local node when an injected brain throws on assert', async () => {
+    const throwingBrain = {
+      assert: async () => {
+        throw new Error('brain unreachable');
+      },
+    };
+    await connect({ brain: throwingBrain });
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'TASK-171 throwing brain',
+        description: 'canonical mirror fails, local write must not',
+        acceptance_criteria: ['close still succeeds', 'local node still created'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+      },
+    }));
+    const key = created.key;
+
+    const result = await client.callTool({
+      name: 'close_task',
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+    });
+    expect(result.isError).toBeFalsy();
+    const parsed = parse(result);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.graph_node).toBe('created');
+
+    const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+    expect(task.status).toBe('done');
+
+    const graph = loadGraphJson();
+    const nodeId = key.replace(/^TASK-/, 'task-').toLowerCase();
+    expect(graph.nodes.some((n) => n.id === nodeId)).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // AC3 — existing guards are unaffected by the graph-write addition: the
+  // uat-only done-guard still blocks close_task BEFORE any write (task file,
+  // index.json, AND no graph node is created either).
+  // -------------------------------------------------------------------------
+  it('does not create a graph node when the uat-only done-guard blocks the close', async () => {
+    await connect();
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'TASK-171 uat guard blocks graph write too',
+        description: 'no uat comment yet',
+        acceptance_criteria: ['blocked by the uat guard'],
+        priority: 'medium',
+        verification_tier: 'uat-only',
+      },
+    }));
+    const key = created.key;
+
+    let surfaced = false;
+    try {
+      const res = await client.callTool({
+        name: 'close_task',
+        arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+      });
+      if (res && res.isError) surfaced = true;
+    } catch {
+      surfaced = true;
+    }
+    expect(surfaced).toBe(true);
+
+    const graph = loadGraphJson();
+    const nodeId = key.replace(/^TASK-/, 'task-').toLowerCase();
+    expect(graph.nodes.some((n) => n.id === nodeId)).toBe(false);
+  });
+});

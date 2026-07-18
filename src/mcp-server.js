@@ -54,9 +54,10 @@ import {
 import { loopModeCloseGuard, loopModeUatCommentGuard } from './close-guard.js';
 import { lookupKnowledge, recordKbReuse } from './knowledge.js';
 import {
-  GRAPH_SCHEMA, nodesByType, neighbors, UnknownNodeIdError,
+  GRAPH_SCHEMA, nodesByType, neighbors, loadGraph, UnknownNodeIdError,
 } from './knowledge-graph.js';
-import { neighborsCanonicalFirst } from './graph-sync.js';
+import { neighborsCanonicalFirst, recordNode as _recordNode } from './graph-sync.js';
+import { taskKeyToNodeId } from './graph-freshness.js';
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
@@ -122,13 +123,67 @@ async function readTask(repoRoot, key) {
 }
 
 /**
+ * TASK-171 (KB-GRAPH-4) — auto-create the task-<digits> node in
+ * knowledge/graph/graph.json as part of close_task's guarded write path.
+ *
+ * ORDERING (documents the design decision, AC2): this is called AFTER
+ * closeTask({...}) has already succeeded (see the close_task handler below).
+ * closeTask's own atomic all-or-nothing write (task file + index.json) is
+ * COMPLETE and durable by the time this function ever runs — nothing in here
+ * can roll back or corrupt that write. This function's own write (the graph
+ * node) is deliberately best-effort-AFTER: any failure (bad node id shape,
+ * a real disk error, a throwing injected `recordNode`, or a throwing/queued
+ * canonical `brain` mirror inside recordNode) is caught and folded into the
+ * returned status string instead of thrown, so the close_task tool call
+ * always resolves successfully once closeTask() itself has succeeded.
+ *
+ * IDEMPOTENCY (AC2): addNode's duplicate-id guard throws a plain Error with
+ * no machine-readable .code (see src/knowledge-graph.js), so re-closing (or
+ * a node created out-of-band before this call runs) is handled by checking
+ * existence via loadGraph() FIRST — cheaper than a full addNode attempt plus
+ * message-sniffing, and it never touches disk when the node is already
+ * there.
+ *
+ * @returns {Promise<string>} 'skipped' (key doesn't match TASK-<digits>),
+ *   'exists' (node already present), 'created', or `failed:<code>`.
+ */
+async function recordTaskGraphNode({
+  repoRoot, key, brain, recordNode,
+}) {
+  const nodeId = taskKeyToNodeId(key);
+  if (!nodeId) return 'skipped';
+  try {
+    const graph = await loadGraph({ repoRoot });
+    const wanted = nodeId.toLowerCase();
+    const exists = (graph.nodes ?? []).some((n) => String(n.id).toLowerCase() === wanted);
+    if (exists) return 'exists';
+
+    const task = await readTask(repoRoot, key);
+    await recordNode({
+      brain,
+      repoRoot,
+      node: {
+        id: nodeId,
+        type: 'task',
+        ref: `tasks/${key}.json`,
+        label: task?.title ?? key,
+      },
+      topic: 'hivemind-tasks',
+    });
+    return 'created';
+  } catch (err) {
+    return `failed:${err?.code || 'unknown'}`;
+  }
+}
+
+/**
  * Build and return a configured McpServer with all seven task-store tools plus
  * kb_lookup (TASK-106) registered, each closing over `repoRoot`. Throwing
  * handlers surface to the client as { isError: true } (the SDK converts a
  * thrown error), which keeps state uncorrupted on bad input rather than
  * silently succeeding.
  */
-export function createServer({ repoRoot }) {
+export function createServer({ repoRoot, brain = null, recordNode = _recordNode }) {
   const server = new McpServer({
     name: 'hivemind-tasks',
     version: '0.1.0',
@@ -283,7 +338,14 @@ export function createServer({ repoRoot }) {
         linked_prs: linked_prs ?? [],
         closeGuard: loopModeCloseGuard,
       });
-      return ok({ ok: true });
+      // TASK-171 (KB-GRAPH-4) — best-effort-AFTER: closeTask() above already
+      // completed atomically. See recordTaskGraphNode's doc comment for the
+      // full ordering rationale; a failure here never reaches the caller as
+      // a rejection, only as this graph_node status string.
+      const graph_node = await recordTaskGraphNode({
+        repoRoot, key, brain, recordNode,
+      });
+      return ok({ ok: true, graph_node });
     },
   );
 

@@ -45,11 +45,29 @@ export function mapNodeToAssert(node, { topic, marker, sourceTier } = {}) {
  * Write a node to the projection (local graph) and mirror it to the canonical graph (brain).
  * The local write is the cache and always happens; the canonical write is best-effort and
  * degrades gracefully (brain-client queues it when offline).
+ *
+ * TASK-171 (KB-GRAPH-4) — the canonical mirror is best-effort in the fullest
+ * sense: a THROWING brain.assert() (not just a degraded { source: 'queued' }
+ * return) is caught here and folded into the returned `canonical` shape
+ * rather than propagated. Callers on the atomic close_task path (see
+ * src/mcp-server.js) rely on this: the local projection write is the only
+ * part of recordNode that may legitimately throw (e.g. a real disk error),
+ * and even that is handled best-effort-after by the caller, never inline
+ * with the ticket close itself.
  */
 export async function recordNode({ brain, repoRoot, node, topic, marker, sourceTier, addNode = _addNode }) {
   await addNode({ repoRoot, node });                       // projection (cache)
   const assertArgs = mapNodeToAssert(node, { topic, marker, sourceTier });
-  const canonical = brain ? await brain.assert(assertArgs) : { source: 'skipped' };
+  let canonical;
+  if (!brain) {
+    canonical = { source: 'skipped' };
+  } else {
+    try {
+      canonical = await brain.assert(assertArgs);
+    } catch (err) {
+      canonical = { source: 'failed', error: err?.message || String(err) };
+    }
+  }
   return { projection: 'ok', canonical };
 }
 

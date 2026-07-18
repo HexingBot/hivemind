@@ -7643,7 +7643,7 @@ var require__ = __commonJS({
     var discriminator_1 = require_discriminator();
     var json_schema_2020_12_1 = require_json_schema_2020_12();
     var META_SCHEMA_ID = "https://json-schema.org/draft/2020-12/schema";
-    var Ajv2020 = class extends core_1.default {
+    var Ajv20202 = class extends core_1.default {
       constructor(opts = {}) {
         super({
           ...opts,
@@ -7670,11 +7670,11 @@ var require__ = __commonJS({
         return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : void 0);
       }
     };
-    exports2.Ajv2020 = Ajv2020;
-    module2.exports = exports2 = Ajv2020;
-    module2.exports.Ajv2020 = Ajv2020;
+    exports2.Ajv2020 = Ajv20202;
+    module2.exports = exports2 = Ajv20202;
+    module2.exports.Ajv2020 = Ajv20202;
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.default = Ajv2020;
+    exports2.default = Ajv20202;
     var validate_1 = require_validate();
     Object.defineProperty(exports2, "KeywordCxt", { enumerable: true, get: function() {
       return validate_1.KeywordCxt;
@@ -26280,6 +26280,7 @@ function makeErr(code, message) {
 var import_promises2 = require("node:fs/promises");
 var import_node_fs6 = require("node:fs");
 var import_node_path6 = require("node:path");
+var import__2 = __toESM(require__(), 1);
 var import_ajv_formats5 = __toESM(require_dist(), 1);
 var GRAPH_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -26326,17 +26327,76 @@ var UnknownNodeIdError = class extends Error {
     this.id = id;
   }
 };
+var _validate = null;
+function getValidator() {
+  if (_validate) return _validate;
+  const ajv = new import__2.default({ allErrors: true });
+  (0, import_ajv_formats5.default)(ajv);
+  _validate = ajv.compile(GRAPH_SCHEMA);
+  return _validate;
+}
 function graphPath(repoRoot) {
   return (0, import_node_path6.join)(repoRoot, "knowledge", "graph", "graph.json");
 }
+function graphDir(repoRoot) {
+  return (0, import_node_path6.join)(repoRoot, "knowledge", "graph");
+}
 function emptyGraph() {
   return { schema_version: 1, nodes: [], edges: [] };
+}
+function serializeNode(n) {
+  return { id: n.id, type: n.type, ref: n.ref, label: n.label };
+}
+function serializeEdge(e) {
+  return { from: e.from, to: e.to, relation: e.relation };
+}
+function edgeSortKey(e) {
+  return `${e.from}\0${e.to}\0${e.relation}`;
+}
+function serializeGraph(graph) {
+  const nodes = [...graph.nodes].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map(serializeNode);
+  const edges = [...graph.edges].sort((a, b) => {
+    const ka = edgeSortKey(a);
+    const kb = edgeSortKey(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  }).map(serializeEdge);
+  const doc = { schema_version: graph.schema_version, nodes, edges };
+  return JSON.stringify(doc, null, 2) + "\n";
+}
+function validateGraph(graph) {
+  const validate = getValidator();
+  const ok2 = validate(graph);
+  if (!ok2) {
+    const details = JSON.stringify(validate.errors, null, 2);
+    throw new Error(`Graph document failed schema validation:
+${details}`);
+  }
 }
 async function loadGraph({ repoRoot }) {
   const path = graphPath(repoRoot);
   if (!(0, import_node_fs6.existsSync)(path)) return emptyGraph();
   const raw = await (0, import_promises2.readFile)(path, "utf8");
   return JSON.parse(raw);
+}
+async function addNode({ repoRoot, node }) {
+  const graph = await loadGraph({ repoRoot });
+  if (node && node.id !== void 0) {
+    const wanted = String(node.id).toLowerCase();
+    const dup = graph.nodes.find((n) => String(n.id).toLowerCase() === wanted);
+    if (dup) {
+      throw new Error(
+        `addNode: node id "${node.id}" already exists in the graph (case-insensitive match against "${dup.id}")`
+      );
+    }
+  }
+  const candidate = {
+    schema_version: graph.schema_version,
+    nodes: [...graph.nodes, node],
+    edges: graph.edges
+  };
+  validateGraph(candidate);
+  await (0, import_promises2.mkdir)(graphDir(repoRoot), { recursive: true });
+  await atomicWriteFile(graphPath(repoRoot), serializeGraph(candidate));
 }
 async function neighbors({ repoRoot, id, relation, direction }) {
   const graph = await loadGraph({ repoRoot });
@@ -26369,6 +26429,47 @@ async function nodesByType({ repoRoot, type }) {
 }
 
 // src/graph-sync.js
+function makeErr2(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+var TYPE_MAP = { knowledge_entry: "Knowledge", task: "Task", decision: "Decision", skill: "Skill" };
+var DEFAULTS = {
+  decision: { marker: "EXPLICIT", source_tier: "T2" },
+  task: { marker: "EXPLICIT", source_tier: "T2" },
+  skill: { marker: "EXPLICIT", source_tier: "T2" },
+  knowledge_entry: { marker: "INFERRED:strong", source_tier: "T2" }
+};
+function mapNodeToAssert(node, { topic, marker, sourceTier } = {}) {
+  if (!node || !node.type || !node.label) {
+    throw makeErr2("E_GRAPH_NODE", "node requires at least { type, label }");
+  }
+  const d = DEFAULTS[node.type] || { marker: "INFERRED:weak", source_tier: "T3" };
+  return {
+    topic,
+    text: node.label,
+    type: TYPE_MAP[node.type] || node.type,
+    marker: marker || d.marker,
+    source_tier: sourceTier || d.source_tier,
+    source_ref: node.ref || node.id
+  };
+}
+async function recordNode({ brain, repoRoot, node, topic, marker, sourceTier, addNode: addNode2 = addNode }) {
+  await addNode2({ repoRoot, node });
+  const assertArgs = mapNodeToAssert(node, { topic, marker, sourceTier });
+  let canonical;
+  if (!brain) {
+    canonical = { source: "skipped" };
+  } else {
+    try {
+      canonical = await brain.assert(assertArgs);
+    } catch (err) {
+      canonical = { source: "failed", error: err?.message || String(err) };
+    }
+  }
+  return { projection: "ok", canonical };
+}
 async function neighborsCanonicalFirst({ brain, repoRoot, id, canonicalId, neighbors: neighbors2 = neighbors }) {
   if (brain && canonicalId) {
     const r = await brain.neighbors({ canonical_id: canonicalId });
@@ -26383,6 +26484,14 @@ async function neighborsCanonicalFirst({ brain, repoRoot, id, canonicalId, neigh
     }
     throw err;
   }
+}
+
+// src/graph-freshness.js
+var TASK_KEY_RE = /^TASK-(\d+)$/;
+function taskKeyToNodeId(key) {
+  const m = TASK_KEY_RE.exec(String(key));
+  if (!m) return null;
+  return `task-${m[1]}`;
 }
 
 // src/mcp-server.js
@@ -26425,7 +26534,37 @@ async function readTask(repoRoot, key) {
     throw err;
   }
 }
-function createServer({ repoRoot }) {
+async function recordTaskGraphNode({
+  repoRoot,
+  key,
+  brain,
+  recordNode: recordNode2
+}) {
+  const nodeId = taskKeyToNodeId(key);
+  if (!nodeId) return "skipped";
+  try {
+    const graph = await loadGraph({ repoRoot });
+    const wanted = nodeId.toLowerCase();
+    const exists = (graph.nodes ?? []).some((n) => String(n.id).toLowerCase() === wanted);
+    if (exists) return "exists";
+    const task = await readTask(repoRoot, key);
+    await recordNode2({
+      brain,
+      repoRoot,
+      node: {
+        id: nodeId,
+        type: "task",
+        ref: `tasks/${key}.json`,
+        label: task?.title ?? key
+      },
+      topic: "hivemind-tasks"
+    });
+    return "created";
+  } catch (err) {
+    return `failed:${err?.code || "unknown"}`;
+  }
+}
+function createServer({ repoRoot, brain = null, recordNode: recordNode2 = recordNode }) {
   const server = new McpServer({
     name: "hivemind-tasks",
     version: "0.1.0"
@@ -26545,7 +26684,13 @@ function createServer({ repoRoot }) {
         linked_prs: linked_prs ?? [],
         closeGuard: loopModeCloseGuard
       });
-      return ok({ ok: true });
+      const graph_node = await recordTaskGraphNode({
+        repoRoot,
+        key,
+        brain,
+        recordNode: recordNode2
+      });
+      return ok({ ok: true, graph_node });
     }
   );
   server.registerTool(
