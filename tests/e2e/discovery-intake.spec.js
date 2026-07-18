@@ -902,6 +902,60 @@ describe('TASK-046 AC6a — empty answer omits section; comma answer splits into
 });
 
 // ---------------------------------------------------------------------------
+// TASK-174 — interactive-path skip (Enter) of goals/scope_in/scope_out must
+// NOT produce a stray '- null' bullet or an empty heading. The bug: the
+// runQuestionnaire engine's Enter-skip sentinel for an optional question is
+// `null` (not '' / []); normalizeDefinitionAnswers's per-field guard
+// (`if (v === null || v === undefined) continue`) left that null value
+// untouched, so it survived into writeProjectMd's bullet renderer, which
+// treats a non-array value as a one-item `[null]` array — one item, so the
+// `items.length === 0` empty-omission guard never fires, and String(null)
+// renders the literal text "null" as a bullet under a heading that should not
+// exist at all. AC6a above already locks the answers-mode ('' / [] passed
+// directly) path; this locks the INTERACTIVE path, which is the only path
+// that actually produces the engine's null sentinel.
+// ---------------------------------------------------------------------------
+
+describe('TASK-174 — interactive Enter-skip of goals/scope produces no null bullet', () => {
+  it('interactive_enter_skip_of_all_three_definition_lists_produces_no_null_bullet_or_heading', async () => {
+    const { runInit } = await import(PROD.init);
+
+    const repoDir = makeTmpDir('af-174-interactive-null-skip');
+    // Enter-skip: goals/scope_in/scope_out answered with '' via the prompter,
+    // exactly as a human pressing Enter would (see question-library.js prompts
+    // "... or press Enter to skip"). The engine coerces this to `null`
+    // (validateAndCoerce's required:false branch), NOT '' or [].
+    const answers = webSaasWithDiscovery({
+      goals: '',
+      scope_in: '',
+      scope_out: '',
+    });
+    const prompter = makeDiscoveryPrompter(answers, ''); // '' at confirm = confirm
+
+    const result = await runInit({
+      argv: [],
+      prompter,
+      repoRoot: repoDir,
+      now: () => FIXED_NOW,
+      hostname: FIXED_HOST,
+    });
+
+    expect(result.state).toBe('created');
+    const text = readFileSync(join(repoDir, 'PROJECT.md'), 'utf8');
+
+    // The pre-fix bug: writeProjectMd renders `## Goals\n- null` (and the same
+    // for Scope (in) / Scope (out)) because String(null) === 'null'.
+    expect(text, 'PROJECT.md must not contain a stray "- null" bullet').not.toContain('- null');
+    expect(text, 'PROJECT.md must not have a ## Goals heading for a skipped field')
+      .not.toMatch(/^## Goals$/m);
+    expect(text, 'PROJECT.md must not have a ## Scope (in) heading for a skipped field')
+      .not.toMatch(/^## Scope \(in\)$/m);
+    expect(text, 'PROJECT.md must not have a ## Scope (out) heading for a skipped field')
+      .not.toMatch(/^## Scope \(out\)$/m);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // AC6b — Order: Success criteria rendered BEFORE Problem in PROJECT.md
 // ---------------------------------------------------------------------------
 

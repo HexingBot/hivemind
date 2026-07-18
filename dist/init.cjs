@@ -11244,14 +11244,18 @@ var DEFINITION_LIST_IDS = ["goals", "scope_in", "scope_out"];
 function normalizeDefinitionAnswers(answers) {
   if (!answers || typeof answers !== "object") return answers;
   const needsNorm = DEFINITION_LIST_IDS.some(
-    (id) => Object.prototype.hasOwnProperty.call(answers, id) && answers[id] !== null && answers[id] !== void 0
+    (id) => Object.prototype.hasOwnProperty.call(answers, id) && answers[id] !== void 0
   );
   if (!needsNorm) return answers;
   const out = { ...answers };
   for (const id of DEFINITION_LIST_IDS) {
     if (!Object.prototype.hasOwnProperty.call(out, id)) continue;
     const v = out[id];
-    if (v === null || v === void 0) continue;
+    if (v === void 0) continue;
+    if (v === null) {
+      out[id] = [];
+      continue;
+    }
     if (Array.isArray(v)) {
       out[id] = v.map((s) => typeof s === "string" ? s.trim() : String(s)).filter(Boolean);
     } else {

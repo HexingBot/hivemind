@@ -328,8 +328,16 @@ function validateSuppliedAnswers(answers) {
  *     "ship fast, iterate, learn" → ['ship fast', 'iterate', 'learn'].
  *     An empty or whitespace-only string → [] (writeProjectMd's empty-omission
  *     guard then emits no heading — AC6a "stray `- ` bullet" bug is fixed here).
- *   - null / undefined: leave as-is (the field stays absent from the output
- *     object; writeProjectMd's hasOwnProperty guard skips it entirely).
+ *   - null (TASK-174): the runQuestionnaire engine's Enter-skip sentinel for
+ *     an optional question — normalize to [] exactly like an empty string, so
+ *     the SAME empty-omission guard fires. Leaving null untouched (the
+ *     pre-TASK-174 behavior) let it survive into writeProjectMd's bullet
+ *     renderer, which treats a non-array value as a one-item `[null]` array
+ *     (`items.length === 1`, so the empty-omission guard never fires) and
+ *     renders the literal text "null" as a stray bullet under a heading that
+ *     should not exist at all.
+ *   - undefined: leave as-is (the field stays absent from the output object;
+ *     writeProjectMd's hasOwnProperty guard skips it entirely).
  *
  * problem_statement is left as a string (prose, not split).
  */
@@ -340,10 +348,12 @@ function normalizeDefinitionAnswers(answers) {
 
   // Check whether any of the list ids are actually present before allocating
   // a new object — avoids unnecessary copies for the common answers-mode case
-  // where arrays are already correct.
+  // where arrays are already correct. TASK-174: null now ALSO needs
+  // normalization (to []), so it counts toward needsNorm same as any other
+  // present value — only a truly absent (undefined) key skips normalization.
   const needsNorm = DEFINITION_LIST_IDS.some(
     (id) => Object.prototype.hasOwnProperty.call(answers, id) &&
-            answers[id] !== null && answers[id] !== undefined,
+            answers[id] !== undefined,
   );
   if (!needsNorm) return answers;
 
@@ -351,7 +361,13 @@ function normalizeDefinitionAnswers(answers) {
   for (const id of DEFINITION_LIST_IDS) {
     if (!Object.prototype.hasOwnProperty.call(out, id)) continue;
     const v = out[id];
-    if (v === null || v === undefined) continue;
+    if (v === undefined) continue;
+    // TASK-174 — the engine's Enter-skip sentinel; normalize the same as an
+    // empty string so writeProjectMd's empty-omission guard fires.
+    if (v === null) {
+      out[id] = [];
+      continue;
+    }
     if (Array.isArray(v)) {
       // Already an array (e.g. from --answers-file / TASK-047 path).
       // Trim each item and drop empties, but never re-split on commas
