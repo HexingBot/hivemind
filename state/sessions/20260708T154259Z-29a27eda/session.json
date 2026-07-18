@@ -2,11 +2,11 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "paused",
-  "updated_at": "2026-07-14T19:27:07.037Z",
+  "updated_at": "2026-07-18T20:55:10.613Z",
   "active_task": null,
   "workflow_step": "idle",
-  "next_action": "IDLE — TASK-163 + TASK-164 review follow-ups DRAINED (2026-07-18). Repo pulled 0.9.0->0.16.0 (fast-forward 318 commits, clean) so source==installed plugin/MCP==0.16.0. TASK-163 (tdd/security): close_task comment param now passes loopModeUatCommentGuard, closing the append_comment write-channel asymmetry (TASK-108 defense-in-depth); full-review APPROVE, red-run independently reproduced; commit 9e681f6. TASK-164 (tests-after/docs): corrected stale comma/brace reject-guard comment+error in deriveProfileFields (naive-parser claim obsolete post-TASK-162 escape-aware encoder), guard behavior unchanged, dist rebuilt; full-review APPROVE; commit 55c17a6. Bookkeeping commit c74bcd3. All three commits LOCAL on main, ahead 2 of origin, NOT pushed (Gate 1 push awaits human approval). Todo board empty. OPEN FOR HUMAN: (1) push the 3 local commits to origin; (2) decide on the intake+KB-graph research review — report at scratchpad/intake-and-kb-graph-review.md, top recs: Q1 wire problem_statement/goals/scope into backlog-seeder.js (biggest dead-end), ambiguity detection, per-field confirm loop; Q2 own graph is write-only+drifting, ship a kb_graph_query MCP tool mirroring kb_lookup + freshness sensor (proposed KB-GRAPH-1..4) rather than reopening the demoted external brain. Tickets NOT yet minted.",
-  "handoff_summary": "IDLE 2026-07-18. This chat: pulled the framework repo 0.9.0->0.16.0 (clean fast-forward, 318 commits; installed plugin/MCP was already 0.16.0) then drained the two open review follow-ups end-to-end. TASK-163 (tdd/security, close_task uat-comment guard) and TASK-164 (tests-after/docs, deriveProfileFields stale-guard comment) each: single developer spawn -> fresh-context FULL review (0 HIGH/0 MEDIUM, clean first-pass APPROVE, zero RC loops) -> close_task. Commits 9e681f6 (163), 55c17a6 (164), c74bcd3 (tasks bookkeeping) — all LOCAL, ahead 2 of origin, unpushed. In parallel ran a researcher DESIGN REVIEW (no git footprint) on (Q1) improving user data intake and (Q2) using our own KB graph vs an external one; report at scratchpad/intake-and-kb-graph-review.md, tickets not minted. Reviewer on Fable 5, orchestrator on Opus 4.8. Nothing in flight. Awaiting human: push + research-ticket decision.",
+  "next_action": "EPIC DRAINED (2026-07-18, autonomous loop, unattended preset, push OFF). All 10 tickets of the intake-improvement + kb-graph epics CLOSED reviewer-approved: 165 (seeder plan ticket), 166 (underspecified warn), 167 (scope-overlap warn), 168 (kb_graph_query on merge seam), 172+173 (filter contract now TOTAL, typed E_UNANCHORED_EDGE_FILTER), 169 (graph-freshness sensor + 74-node backfill), 170 (KB-first contract wired, delegated UAT 3/3), 171 (close_task auto-creates task node via recordNode), 174 (null-bullet intake fix + needsNorm gate fix). Zero RC loops, zero HIGH findings, 0 knowledge drafts. One reviewer stall recovered (169, infra watchdog; orchestrator settled id-consistency deterministically, replacement approved). Sensor caught real drift TWICE mid-run (task-169, task-170 nodes) — hand-backfilled; drift class ends when the new dist ships. Graph: decision-20260718-intake-kbgraph-epics-drive + 10 produced-by edges recorded. Loop exited clean (mode=harness, lock released). Release gate npm run test:all 1904 passed/4 skipped GREEN. ~22 commits LOCAL on main, NOT pushed — Gate 1 push awaits the human. NEXT for human: (1) approve push; (2) optional /deep-review of the whole epic diff before push; (3) LOW-batch disposition (cosmetic follow-ups from reviews); (4) consider a version bump/release so the installed plugin picks up close_task auto-node + kb_graph_query (Gate 4, human-gated). TASK-003 remains blocked (Atlassian creds).",
+  "handoff_summary": "2026-07-18: autonomous /hivemind:loop drive (unattended preset, push OFF) drained BOTH epics minted from the intake+KB-graph design review — 10 tickets (165-174 incl. 3 mid-run follow-up mints 172/173/174), all clean-approved, zero RC loops, zero HIGH. Highlights: kb_graph_query shipped on the graph-sync merge seam with a TOTAL no-silent-drop filter contract; graph-freshness sensor shipped and caught real drift twice within hours; close_task now auto-creates task graph nodes (removes the drift source once released); intake pipeline gained plan-ticket seeding + two warn-but-allow ambiguity checks + the null-bullet fix. Full test:all 1904/4 green. Orchestrator on Opus 4.8, developers/reviewers per agent_models (reviewer Fable 5). All commits local, unpushed, awaiting human push approval + optional deep-review + possible release cut.",
   "open_questions": [
     "Human to approve/adjust docs/design/design-profile-spec.md (esp. open Q#4 no canvas-motion resource, Q#5 playwright/web-UI predicate inferred, 1:1 axis weighting, uncalibrated tier thresholds).",
     "Phase F: resource pins/origins for frontend-design/ui-ux-pro-max/shadcn-vue/gsap/firecrawl/openart/playwright — external facts needing a human decision before the production design-power descriptor can be authored (uat-only per §7).",
@@ -141,10 +141,10 @@
     "auto_version_bump_on_milestone": false
   },
   "loop_state": {
-    "current_ticket": "TASK-150",
+    "current_ticket": "TASK-174",
     "phase": "update",
-    "iteration": 9,
-    "completed_this_run": 9,
-    "run_started_at": "2026-07-12T19:00:00Z"
+    "iteration": 10,
+    "completed_this_run": 10,
+    "run_started_at": "2026-07-18T18:00:00Z"
   }
 }
