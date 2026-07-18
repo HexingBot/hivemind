@@ -1,0 +1,32 @@
+{
+  "key": "TASK-173",
+  "title": "KB-GRAPH-1b: complete the kb_graph_query no-silent-drop invariant for ALL unanchored filter combos",
+  "description": "Follow-up from the TASK-172 gating review (rev-172, APPROVE, substantive MEDIUM). CLOSED SCOPE (this is the final no-silent-drop ticket for kb_graph_query — do not spawn further filter-combo follow-ups; make the invariant total here).\\n\\nTASK-172 fixed { id, type } (post-filter) and { type, relation|direction } (typed error), but the rejection guard requires `type !== undefined`, so { relation } alone or { direction } alone (no id, no type) still fall through to the 'neither id nor type' branch and return an empty result with relation/direction SILENTLY IGNORED — contradicting the tool description's universal claim 'No supplied filter is ever silently dropped.' Impact is nil today (result is vacuously empty, not wrong data), but the description overclaims and the invariant is incomplete.\\n\\nFIX: make the no-silent-drop invariant TOTAL. Any request supplying `relation` or `direction` without an `id` to anchor the edge query must be REJECTED with the typed error (not fall through to empty). Equivalently: drop the `type !== undefined` conjunct so the guard fires whenever relation/direction are present without an id. Reconcile the tool description so it exactly matches the final behavior for every combination. FOLD IN the TASK-172 LOW: give the rejection a typed error code (e.g. E_UNANCHORED_EDGE_FILTER) instead of a bare new Error(). Add specs locking { relation }-alone and { direction }-alone rejection. Keep all existing kb_graph_query specs green. Rebuild + commit dist; dist-parity green.",
+  "acceptance_criteria": [
+    "Any kb_graph_query call supplying `relation` or `direction` without an `id` (including { relation } alone, { direction } alone, { relation, direction } without id) is rejected with the typed error, NOT returned as a silently-empty result.",
+    "After this ticket, NO arg combination silently drops a supplied filter — every filter either takes effect or yields a documented typed error; the tool description exactly matches this total behavior (no overclaim, no gap).",
+    "The rejection carries a typed error code (e.g. E_UNANCHORED_EDGE_FILTER), surfacing as MCP isError (folds in the TASK-172 LOW).",
+    "New specs lock { relation }-alone and { direction }-alone rejection (red-green planted); all existing TASK-168/172 kb_graph_query specs remain green and unmodified.",
+    "dist/mcp-server.cjs rebuilt + committed; dist-parity green. tdd."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "kb-graph",
+    "review-followup",
+    "task-172-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-168"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T18:40:52.680Z",
+  "updated_at": "2026-07-18T18:40:52.680Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

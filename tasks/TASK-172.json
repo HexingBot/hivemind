@@ -9,7 +9,7 @@
     "dist/mcp-server.cjs rebuilt + committed; dist-parity green.",
     "tdd."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "kb-graph",
@@ -20,11 +20,19 @@
   "depends_on": [
     "TASK-168"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "9e52b5b20fb5daf72bfb2ab40fe9dca98095b972"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T18:40:30.873Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — APPROVE, 0 HIGH / 1 substantive MEDIUM / 1 procedural MEDIUM / 1 LOW. review_depth: FULL (127 insertions/18 deletions; mcp-server surface + dist). tdd single-commit. Fix (option B + targeted A): { id, type } applies `type` as a POST-FILTER on neighbors (composes with relation/direction: edge-narrow THEN type-filter); { type, relation } and { type, direction } WITHOUT id are REJECTED with a typed error surfacing as MCP isError (relation/direction have no edge to anchor without an id) — both documented in the tool description string (src/mcp-server.js:422-427). tdd red-run CREDIBLE: reviewer reproduced exactly the 2 new specs failing at 9e52b5b~1 (id+type returned unfiltered set; type+direction succeeded silently) with all 11 prior specs green. AC3 verified: spec diff purely additive (@@ -228,4 +228,53 @@), all 11 TASK-168 specs byte-unmodified. Output byte-stable post-filter (sort after filter). Gates green: fast tier 996/2, test:since 68, dist-parity 8 bundles. SUBSTANTIVE MEDIUM -> minting TASK-173 (drive last, closed scope): { relation }-alone or { direction }-alone (no id, no type) still fall through the guard (requires type!==undefined) and silently ignore the filter — contradicts the description's universal 'no filter ever silently dropped' claim. Impact NIL (result is vacuously empty, not wrong data) but it's a real contract gap; TASK-173 completes the invariant for ALL unanchored combos + reconciles the description, plus folds the LOW (rejection Error has no .code -> E_UNANCHORED_EDGE_FILTER). Procedural MEDIUM (non-blocking): dev R3 checklist not forwarded into review briefing (items independently green). Commit 9e52b5b."
+    }
+  ],
   "created_at": "2026-07-18T18:29:32.520Z",
-  "updated_at": "2026-07-18T18:29:32.520Z",
+  "updated_at": "2026-07-18T18:40:30.873Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

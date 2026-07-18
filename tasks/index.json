@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T18:29:32.520Z",
+  "generated_at": "2026-07-18T18:40:52.680Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1006,8 +1006,14 @@
     {
       "key": "TASK-172",
       "title": "KB-GRAPH-1a: kb_graph_query must not silently drop filters on unsupported arg combinations",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-173",
+      "title": "KB-GRAPH-1b: complete the kb_graph_query no-silent-drop invariant for ALL unanchored filter combos",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }
