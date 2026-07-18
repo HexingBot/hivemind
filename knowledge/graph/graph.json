@@ -1262,6 +1262,12 @@
       "label": "KB-GRAPH-3: graph-freshness sensor — fail the gate when a done task has no task-&lt;n&gt; graph node"
     },
     {
+      "id": "task-170",
+      "type": "task",
+      "ref": "tasks/TASK-170.json",
+      "label": "KB-GRAPH-2: wire kb_graph_query into the KB-first contract (researcher + orchestrator-routing)"
+    },
+    {
       "id": "task-172",
       "type": "task",
       "ref": "tasks/TASK-172.json",
