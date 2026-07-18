@@ -1,0 +1,35 @@
+{
+  "key": "TASK-175",
+  "title": "Post-epic LOW batch: deep-review + per-ticket-review cosmetic/test-gap follow-ups (TASK-165..174 drive)",
+  "description": "Disposition batch for the LOW findings accumulated across the 2026-07-18 intake+kb-graph epic drive (per-ticket reviews) and the epic-gate deep-review (0 HIGH / 3 MEDIUM / 12 LOW — MEDIUMs fixed pre-release in the deep-review fix commit). None are release-blocking; all confirmed real by adversarial verification. Work through as a single cleanup pass (tests-after; skip any item that has become stale):\\n\\nFrom the deep-review (unique):\\n1. backlog-seeder buildPlanTemplate: whitespace-only problem_statement bypasses the '(none captured at intake)' placeholder (trimmed vs untrimmed guard inconsistency, line ~324 vs ~336). [found twice — one fix]\\n2. bin/init.js buildScopeOverlapWarning echoes normalized lowercase tokens, not the user's original casing.\\n3. bin/init.js findScopeOverlap computed twice per warning emission (guard + builder both call it).\\n4. kb_graph_query surfaces unconstrained ref/label strings agents are told to auto-follow — constrain GRAPH_SCHEMA ref to a repo-relative path shape (reject absolute, .., URL schemes) or filter in sortNodesById (read-steering hardening; LOW under the repo-local trust model).\\n5. kb-graph-query spec: type post-filter composed with relation/direction ({id, relation, type}) documented but untested.\\n6. graph-sync recordNode's failed-canonical shape { source:'failed', error } has no direct unit lock.\\n7. bin/init.js buildUnderspecifiedWarning single-label 'is' verb branch unreachable + untested.\\n8. backlog-seeder normalizeDefinitionList comma-string branch untested.\\n9. mcp-server recordTaskGraphNode 'skipped' branch + label fallback (task?.title ?? key) untested.\\n10. scripts/backfill-graph-task-nodes.mjs has no test incl. its idempotency claim.\\n11. intake-underspecified-warn.spec.js redundant spec: 'never_hard_blocks...' is an assertion-subset of 'warns_and_still_proceeds...' (fold or drop; also two answers-mode specs could merge).\\n\\nFrom per-ticket reviews (still open after the epic):\\n12. TASK-165 rev: mintTicket docblock 'body MUST contain the tag substring' invariant contradicts the plan tag's body — scope the invariant to common/use-case tags.\\n13. TASK-169 rev: graph-freshness sensor silently skips a done ticket with a malformed key — add a malformed-key bucket so it fails closed.\\n14. TASK-171 rev: canonical-mirror status invisible in close_task's graph_node field when a brain is present (latent until brain wired).\\n15. TASK-172 rev: kb_graph_query rejection error carries code in message but E_KB_NOT_FOUND convention lacks it — align makeErr convention repo-wide (or accept divergence deliberately).",
+  "acceptance_criteria": [
+    "Each numbered item is either fixed with a minimal lock (where a spec gap) or explicitly waived with a one-line rationale in the closing comment — no silent drops.",
+    "Existing suites stay green; dist rebuilt + committed if bundled source changes; dist-parity green.",
+    "New-test budget respected: locks only for real gaps; the redundant-spec items (11) REMOVE tests rather than add."
+  ],
+  "status": "todo",
+  "priority": "low",
+  "labels": [
+    "review-followup",
+    "cleanup",
+    "intake-improvement",
+    "kb-graph"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T21:36:20.339Z",
+      "body": "Item 16 (from rev of the deep-review fix commit d101885, LOW): orchestrator-routing SKILL.md:978-984 (both parity copies) still says an id query \"resolves against the canonical wisearcher brain graph first when the brain is wired in\" — over-promises vs the reconciled tool description (canonical path needs brain AND canonicalId; the tool cannot accept canonicalId today). Not a direct contradiction (operational guidance unaffected) but repeats the imprecision MEDIUM-1 fixed in the tool. Fix wording to \"when a brain and canonical id are wired in\" — or fold into whichever follow-up plumbs canonicalId through kb_graph_query."
+    }
+  ],
+  "created_at": "2026-07-18T21:25:03.126Z",
+  "updated_at": "2026-07-18T21:36:20.339Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
