@@ -451,17 +451,24 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
   // rejected by the zod input schema before the handler runs, surfacing as
   // an MCP `isError` result — a typed error, not a server crash.
   //
-  // TASK-172 (KB-GRAPH-1a) — fixes a MEDIUM from the TASK-168 review: NO
-  // supplied filter is ever silently dropped.
+  // TASK-172 (KB-GRAPH-1a) / TASK-173 (KB-GRAPH-1b) — NO supplied filter is
+  // ever silently dropped. This invariant is now TOTAL (TASK-173 closed the
+  // last gap): TASK-172's rejection guard required `type !== undefined`, so
+  // { relation } alone or { direction } alone (no id, no type) fell through
+  // to the "neither id nor type" branch and returned an empty result with
+  // relation/direction SILENTLY IGNORED. The guard below fires whenever
+  // relation/direction are supplied without an id, regardless of whether
+  // type is also present.
   //   { id, type }: `type` is applied as a POST-FILTER on the neighbor
   //     result (only neighbors whose own node.type matches the requested
   //     type survive) — this composes with relation/direction, which
   //     already narrow the edge set before type is applied.
-  //   { type, direction } or { type, relation } WITHOUT `id`: relation and
-  //     direction only mean something relative to an edge anchored at a
-  //     specific node id; a type-only query has no such anchor, so this
-  //     shape is REJECTED with a typed error (thrown -> MCP `isError`)
-  //     rather than silently ignoring relation/direction.
+  //   `relation` or `direction` supplied WITHOUT an `id` (with or without
+  //     `type`): relation and direction only mean something relative to an
+  //     edge anchored at a specific node id; there is no such anchor, so
+  //     this shape is REJECTED with a typed error (code
+  //     E_UNANCHORED_EDGE_FILTER, thrown -> MCP `isError`) rather than
+  //     silently ignoring relation/direction.
   server.registerTool(
     'kb_graph_query',
     {
@@ -483,12 +490,13 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         + 'omitting both id and type also yields an empty, documented '
         + 'result. No supplied filter is ever silently dropped: { id, type } '
         + 'applies `type` as a POST-FILTER on the neighbor result (only '
-        + 'neighbors whose own type matches survive); `type` combined with '
-        + '`relation` or `direction` WITHOUT an `id` has no edge to anchor '
-        + 'the filter on and is REJECTED with a typed error instead of '
-        + 'silently ignoring relation/direction.',
+        + 'neighbors whose own type matches survive); `relation` or '
+        + '`direction` supplied WITHOUT an `id` — alone, together, or '
+        + 'combined with `type` — has no edge to anchor the filter on and '
+        + 'is REJECTED with a typed error (E_UNANCHORED_EDGE_FILTER) '
+        + 'instead of silently ignoring relation/direction.',
       inputSchema: {
-        id: z.string().optional().describe('Node id, e.g. TASK-168 or decision-20260101-x'),
+        id: z.string().optional().describe('Node id, e.g. task-168 or decision-20260101-x'),
         type: GRAPH_NODE_TYPE.optional().describe('Node type — filters a type-only query'),
         relation: GRAPH_RELATION.optional().describe('Edge relation — narrows an id query (local-only)'),
         direction: GRAPH_DIRECTION.optional().describe('"out" | "in" — narrows an id query (local-only)'),
@@ -501,16 +509,20 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         id: id ?? null, type: type ?? null, relation: relation ?? null, direction: direction ?? null,
       };
 
-      // TASK-172 — relation/direction narrow the edge set around a specific
-      // node id; without an id there is nothing to anchor them to. Reject
-      // rather than silently ignoring relation/direction on a type-only
-      // query (the pre-TASK-172 behavior).
-      if (id === undefined && type !== undefined && (relation !== undefined || direction !== undefined)) {
-        throw new Error(
-          'kb_graph_query: relation/direction require an id to anchor the edge '
-          + `filter — got { type: "${type}", relation: ${relation ?? 'undefined'}, `
-          + `direction: ${direction ?? 'undefined'} } without an id`,
+      // TASK-172 / TASK-173 — relation/direction narrow the edge set around
+      // a specific node id; without an id there is nothing to anchor them
+      // to. Reject rather than silently ignoring relation/direction,
+      // whether or not `type` is also supplied (TASK-173 dropped the
+      // `type !== undefined` conjunct that let { relation } / { direction }
+      // alone fall through to the empty-result branch below).
+      if (id === undefined && (relation !== undefined || direction !== undefined)) {
+        const err = new Error(
+          '[E_UNANCHORED_EDGE_FILTER] kb_graph_query: relation/direction '
+          + `require an id to anchor the edge filter — got { type: ${type ? `"${type}"` : 'undefined'}, `
+          + `relation: ${relation ?? 'undefined'}, direction: ${direction ?? 'undefined'} } without an id`,
         );
+        err.code = 'E_UNANCHORED_EDGE_FILTER';
+        throw err;
       }
 
       if (id !== undefined) {

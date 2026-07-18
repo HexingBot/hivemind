@@ -277,4 +277,85 @@ describe('TASK-168 — kb_graph_query MCP tool (canonical-first read seam, brain
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toContain('kb_graph_query');
   });
+
+  // ---------------------------------------------------------------------------
+  // TASK-173 (KB-GRAPH-1b) — CLOSED SCOPE: make the no-silent-drop invariant
+  // TOTAL. TASK-172's guard required `type !== undefined`, so { relation }
+  // alone or { direction } alone (no id, no type) fell through to the
+  // "neither id nor type" branch and returned an EMPTY result with
+  // relation/direction SILENTLY IGNORED. These three specs fail TODAY
+  // (pre-fix) because the guard's `type !== undefined` conjunct lets these
+  // shapes through to the empty-result branch instead of rejecting them.
+  // ---------------------------------------------------------------------------
+  it('relation_alone_without_an_id_is_rejected_as_a_typed_error_not_silently_ignored', async () => {
+    let surfaced = false;
+    let errorText = '';
+    try {
+      const res = await client.callTool({
+        name: 'kb_graph_query',
+        arguments: { relation: 'blocks' },
+      });
+      if (res && res.isError) {
+        surfaced = true;
+        errorText = res.content[0].text;
+      }
+    } catch (err) {
+      surfaced = true;
+      errorText = err.message ?? String(err);
+    }
+    expect(surfaced, 'relation without an id must be a typed error, not a silently-empty result').toBe(true);
+    expect(errorText).toContain('E_UNANCHORED_EDGE_FILTER');
+
+    // Server survives — a subsequent valid call still works.
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toContain('kb_graph_query');
+  });
+
+  it('direction_alone_without_an_id_is_rejected_as_a_typed_error_not_silently_ignored', async () => {
+    let surfaced = false;
+    let errorText = '';
+    try {
+      const res = await client.callTool({
+        name: 'kb_graph_query',
+        arguments: { direction: 'out' },
+      });
+      if (res && res.isError) {
+        surfaced = true;
+        errorText = res.content[0].text;
+      }
+    } catch (err) {
+      surfaced = true;
+      errorText = err.message ?? String(err);
+    }
+    expect(surfaced, 'direction without an id must be a typed error, not a silently-empty result').toBe(true);
+    expect(errorText).toContain('E_UNANCHORED_EDGE_FILTER');
+
+    // Server survives — a subsequent valid call still works.
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toContain('kb_graph_query');
+  });
+
+  it('relation_and_direction_together_without_an_id_is_rejected_as_a_typed_error', async () => {
+    let surfaced = false;
+    let errorText = '';
+    try {
+      const res = await client.callTool({
+        name: 'kb_graph_query',
+        arguments: { relation: 'blocks', direction: 'out' },
+      });
+      if (res && res.isError) {
+        surfaced = true;
+        errorText = res.content[0].text;
+      }
+    } catch (err) {
+      surfaced = true;
+      errorText = err.message ?? String(err);
+    }
+    expect(surfaced, 'relation + direction without an id must be a typed error, not a silently-empty result').toBe(true);
+    expect(errorText).toContain('E_UNANCHORED_EDGE_FILTER');
+
+    // Server survives — a subsequent valid call still works.
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toContain('kb_graph_query');
+  });
 });

@@ -26728,9 +26728,9 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
   server.registerTool(
     "kb_graph_query",
     {
-      description: "Query the internal knowledge graph (knowledge/graph/graph.json) deterministically. Input: { id?, type?, relation?, direction? }. An `id` query returns connected nodes via graph-sync.js#neighborsCanonicalFirst (canonical-first when a brain is wired; local-projection fallback otherwise \u2014 this server ships brain-absent, so every call here uses the local fallback). A `type`-only query returns all nodes of that type via nodesByType (local only). `relation`/`direction` narrow an `id` query and are LOCAL-ONLY (no canonical-first equivalent yet). Output is { query, source, nodes } with nodes sorted by id ascending \u2014 byte-stable/reproducible for the same graph.json + args on the brain-absent (local) path; brain-present results depend on live brain state and are outside that determinism guarantee. A missing id yields empty nodes, never a throw; omitting both id and type also yields an empty, documented result. No supplied filter is ever silently dropped: { id, type } applies `type` as a POST-FILTER on the neighbor result (only neighbors whose own type matches survive); `type` combined with `relation` or `direction` WITHOUT an `id` has no edge to anchor the filter on and is REJECTED with a typed error instead of silently ignoring relation/direction.",
+      description: "Query the internal knowledge graph (knowledge/graph/graph.json) deterministically. Input: { id?, type?, relation?, direction? }. An `id` query returns connected nodes via graph-sync.js#neighborsCanonicalFirst (canonical-first when a brain is wired; local-projection fallback otherwise \u2014 this server ships brain-absent, so every call here uses the local fallback). A `type`-only query returns all nodes of that type via nodesByType (local only). `relation`/`direction` narrow an `id` query and are LOCAL-ONLY (no canonical-first equivalent yet). Output is { query, source, nodes } with nodes sorted by id ascending \u2014 byte-stable/reproducible for the same graph.json + args on the brain-absent (local) path; brain-present results depend on live brain state and are outside that determinism guarantee. A missing id yields empty nodes, never a throw; omitting both id and type also yields an empty, documented result. No supplied filter is ever silently dropped: { id, type } applies `type` as a POST-FILTER on the neighbor result (only neighbors whose own type matches survive); `relation` or `direction` supplied WITHOUT an `id` \u2014 alone, together, or combined with `type` \u2014 has no edge to anchor the filter on and is REJECTED with a typed error (E_UNANCHORED_EDGE_FILTER) instead of silently ignoring relation/direction.",
       inputSchema: {
-        id: external_exports.string().optional().describe("Node id, e.g. TASK-168 or decision-20260101-x"),
+        id: external_exports.string().optional().describe("Node id, e.g. task-168 or decision-20260101-x"),
         type: GRAPH_NODE_TYPE.optional().describe("Node type \u2014 filters a type-only query"),
         relation: GRAPH_RELATION.optional().describe("Edge relation \u2014 narrows an id query (local-only)"),
         direction: GRAPH_DIRECTION.optional().describe('"out" | "in" \u2014 narrows an id query (local-only)')
@@ -26748,10 +26748,12 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
         relation: relation ?? null,
         direction: direction ?? null
       };
-      if (id === void 0 && type !== void 0 && (relation !== void 0 || direction !== void 0)) {
-        throw new Error(
-          `kb_graph_query: relation/direction require an id to anchor the edge filter \u2014 got { type: "${type}", relation: ${relation ?? "undefined"}, direction: ${direction ?? "undefined"} } without an id`
+      if (id === void 0 && (relation !== void 0 || direction !== void 0)) {
+        const err = new Error(
+          `[E_UNANCHORED_EDGE_FILTER] kb_graph_query: relation/direction require an id to anchor the edge filter \u2014 got { type: ${type ? `"${type}"` : "undefined"}, relation: ${relation ?? "undefined"}, direction: ${direction ?? "undefined"} } without an id`
         );
+        err.code = "E_UNANCHORED_EDGE_FILTER";
+        throw err;
       }
       if (id !== void 0) {
         let nodes;
