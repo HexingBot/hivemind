@@ -7713,6 +7713,8 @@ var require_dist = __commonJS({
 // bin/init.js
 var init_exports = {};
 __export(init_exports, {
+  buildUnderspecifiedWarning: () => buildUnderspecifiedWarning,
+  isDefinitionUnderspecified: () => isDefinitionUnderspecified,
   runInit: () => runInit
 });
 module.exports = __toCommonJS(init_exports);
@@ -11257,6 +11259,27 @@ function normalizeDefinitionAnswers(answers) {
   }
   return out;
 }
+var DEFINITION_SECTION_LABELS = {
+  goals: "Goals",
+  scope_in: "Scope (in)",
+  scope_out: "Scope (out)"
+};
+function isDefinitionFieldEmpty(v) {
+  if (v === null || v === void 0) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  return String(v).trim().length === 0;
+}
+function isDefinitionUnderspecified(answers) {
+  if (!answers || typeof answers !== "object") return false;
+  const problem = typeof answers.problem_statement === "string" ? answers.problem_statement : answers.problem_statement == null ? "" : String(answers.problem_statement);
+  if (problem.trim().length === 0) return false;
+  return DEFINITION_LIST_IDS.every((id) => isDefinitionFieldEmpty(answers[id]));
+}
+function buildUnderspecifiedWarning(answers) {
+  const emptyLabels = DEFINITION_LIST_IDS.filter((id) => isDefinitionFieldEmpty(answers[id])).map((id) => DEFINITION_SECTION_LABELS[id]);
+  const verb = emptyLabels.length === 1 ? "is" : "are all";
+  return `Warning: a problem statement is defined, but ${emptyLabels.join(", ")} ${verb} empty. Goals/scope stay optional \u2014 confirm to proceed anyway, or go back and fill them in.`;
+}
 function buildDefinitionSummary(answers) {
   const lines = [];
   const add = (label, value) => {
@@ -11302,6 +11325,9 @@ function buildDefinitionSummary(answers) {
   return lines.join("\n");
 }
 async function askConfirm({ answers, prompter }) {
+  if (isDefinitionUnderspecified(answers)) {
+    console.log(buildUnderspecifiedWarning(answers));
+  }
   const summary = buildDefinitionSummary(answers);
   console.log("\n--- Captured definition ---");
   if (summary.length > 0) console.log(summary);
@@ -11358,6 +11384,8 @@ async function runWizardAndWriteProjectMd({
     if (!confirmed) {
       return { aborted: true };
     }
+  } else if (isDefinitionUnderspecified(answers)) {
+    console.warn(buildUnderspecifiedWarning(answers));
   }
   answers = applyProjectMdContributions(activePacks, answers);
   await writeProjectMd({ repoRoot, answers, now });
@@ -11636,5 +11664,7 @@ if (__isEntryScript) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  buildUnderspecifiedWarning,
+  isDefinitionUnderspecified,
   runInit
 });

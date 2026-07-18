@@ -367,6 +367,63 @@ function normalizeDefinitionAnswers(answers) {
 }
 
 /**
+ * TASK-166 — human-readable labels for the three definition-list fields,
+ * shared by buildUnderspecifiedWarning below. Mirrors project-md.js's
+ * BODY_SECTIONS headings so the warning names sections the way the operator
+ * will see them in PROJECT.md.
+ */
+const DEFINITION_SECTION_LABELS = {
+  goals: 'Goals',
+  scope_in: 'Scope (in)',
+  scope_out: 'Scope (out)',
+};
+
+/**
+ * TASK-166 — true when a definition-list field (goals/scope_in/scope_out) has
+ * no content: absent, null/undefined (the engine's skipped-optional-question
+ * sentinel), an empty array, or an empty/whitespace-only string.
+ */
+function isDefinitionFieldEmpty(v) {
+  if (v === null || v === undefined) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  return String(v).trim().length === 0;
+}
+
+/**
+ * TASK-166 — pure predicate: true when problem_statement is non-empty/
+ * non-trivial AND goals, scope_in, and scope_out are ALL empty. This is the
+ * warn-and-reconfirm trigger — it NEVER hard-blocks (goals/scope_in/scope_out
+ * stay `required: false`, TASK-048 preserved); callers only use this to decide
+ * whether to surface a notice. No I/O — safe to unit-test directly.
+ */
+export function isDefinitionUnderspecified(answers) {
+  if (!answers || typeof answers !== 'object') return false;
+  const problem = typeof answers.problem_statement === 'string'
+    ? answers.problem_statement
+    : (answers.problem_statement == null ? '' : String(answers.problem_statement));
+  if (problem.trim().length === 0) return false;
+  return DEFINITION_LIST_IDS.every((id) => isDefinitionFieldEmpty(answers[id]));
+}
+
+/**
+ * TASK-166 — build the warn-and-reconfirm message naming the empty sections.
+ * Pure string builder (no I/O); only meaningful when
+ * isDefinitionUnderspecified(answers) is true, but does not assume it — it
+ * lists whichever of the three fields are actually empty.
+ */
+export function buildUnderspecifiedWarning(answers) {
+  const emptyLabels = DEFINITION_LIST_IDS
+    .filter((id) => isDefinitionFieldEmpty(answers[id]))
+    .map((id) => DEFINITION_SECTION_LABELS[id]);
+  const verb = emptyLabels.length === 1 ? 'is' : 'are all';
+  return (
+    `Warning: a problem statement is defined, but ${emptyLabels.join(', ')} ` +
+    `${verb} empty. Goals/scope stay optional — confirm to proceed anyway, ` +
+    'or go back and fill them in.'
+  );
+}
+
+/**
  * TASK-046 — build a compact captured-definition summary to show the operator
  * before asking for confirmation. Each defined field gets one line; undefined /
  * empty fields are omitted so the summary stays terse.
@@ -418,8 +475,19 @@ function buildDefinitionSummary(answers) {
  * Decision rule: empty input OR a Y/y prefix → confirm (proceed).
  * Anything else → abort. The prompt text must be recognizable by the
  * scripted-prompter helper (matches on 'confirm' in the prompt text).
+ *
+ * TASK-166 — when the captured definition is underspecified (a substantive
+ * problem_statement but goals/scope_in/scope_out ALL empty), this SAME gate
+ * doubles as the warn-and-reconfirm step: the warning is printed above the
+ * summary and the existing "Confirm and create project?" question serves as
+ * the reconfirmation. No new prompt/question is introduced — proceeding on
+ * empty/Y stays allowed exactly as before (warn-but-allow, never a hard block).
  */
 async function askConfirm({ answers, prompter }) {
+  if (isDefinitionUnderspecified(answers)) {
+    // eslint-disable-next-line no-console
+    console.log(buildUnderspecifiedWarning(answers));
+  }
   const summary = buildDefinitionSummary(answers);
   // eslint-disable-next-line no-console
   console.log('\n--- Captured definition ---');
@@ -533,6 +601,13 @@ async function runWizardAndWriteProjectMd({
     if (!confirmed) {
       return { aborted: true };
     }
+  } else if (isDefinitionUnderspecified(answers)) {
+    // TASK-166 AC3 — non-interactive path (answers-mode / --yes / no-TTY): the
+    // warn-and-reconfirm gate above never fires here, so the underspecified
+    // check degrades to a non-blocking console notice instead of a new
+    // blocking prompt. Never throws, never aborts — warn-but-allow.
+    // eslint-disable-next-line no-console
+    console.warn(buildUnderspecifiedWarning(answers));
   }
   // TASK-128 — seam 2: merge active-pack PROJECT.md contributions
   // (src/pack-hooks.js#applyProjectMdContributions) before the write. Zero
