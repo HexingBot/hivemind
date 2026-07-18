@@ -1256,6 +1256,12 @@
       "label": "KB-GRAPH-1: add a kb_graph_query MCP tool wrapping neighbors/nodesByType with deterministic output"
     },
     {
+      "id": "task-169",
+      "type": "task",
+      "ref": "tasks/TASK-169.json",
+      "label": "KB-GRAPH-3: graph-freshness sensor — fail the gate when a done task has no task-&lt;n&gt; graph node"
+    },
+    {
       "id": "task-172",
       "type": "task",
       "ref": "tasks/TASK-172.json",
