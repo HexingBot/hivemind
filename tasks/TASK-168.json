@@ -19,9 +19,15 @@
   "depends_on": [],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T17:56:56.916Z",
+      "body": "SCOPE REFINEMENT (human decision 2026-07-18): build kb_graph_query on the MERGE SEAM, not the local-only neighbors(). Use src/graph-sync.js#neighborsCanonicalFirst (canonical-first, local-fallback) as the underlying read path so the SAME tool serves both modes:\n- Brain ABSENT (the shipped default, zero infra): falls back to the local projection (knowledge-graph.js neighbors/nodesByType) — behavior identical to the original local-only scope.\n- Brain PRESENT (opt-in /hivemind:brain): merges canonical-first, preferring the wisearcher graph, local as fallback.\n\nAC amendments:\n- The determinism/reproducibility AC applies to the NO-BRAIN (local) path — that is the reproducible contract a reviewer re-runs offline (inject brain=absent). Brain-present results depend on live brain state and are explicitly OUT of the deterministic lock's scope (document this).\n- ADD: with no brain configured, kb_graph_query returns the local-graph result via the fallback path, proven by spec with the brain injected as absent (graph-sync.js is already injectable/unit-testable per its design).\n- Keep nodesByType (type-only queries) on the local graph unless a clean canonical equivalent exists; neighbors/id queries go through neighborsCanonicalFirst. Developer: confirm the graph-sync surface covers the needed query shapes; if a shape has no canonical-first path yet, local-only for that shape is acceptable — note it.\nRationale: near-zero delta now (graph-sync.js + brain-client.js already exist and degrade gracefully), keeps local the default, and makes the query surface external/merge-ready without re-touching the tool later."
+    }
+  ],
   "created_at": "2026-07-18T17:48:44.338Z",
-  "updated_at": "2026-07-18T17:48:44.338Z",
+  "updated_at": "2026-07-18T17:56:56.916Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

@@ -21,9 +21,15 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T17:57:01.303Z",
+      "body": "SCOPE REFINEMENT (human decision 2026-07-18, symmetric with TASK-168's merge-seam choice): create the close-time task node via src/graph-sync.js#recordNode (local projection ALWAYS + best-effort kb_assert mirror to the brain, queued when offline) rather than a bare knowledge-graph.js addNode. This keeps the write side symmetric with 168's merge-aware read side and external-ready.\n\nAC amendments / guardrails:\n- Brain ABSENT (default): recordNode's local addNode is the only effective write — behavior identical to the original 'auto-create task node' scope, zero infra.\n- Brain PRESENT (opt-in): the node also mirrors canonically via kb_assert, best-effort/queued — never blocking.\n- ATOMICITY (critical): only the LOCAL projection write participates in close_task's all-or-nothing semantics; the canonical kb_assert mirror must be best-effort/out-of-band and must NEVER fail or stall the atomic ticket close. A brain that is down/slow cannot break or delay close_task. Prove this by spec (brain injected as absent AND as throwing/queuing).\n- Existing close_task guards (uat-only, loop-mode Gate 1/2, invalid-sha atomicity) remain green and are not bypassed by the graph write.\nNote: recordNode is async and best-effort on the canonical side — keep the decoupling pattern (inject the graph writer at the MCP layer, like the loop-mode guards)."
+    }
+  ],
   "created_at": "2026-07-18T17:49:24.962Z",
-  "updated_at": "2026-07-18T17:49:24.962Z",
+  "updated_at": "2026-07-18T17:57:01.303Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

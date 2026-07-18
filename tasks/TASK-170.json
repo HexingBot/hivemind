@@ -19,9 +19,15 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T17:57:04.471Z",
+      "body": "NOTE (follows TASK-168's merge-seam refinement): when wiring kb_graph_query into the KB-first contract, describe its behavior as canonical-first-then-local (brain when opted in, local projection by default) rather than 'local graph only'. The doc should make clear the tool is the single query surface in BOTH modes, so agents call it regardless of whether the brain is up. Keep the external brain framed as opt-in/experimental (do not imply it is on by default)."
+    }
+  ],
   "created_at": "2026-07-18T17:49:09.119Z",
-  "updated_at": "2026-07-18T17:49:09.119Z",
+  "updated_at": "2026-07-18T17:57:04.471Z",
   "jira_key": null,
   "verification_tier": "uat-only",
   "marker": "[EXPLICIT]",
