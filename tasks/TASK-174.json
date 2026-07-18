@@ -8,7 +8,7 @@
     "Existing TASK-046 AC6a empty-omission specs and all wizard/project-md specs stay green.",
     "dist/init.cjs (and any other bundle embedding the touched source) rebuilt + committed if bundled source changed; dist-parity green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "intake-improvement",
@@ -17,11 +17,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "99d8cbb27cf623181196bab242e28c645cfa50ef"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T20:54:52.056Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — clean APPROVE (0 HIGH / 0 MEDIUM / 0 LOW / 2 NIT). review_depth: FULL (81 insertions/7 deletions; under 150 lines but dist/init.cjs is a mandatory-FULL surface). tdd single-commit. FINAL TICKET OF THE EPIC. Fix (a) at the intake boundary: normalizeDefinitionAnswers now normalizes null -> [] (interactive Enter-skip sentinel) so PROJECT.md gets no '- null' bullet and no phantom headings, matching answers-mode; ALSO fixed the subtle second bug the developer found — the needsNorm short-circuit required a non-null value to trigger normalization at all, so all-three-skipped bypassed the loop entirely (reviewer proved it live: all three fields rendered '- null' at the parent). undefined-edge verdict: NO regression — undefined fields preserved byte-identically, and key-present-undefined is unreachable via both real intake paths. Downstream consistency verified across all consumers (isDefinitionFieldEmpty/166 warn still fires, findScopeOverlap, buildDefinitionSummary, backlog-seeder normalizeDefinitionList). tdd red-run CREDIBLE: reviewer reproduced the '- null' render first-hand at 99d8cbb^. One minimal regression lock driving the REAL interactive path (engine genuinely produces the null sentinel). Latent bonus: explicit goals:null via --answers-file fixed by the same branch (no second lock needed per budget). Gates green: fast tier 1004/2, 10 named e2e files direct (145 tests), dist-parity 8 bundles. Commit 99d8cbb."
+    }
+  ],
   "created_at": "2026-07-18T18:55:50.487Z",
-  "updated_at": "2026-07-18T18:55:50.487Z",
+  "updated_at": "2026-07-18T20:54:52.056Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

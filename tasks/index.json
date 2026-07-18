@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T20:42:43.925Z",
+  "generated_at": "2026-07-18T20:54:52.056Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1018,7 +1018,7 @@
     {
       "key": "TASK-174",
       "title": "Intake: interactive-path skipped definition fields become null and render a stray '- null' bullet in PROJECT.md",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     }
   ]
