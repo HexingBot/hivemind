@@ -8,7 +8,7 @@
     "Non-interactive runs (--yes / answers-mode) are not broken — the warn path degrades to a non-blocking notice or is skipped per existing skipConfirm semantics, proven by spec.",
     "tdd: validation/flow logic + fixtures; existing wizard specs stay green."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "intake-improvement",
@@ -16,11 +16,19 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "02ab21df663470bc24b22f6e3a67a127beb3fbc2"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T18:55:35.616Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — clean first-pass APPROVE (0 HIGH / 1 procedural MEDIUM / 1 LOW / 2 NIT). review_depth: FULL (478 insertions across 3 files; >150 lines + packaging/dist [dist/init.cjs]). tdd single-commit. Delivered: pure exported helpers isDefinitionUnderspecified(answers) + buildUnderspecifiedWarning(answers) in bin/init.js, wired post-normalizeDefinitionAnswers. Interactive: warning prints ABOVE the summary inside the EXISTING askConfirm gate (the pre-existing [Y/n] doubles as the reconfirm — zero new prompts). Non-interactive (--yes/answers-mode/no-TTY): degrades to console.warn, never a prompt. AC2 never-hard-block verified AIRTIGHT by the reviewer (no path where a previously-succeeding init now aborts; TASK-048 optionality untouched — no required: changes in the diff). Predicate correct on all probed edges incl. null field values (tolerates the pre-existing interactive-skip null bug without tripping). tdd red-run CREDIBLE (structurally verified: parent has zero occurrences of the helpers → 10/16 fail exactly as claimed; the 2 regex-miss reds prove the output sensors non-vacuous). Gates green: fast tier 996/2, 10 wizard e2e files / 106 tests direct (reviewer expanded the list with init-builtin-design-power + init-pack-hook, both green), dist-parity 8 bundles. Procedural MEDIUM (non-blocking): dev R3 checklist not forwarded into review briefing — developer DID provide it to the orchestrator; items independently green. LOW (batch at epic end): one redundant never-hard-blocks spec (assertion-subset of the AC1 spec) + two answers-mode specs could merge. FOLLOW-UP MINTED (TASK-174): pre-existing interactive-path bug the developer found — skipped optional definition fields become null, survive normalizeDefinitionAnswers, and render a stray '- null' bullet in PROJECT.md. Commit 02ab21d."
+    }
+  ],
   "created_at": "2026-07-18T17:48:16.994Z",
-  "updated_at": "2026-07-18T17:48:16.994Z",
+  "updated_at": "2026-07-18T18:55:35.616Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

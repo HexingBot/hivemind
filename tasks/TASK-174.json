@@ -1,0 +1,29 @@
+{
+  "key": "TASK-174",
+  "title": "Intake: interactive-path skipped definition fields become null and render a stray '- null' bullet in PROJECT.md",
+  "description": "Pre-existing bug found by the TASK-166 developer (2026-07-18), confirmed benign-to-TASK-166 by the reviewer but real on its own path. Repro (interactive wizard only): when an optional definition field (goals/scope_in/scope_out) is skipped via runQuestionnaire (empty/Enter answer), src/question-engine.js validateAndCoerce sets the value to null (not ''/absent). bin/init.js normalizeDefinitionAnswers explicitly skips normalizing null values (`if (v === null || v === undefined) continue;`), so the field stays null. src/project-md.js's bullet renderer (`const items = Array.isArray(value) ? value : [value];`) treats non-array null as a single-item [null] array and emits a stray `## Goals\\n- null` heading+bullet in PROJECT.md. Answers-mode already correctly omits the heading for ''/[] (TASK-046 AC6a locks that), so this reproduces only via the interactive path.\\n\\nFIX DIRECTION (either, developer's judgment): (a) normalizeDefinitionAnswers treats null the same as ''/[] (normalize to []), or (b) project-md.js's bullet-section guard treats a non-array null/undefined value as empty before the items.length===0 check. Prefer whichever is the smaller, more root-cause fix; add a regression lock reproducing the interactive-skip -> PROJECT.md render path.",
+  "acceptance_criteria": [
+    "An interactive wizard run where goals/scope_in/scope_out are skipped (Enter) produces a PROJECT.md with NO '- null' bullet and NO empty definition heading for the skipped fields (matching answers-mode's existing correct behavior).",
+    "A regression lock reproduces the pre-fix bug path (null field surviving into the renderer) and proves the fix (red-green planted).",
+    "Existing TASK-046 AC6a empty-omission specs and all wizard/project-md specs stay green.",
+    "dist/init.cjs (and any other bundle embedding the touched source) rebuilt + committed if bundled source changed; dist-parity green."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "intake-improvement",
+    "bug",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T18:55:50.487Z",
+  "updated_at": "2026-07-18T18:55:50.487Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
