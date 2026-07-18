@@ -1,0 +1,32 @@
+{
+  "key": "TASK-172",
+  "title": "KB-GRAPH-1a: kb_graph_query must not silently drop filters on unsupported arg combinations",
+  "description": "Follow-up from the TASK-168 gating review (rev-168, APPROVE, substantive MEDIUM), minted fix-first so the foundation tool's contract is correct BEFORE TASK-170 documents it to agents and TASK-171 builds on it.\n\nThe kb_graph_query MCP tool (src/mcp-server.js) silently ignores a filter when arg combinations it does not support are supplied: { id, type } returns ALL neighbors of the id and silently ignores `type`; { type, direction } silently ignores `direction`. On a brand-new agent-facing surface this yields plausible-but-wrong results with no error (an agent asking 'decision-type neighbors of task-001' gets task nodes back). The id-priority behavior is not documented in the shipped artifact (tool description / param text) and no spec locks it.\n\nFIX DIRECTION (pick one, developer's judgment): (A) REJECT unsupported combinations with a typed error (matches AC3's 'documented typed error' contract; one zod .refine or handler guard), OR (B) APPLY `type` as a post-filter on the neighbors result (so { id, type } returns only type-matching neighbors) and likewise honor `direction` where meaningful. Whichever is chosen, DOCUMENT the semantics in the tool description AND add specs locking the chosen behavior for the previously-silent combinations. Keep all existing TASK-168 kb-graph-query specs green. Rebuild + commit dist (mcp-server bundles); dist-parity green.",
+  "acceptance_criteria": [
+    "Supplying an unsupported arg combination to kb_graph_query no longer silently drops a filter: { id, type } and { type, direction } either return a typed error (documented) OR correctly apply the additional filter (type as a post-filter on neighbors; direction honored) — the chosen semantics are documented in the tool description.",
+    "New specs lock the chosen behavior for { id, type } and { type, direction } (red-green planted against today's silent-drop behavior).",
+    "All existing TASK-168 kb-graph-query specs remain green (or are updated only where the newly-defined semantics intentionally change a previously-unspecified result, with the change justified).",
+    "dist/mcp-server.cjs rebuilt + committed; dist-parity green.",
+    "tdd."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "kb-graph",
+    "review-followup",
+    "task-168-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-168"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-18T18:29:32.520Z",
+  "updated_at": "2026-07-18T18:29:32.520Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

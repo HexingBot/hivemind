@@ -9,7 +9,7 @@
     "dist/mcp-server.cjs (and any other bundle embedding it) rebuilt + committed; dist-parity green.",
     "tdd: new tool contract + output-shape fixtures."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "kb-graph",
@@ -17,17 +17,24 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "8906f8f60648842eedf6828155163dee60d4edac"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-07-18T17:56:56.916Z",
       "body": "SCOPE REFINEMENT (human decision 2026-07-18): build kb_graph_query on the MERGE SEAM, not the local-only neighbors(). Use src/graph-sync.js#neighborsCanonicalFirst (canonical-first, local-fallback) as the underlying read path so the SAME tool serves both modes:\n- Brain ABSENT (the shipped default, zero infra): falls back to the local projection (knowledge-graph.js neighbors/nodesByType) — behavior identical to the original local-only scope.\n- Brain PRESENT (opt-in /hivemind:brain): merges canonical-first, preferring the wisearcher graph, local as fallback.\n\nAC amendments:\n- The determinism/reproducibility AC applies to the NO-BRAIN (local) path — that is the reproducible contract a reviewer re-runs offline (inject brain=absent). Brain-present results depend on live brain state and are explicitly OUT of the deterministic lock's scope (document this).\n- ADD: with no brain configured, kb_graph_query returns the local-graph result via the fallback path, proven by spec with the brain injected as absent (graph-sync.js is already injectable/unit-testable per its design).\n- Keep nodesByType (type-only queries) on the local graph unless a clean canonical equivalent exists; neighbors/id queries go through neighborsCanonicalFirst. Developer: confirm the graph-sync surface covers the needed query shapes; if a shape has no canonical-first path yet, local-only for that shape is acceptable — note it.\nRationale: near-zero delta now (graph-sync.js + brain-client.js already exist and degrade gracefully), keeps local the default, and makes the query surface external/merge-ready without re-touching the tool later."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T18:29:09.082Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — APPROVE, 0 HIGH / 1 substantive MEDIUM / 1 procedural MEDIUM / 2 LOW / 1 NIT. review_depth: FULL (552 insertions/14 deletions; mcp-server agent-facing surface + packaging/dist + >150 lines). tdd single-commit. Delivered: kb_graph_query MCP tool registered in src/mcp-server.js, input { id?, type?, relation?, direction? }, built on the MERGE SEAM (graph-sync.neighborsCanonicalFirst; brain absent in shipped server -> local projection fallback, proven by the mandated fallback spec). Determinism ENFORCED via sortNodesById (fixture writes task-002 before task-001; spec asserts sorted output) — reviewer confirmed not incidental. tdd red-run CREDIBLE: reviewer reproduced all 11 specs failing at 8906f8f~1 for the right reason, and confirmed the two byte-stability specs' anti-vacuity strengthening (isError precondition) is real. Documented relation/direction local-only bypass (seam has no relation/direction param) confirmed ACCEPTABLE + specced (direction:'out', relation:'blocks'). Gates green: fast tier 996/2, 77 affected e2e, dist-parity 8 bundles byte-match. SUBSTANTIVE MEDIUM -> minting TASK-172 (fix-first, before 170/171): silent filter drop on unsupported arg combos (id+type ignores type; type+direction ignores direction) is undocumented in the shipped artifact and unspecced — an agent asking 'decision-type neighbors of task-001' gets tasks back with no error. Fix = reject unsupported combos with a typed error (matches AC3) or post-filter type; add locking specs. Procedural MEDIUM (non-blocking): dev R3 checklist not forwarded into the review briefing (items independently green). LOWs (batch at epic end): filtered-path missing-id catch unspecced; the mandated brain-absent fallback spec duplicates the id-query source:'projection' assertion. Commit 8906f8f."
     }
   ],
   "created_at": "2026-07-18T17:48:44.338Z",
-  "updated_at": "2026-07-18T17:56:56.916Z",
+  "updated_at": "2026-07-18T18:29:09.082Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

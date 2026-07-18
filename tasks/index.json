@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T18:14:31.443Z",
+  "generated_at": "2026-07-18T18:29:32.520Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -982,7 +982,7 @@
     {
       "key": "TASK-168",
       "title": "KB-GRAPH-1: add a kb_graph_query MCP tool wrapping neighbors/nodesByType with deterministic output",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -1002,6 +1002,12 @@
       "title": "KB-GRAPH-4: auto-create the task node inside close_task's guarded write path",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-172",
+      "title": "KB-GRAPH-1a: kb_graph_query must not silently drop filters on unsupported arg combinations",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }
