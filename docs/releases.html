@@ -32,6 +32,16 @@
 // index.html, prepend the new entry below, and update CHANGELOG.md to match.
 const RELEASES = [
   {
+    v: "0.17.0", date: "2026-07-18", tag: "Queryable knowledge graph & intake quality",
+    highlights: [
+      "New kb_graph_query MCP tool: deterministic graph queries on the canonical-first merge seam, with a total no-silent-drop filter contract (typed E_UNANCHORED_EDGE_FILTER).",
+      "Graph-freshness release-gate sensor + 74-node backfill; close_task now auto-creates the task graph node — the manual-convention drift source is gone.",
+      "KB-first contract wired to the tool: agents query the graph via kb_graph_query alongside kb_lookup, never hand-read graph.json.",
+      "Intake: seedBacklog mints an implementation-plan ticket from the captured problem/goals/scope; warn-but-allow checks for empty goals/scope and scope_in/scope_out overlap.",
+      "Fixed the stray '- null' PROJECT.md bullet on interactive Enter-skip, plus the loop-mode uat-comment guard on close_task's comment param.",
+    ],
+  },
+  {
     v: "0.16.0", date: "2026-07-14", tag: "Security hardening & self-improvement",
     highlights: [
       "New constructive self-improve skill (hive-self-improve) with a hard hand-off gate to the security-focused hive-adversarial-improve.",

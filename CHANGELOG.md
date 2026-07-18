@@ -8,6 +8,52 @@ The single source of version truth is `.claude-plugin/plugin.json`. Because the
 plugin installs from this repository's `main` branch via the marketplace, a
 release is the `main` HEAD at the tagged version.
 
+## [0.17.0] — 2026-07-18
+
+Intake-quality and knowledge-graph activation release, produced by a single
+autonomous loop drive (10 tickets, zero request-changes loops, epic-gate
+deep-review clean). The headline is that the internal knowledge graph is now
+*queryable and self-maintaining*: agents get a first-class `kb_graph_query`
+MCP tool, a release-gate freshness sensor, and automatic task-node creation at
+ticket close.
+
+### Added
+- **`kb_graph_query` MCP tool**: deterministic graph queries
+  (`{ id?, type?, relation?, direction? }`) over `knowledge/graph/graph.json`,
+  built on the `graph-sync` canonical-first merge seam (local projection by
+  default, external-brain-ready) with a **total no-silent-drop filter
+  contract** — every supplied filter either takes effect or yields a typed
+  `E_UNANCHORED_EDGE_FILTER` error.
+- **Graph-freshness sensor** (`tests/graph-freshness.spec.js`, fast tier):
+  fails the release gate when a `done` ticket has no `task-<n>` graph node;
+  landed with a 74-node backfill. It caught real drift twice within hours of
+  shipping.
+- **Auto task-node creation in `close_task`**: the guarded close path now
+  creates the ticket's graph node via `graph-sync.recordNode` (local always,
+  best-effort canonical mirror) — removing the manual-convention drift source.
+- **Plan-ticket seeding**: `seedBacklog` mints a "Draft an implementation
+  plan" ticket carrying the intake-captured problem/goals/scope verbatim, so
+  the discovery-first definition finally reaches the backlog.
+- **Intake ambiguity checks** (warn-but-allow, TASK-048 optionality
+  preserved): all-empty goals/scope reconfirmation, and a scope_in/scope_out
+  overlap warning naming the conflicting item.
+
+### Changed
+- KB-first contract (researcher + orchestrator-routing) now instructs calling
+  `kb_graph_query` alongside `kb_lookup` before any web search — the graph is
+  queried via the tool, never hand-read.
+- `graph-sync.recordNode`'s canonical mirror is genuinely best-effort: a
+  throwing brain is folded into `{ source: 'failed' }` instead of propagating.
+
+### Fixed
+- Interactive Enter-skip of goals/scope no longer renders a stray `- null`
+  bullet in PROJECT.md (null-normalization at the intake boundary, plus a
+  normalization-bypass gate bug when all three fields were skipped).
+- `close_task`'s comment param now passes the loop-mode `author:'uat'` guard
+  (TASK-163 defense-in-depth, closing the append_comment asymmetry).
+- Deep-review epic-gate fixes: `kb_graph_query` forwards an injected brain to
+  the merge seam, and the plan ticket's `uat-only` tier is spec-locked.
+
 ## [0.16.0] — 2026-07-14
 
 Security-hardening and self-improvement release. The headline is the
