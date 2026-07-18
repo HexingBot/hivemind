@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T20:14:02.132Z",
+  "generated_at": "2026-07-18T20:32:45.217Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1000,7 +1000,7 @@
     {
       "key": "TASK-171",
       "title": "KB-GRAPH-4: auto-create the task node inside close_task's guarded write path",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {

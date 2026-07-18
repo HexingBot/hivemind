@@ -9,7 +9,7 @@
     "dist rebuilt + committed if bundled src changed; dist-parity green.",
     "tdd: state-mutation on the close path + fixtures."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "kb-graph",
@@ -19,17 +19,25 @@
   "depends_on": [
     "TASK-168"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "7380f4958351ea077ee64acfa6b3783d884e2a6c",
+    "30b507398a57d221bb6958730eba9a5baf975609"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-07-18T17:57:01.303Z",
       "body": "SCOPE REFINEMENT (human decision 2026-07-18, symmetric with TASK-168's merge-seam choice): create the close-time task node via src/graph-sync.js#recordNode (local projection ALWAYS + best-effort kb_assert mirror to the brain, queued when offline) rather than a bare knowledge-graph.js addNode. This keeps the write side symmetric with 168's merge-aware read side and external-ready.\n\nAC amendments / guardrails:\n- Brain ABSENT (default): recordNode's local addNode is the only effective write — behavior identical to the original 'auto-create task node' scope, zero infra.\n- Brain PRESENT (opt-in): the node also mirrors canonically via kb_assert, best-effort/queued — never blocking.\n- ATOMICITY (critical): only the LOCAL projection write participates in close_task's all-or-nothing semantics; the canonical kb_assert mirror must be best-effort/out-of-band and must NEVER fail or stall the atomic ticket close. A brain that is down/slow cannot break or delay close_task. Prove this by spec (brain injected as absent AND as throwing/queuing).\n- Existing close_task guards (uat-only, loop-mode Gate 1/2, invalid-sha atomicity) remain green and are not bypassed by the graph write.\nNote: recordNode is async and best-effort on the canonical side — keep the decoupling pattern (inject the graph writer at the MCP layer, like the loop-mode guards)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T20:32:45.217Z",
+      "body": "CLOSED (autonomous loop, auto_close_on_green_review) — APPROVE (0 HIGH / 1 procedural MEDIUM / 3 LOW / 3 NIT). review_depth: FULL (520 insertions/12 deletions; close_task guarded write path + shared state knowledge/graph + packaging/dist + >150 lines). tdd single-commit + companion backfill commit. Delivered: close_task now auto-creates the task-<digits> graph node inside its guarded write path — recordTaskGraphNode() at the MCP layer (injection points createServer({ brain=null, recordNode }) mirroring the guard pattern), id via REUSED taskKeyToNodeId (sensor parity by construction, no green-blind risk), idempotent check-first via loadGraph (case-insensitive, matching addNode's own guard), graph write strictly AFTER a successful closeTask (task-store.js zero diff — all-or-nothing untouched), failures surfaced as graph_node: created|exists|failed:<code>|skipped, never thrown; recordNode's canonical brain mirror hardened to catch-and-fold ({source:'failed'}) — reviewer judged this JUSTIFIED within blast radius (mandated by the scope refinement, exactly one caller, graph-sync.spec.js unmodified/no weakening). tdd red-run CREDIBLE: reviewer reproduced 5/6 red at parent AND re-planted the try/finally bug themselves to prove the AC3 vacuous-at-red spec genuinely fires. Guard integrity: close-guard 30 / task-store-close-guards 8 / uat-comment guard 6 all unmodified + green. Companion 30b5073 verified clean (exactly one task-170 node via the sanctioned script — the freshness sensor's SECOND real catch this run). Gates green: fast tier 1004/2, 87 test:since, dist-parity 8 bundles. LOWs (batch at epic end): canonical-mirror status invisible in graph_node when brain present (latent, brain unwired in production); recordNode catch-fold lacks a unit lock; TOCTOU duplicate surfaces failed:unknown not exists (single-process, negligible). Commits 7380f49 + 30b5073."
     }
   ],
   "created_at": "2026-07-18T17:49:24.962Z",
-  "updated_at": "2026-07-18T17:57:01.303Z",
+  "updated_at": "2026-07-18T20:32:45.217Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
