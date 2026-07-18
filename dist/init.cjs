@@ -10578,6 +10578,51 @@ function normalizeUseCases(raw) {
   }
   return [];
 }
+function normalizeDefinitionList(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map((s) => typeof s === "string" ? s.trim() : String(s)).filter(Boolean);
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+function buildPlanTemplate(answers) {
+  const problemStatement = answers && typeof answers.problem_statement === "string" ? answers.problem_statement : "";
+  const goals = normalizeDefinitionList(answers && answers.goals);
+  const scopeIn = normalizeDefinitionList(answers && answers.scope_in);
+  const scopeOut = normalizeDefinitionList(answers && answers.scope_out);
+  const hasDefinition = problemStatement.trim().length > 0 || goals.length > 0 || scopeIn.length > 0 || scopeOut.length > 0;
+  if (!hasDefinition) return null;
+  const description = [
+    "Draft an implementation plan against the stated goals/scope before any implementation ticket for this project starts.",
+    "",
+    "Problem statement (captured verbatim at intake):",
+    problemStatement.length > 0 ? problemStatement : "(none captured at intake)"
+  ].join("\n");
+  const acceptance_criteria = [
+    goals.length > 0 ? `Plan explicitly addresses every stated goal: ${goals.join("; ")}` : "Plan explicitly addresses the stated goals (none captured at intake).",
+    scopeIn.length > 0 ? `Plan stays within the stated in-scope items: ${scopeIn.join("; ")}` : "Plan stays within the stated in-scope items (none captured at intake)."
+  ];
+  if (scopeOut.length > 0) {
+    acceptance_criteria.push(
+      `Plan explicitly excludes the stated out-of-scope items: ${scopeOut.join("; ")}`
+    );
+  }
+  acceptance_criteria.push(
+    "Plan is recorded as a ticket comment or linked doc before any implementation ticket for this project starts."
+  );
+  return Object.freeze({
+    title: "Draft an implementation plan against the stated goals/scope",
+    description,
+    acceptance_criteria: Object.freeze(acceptance_criteria),
+    priority: "high",
+    labels: Object.freeze(["plan"]),
+    // uat-only: the plan itself is glue/prose, verified conversationally
+    // rather than via new specs (see CLAUDE.md verification-tier rubric).
+    verification_tier: "uat-only"
+  });
+}
 async function mintTicket({ repoRoot, template, tag, now }) {
   const labels = Array.from(
     /* @__PURE__ */ new Set(["seed", ...Array.isArray(template.labels) ? template.labels : []])
@@ -10589,9 +10634,13 @@ async function mintTicket({ repoRoot, template, tag, now }) {
     acceptance_criteria: [...template.acceptance_criteria],
     priority: template.priority,
     labels,
+    // TASK-165 — template.verification_tier is undefined for
+    // COMMON_TEMPLATES/USE_CASE_TEMPLATES entries (createTask omits the field
+    // when undefined) and 'uat-only' for the plan template.
+    verification_tier: template.verification_tier,
     now
   });
-  const body = tag === "common" ? "common starter ticket \u2014 applies to every fresh project" : `Triggered by primary_use_case: ${tag}`;
+  const body = tag === "common" ? "common starter ticket \u2014 applies to every fresh project" : tag === "plan" ? "derived from the captured problem/goals/scope definition at intake" : `Triggered by primary_use_case: ${tag}`;
   await appendComment({
     repoRoot,
     key,
@@ -10625,6 +10674,11 @@ async function seedBacklog({
       const key = await mintTicket({ repoRoot, template: tpl, tag: uc, now });
       created.push(key);
     }
+  }
+  const planTemplate = buildPlanTemplate(answers);
+  if (planTemplate) {
+    const key = await mintTicket({ repoRoot, template: planTemplate, tag: "plan", now });
+    created.push(key);
   }
   return { created };
 }

@@ -21,6 +21,17 @@
 // Hard constraint: the comment body for COMMON_TEMPLATES tickets must NOT
 // incidentally contain a use-case slug (the test partitions tickets by
 // substring match — overlap would mis-attribute commons to a use case).
+//
+// TASK-165 — HUMAN SCOPE DECISION (2026-07-18): mint-a-plan, NOT filter/
+// reword and NOT generate-from-prose. When the discovery-first definition
+// captured at intake (problem_statement / goals / scope_in / scope_out — see
+// src/question-library.js COMMON_QUESTIONS) is non-empty, seedBacklog mints
+// exactly ONE additional 'Draft an implementation plan against the stated
+// goals/scope' ticket (see buildPlanTemplate). The prose is passed through
+// VERBATIM (problem_statement) or via a pure string join (goals/scope_in/
+// scope_out) — no LLM generation — so the seeder stays deterministic and
+// fixture-testable. An entirely empty definition mints nothing extra
+// (back-compat with definition-less inits).
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -274,6 +285,87 @@ function normalizeUseCases(raw) {
 }
 
 /**
+ * TASK-165 — normalize a definition-list answer (goals/scope_in/scope_out) to
+ * an array of non-empty trimmed strings. Mirrors bin/init.js's
+ * normalizeDefinitionAnswers list-handling so a direct caller that hasn't gone
+ * through that normalization (script, hand-edited intake.json) still gets
+ * consistent behavior: array passthrough (trim + drop empties), or a
+ * comma-separated string split the same way normalizeUseCases splits
+ * primary_use_cases above.
+ */
+function normalizeDefinitionList(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map((s) => (typeof s === 'string' ? s.trim() : String(s))).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.length > 0) {
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/**
+ * TASK-165 — build the single 'implementation plan' ticket template from the
+ * captured discovery-first definition. Returns null when the ENTIRE
+ * definition is empty (AC2 — back-compat with definition-less inits).
+ *
+ * Deterministic by construction: problem_statement is copied VERBATIM;
+ * goals/scope_in/scope_out are folded in via a pure `Array#join` — no
+ * generated prose, no randomness, no timestamp. Identical `answers` therefore
+ * always yield a byte-identical template (AC3).
+ */
+function buildPlanTemplate(answers) {
+  const problemStatement =
+    answers && typeof answers.problem_statement === 'string' ? answers.problem_statement : '';
+  const goals = normalizeDefinitionList(answers && answers.goals);
+  const scopeIn = normalizeDefinitionList(answers && answers.scope_in);
+  const scopeOut = normalizeDefinitionList(answers && answers.scope_out);
+
+  const hasDefinition =
+    problemStatement.trim().length > 0 ||
+    goals.length > 0 ||
+    scopeIn.length > 0 ||
+    scopeOut.length > 0;
+  if (!hasDefinition) return null;
+
+  // problem_statement is embedded VERBATIM (no trimming, no rewording) — AC1.
+  const description = [
+    'Draft an implementation plan against the stated goals/scope before any ' +
+      'implementation ticket for this project starts.',
+    '',
+    'Problem statement (captured verbatim at intake):',
+    problemStatement.length > 0 ? problemStatement : '(none captured at intake)',
+  ].join('\n');
+
+  const acceptance_criteria = [
+    goals.length > 0
+      ? `Plan explicitly addresses every stated goal: ${goals.join('; ')}`
+      : 'Plan explicitly addresses the stated goals (none captured at intake).',
+    scopeIn.length > 0
+      ? `Plan stays within the stated in-scope items: ${scopeIn.join('; ')}`
+      : 'Plan stays within the stated in-scope items (none captured at intake).',
+  ];
+  if (scopeOut.length > 0) {
+    acceptance_criteria.push(
+      `Plan explicitly excludes the stated out-of-scope items: ${scopeOut.join('; ')}`,
+    );
+  }
+  acceptance_criteria.push(
+    'Plan is recorded as a ticket comment or linked doc before any implementation ticket for this project starts.',
+  );
+
+  return Object.freeze({
+    title: 'Draft an implementation plan against the stated goals/scope',
+    description,
+    acceptance_criteria: Object.freeze(acceptance_criteria),
+    priority: 'high',
+    labels: Object.freeze(['plan']),
+    // uat-only: the plan itself is glue/prose, verified conversationally
+    // rather than via new specs (see CLAUDE.md verification-tier rubric).
+    verification_tier: 'uat-only',
+  });
+}
+
+/**
  * Mint a single seeded ticket from a template + a triggering tag ('common' or
  * a use-case slug). Returns the new ticket key.
  *
@@ -299,15 +391,22 @@ async function mintTicket({ repoRoot, template, tag, now }) {
     acceptance_criteria: [...template.acceptance_criteria],
     priority: template.priority,
     labels,
+    // TASK-165 — template.verification_tier is undefined for
+    // COMMON_TEMPLATES/USE_CASE_TEMPLATES entries (createTask omits the field
+    // when undefined) and 'uat-only' for the plan template.
+    verification_tier: template.verification_tier,
     now,
   });
   // Body is lowercase-prefixed so the test's case-sensitive String.includes
   // matcher (substring contract) lights up. Common bodies must NOT contain
-  // any use-case slug — keep the phrasing anodyne.
+  // any use-case slug — keep the phrasing anodyne. The 'plan' tag (TASK-165)
+  // is likewise kept free of use-case slugs / the literal 'common'.
   const body =
     tag === 'common'
       ? 'common starter ticket — applies to every fresh project'
-      : `Triggered by primary_use_case: ${tag}`;
+      : tag === 'plan'
+        ? 'derived from the captured problem/goals/scope definition at intake'
+        : `Triggered by primary_use_case: ${tag}`;
   await appendComment({
     repoRoot,
     key,
@@ -371,6 +470,15 @@ export async function seedBacklog({
       const key = await mintTicket({ repoRoot, template: tpl, tag: uc, now });
       created.push(key);
     }
+  }
+
+  // ---- Step 5: implementation-plan ticket (TASK-165) ----
+  // Mints at most ONE additional ticket carrying the captured discovery-first
+  // definition. Skipped entirely when the definition is empty (AC2).
+  const planTemplate = buildPlanTemplate(answers);
+  if (planTemplate) {
+    const key = await mintTicket({ repoRoot, template: planTemplate, tag: 'plan', now });
+    created.push(key);
   }
 
   return { created };
