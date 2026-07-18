@@ -9640,7 +9640,7 @@ function deriveProfileFields(answers) {
     if (str.length === 0) continue;
     if (str.includes(",") || str.includes("{") || str.includes("}")) {
       throw new Error(
-        `deriveProfileFields: value for perfil_proyecto.${key} ("${str}") contains a comma or brace, which would corrupt the inline-object PROJECT.md frontmatter encoding (project-md.js splits on unescaped "," and strips "{"/"}") \u2014 refusing to emit a value that would mis-parse on read-back`
+        `deriveProfileFields: value for perfil_proyecto.${key} ("${str}") contains a comma or brace. project-md.js's inline-object encoding round-trips these losslessly via escaping, but this is outside the plain enum/number/boolean shapes deriveProfileFields is expected to emit \u2014 refusing to emit an unexpected value rather than silently trusting it`
       );
     }
     perfil_proyecto[key] = str;

@@ -279,8 +279,14 @@ export function resourceActivations({ tier, activations }) {
  *
  * The comma/brace guard below discharges the carried TASK-124 LOW: rather
  * than trust that every source enum value happens to be comma/brace-free,
- * this throws loudly the moment a value that would corrupt the encoding is
- * about to be emitted.
+ * this throws loudly the moment such a value is about to be emitted. Since
+ * TASK-162, project-md.js's inline-object encoder/decoder
+ * (encodeMapEntry/decodeMapEntry/splitInlineMapPairs) is escape-aware and
+ * round-trips commas and braces losslessly, so this guard is no longer a
+ * workaround for a naive parser — it is a belt-and-suspenders constraint
+ * that keeps perfil_proyecto values restricted to the plain enum/number/
+ * boolean shapes the questionnaire is expected to produce, refusing to
+ * emit anything unexpected rather than silently trusting new callers.
  *
  * @param {object} answers
  * @returns {{tier: 'LIGERO'|'MEDIO'|'COMPLETO', perfil_proyecto: Record<string, string>}}
@@ -311,9 +317,10 @@ export function deriveProfileFields(answers) {
     if (str.includes(',') || str.includes('{') || str.includes('}')) {
       throw new Error(
         `deriveProfileFields: value for perfil_proyecto.${key} ("${str}") contains a ` +
-        'comma or brace, which would corrupt the inline-object PROJECT.md frontmatter ' +
-        'encoding (project-md.js splits on unescaped "," and strips "{"/"}") — refusing ' +
-        'to emit a value that would mis-parse on read-back',
+        'comma or brace. project-md.js\'s inline-object encoding round-trips these ' +
+        'losslessly via escaping, but this is outside the plain enum/number/boolean ' +
+        'shapes deriveProfileFields is expected to emit — refusing to emit an ' +
+        'unexpected value rather than silently trusting it',
       );
     }
     perfil_proyecto[key] = str;
