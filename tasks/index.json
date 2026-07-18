@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T20:01:27.361Z",
+  "generated_at": "2026-07-18T20:14:02.132Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -994,7 +994,7 @@
     {
       "key": "TASK-170",
       "title": "KB-GRAPH-2: wire kb_graph_query into the KB-first contract (researcher + orchestrator-routing)",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {

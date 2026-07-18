@@ -7,7 +7,7 @@
     "Both SKILL.md parity copies (.claude/skills and plugin-root skills) are updated byte-identical; the parity/doc-lock sensor is green.",
     "uat-only: verified by an orchestrator UAT script that exercises a real kb_graph_query call returning expected neighbors and confirms the doc edits; no new specs beyond existing doc-lock/parity sensors."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "kb-graph",
@@ -17,17 +17,35 @@
   "depends_on": [
     "TASK-168"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "dcb2453b39c6f63f93dfd3aa7a946bc27d930d84",
+    "21821687ede7675a830c8b429fc905716c6a41c7"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-07-18T17:57:04.471Z",
       "body": "NOTE (follows TASK-168's merge-seam refinement): when wiring kb_graph_query into the KB-first contract, describe its behavior as canonical-first-then-local (brain when opted in, local projection by default) rather than 'local graph only'. The doc should make clear the tool is the single query surface in BOTH modes, so agents call it regardless of whether the brain is up. Keep the external brain framed as opt-in/experimental (do not imply it is on by default)."
+    },
+    {
+      "author": "uat",
+      "at": "2026-07-18T20:13:11.172Z",
+      "body": "UAT script (derived from ACs, executed under the session's uat_delegated_to_orchestrator grant):\n\nStep 1 (AC1) — Read researcher.md + orchestrator-routing SKILL.md; expect the KB-first contract to instruct calling kb_graph_query alongside kb_lookup before web search, with the graph never hand-read. Observed: researcher.md Grep-KB step 1 mandates the tool call with concrete arg shapes and the literal \"never hand-read `knowledge/graph/graph.json`\" instruction ahead of kb_lookup and the web cutoff; SKILL.md updated at both KB-first sites (5 kb_graph_query references). Verdict: PASS — verified by Orchestrator at the human's request.\n\nStep 2 (AC2) — Hash both parity pairs; expect byte-identical + sensors green. Observed: researcher.md pair both c8f0f96, SKILL.md pair both daf4cab; agents-parity 3/3, researcher-graph-seam-doclock 4/4, orchestrator-routing-skill 13/13, orchestrator-skill-v2 20/20 green. Verdict: PASS — verified by Orchestrator at the human's request.\n\nStep 3 (AC3) — Exercise a REAL kb_graph_query call returning expected neighbors. Observed (live against the repo's actual MCP server + real knowledge/graph/graph.json via InMemoryTransport): { id: 'task-042' } -> source: projection, neighbors: [decision-20260612-fable-retired] (the expected real edge); { type: 'decision' } -> 28 nodes, deterministic sorted output; { id: 'task-169' } -> node found, 0 edges (expected — freshly backfilled node). Verdict: PASS — verified by Orchestrator at the human's request.\n\nOverall result: PASS (3/3 steps, every AC covered)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T20:13:28.951Z",
+      "body": "CLOSED (autonomous loop; auto_close_on_green_review + uat_delegated_to_orchestrator) — clean first-pass APPROVE at LIGHT depth (0 HIGH / 0 MEDIUM / 0 LOW / 2 NIT, no escalation) + delegated UAT 3/3 PASS. review_depth: LIGHT (rubric inputs: 109 changed lines — 67 insertions/42 deletions across 5 files, all documentation + one doc-lock content update; no mandatory-FULL surface). uat-only tier. Delivered: KB-first contract now graph-tool-backed — researcher.md (both parity copies, incl. the kb_graph_query tool grant in frontmatter) and orchestrator-routing SKILL.md (both copies, both KB-first sites) instruct calling kb_graph_query alongside kb_lookup before web search, never hand-reading graph.json; described accurately as canonical-first-then-local, single query surface in both modes, brain opt-in. Reviewer verified the doc-lock spec update is a legitimate RE-LOCK not a weakening (old 3 -> new 4 assertions; 3/4 structurally red against the parent text incl. the now-banned 'Read knowledge/graph/graph.json directly' phrase), accuracy checked against the real handler/graph-sync implementation with NO overclaim, parity hash-identical (c8f0f96 / daf4cab). UAT (delegated): AC1 doc instruction PASS; AC2 parity+sensors PASS; AC3 real kb_graph_query call via the repo's actual MCP server — task-042 -> decision-20260612-fable-retired (expected real neighbor), type:decision -> 28 sorted nodes, task-169 -> fresh node 0 edges. NOTE captured mid-ticket: the TASK-169 freshness sensor fired on main when TASK-169's own close postdated its backfill — orchestrator added task-169 via the idempotent backfill (commit 2182168); sensor green. NIT folded into TASK-173: the tool's inputSchema example says uppercase 'TASK-168' while real node ids are lowercase. Commit dcb2453."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-18T20:14:02.132Z",
+      "body": "CORRECTION (audit): the second linked_commits entry was recorded at close with an incorrectly-expanded full SHA (2182168a2b3ac9861862dc0f75434fdb0f4fdfef — the orchestrator expanded the short SHA 2182168 from memory instead of resolving it). Corrected via surgical edit to the real SHA 21821687ede7675a830c8b429fc905716c6a41c7 (verified with git rev-parse). The first linked commit dcb2453b39c6f63f93dfd3aa7a946bc27d930d84 was resolved correctly. Process note: always git rev-parse before recording full SHAs — never expand from memory."
     }
   ],
   "created_at": "2026-07-18T17:49:09.119Z",
-  "updated_at": "2026-07-18T17:57:04.471Z",
+  "updated_at": "2026-07-18T20:14:02.132Z",
   "jira_key": null,
   "verification_tier": "uat-only",
   "marker": "[EXPLICIT]",
