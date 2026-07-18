@@ -228,4 +228,53 @@ describe('TASK-168 — kb_graph_query MCP tool (canonical-first read seam, brain
     }));
     expect(result.nodes.map((n) => n.id)).toEqual(['task-002']);
   });
+
+  // ---------------------------------------------------------------------------
+  // TASK-172 (KB-GRAPH-1a) — fixes a MEDIUM from the TASK-168 review: an
+  // unsupported arg combination must never silently drop a supplied filter.
+  //
+  // { id, type }: BEFORE this ticket, `type` was silently ignored and the call
+  // returned ALL neighbors of id (both decision-20260101-x and task-002 for
+  // task-001). CHOSEN SEMANTICS: `type` is applied as a post-filter on the
+  // neighbor result — only neighbors whose OWN node.type matches are kept. So
+  // { id: 'task-001', type: 'task' } must return only task-002, dropping the
+  // decision-typed neighbor. This test fails TODAY (pre-fix) because the
+  // unfiltered result still includes decision-20260101-x.
+  // ---------------------------------------------------------------------------
+  it('id_and_type_combination_applies_type_as_a_post_filter_on_the_neighbor_result', async () => {
+    const result = parse(await client.callTool({
+      name: 'kb_graph_query',
+      arguments: { id: 'task-001', type: 'task' },
+    }));
+    expect(result.nodes.map((n) => n.id)).toEqual(['task-002']);
+    expect(result.nodes.every((n) => n.type === 'task')).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // { type, direction } (no id): BEFORE this ticket, `direction` was silently
+  // ignored and the call returned every node of that type via nodesByType, as
+  // if direction had never been supplied. CHOSEN SEMANTICS: direction (and
+  // relation) only mean something relative to an edge anchored at a specific
+  // node id — a type-only query has no such anchor, so this combination is
+  // REJECTED with a typed error rather than silently ignoring the filter. This
+  // test fails TODAY (pre-fix) because the call currently succeeds
+  // (isError falsy) and silently returns all task nodes.
+  // ---------------------------------------------------------------------------
+  it('type_and_direction_without_an_id_is_rejected_as_a_typed_error_not_silently_ignored', async () => {
+    let surfaced = false;
+    try {
+      const res = await client.callTool({
+        name: 'kb_graph_query',
+        arguments: { type: 'task', direction: 'out' },
+      });
+      if (res && res.isError) surfaced = true;
+    } catch {
+      surfaced = true;
+    }
+    expect(surfaced, 'type + direction without an id must be a typed error, not a silently-accepted call').toBe(true);
+
+    // Server survives — a subsequent valid call still works.
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toContain('kb_graph_query');
+  });
 });

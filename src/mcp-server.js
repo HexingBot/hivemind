@@ -388,6 +388,18 @@ export function createServer({ repoRoot }) {
   // than an error. An invalid enum value (type/relation/direction) is
   // rejected by the zod input schema before the handler runs, surfacing as
   // an MCP `isError` result — a typed error, not a server crash.
+  //
+  // TASK-172 (KB-GRAPH-1a) — fixes a MEDIUM from the TASK-168 review: NO
+  // supplied filter is ever silently dropped.
+  //   { id, type }: `type` is applied as a POST-FILTER on the neighbor
+  //     result (only neighbors whose own node.type matches the requested
+  //     type survive) — this composes with relation/direction, which
+  //     already narrow the edge set before type is applied.
+  //   { type, direction } or { type, relation } WITHOUT `id`: relation and
+  //     direction only mean something relative to an edge anchored at a
+  //     specific node id; a type-only query has no such anchor, so this
+  //     shape is REJECTED with a typed error (thrown -> MCP `isError`)
+  //     rather than silently ignoring relation/direction.
   server.registerTool(
     'kb_graph_query',
     {
@@ -407,7 +419,12 @@ export function createServer({ repoRoot }) {
         + 'depend on live brain state and are outside that determinism '
         + 'guarantee. A missing id yields empty nodes, never a throw; '
         + 'omitting both id and type also yields an empty, documented '
-        + 'result.',
+        + 'result. No supplied filter is ever silently dropped: { id, type } '
+        + 'applies `type` as a POST-FILTER on the neighbor result (only '
+        + 'neighbors whose own type matches survive); `type` combined with '
+        + '`relation` or `direction` WITHOUT an `id` has no edge to anchor '
+        + 'the filter on and is REJECTED with a typed error instead of '
+        + 'silently ignoring relation/direction.',
       inputSchema: {
         id: z.string().optional().describe('Node id, e.g. TASK-168 or decision-20260101-x'),
         type: GRAPH_NODE_TYPE.optional().describe('Node type — filters a type-only query'),
@@ -422,7 +439,22 @@ export function createServer({ repoRoot }) {
         id: id ?? null, type: type ?? null, relation: relation ?? null, direction: direction ?? null,
       };
 
+      // TASK-172 — relation/direction narrow the edge set around a specific
+      // node id; without an id there is nothing to anchor them to. Reject
+      // rather than silently ignoring relation/direction on a type-only
+      // query (the pre-TASK-172 behavior).
+      if (id === undefined && type !== undefined && (relation !== undefined || direction !== undefined)) {
+        throw new Error(
+          'kb_graph_query: relation/direction require an id to anchor the edge '
+          + `filter — got { type: "${type}", relation: ${relation ?? 'undefined'}, `
+          + `direction: ${direction ?? 'undefined'} } without an id`,
+        );
+      }
+
       if (id !== undefined) {
+        let nodes;
+        let source;
+
         // relation/direction-filtered queries have no canonical-first path
         // yet (see the doc comment above) — go straight to the local
         // projection so the filter is honored, instead of silently
@@ -430,24 +462,37 @@ export function createServer({ repoRoot }) {
         // accept relation/direction).
         if (relation !== undefined || direction !== undefined) {
           try {
-            const local = await neighbors({
+            nodes = await neighbors({
               repoRoot, id, relation, direction,
             });
-            return ok({ query, source: 'projection', nodes: sortNodesById(local) });
+            source = 'projection';
           } catch (err) {
             if (err instanceof UnknownNodeIdError) {
-              return ok({ query, source: 'projection', nodes: [] });
+              nodes = [];
+              source = 'projection';
+            } else {
+              throw err;
             }
-            throw err;
           }
+        } else {
+          // Plain id query — the canonical-first merge seam. No brain is
+          // wired in this shipped server, so this always resolves via the
+          // local-projection fallback (neighborsCanonicalFirst's documented
+          // brain-absent behavior).
+          const result = await neighborsCanonicalFirst({ repoRoot, id });
+          nodes = result.neighbors;
+          source = result.source;
         }
 
-        // Plain id query — the canonical-first merge seam. No brain is
-        // wired in this shipped server, so this always resolves via the
-        // local-projection fallback (neighborsCanonicalFirst's documented
-        // brain-absent behavior).
-        const result = await neighborsCanonicalFirst({ repoRoot, id });
-        return ok({ query, source: result.source, nodes: sortNodesById(result.neighbors) });
+        // TASK-172 — `type` narrows an id query as a POST-FILTER on the
+        // neighbor result (only neighbors whose own node.type matches),
+        // instead of being silently dropped when both id and type are
+        // supplied.
+        if (type !== undefined) {
+          nodes = nodes.filter((n) => n.type === type);
+        }
+
+        return ok({ query, source, nodes: sortNodesById(nodes) });
       }
 
       if (type !== undefined) {
