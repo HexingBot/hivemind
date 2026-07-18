@@ -53,6 +53,10 @@ import {
 } from './task-store.js';
 import { loopModeCloseGuard, loopModeUatCommentGuard } from './close-guard.js';
 import { lookupKnowledge, recordKbReuse } from './knowledge.js';
+import {
+  GRAPH_SCHEMA, nodesByType, neighbors, UnknownNodeIdError,
+} from './knowledge-graph.js';
+import { neighborsCanonicalFirst } from './graph-sync.js';
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
@@ -67,6 +71,13 @@ const CONFIDENCE = z.object({
   verification_status: z.number().min(0).max(1).optional(),
 });
 
+// TASK-168 (KB-GRAPH-1) — kb_graph_query enums. Pulled directly off GRAPH_SCHEMA's
+// $defs (src/knowledge-graph.js) rather than re-listed, so the tool's input schema
+// cannot silently drift from the graph document schema it queries.
+const GRAPH_NODE_TYPE = z.enum(GRAPH_SCHEMA.$defs.node.properties.type.enum);
+const GRAPH_RELATION = z.enum(GRAPH_SCHEMA.$defs.edge.properties.relation.enum);
+const GRAPH_DIRECTION = z.enum(['out', 'in']);
+
 // Schema key shape (tasks/schema.json). Used as a path-injection guard on
 // get_task: a crafted key like `../../etc/passwd` must be rejected before any
 // read touches disk.
@@ -75,6 +86,20 @@ const KEY_RE = /^TASK-\d{3,}$/;
 /** Wrap any tool result value in the MCP text-content envelope. */
 function ok(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
+}
+
+/**
+ * kb_graph_query (TASK-168) — reshape a node into a fixed key order (id, type,
+ * ref, label) and sort the array by id ascending. This is what makes the
+ * response byte-stable regardless of the on-disk node order in graph.json
+ * (mirrors knowledge-graph.js's own serializeNode/sort convention).
+ */
+function sortNodesById(nodes) {
+  return [...nodes]
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((n) => ({
+      id: n.id, type: n.type, ref: n.ref, label: n.label,
+    }));
 }
 
 /**
@@ -325,6 +350,113 @@ export function createServer({ repoRoot }) {
         })),
         reuse: { bumped, failed },
       });
+    },
+  );
+
+  // TASK-168 (KB-GRAPH-1) — kb_graph_query: the graph's first programmatic
+  // query surface (before this ticket, knowledge/graph/graph.json was
+  // WRITE-ONLY — populated at ticket-close but never queried at decision
+  // time). Wraps neighbors()/nodesByType() (src/knowledge-graph.js).
+  //
+  // READ PATH (the merge seam, per the 2026-07-18 scope refinement,
+  // tasks/TASK-168.json comment): an `id` query is routed through
+  // src/graph-sync.js#neighborsCanonicalFirst so the SAME tool serves both a
+  // brain-absent mode (this shipped server: falls back to the local
+  // projection — behavior identical to a local-only tool) and a future
+  // brain-present mode (a canonical wisearcher graph, once a caller wires
+  // `brain`/`canonicalId` through createServer — not done here; no brain
+  // connection is stood up by this ticket). A `type`-only query has no
+  // canonical equivalent yet and stays on the local projection
+  // (nodesByType). `relation`/`direction` filters ALSO stay local-only for
+  // now: neighborsCanonicalFirst's brain path (brain-contract.md's
+  // `kb_neighbors`) is `canonical_id`-only with no relation/direction
+  // parameter, so a filtered query calls the local `neighbors()` directly
+  // instead of the canonical-first wrapper — documented here, not silently
+  // dropped.
+  //
+  // DETERMINISM (AC2): output nodes are always re-shaped to a fixed key
+  // order and sorted by id ascending (sortNodesById) before serialization,
+  // so identical graph.json + identical args is byte-stable on repeat
+  // invocation. This lock applies to the brain-ABSENT (local) path only —
+  // brain-present results depend on live brain state and are out of scope
+  // for the determinism guarantee (documented, not tested here).
+  //
+  // GRACEFUL DEGRADATION (AC3): a missing node id yields `{ nodes: [] }`,
+  // never a throw (UnknownNodeIdError is caught, same contract
+  // neighborsCanonicalFirst already gives every other caller). Args with
+  // neither `id` nor `type` also yield an empty, documented result rather
+  // than an error. An invalid enum value (type/relation/direction) is
+  // rejected by the zod input schema before the handler runs, surfacing as
+  // an MCP `isError` result — a typed error, not a server crash.
+  server.registerTool(
+    'kb_graph_query',
+    {
+      description:
+        'Query the internal knowledge graph (knowledge/graph/graph.json) '
+        + 'deterministically. Input: { id?, type?, relation?, direction? }. '
+        + 'An `id` query returns connected nodes via '
+        + 'graph-sync.js#neighborsCanonicalFirst (canonical-first when a '
+        + 'brain is wired; local-projection fallback otherwise — this '
+        + 'server ships brain-absent, so every call here uses the local '
+        + 'fallback). A `type`-only query returns all nodes of that type '
+        + 'via nodesByType (local only). `relation`/`direction` narrow an '
+        + '`id` query and are LOCAL-ONLY (no canonical-first equivalent '
+        + 'yet). Output is { query, source, nodes } with nodes sorted by '
+        + 'id ascending — byte-stable/reproducible for the same graph.json '
+        + '+ args on the brain-absent (local) path; brain-present results '
+        + 'depend on live brain state and are outside that determinism '
+        + 'guarantee. A missing id yields empty nodes, never a throw; '
+        + 'omitting both id and type also yields an empty, documented '
+        + 'result.',
+      inputSchema: {
+        id: z.string().optional().describe('Node id, e.g. TASK-168 or decision-20260101-x'),
+        type: GRAPH_NODE_TYPE.optional().describe('Node type — filters a type-only query'),
+        relation: GRAPH_RELATION.optional().describe('Edge relation — narrows an id query (local-only)'),
+        direction: GRAPH_DIRECTION.optional().describe('"out" | "in" — narrows an id query (local-only)'),
+      },
+    },
+    async ({
+      id, type, relation, direction,
+    }) => {
+      const query = {
+        id: id ?? null, type: type ?? null, relation: relation ?? null, direction: direction ?? null,
+      };
+
+      if (id !== undefined) {
+        // relation/direction-filtered queries have no canonical-first path
+        // yet (see the doc comment above) — go straight to the local
+        // projection so the filter is honored, instead of silently
+        // dropping it through neighborsCanonicalFirst (which does not
+        // accept relation/direction).
+        if (relation !== undefined || direction !== undefined) {
+          try {
+            const local = await neighbors({
+              repoRoot, id, relation, direction,
+            });
+            return ok({ query, source: 'projection', nodes: sortNodesById(local) });
+          } catch (err) {
+            if (err instanceof UnknownNodeIdError) {
+              return ok({ query, source: 'projection', nodes: [] });
+            }
+            throw err;
+          }
+        }
+
+        // Plain id query — the canonical-first merge seam. No brain is
+        // wired in this shipped server, so this always resolves via the
+        // local-projection fallback (neighborsCanonicalFirst's documented
+        // brain-absent behavior).
+        const result = await neighborsCanonicalFirst({ repoRoot, id });
+        return ok({ query, source: result.source, nodes: sortNodesById(result.neighbors) });
+      }
+
+      if (type !== undefined) {
+        const nodes = await nodesByType({ repoRoot, type });
+        return ok({ query, source: 'projection', nodes: sortNodesById(nodes) });
+      }
+
+      // Neither id nor type supplied — documented empty result, not a throw.
+      return ok({ query, source: 'projection', nodes: [] });
     },
   );
 

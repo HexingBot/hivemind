@@ -6855,12 +6855,12 @@ var require_dist = __commonJS({
     var fastName = new codegen_1.Name("fastFormats");
     var formatsPlugin = (ajv, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats4(ajv, opts, formats_1.fullFormats, fullName);
+        addFormats5(ajv, opts, formats_1.fullFormats, fullName);
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats4(ajv, list, formats, exportName);
+      addFormats5(ajv, list, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -6872,7 +6872,7 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats4(ajv, list, fs, exportName) {
+    function addFormats5(ajv, list, fs, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
@@ -11199,8 +11199,8 @@ __export(mcp_server_exports, {
   main: () => main
 });
 module.exports = __toCommonJS(mcp_server_exports);
-var import_promises2 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_promises3 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
 var import_node_url = require("node:url");
 
 // node_modules/zod/v3/external.js
@@ -23761,8 +23761,8 @@ function createDefaultAjvInstance() {
     validateSchema: false,
     allErrors: true
   });
-  const addFormats4 = import_ajv_formats.default;
-  addFormats4(ajv);
+  const addFormats5 = import_ajv_formats.default;
+  addFormats5(ajv);
   return ajv;
 }
 var AjvJsonSchemaValidator = class {
@@ -26276,6 +26276,115 @@ function makeErr(code, message) {
   return err;
 }
 
+// src/knowledge-graph.js
+var import_promises2 = require("node:fs/promises");
+var import_node_fs6 = require("node:fs");
+var import_node_path6 = require("node:path");
+var import_ajv_formats5 = __toESM(require_dist(), 1);
+var GRAPH_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://hivemind/knowledge/graph/schema.json",
+  title: "Knowledge Graph",
+  description: "Typed graph over knowledge entries, tasks, decisions and skills under knowledge/graph/graph.json.",
+  type: "object",
+  required: ["schema_version", "nodes", "edges"],
+  additionalProperties: false,
+  properties: {
+    schema_version: { const: 1 },
+    nodes: { type: "array", items: { $ref: "#/$defs/node" } },
+    edges: { type: "array", items: { $ref: "#/$defs/edge" } }
+  },
+  $defs: {
+    node: {
+      type: "object",
+      required: ["id", "type", "ref", "label"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string", minLength: 1 },
+        type: { type: "string", enum: ["knowledge_entry", "task", "decision", "skill"] },
+        ref: { type: "string", minLength: 1 },
+        label: { type: "string", minLength: 1 }
+      }
+    },
+    edge: {
+      type: "object",
+      required: ["from", "to", "relation"],
+      additionalProperties: false,
+      properties: {
+        from: { type: "string", minLength: 1 },
+        to: { type: "string", minLength: 1 },
+        relation: { type: "string", enum: ["learned-in", "blocks", "supersedes", "uses", "produced-by", "relates-to"] }
+      }
+    }
+  }
+};
+var UnknownNodeIdError = class extends Error {
+  constructor(id) {
+    super(`neighbors: node id "${id}" does not exist in the graph`);
+    this.name = "UnknownNodeIdError";
+    this.code = "E_GRAPH_UNKNOWN_ID";
+    this.id = id;
+  }
+};
+function graphPath(repoRoot) {
+  return (0, import_node_path6.join)(repoRoot, "knowledge", "graph", "graph.json");
+}
+function emptyGraph() {
+  return { schema_version: 1, nodes: [], edges: [] };
+}
+async function loadGraph({ repoRoot }) {
+  const path = graphPath(repoRoot);
+  if (!(0, import_node_fs6.existsSync)(path)) return emptyGraph();
+  const raw = await (0, import_promises2.readFile)(path, "utf8");
+  return JSON.parse(raw);
+}
+async function neighbors({ repoRoot, id, relation, direction }) {
+  const graph = await loadGraph({ repoRoot });
+  const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+  if (!nodeMap.has(id)) {
+    throw new UnknownNodeIdError(id);
+  }
+  const connectedIds = /* @__PURE__ */ new Set();
+  for (const edge of graph.edges) {
+    if (relation !== void 0 && edge.relation !== relation) continue;
+    if (direction === "out") {
+      if (edge.from === id) connectedIds.add(edge.to);
+    } else if (direction === "in") {
+      if (edge.to === id) connectedIds.add(edge.from);
+    } else {
+      if (edge.from === id) connectedIds.add(edge.to);
+      if (edge.to === id) connectedIds.add(edge.from);
+    }
+  }
+  const result = [];
+  for (const nid of connectedIds) {
+    const node = nodeMap.get(nid);
+    if (node) result.push(node);
+  }
+  return result;
+}
+async function nodesByType({ repoRoot, type }) {
+  const graph = await loadGraph({ repoRoot });
+  return graph.nodes.filter((n) => n.type === type);
+}
+
+// src/graph-sync.js
+async function neighborsCanonicalFirst({ brain, repoRoot, id, canonicalId, neighbors: neighbors2 = neighbors }) {
+  if (brain && canonicalId) {
+    const r = await brain.neighbors({ canonical_id: canonicalId });
+    if (r.source === "brain") return { source: "brain", neighbors: r.neighbors };
+  }
+  try {
+    const local = await neighbors2({ repoRoot, id });
+    return { source: "projection", neighbors: local };
+  } catch (err) {
+    if (err instanceof UnknownNodeIdError || err?.code === "E_GRAPH_UNKNOWN_ID") {
+      return { source: "projection", neighbors: [] };
+    }
+    throw err;
+  }
+}
+
 // src/mcp-server.js
 var import_meta = {};
 var PRIORITY = external_exports.enum(["low", "medium", "high", "critical"]);
@@ -26289,16 +26398,27 @@ var CONFIDENCE = external_exports.object({
   corroboration: external_exports.number().min(0).max(1).optional(),
   verification_status: external_exports.number().min(0).max(1).optional()
 });
+var GRAPH_NODE_TYPE = external_exports.enum(GRAPH_SCHEMA.$defs.node.properties.type.enum);
+var GRAPH_RELATION = external_exports.enum(GRAPH_SCHEMA.$defs.edge.properties.relation.enum);
+var GRAPH_DIRECTION = external_exports.enum(["out", "in"]);
 var KEY_RE = /^TASK-\d{3,}$/;
 function ok(value) {
   return { content: [{ type: "text", text: JSON.stringify(value) }] };
+}
+function sortNodesById(nodes) {
+  return [...nodes].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map((n) => ({
+    id: n.id,
+    type: n.type,
+    ref: n.ref,
+    label: n.label
+  }));
 }
 async function readTask(repoRoot, key) {
   if (!KEY_RE.test(key)) {
     throw new Error(`invalid task key: ${key} (must match ${KEY_RE})`);
   }
   try {
-    const raw = await (0, import_promises2.readFile)((0, import_node_path6.join)(repoRoot, "tasks", `${key}.json`), "utf8");
+    const raw = await (0, import_promises3.readFile)((0, import_node_path7.join)(repoRoot, "tasks", `${key}.json`), "utf8");
     return JSON.parse(raw);
   } catch (err) {
     if (err && err.code === "ENOENT") return null;
@@ -26453,11 +26573,61 @@ function createServer({ repoRoot }) {
         query: question,
         kb_hits: ranked.map((hit) => ({
           id: hit.id,
-          path: (0, import_node_path6.join)(repoRoot, "knowledge", "entries", `${hit.id}.md`),
+          path: (0, import_node_path7.join)(repoRoot, "knowledge", "entries", `${hit.id}.md`),
           score: hit.score
         })),
         reuse: { bumped, failed }
       });
+    }
+  );
+  server.registerTool(
+    "kb_graph_query",
+    {
+      description: "Query the internal knowledge graph (knowledge/graph/graph.json) deterministically. Input: { id?, type?, relation?, direction? }. An `id` query returns connected nodes via graph-sync.js#neighborsCanonicalFirst (canonical-first when a brain is wired; local-projection fallback otherwise \u2014 this server ships brain-absent, so every call here uses the local fallback). A `type`-only query returns all nodes of that type via nodesByType (local only). `relation`/`direction` narrow an `id` query and are LOCAL-ONLY (no canonical-first equivalent yet). Output is { query, source, nodes } with nodes sorted by id ascending \u2014 byte-stable/reproducible for the same graph.json + args on the brain-absent (local) path; brain-present results depend on live brain state and are outside that determinism guarantee. A missing id yields empty nodes, never a throw; omitting both id and type also yields an empty, documented result.",
+      inputSchema: {
+        id: external_exports.string().optional().describe("Node id, e.g. TASK-168 or decision-20260101-x"),
+        type: GRAPH_NODE_TYPE.optional().describe("Node type \u2014 filters a type-only query"),
+        relation: GRAPH_RELATION.optional().describe("Edge relation \u2014 narrows an id query (local-only)"),
+        direction: GRAPH_DIRECTION.optional().describe('"out" | "in" \u2014 narrows an id query (local-only)')
+      }
+    },
+    async ({
+      id,
+      type,
+      relation,
+      direction
+    }) => {
+      const query = {
+        id: id ?? null,
+        type: type ?? null,
+        relation: relation ?? null,
+        direction: direction ?? null
+      };
+      if (id !== void 0) {
+        if (relation !== void 0 || direction !== void 0) {
+          try {
+            const local = await neighbors({
+              repoRoot,
+              id,
+              relation,
+              direction
+            });
+            return ok({ query, source: "projection", nodes: sortNodesById(local) });
+          } catch (err) {
+            if (err instanceof UnknownNodeIdError) {
+              return ok({ query, source: "projection", nodes: [] });
+            }
+            throw err;
+          }
+        }
+        const result = await neighborsCanonicalFirst({ repoRoot, id });
+        return ok({ query, source: result.source, nodes: sortNodesById(result.neighbors) });
+      }
+      if (type !== void 0) {
+        const nodes = await nodesByType({ repoRoot, type });
+        return ok({ query, source: "projection", nodes: sortNodesById(nodes) });
+      }
+      return ok({ query, source: "projection", nodes: [] });
     }
   );
   return server;

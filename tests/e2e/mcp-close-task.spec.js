@@ -112,10 +112,11 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
   // AC3 — the close_task tool is registered.
   // ---------------------------------------------------------------------------
   it('registers_close_task_as_a_seventh_tool', async () => {
-    // TASK-106 (R18) later added an eighth tool, kb_lookup — see
-    // tests/e2e/kb-lookup-seam.spec.js — so this list is now eight, not seven,
-    // but close_task's historical position (7th added) is what this test name
-    // documents; kept for that narrative continuity.
+    // TASK-106 (R18) later added an eighth tool, kb_lookup, and TASK-168
+    // (KB-GRAPH-1) a ninth, kb_graph_query — see tests/e2e/kb-lookup-seam.spec.js
+    // and tests/e2e/kb-graph-query.spec.js — so this list is now nine, not
+    // seven, but close_task's historical position (7th added) is what this
+    // test name documents; kept for that narrative continuity.
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
@@ -124,6 +125,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         'close_task',
         'create_task',
         'get_task',
+        'kb_graph_query',
         'kb_lookup',
         'list_ready',
         'list_todos',
