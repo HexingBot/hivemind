@@ -1036,6 +1036,14 @@ third-party skill.
 - **`/hivemind:design-pack`** (`commands/design-pack.md`) drives the resolve -> reconcile-plan ->
   reconcile-apply sequence end to end for the design-power pack and reports the split between what
   was materialized and what the human still needs to install themselves.
+- **Tracked external design tools** (`impeccable`, `taste-skill`, `higgsfield`, `21st-dev-magic`;
+  TASK-178) are deliberately INERT in the reconciler — no `resourceActivations` entry, so they never
+  appear in `resolve`/`reconcile-plan`/`report`. `/hivemind:design-pack`'s own Step 6 (TASK-179)
+  reads them directly from the descriptor's `resources[]` instead and OFFERS to run their upstream
+  installers on an explicit, per-tool human consent — never autonomous, never liftable by any
+  `loop_auth` grant (mirrors the assimilation carve-out below). This offer is additive to Step 5's
+  existing three-list report and lives only in that deliberate, human-invoked command; the
+  reconciler itself stays inert for these four resources.
 - **Assimilation** is the ONLY supported way a project adopts a third-party Agent Skill
   (including a design-pack's own bundled skill resources like `ui-ux-pro-max`) — fetch+pin, license
   classify, risky-pattern scan, a spawned security-reviewer subagent verdict over the skill's

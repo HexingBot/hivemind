@@ -36,8 +36,17 @@
 
 import { DESIGN_PROFILE_QUESTIONS, deriveProfileFields } from './design-profile.js';
 import __designPowerDescriptor from '../packs/design-power/descriptor.json' with { type: 'json' };
+// TASK-176 — the assimilated `watch` skill's built-in descriptor (owned copy
+// staged at assimilated-skills/watch/, integrations.lock.json's skill:watch
+// edge owned by watch@0.2.0). No module entry is needed: it contributes no
+// intake questions and no PROJECT.md fields (empty trigger/profile/
+// project_md_contribution — see packs/watch/descriptor.json), just a single
+// always-on skill resource (src/pack-resources.js#resolveDesired's TASK-176
+// "always" seam) that reconcile-apply materializes unconditionally.
+import __watchDescriptor from '../packs/watch/descriptor.json' with { type: 'json' };
 
 export const DESIGN_POWER_DESCRIPTOR = __designPowerDescriptor;
+export const WATCH_DESCRIPTOR = __watchDescriptor;
 
 /**
  * Thin off-by-default gate around the REAL deriveProfileFields (see header).
@@ -60,5 +69,12 @@ export const DESIGN_POWER_MODULE = {
 // escape hatch) overrides this default entirely — JS default-parameter
 // semantics, not a merge. Future built-in (first-party) packs are added here
 // as additional descriptor/module pairs — a single accretion point.
-export const BUILTIN_PACK_DESCRIPTORS = [DESIGN_POWER_DESCRIPTOR];
+//
+// TASK-176 — WATCH_DESCRIPTOR is appended here with NO corresponding
+// BUILTIN_PACK_MODULES entry: src/pack-loader.js#loadActivePacks binds any
+// descriptor with no matching moduleRegistry key to an empty module ({}),
+// which collectPackQuestions/applyProjectMdContributions both already treat
+// as contributing nothing — consistent with the descriptor's own empty
+// trigger/profile/project_md_contribution.
+export const BUILTIN_PACK_DESCRIPTORS = [DESIGN_POWER_DESCRIPTOR, WATCH_DESCRIPTOR];
 export const BUILTIN_PACK_MODULES = { [DESIGN_POWER_DESCRIPTOR.id]: DESIGN_POWER_MODULE };

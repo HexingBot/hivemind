@@ -31,7 +31,7 @@ import { describe, it, expect } from 'vitest';
 
 import { resolveDesired } from '../src/pack-resources.js';
 import { scoreComplexity, resourceActivations } from '../src/design-profile.js';
-import { DESIGN_POWER_DESCRIPTOR } from '../src/builtin-packs.js';
+import { DESIGN_POWER_DESCRIPTOR, WATCH_DESCRIPTOR } from '../src/builtin-packs.js';
 
 const ALL_RESOURCE_IDS = DESIGN_POWER_DESCRIPTOR.resources.map((r) => r.id);
 
@@ -177,5 +177,58 @@ describe('shape + purity', () => {
   it('handles_a_descriptor_with_no_resources_array_by_returning_empty', () => {
     const profileResult = scoreComplexity({ ...COMPLETO_VUE_BASE_ANSWERS, ui_outside_canvas: 'yes' });
     expect(resolveDesired({ id: 'empty-pack' }, profileResult)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-176 — the generic (non-design) "always" activation seam. A resource
+// whose `activate_when` is the exact-string sentinel "always" (e.g. the
+// assimilated `watch` pack's resource, packs/watch/descriptor.json) is kept
+// UNCONDITIONALLY, regardless of the profile, without ever consulting
+// resourceActivations. Every existing design-power resource keeps gating via
+// resourceActivations exactly as before — this is a REGRESSION LOCK proving
+// the new seam is additive, not a behavior change for design-power.
+// ---------------------------------------------------------------------------
+describe('TASK-176 — activate_when:"always" is unconditional; design-power activation is unchanged', () => {
+  it('an_always_resource_is_activated_for_an_arbitrary_and_even_an_empty_profile', () => {
+    // WATCH_DESCRIPTOR's own single resource carries activate_when: "always".
+    const arbitraryProfile = scoreComplexity({ design_heavy: 'no' }); // LIGERO/no-design
+    const emptyProfile = {}; // not even a real scoreComplexity() shape.
+
+    expect(resolveDesired(WATCH_DESCRIPTOR, arbitraryProfile).map((r) => r.id)).toEqual(['watch']);
+    expect(resolveDesired(WATCH_DESCRIPTOR, emptyProfile).map((r) => r.id)).toEqual(['watch']);
+  });
+
+  it('every_design_power_resources_activation_is_byte_for_byte_unchanged_by_the_always_seam', () => {
+    // None of design-power's OWN activate_when strings equal the exact
+    // sentinel "always" (they are freeform descriptive strings like "always
+    // (design_heavy)"), so this asserts resolveDesired(DESIGN_POWER_DESCRIPTOR, ...)
+    // still activates EXACTLY the resourceActivations()-true set, for a
+    // representative spread of profiles, matching pre-TASK-176 behavior.
+    const profiles = [
+      scoreComplexity({ design_heavy: 'no' }), // LIGERO/no-design
+      scoreComplexity({ ...COMPLETO_VUE_BASE_ANSWERS, ui_outside_canvas: 'yes' }), // COMPLETO
+    ];
+
+    for (const profileResult of profiles) {
+      const activations = resourceActivations(profileResult);
+      const expectedIds = DESIGN_POWER_DESCRIPTOR.resources
+        .filter((r) => activations[r.id] === true)
+        .map((r) => r.id)
+        .sort();
+      const actualIds = idsOf(resolveDesired(DESIGN_POWER_DESCRIPTOR, profileResult));
+      expect(actualIds).toEqual(expectedIds);
+    }
+  });
+
+  it('no_design_power_resource_activate_when_string_equals_the_always_sentinel_exactly', () => {
+    // Guards the "no collision" claim itself: if a future edit to
+    // packs/design-power/descriptor.json ever changed a resource's
+    // activate_when to the bare string "always", it would silently start
+    // being kept unconditionally by the new seam above -- this fails loudly
+    // instead.
+    for (const resource of DESIGN_POWER_DESCRIPTOR.resources) {
+      expect(resource.activate_when).not.toBe('always');
+    }
   });
 });

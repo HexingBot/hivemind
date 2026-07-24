@@ -14,6 +14,21 @@
       "installed_at": "2026-07-09T01:39:45.792Z",
       "install_method": "assimilated",
       "verified": "unsigned"
+    },
+    "skill:watch": {
+      "kind": "skill",
+      "origin": "github.com/bradautomates/claude-video",
+      "pin": "83da59fa78c3eee9e20f515fe75c438bb5166efd",
+      "source_integrity": "sha256:19e27cffad1b024bb6bd0ae92540f78be739a1acde5b7057096f22fb14ccad0b",
+      "content_integrity": "sha256:74b70be831417c54f2820e0282ce9411b893902bc7a292ba22c3b14e78f5a834",
+      "scope": "project",
+      "owners": [
+        "watch@0.2.0"
+      ],
+      "required": "soft",
+      "installed_at": "2026-07-23T18:29:37.815Z",
+      "install_method": "assimilated",
+      "verified": "unsigned"
     }
   }
 }

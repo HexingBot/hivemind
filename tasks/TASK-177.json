@@ -1,0 +1,41 @@
+{
+  "key": "TASK-177",
+  "title": "Encode anti-slop design build-workflow patterns into the design-power pack guidance",
+  "description": "Capture the vendor-neutral process patterns from the reference video (github.com/bradautomates/claude-video's subject creator; source: YouTube 7FU98O0JLHs, \"defeat AI slop in 3 steps\") into the design-power pack's design guidance. This is PURE internal authoring — no third-party code, no supply-chain trust. Adopting the actual external tools (Impeccable, Taste Skill, Higgsfield MCP, 21st.dev) is tracked separately and is human-gated (the human chose TRACKED installs, not assimilation).\n\nEncode these patterns as design guidance (a references doc under the design-power skill guidance, and/or pipeline-step notes — do not bloat SKILL.md frontmatter):\n1. Taste/inspiration step: curate a reference library (Dribbble/Pinterest/X), grouped by design type with design vocabulary + reusable image-prompt/brief per item; feed as the foundation instead of one-shotting.\n2. Four-part prompt template: (a) aesthetic/design family, (b) reference image(s) from the taste library (feel, not copy), (c) intent (what/why, target audience, desired user action), (d) guardrails (always/never — e.g. never purple gradients, never Inter font, no 3D SaaS blobs).\n3. Wide-net-then-narrow build sequence: generate ~5 versions in 5 distinct styles side-by-side → pick 1 → 3 body variants → pick 1 → tweak; compare on one screen rather than serial one-shots.\n4. Assets-last ordering: nail the hero image (generate several, pick, then color variants) before fine typography; then transitions/motion/\"weight\"/reveal distance.\n5. Live tweaks-bar pattern: add a Claude-Design-style tweak bar to the dev server (font family/size, accent colors, motion, reveal distance) for fast visual iteration instead of prompt-and-pray.\n6. Anti-slop lens: the 7 axes (typography, color, spatial, responsiveness, interaction, motion, UX writing) as a review checklist; reference that a fuller slop-pattern catalogue exists upstream.\n\nKeep it vendor-neutral (patterns, not tool ads). Cross-reference the tracked-tool adoption ticket once it exists. verification_tier uat-only: this is guidance/docs, verified by reading the authored guidance against these six points.",
+  "acceptance_criteria": [
+    "A design build-workflow guidance doc is added under the design-power pack's skill guidance (references/ or equivalent), not crammed into SKILL.md frontmatter",
+    "The doc covers all six patterns: taste/inspiration library, the four-part prompt template, wide-net-then-narrow build sequence, assets-last ordering, live tweaks-bar, and the 7-axis anti-slop review lens",
+    "Guidance is vendor-neutral (describes patterns/process, does not hard-depend on any specific third-party tool)",
+    "It cross-references (by ticket key or descriptor resource) the separately-tracked external-tool adoption once that lands",
+    "UAT: read the authored guidance and confirm each of the six patterns is present and actionable"
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "design-power",
+    "guidance",
+    "design-workflow"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-07-23T21:33:30.121Z",
+      "body": "UAT (verified by Orchestrator — read the committed doc packs/design-power/references/design-build-workflow.md at aa1bb30 against each AC; human can review the file directly). Steps (expected → observed → verdict):\n1. Guidance doc lives under the pack references/, not SKILL.md frontmatter → packs/design-power/references/design-build-workflow.md created; README.md gets a one-line pointer; no frontmatter touched → PASS\n2. Covers all six patterns, each actionable → §1 taste/inspiration library (5-15 refs, grouped, vocabulary+reusable brief), §2 four-part prompt template (aesthetic/reference/intent/guardrails with always-never), §3 wide-net→narrow 5→1→3→1→tweak side-by-side, §4 assets-last (hero-first→type→motion), §5 live tweaks-bar (font/color/motion-weight/reveal-distance, CSS vars, no build step), §6 7-axis anti-slop lens (typography/color/spatial/responsiveness/interaction/motion/UX-writing) → PASS\n3. Vendor-neutral (no hard dependency on a specific third-party tool) → explicit \"process, not products\" framing; no tool named as a dependency → PASS\n4. Cross-references the tracked external-tool ticket → cross-references TASK-178 in the intro and a dedicated Cross-reference section → PASS\n5. Each pattern present and actionable → confirmed; patterns are tied to concrete pipeline steps (reference/art-direction/implementation/assets/motion/polish/testing) → PASS\nOverall: PASS. Fast tier green (999 passed/2 skipped); docs-only, no src/dist/schema touched."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-07-23T21:33:40.504Z",
+      "body": "DONE (uat-only). Added vendor-neutral anti-slop design build-workflow guidance to the design-power pack: packs/design-power/references/design-build-workflow.md + a README pointer (commit aa1bb30, docs:). Covers all six process patterns (taste/inspiration library, four-part prompt template, wide-net→narrow 5→1→3→1 build sequence, assets-last/hero-first ordering, live tweaks-bar, 7-axis anti-slop review lens), each mapped to the pack pipeline steps and cross-referencing TASK-178 for the separately-tracked external tools. UAT PASS on all ACs (orchestrator-verified against the committed doc; see uat comment). Docs-only — no src/dist/schema touched; fast tier green (999 passed/2 skipped), no test:all needed. No review subagent gate for a uat-only docs ticket; no HIGH finding / no RC loop → no knowledge draft."
+    }
+  ],
+  "created_at": "2026-07-23T20:15:58.317Z",
+  "updated_at": "2026-07-23T21:33:40.504Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

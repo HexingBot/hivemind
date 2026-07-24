@@ -1,0 +1,22 @@
+{
+  "id": "watch",
+  "name": "Watch",
+  "version": "0.2.0",
+  "core_compat": ">=1.0.0",
+  "trigger": {},
+  "project_md_contribution": [],
+  "profile": {},
+  "resources": [
+    {
+      "id": "watch",
+      "kind": "skill",
+      "origin": "github.com/bradautomates/claude-video",
+      "pin": "83da59fa78c3eee9e20f515fe75c438bb5166efd",
+      "scope": "project",
+      "required": "soft",
+      "activate_when": "always"
+    }
+  ],
+  "gate_scopes": [],
+  "pipeline": []
+}

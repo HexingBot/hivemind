@@ -22,6 +22,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DESIGN_POWER_DESCRIPTOR,
   DESIGN_POWER_MODULE,
+  WATCH_DESCRIPTOR,
   BUILTIN_PACK_DESCRIPTORS,
   BUILTIN_PACK_MODULES,
 } from '../src/builtin-packs.js';
@@ -139,9 +140,14 @@ describe('AC2 (unit-level) — the self-gate: design_heavy !== "yes" derives not
 });
 
 describe('BUILTIN_PACK_DESCRIPTORS / BUILTIN_PACK_MODULES — the bin/init.js default shape', () => {
+  // TASK-176 — WATCH_DESCRIPTOR joined the accretion point alongside
+  // DESIGN_POWER_DESCRIPTOR; it has no BUILTIN_PACK_MODULES entry of its own
+  // (loadActivePacks binds it to an empty {} module — see src/builtin-packs.js's
+  // own TASK-176 comment).
   it('descriptors_and_modules_are_keyed_consistently_by_descriptor_id', () => {
-    expect(BUILTIN_PACK_DESCRIPTORS).toEqual([DESIGN_POWER_DESCRIPTOR]);
+    expect(BUILTIN_PACK_DESCRIPTORS).toEqual([DESIGN_POWER_DESCRIPTOR, WATCH_DESCRIPTOR]);
     expect(BUILTIN_PACK_MODULES[DESIGN_POWER_DESCRIPTOR.id]).toBe(DESIGN_POWER_MODULE);
+    expect(BUILTIN_PACK_MODULES[WATCH_DESCRIPTOR.id]).toBeUndefined();
   });
 
   it('loadActivePacks_shape_binds_the_default_descriptor_to_the_default_module', async () => {
@@ -152,6 +158,7 @@ describe('BUILTIN_PACK_DESCRIPTORS / BUILTIN_PACK_MODULES — the bin/init.js de
     });
     expect(activePacks).toEqual([
       { descriptor: DESIGN_POWER_DESCRIPTOR, module: DESIGN_POWER_MODULE },
+      { descriptor: WATCH_DESCRIPTOR, module: {} },
     ]);
   });
 });

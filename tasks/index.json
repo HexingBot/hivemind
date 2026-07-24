@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-18T21:36:20.339Z",
+  "generated_at": "2026-07-24T00:58:38.512Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1026,6 +1026,30 @@
       "title": "Post-epic LOW batch: deep-review + per-ticket-review cosmetic/test-gap follow-ups (TASK-165..174 drive)",
       "status": "todo",
       "priority": "low"
+    },
+    {
+      "key": "TASK-176",
+      "title": "Register `watch` as a built-in pack so the assimilated video skill materializes into .claude/skills/",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-177",
+      "title": "Encode anti-slop design build-workflow patterns into the design-power pack guidance",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-178",
+      "title": "Register Impeccable, Taste Skill, Higgsfield MCP, 21st.dev as tracked (non-assimilated) design-power resources",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-179",
+      "title": "Offer 1-click consented install of tracked external design tools in /hivemind:design-pack (super-design out-of-box)",
+      "status": "done",
+      "priority": "high"
     }
   ]
 }

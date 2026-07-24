@@ -8,6 +8,17 @@ The single source of version truth is `.claude-plugin/plugin.json`. Because the
 plugin installs from this repository's `main` branch via the marketplace, a
 release is the `main` HEAD at the tagged version.
 
+## [0.18.0] — 2026-07-23
+
+Design-pack expansion release. Adds the `watch` video skill as a built-in pack, a generic (non-design) reconciler activation seam, and a tracked, human-consented way for framework consumers to adopt best-in-class third-party design skills/MCPs "out of the box" without vendoring them.
+
+### Added
+- **`watch` built-in pack** — the `watch` video skill (`github.com/bradautomates/claude-video`, MIT) assimilated as an owned/vetted copy and registered as a built-in pack so it materializes into `.claude/skills/` via `reconcile-apply`. (TASK-176)
+- **Generic reconciler activation seam** — a descriptor resource with `activate_when: "always"` activates independent of the design profile (`src/pack-resources.js#resolveDesired`), decoupling non-design packs from the design-profile map. (TASK-176)
+- **Anti-slop design build-workflow guidance** — vendor-neutral process patterns in `packs/design-power/references/design-build-workflow.md`. (TASK-177)
+- **Tracked external design tools** — Impeccable, Taste Skill, Higgsfield MCP, 21st.dev Magic MCP registered in the design-power descriptor as non-assimilated, upstream-tracking Wave-2 resources (inert in the reconciler by design). (TASK-178)
+- **Consented design-tool install offer** — `/hivemind:design-pack` Step 6 offers to install those tools from upstream on an explicit, per-tool human "yes"; never autonomous, never liftable by any `loop_auth` grant. (TASK-179)
+
 ## [0.17.0] — 2026-07-18
 
 Intake-quality and knowledge-graph activation release, produced by a single

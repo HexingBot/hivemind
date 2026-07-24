@@ -8635,6 +8635,46 @@ var descriptor_default = {
       required: "soft",
       activate_when: "tier==COMPLETO && ui_outside_canvas",
       install: "claude mcp add playwright -- npx @playwright/mcp@0.0.77"
+    },
+    {
+      id: "impeccable",
+      kind: "plugin",
+      origin: "github.com/pbakaus/impeccable",
+      pin: "skill-v4.0.2 (commit fc2e694afca1ac0cc384b4fe56bab3335fea7912)",
+      scope: "project",
+      required: "soft",
+      activate_when: "manual (design_heavy) \u2014 Wave-2 tracked, human-installed, report-only; not gated by resourceActivations (TASK-178)",
+      install: "/plugin marketplace add pbakaus/impeccable (tracks upstream latest; pinned reference above is tag skill-v4.0.2 \u2014 human ratifies before install)"
+    },
+    {
+      id: "taste-skill",
+      kind: "plugin",
+      origin: "github.com/Leonxlnx/taste-skill",
+      pin: "e988add20dab0fa97d7a76781c48961c8184288e",
+      scope: "project",
+      required: "soft",
+      activate_when: "manual (design_heavy) \u2014 Wave-2 tracked, human-installed, report-only; not gated by resourceActivations (TASK-178)",
+      install: "npx skills add https://github.com/Leonxlnx/taste-skill (third-party 'npx skills' CLI ecosystem; pin is a commit SHA on Leonxlnx/taste-skill's main branch, NOT the taste-skill-v2 branch)"
+    },
+    {
+      id: "higgsfield",
+      kind: "mcp",
+      origin: "higgsfield.ai",
+      pin: "https://mcp.higgsfield.ai/mcp (endpoint@2026-07-23)",
+      scope: "user",
+      required: "soft",
+      activate_when: "manual (design_heavy) \u2014 Wave-2 tracked, human-installed, auth+paid, report-only; not gated by resourceActivations (TASK-178)",
+      install: "claude mcp add --transport http --scope user higgsfield https://mcp.higgsfield.ai/mcp (requires OAuth login + paid credits)"
+    },
+    {
+      id: "21st-dev-magic",
+      kind: "mcp",
+      origin: "github.com/21st-dev/cli",
+      pin: "1.9.0",
+      scope: "project",
+      required: "soft",
+      activate_when: "manual (design_heavy; framework==react) \u2014 Wave-2 tracked, human-installed, report-only; not gated by resourceActivations (TASK-178)",
+      install: "npx @21st-dev/cli@1.9.0 install claude --api-key <key> (requires an API key; free tier is 2 runs/day)"
     }
   ],
   gate_scopes: ["design_pipeline"],
@@ -8651,8 +8691,33 @@ var descriptor_default = {
   ]
 };
 
+// packs/watch/descriptor.json
+var descriptor_default2 = {
+  id: "watch",
+  name: "Watch",
+  version: "0.2.0",
+  core_compat: ">=1.0.0",
+  trigger: {},
+  project_md_contribution: [],
+  profile: {},
+  resources: [
+    {
+      id: "watch",
+      kind: "skill",
+      origin: "github.com/bradautomates/claude-video",
+      pin: "83da59fa78c3eee9e20f515fe75c438bb5166efd",
+      scope: "project",
+      required: "soft",
+      activate_when: "always"
+    }
+  ],
+  gate_scopes: [],
+  pipeline: []
+};
+
 // src/builtin-packs.js
 var DESIGN_POWER_DESCRIPTOR = descriptor_default;
+var WATCH_DESCRIPTOR = descriptor_default2;
 function deriveProjectMdGated(answers) {
   if (!answers || answers.design_heavy !== "yes") return {};
   return deriveProfileFields(answers);
@@ -8661,14 +8726,19 @@ var DESIGN_POWER_MODULE = {
   questions: DESIGN_PROFILE_QUESTIONS,
   deriveProjectMd: deriveProjectMdGated
 };
-var BUILTIN_PACK_DESCRIPTORS = [DESIGN_POWER_DESCRIPTOR];
+var BUILTIN_PACK_DESCRIPTORS = [DESIGN_POWER_DESCRIPTOR, WATCH_DESCRIPTOR];
 var BUILTIN_PACK_MODULES = { [DESIGN_POWER_DESCRIPTOR.id]: DESIGN_POWER_MODULE };
 
 // src/pack-resources.js
+var ALWAYS_ACTIVATE_SENTINEL = "always";
 function resolveDesired(descriptor, profileResult) {
   const resources = Array.isArray(descriptor?.resources) ? descriptor.resources : [];
-  const activations = resourceActivations(profileResult);
-  return resources.filter((resource) => resource && activations[resource.id] === true);
+  let activations;
+  const getActivations = () => {
+    if (activations === void 0) activations = resourceActivations(profileResult);
+    return activations;
+  };
+  return resources.filter((resource) => resource && (resource.activate_when === ALWAYS_ACTIVATE_SENTINEL || getActivations()[resource.id] === true));
 }
 
 // src/pack-reconcile.js

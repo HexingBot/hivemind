@@ -1296,6 +1296,30 @@
       "type": "task",
       "ref": "tasks/TASK-174.json",
       "label": "Intake: interactive-path skipped definition fields become null and render a stray '- null' bullet in PROJECT.md"
+    },
+    {
+      "id": "task-176",
+      "type": "task",
+      "ref": "tasks/TASK-176.json",
+      "label": "Register `watch` as a built-in pack so the assimilated video skill materializes into .claude/skills/"
+    },
+    {
+      "id": "task-177",
+      "type": "task",
+      "ref": "tasks/TASK-177.json",
+      "label": "Encode anti-slop design build-workflow patterns into the design-power pack guidance"
+    },
+    {
+      "id": "task-178",
+      "type": "task",
+      "ref": "tasks/TASK-178.json",
+      "label": "Register Impeccable, Taste Skill, Higgsfield MCP, 21st.dev as tracked (non-assimilated) design-power resources"
+    },
+    {
+      "id": "task-179",
+      "type": "task",
+      "ref": "tasks/TASK-179.json",
+      "label": "Offer 1-click consented install of tracked external design tools in /hivemind:design-pack (super-design out-of-box)"
     }
   ],
   "edges": [

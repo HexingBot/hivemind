@@ -61,7 +61,7 @@ import { REPO_ROOT } from '../helpers/repoRoot.js';
 import { writeProjectMd } from '../../src/project-md.js';
 import { scoreComplexity, deriveProfileFields } from '../../src/design-profile.js';
 import { resolveDesired } from '../../src/pack-resources.js';
-import { DESIGN_POWER_DESCRIPTOR } from '../../src/builtin-packs.js';
+import { DESIGN_POWER_DESCRIPTOR, WATCH_DESCRIPTOR } from '../../src/builtin-packs.js';
 
 afterAll(cleanupAll);
 
@@ -148,9 +148,19 @@ describe('AC1 — resolve prints the desired resource set as JSON', () => {
     expect(result.status).toBe(0);
     expect(result.json.ok).toBe(true);
 
-    const expected = resolveDesired(DESIGN_POWER_DESCRIPTOR, scoreComplexity(MEDIO_OTHER_ANSWERS));
+    // TASK-176 — the built-in pack set now aggregates BOTH design-power (this
+    // project's MEDIO/other profile) AND watch (unconditionally "always" on,
+    // src/pack-resources.js's TASK-176 seam), in the same pack order
+    // src/pack-registry.js#resolveActivePacks sorts by ("design-power" <
+    // "watch" alphabetically) — never a reimplementation of resolveDesired's
+    // own per-pack filtering.
+    const profileResult = scoreComplexity(MEDIO_OTHER_ANSWERS);
+    const expected = [
+      ...resolveDesired(DESIGN_POWER_DESCRIPTOR, profileResult),
+      ...resolveDesired(WATCH_DESCRIPTOR, profileResult),
+    ];
     expect(result.json.desired).toEqual(expected);
-    expect(result.json.desired.map((r) => r.id).sort()).toEqual(['frontend-design', 'ui-ux-pro-max']);
+    expect(result.json.desired.map((r) => r.id).sort()).toEqual(['frontend-design', 'ui-ux-pro-max', 'watch']);
   });
 });
 
@@ -185,24 +195,39 @@ describe('AC3 — reconcile-apply materializes skills and writes integrations.lo
   it('first_run_materializes_the_skill_and_records_the_lock_owner_then_second_run_is_a_no_op', async () => {
     const root = await makeProject();
     stageOwnedSkill(root, 'ui-ux-pro-max', '# UI/UX Pro Max\nFixture owned copy.\n');
+    // TASK-176 — watch is now a second always-on built-in pack resource
+    // (BUILTIN_PACK_DESCRIPTORS); stage its owned source too so the "second
+    // run is a no-op" idempotency assertion below covers BOTH built-in
+    // packs materializing successfully, not just design-power.
+    stageOwnedSkill(root, 'watch', '# Watch\nFixture owned copy.\n');
 
     const first = runCli(['reconcile-apply', '--repo-root', root]);
     expect(first.status).toBe(0);
     expect(first.json.ok).toBe(true);
     expect(first.json.plan.install.map((op) => op.id)).toContain('skill:ui-ux-pro-max');
+    expect(first.json.plan.install.map((op) => op.id)).toContain('skill:watch');
 
     const liveFile = join(root, '.claude', 'skills', 'ui-ux-pro-max', 'SKILL.md');
     expect(existsSync(liveFile)).toBe(true);
     expect(readFileSync(liveFile, 'utf8')).toBe('# UI/UX Pro Max\nFixture owned copy.\n');
 
+    const watchLiveFile = join(root, '.claude', 'skills', 'watch', 'SKILL.md');
+    expect(existsSync(watchLiveFile)).toBe(true);
+    expect(readFileSync(watchLiveFile, 'utf8')).toBe('# Watch\nFixture owned copy.\n');
+
     const lockPath = join(root, 'integrations.lock.json');
     expect(existsSync(lockPath)).toBe(true);
     const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
     expect(lock.resources['skill:ui-ux-pro-max'].owners).toEqual(['design-power@0.1.0']);
+    expect(lock.resources['skill:watch'].owners).toEqual(['watch@0.2.0']);
 
     const designPowerPack = first.json.packs.find((p) => p.id === 'design-power');
     expect(designPowerPack.aborted).toBe(false);
     expect(designPowerPack.installed).toContain('skill:ui-ux-pro-max');
+
+    const watchPack = first.json.packs.find((p) => p.id === 'watch');
+    expect(watchPack.aborted).toBe(false);
+    expect(watchPack.installed).toContain('skill:watch');
 
     // --- second run: idempotent, empty plan (steady-state no-op) ---
     const second = runCli(['reconcile-apply', '--repo-root', root]);
@@ -212,7 +237,10 @@ describe('AC3 — reconcile-apply materializes skills and writes integrations.lo
     expect(second.json.plan.replace).toEqual([]);
     const designPowerPack2 = second.json.packs.find((p) => p.id === 'design-power');
     expect(designPowerPack2.installed).toEqual([]);
+    const watchPack2 = second.json.packs.find((p) => p.id === 'watch');
+    expect(watchPack2.installed).toEqual([]);
     expect(readFileSync(liveFile, 'utf8')).toBe('# UI/UX Pro Max\nFixture owned copy.\n');
+    expect(readFileSync(watchLiveFile, 'utf8')).toBe('# Watch\nFixture owned copy.\n');
   });
 
   it('a_soft_skill_missing_its_owned_source_degrades_via_leave_and_report_without_aborting', async () => {
