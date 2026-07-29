@@ -24,20 +24,27 @@ const OWNED_DIR = join(REPO_ROOT, 'assimilated-skills', SKILL);
 const SHIPPED_DIR = join(REPO_ROOT, 'skills', SKILL);
 const DEV_DIR = join(REPO_ROOT, '.claude', 'skills', SKILL);
 
-// Python build artifacts, generated the moment anyone actually RUNS the skill's
-// scripts (e.g. `python skills/watch/scripts/setup.py`). They are gitignored
-// (.gitignore: `__pycache__/`, `*.pyc`) so they never reach a commit or a
-// published plugin, but this sensor walks the FILESYSTEM rather than git — so
-// without this filter, merely exercising the skill locally turns the suite red on
-// an untracked artifact. Skipping them keeps the sensor pointed at tracked
-// content, which is what "drift from the pinned copy" actually means.
+// Python bytecode caches, generated the moment anyone actually RUNS the skill's
+// scripts (e.g. `python skills/watch/scripts/setup.py`). This sensor walks the
+// FILESYSTEM rather than git, so without a skip here, merely exercising the skill
+// locally turns the suite red on an untracked artifact.
+//
+// The skip is deliberately narrow: ONLY the `__pycache__` directory, which
+// .gitignore covers as a directory (line 30), so nothing inside it can reach a
+// commit via a plain `git add -A`. An earlier revision of this filter also
+// skipped any `*.pyc`/`*.pyo` file ANYWHERE in the tree, which was a real hole —
+// `.gitignore` covers `*.pyc` but NOT `*.pyo`, so a `.pyo` dropped beside the
+// scripts would have been committed by an ordinary `git add -A`, shipped in the
+// published plugin, and stayed permanently invisible to this comparison.
+// (CPython has not emitted `.pyo` since 3.5, so that skip could only ever have
+// hidden a payload, never spared a legitimate artifact.) A stray `.pyc` outside
+// `__pycache__` is likewise now compared rather than skipped.
 const IGNORED_DIRS = new Set(['__pycache__']);
-const isIgnoredFile = (name) => name.endsWith('.pyc') || name.endsWith('.pyo');
 
 /**
- * Every tracked-content file under `dir`, as forward-slash paths relative to
- * `dir`, sorted. Includes dotfiles (readdirSync returns them) — .skillignore is
- * load-bearing — and excludes the gitignored Python build artifacts above.
+ * Every comparable file under `dir`, as forward-slash paths relative to `dir`,
+ * sorted. Includes dotfiles (readdirSync returns them) — .skillignore is
+ * load-bearing — and descends into everything except `__pycache__`.
  */
 function fileTree(dir) {
   const out = [];
@@ -46,7 +53,7 @@ function fileTree(dir) {
       const child = join(abs, name);
       if (statSync(child).isDirectory()) {
         if (!IGNORED_DIRS.has(name)) walk(child);
-      } else if (!isIgnoredFile(name)) {
+      } else {
         out.push(relative(dir, child).split('\\').join('/'));
       }
     }

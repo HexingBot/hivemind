@@ -29,6 +29,7 @@ logs/
 node_modules/
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
 # NOTE (TASK-023): dist/ is NOT ignored — it holds the COMMITTED esbuild plugin
