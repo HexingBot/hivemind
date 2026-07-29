@@ -24,17 +24,31 @@ const OWNED_DIR = join(REPO_ROOT, 'assimilated-skills', SKILL);
 const SHIPPED_DIR = join(REPO_ROOT, 'skills', SKILL);
 const DEV_DIR = join(REPO_ROOT, '.claude', 'skills', SKILL);
 
+// Python build artifacts, generated the moment anyone actually RUNS the skill's
+// scripts (e.g. `python skills/watch/scripts/setup.py`). They are gitignored
+// (.gitignore: `__pycache__/`, `*.pyc`) so they never reach a commit or a
+// published plugin, but this sensor walks the FILESYSTEM rather than git — so
+// without this filter, merely exercising the skill locally turns the suite red on
+// an untracked artifact. Skipping them keeps the sensor pointed at tracked
+// content, which is what "drift from the pinned copy" actually means.
+const IGNORED_DIRS = new Set(['__pycache__']);
+const isIgnoredFile = (name) => name.endsWith('.pyc') || name.endsWith('.pyo');
+
 /**
- * Every file under `dir`, as forward-slash paths relative to `dir`, sorted.
- * Includes dotfiles (readdirSync returns them) — .skillignore is load-bearing.
+ * Every tracked-content file under `dir`, as forward-slash paths relative to
+ * `dir`, sorted. Includes dotfiles (readdirSync returns them) — .skillignore is
+ * load-bearing — and excludes the gitignored Python build artifacts above.
  */
 function fileTree(dir) {
   const out = [];
   const walk = (abs) => {
     for (const name of readdirSync(abs).sort()) {
       const child = join(abs, name);
-      if (statSync(child).isDirectory()) walk(child);
-      else out.push(relative(dir, child).split('\\').join('/'));
+      if (statSync(child).isDirectory()) {
+        if (!IGNORED_DIRS.has(name)) walk(child);
+      } else if (!isIgnoredFile(name)) {
+        out.push(relative(dir, child).split('\\').join('/'));
+      }
     }
   };
   walk(dir);
