@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-29T04:25:01.375Z",
+  "generated_at": "2026-07-29T04:51:34.574Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1054,7 +1054,7 @@
     {
       "key": "TASK-180",
       "title": "Ship the assimilated `watch` skill out of the box at plugin-root skills/",
-      "status": "todo",
+      "status": "in_review",
       "priority": "high"
     }
   ]

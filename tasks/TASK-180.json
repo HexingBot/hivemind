@@ -12,7 +12,7 @@
     "No file under `scripts/` in any watch copy is modified (verifiable via `git diff --stat` showing zero changes under `assimilated-skills/watch/scripts/` and `.claude/skills/watch/scripts/`)",
     "`npm run test:all` is green (this ticket touches the plugin delivery surface and a lock spec, so the full gate applies, including `tests/e2e/dist-parity.spec.js`)"
   ],
-  "status": "todo",
+  "status": "in_review",
   "priority": "high",
   "labels": [
     "plugin-delivery",
@@ -23,9 +23,15 @@
   "depends_on": [],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-07-29T04:51:29.614Z",
+      "body": "Implemented and released, but PARKED AT in_review — no independent reviewer ran (see \"Process deviation\" below).\n\n## What landed\n- `4a5f8be` feat(skills): ship assimilated watch skill at plugin root — `skills/watch/` added as a byte-identical copy of `assimilated-skills/watch/` (10 files incl. `.skillignore` + all `scripts/`), plus `tests/watch-skill-parity.spec.js` and the `CONSUMER_SHIPPED_SKILLS` update in `tests/plugin-scaffold.spec.js`.\n- `fb5d385` fix(tests): ignore Python build artifacts in the watch drift sensor — the sensor walks the filesystem rather than git, so running `scripts/setup.py` generated `scripts/__pycache__/` and reddened the gate on a gitignored artifact. Filter added for `__pycache__/`, `*.pyc`, `*.pyo`.\n- `dc69180` chore(release): v0.19.0 — plugin.json 0.18.0 -> 0.19.0, CHANGELOG entry, `docs/releases.html` (also backfilled the missing 0.18.0 entry — the site mirror had skipped from 0.17.0), `docs/index.html` VERSION, `tests/publish-config.spec.js` EXPECTED_VERSION.\n- Pushed to origin/main and tagged `v0.19.0`.\n\n## AC verification\n1. PASS — `diff -r assimilated-skills/watch skills/watch` reports no differences; 10 files present.\n2. PASS — provenance block byte-identical; origin/pin/spdx_id/source_integrity/content_integrity/assimilated_at unchanged (asserted in the new spec).\n3. PASS — `watch` added to `CONSUMER_SHIPPED_SKILLS` with a comment recording the human directive and the departure from the ui-ux-pro-max opt-in precedent; the strict `readdirSync(skills/)` equality assertion holds.\n4. PASS — sensor proven NON-VACUOUS: appending a byte to `skills/watch/scripts/download.py` produced \"skills/watch/scripts/download.py differs from the pinned assimilated-skills/watch/scripts/download.py\"; file restored and re-verified identical. It then independently caught the real `__pycache__` drift above.\n5. PASS — `watch` not in `FRAMEWORK_ONLY_SKILLS`; TASK-153 assertions unchanged and green.\n6. PASS — `git diff --stat` shows zero changes to `packs/` and `src/builtin-packs.js`; pack resource assertion added to the new spec.\n7. PASS — zero changes under `assimilated-skills/watch/scripts/` and `.claude/skills/watch/scripts/`.\n8. PASS — `npm run test:all`: 1919 passed / 4 skipped, 166 files. `claude plugin validate`: passed. No dist rebuild needed (no `src/` or `bin/` change); dist-parity green.\n\n## Runtime verification (beyond the ACs)\nRan the shipped copy's preflight on Windows. Before binaries: `status: needs_install_and_key`, `missing_binaries: [ffmpeg, ffprobe, yt-dlp]`, and it printed the correct winget commands. After `winget install Gyan.FFmpeg` + `winget install yt-dlp.yt-dlp` (human-approved): `missing_binaries: []`, `status: needs_key` (Whisper key is encouraged, not required). The shipped copy executes.\n\n## Process deviation — READ BEFORE CLOSING\nCLAUDE.md Workflow step 6 requires a fresh-context `reviewer` subagent spawn before a green close. That did NOT happen: this session runs under an operator guardrail forbidding subagent spawns unless the human asks for one. The verification above is the Orchestrator's own, not an independent gate, and it is self-reported by the same context that wrote the code — which is exactly the conflict the reviewer role exists to remove.\n\nLeft at `in_review` deliberately rather than closed. To finish properly, either spawn the `reviewer` on the range `c3e7067..dc69180` (review_depth: full — new consumer-facing delivery surface, a lock-spec change, and a release), or accept it as-is and close manually.\n\nNote: the release was pushed BEFORE review, at explicit human direction, so a review finding would require a follow-up release rather than an amend."
+    }
+  ],
   "created_at": "2026-07-29T04:25:01.375Z",
-  "updated_at": "2026-07-29T04:25:01.375Z",
+  "updated_at": "2026-07-29T04:51:34.574Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",
