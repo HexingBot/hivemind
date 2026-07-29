@@ -244,15 +244,25 @@ describe('AC3 — reconcile-apply materializes skills and writes integrations.lo
   });
 
   it('a_soft_skill_missing_its_owned_source_degrades_via_leave_and_report_without_aborting', async () => {
-    // No assimilated-skills staged at all -> ui-ux-pro-max (soft) fails to
-    // materialize but the run does not abort (leave-and-report).
+    // TASK-181 — "no assimilated-skills staged in the fixture" no longer means
+    // the owned source is missing: applyPlan now falls back to the PLUGIN's own
+    // owned copies, which is the entire point of that fix (before it, every
+    // built-in pack skill soft-failed in every consumer project). This test's
+    // invariant — a genuinely unreachable soft source degrades via
+    // leave-and-report instead of aborting — is still worth locking, so force a
+    // genuinely unreachable source rather than relying on the fixture's silence.
     const root = await makeProject();
-    const result = runCli(['reconcile-apply', '--repo-root', root]);
+    const result = runCli(['reconcile-apply', '--repo-root', root], {
+      env: { HIVEMIND_OWNED_SOURCE_ROOT: join(root, 'no-such-owned-root') },
+    });
 
     expect(result.status).toBe(0);
     const designPowerPack = result.json.packs.find((p) => p.id === 'design-power');
     expect(designPowerPack.aborted).toBe(false);
     expect(existsSync(join(root, '.claude', 'skills', 'ui-ux-pro-max'))).toBe(false);
+    // And the run must no longer read as an unqualified success (TASK-181).
+    expect(result.json.ok).toBe(false);
+    expect(result.json.installed_count).toBe(0);
   });
 });
 

@@ -7721,8 +7721,8 @@ __export(pack_ctl_exports, {
 });
 module.exports = __toCommonJS(pack_ctl_exports);
 var import_node_url = require("node:url");
-var import_node_fs9 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_fs10 = require("node:fs");
+var import_node_path10 = require("node:path");
 
 // src/project-md.js
 var import_promises = require("node:fs/promises");
@@ -8952,12 +8952,14 @@ function hashOwnedSkillDir(dir, opts = {}) {
   }
   return hash.digest("hex");
 }
-function executeInstall(lock, op, { root, sourceRoot, owner }) {
+function executeInstall(lock, op, { root, sourceRoot, sourceRoots, owner }) {
   const { id, resource } = op;
   const bareId = resource.id;
-  const sourceDir = (0, import_node_path4.join)(sourceRoot, bareId);
-  if (!(0, import_node_fs4.existsSync)(sourceDir)) {
-    throw new Error(`owned source not found for "${bareId}": ${sourceDir}`);
+  const searchPath = Array.isArray(sourceRoots) && sourceRoots.length ? sourceRoots : [sourceRoot];
+  const sourceDir = searchPath.filter(Boolean).map((base) => (0, import_node_path4.join)(base, bareId)).find((dir) => (0, import_node_fs4.existsSync)(dir));
+  if (!sourceDir) {
+    const tried = searchPath.filter(Boolean).map((base) => (0, import_node_path4.join)(base, bareId)).join(", ");
+    throw new Error(`owned source not found for "${bareId}": ${tried}`);
   }
   const priorEntry = lock.resources[id];
   const hasStageTimeBaseline = Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
@@ -8998,16 +9000,24 @@ function executeRemove(lock, op, { root, owner }) {
   if ((0, import_node_fs4.existsSync)(liveDir)) (0, import_node_fs4.rmSync)(liveDir, { recursive: true, force: true });
   delete lock.resources[id];
 }
-async function applyPlan({ plan: plan2, lockPath, root, owner, sourceRoot = (0, import_node_path4.join)(root, DEFAULT_SOURCE_SUBDIR) }) {
+async function applyPlan({
+  plan: plan2,
+  lockPath,
+  root,
+  owner,
+  sourceRoot = (0, import_node_path4.join)(root, DEFAULT_SOURCE_SUBDIR),
+  sourceRoots
+}) {
   const lock = await readLock(lockPath);
   const report = [];
+  const searchPath = [...new Set([sourceRoot, ...sourceRoots || []].filter(Boolean))];
   async function abort(id, cause) {
     await writeLock(lockPath, lock);
     throw new HardResourceFailureError(id, cause);
   }
   for (const op of plan2.install || []) {
     try {
-      executeInstall(lock, op, { root, sourceRoot, owner });
+      executeInstall(lock, op, { root, sourceRoots: searchPath, owner });
     } catch (err) {
       if (op.resource.required === "hard") await abort(op.id, err);
       report.push({ id: op.id, reason: err.message, blocking: false });
@@ -9132,7 +9142,7 @@ var import_node_fs6 = require("node:fs");
 var import_node_path6 = require("node:path");
 var DEFAULT_LOCK_FILENAME = "integrations.lock.json";
 async function reconcilePack(opts = {}) {
-  const { repoRoot, descriptor, profileResult, sourceRoot } = opts;
+  const { repoRoot, descriptor, profileResult, sourceRoot, sourceRoots } = opts;
   if (!repoRoot) throw new Error("reconcilePack: repoRoot is required");
   if (!descriptor) throw new Error("reconcilePack: descriptor is required");
   const owner = opts.owner || `${descriptor.id}@${descriptor.version}`;
@@ -9146,6 +9156,7 @@ async function reconcilePack(opts = {}) {
   const reconcilePlan = plan(desired, lock, actual);
   const applyOpts = { plan: reconcilePlan, lockPath, root: repoRoot, owner };
   if (sourceRoot) applyOpts.sourceRoot = sourceRoot;
+  if (sourceRoots) applyOpts.sourceRoots = sourceRoots;
   let applyReport = [];
   let aborted = false;
   let error;
@@ -9901,10 +9912,44 @@ async function assimilateSkill(opts) {
   };
 }
 
+// src/plugin-root.js
+var import_node_fs9 = require("node:fs");
+var import_node_path9 = require("node:path");
+var OWNED_SOURCE_SUBDIR = "assimilated-skills";
+function ancestorsOf(dir) {
+  const out = [];
+  let current = dir;
+  for (; ; ) {
+    out.push(current);
+    const parent = (0, import_node_path9.dirname)(current);
+    if (!parent || parent === current) break;
+    current = parent;
+  }
+  return out;
+}
+function resolveOwnedSourceRoot({
+  env = process.env,
+  selfDir,
+  repoRoot,
+  exists = import_node_fs9.existsSync
+} = {}) {
+  if (env && env.HIVEMIND_OWNED_SOURCE_ROOT) return env.HIVEMIND_OWNED_SOURCE_ROOT;
+  const bases = [];
+  if (env && env.CLAUDE_PLUGIN_ROOT) bases.push(env.CLAUDE_PLUGIN_ROOT);
+  if (selfDir) bases.push(...ancestorsOf(selfDir));
+  if (repoRoot) bases.push(repoRoot);
+  for (const base of bases) {
+    const candidate = (0, import_node_path9.join)(base, OWNED_SOURCE_SUBDIR);
+    if (exists(candidate)) return candidate;
+  }
+  return void 0;
+}
+
 // bin/pack-ctl.js
 var import_meta = {};
 var LOCK_FILENAME = "integrations.lock.json";
 var SKILL_FILENAME4 = "SKILL.md";
+var SELF_DIR = typeof __dirname !== "undefined" ? __dirname : (0, import_node_path10.dirname)((0, import_node_url.fileURLToPath)(import_meta.url));
 var SUBCOMMANDS = /* @__PURE__ */ new Set(["resolve", "reconcile-plan", "reconcile-apply", "assimilate"]);
 var FLAG_SPEC = {
   resolve: ["--repo-root"],
@@ -10002,21 +10047,21 @@ async function loadProfile(repoRoot) {
   return { profileResult, activePacks };
 }
 async function readLockTolerant(lockPath) {
-  if (!(0, import_node_fs9.existsSync)(lockPath)) return { schema_version: 1, resources: {} };
+  if (!(0, import_node_fs10.existsSync)(lockPath)) return { schema_version: 1, resources: {} };
   return readLock(lockPath);
 }
 async function runAssimilateScan(flags) {
   if (!flags.path) throw new Error("--path is required");
-  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME4);
-  if (!(0, import_node_fs9.existsSync)(sourceSkillPath)) {
+  const sourceSkillPath = (0, import_node_path10.join)(flags.path, SKILL_FILENAME4);
+  if (!(0, import_node_fs10.existsSync)(sourceSkillPath)) {
     throw new Error(`assimilate scan: no ${SKILL_FILENAME4} found at "${flags.path}"`);
   }
   return { scan: computeSkillScan(flags.path, sourceSkillPath) };
 }
 async function runAssimilateClassify(flags) {
   if (!flags.path) throw new Error("--path is required");
-  const sourceSkillPath = (0, import_node_path9.join)(flags.path, SKILL_FILENAME4);
-  if (!(0, import_node_fs9.existsSync)(sourceSkillPath)) {
+  const sourceSkillPath = (0, import_node_path10.join)(flags.path, SKILL_FILENAME4);
+  if (!(0, import_node_fs10.existsSync)(sourceSkillPath)) {
     throw new Error(`assimilate classify: no ${SKILL_FILENAME4} found at "${flags.path}"`);
   }
   const license = await detectLicense({ skillDir: flags.path });
@@ -10088,19 +10133,22 @@ async function run(subcommand, flags) {
       const { profileResult, activePacks } = await loadProfile(repoRoot);
       const desired = aggregateDesired(activePacks, profileResult);
       const actual = probeSkills(repoRoot);
-      const lock = await readLockTolerant((0, import_node_path9.join)(repoRoot, LOCK_FILENAME));
+      const lock = await readLockTolerant((0, import_node_path10.join)(repoRoot, LOCK_FILENAME));
       return { plan: plan(desired, lock, actual) };
     }
     case "reconcile-apply": {
       const { profileResult, activePacks } = await loadProfile(repoRoot);
       const desired = aggregateDesired(activePacks, profileResult);
       const actual = probeSkills(repoRoot);
-      const lock = await readLockTolerant((0, import_node_path9.join)(repoRoot, LOCK_FILENAME));
+      const lock = await readLockTolerant((0, import_node_path10.join)(repoRoot, LOCK_FILENAME));
       const computedPlan = plan(desired, lock, actual);
+      const sourceRoot = resolveOwnedSourceRoot({ selfDir: SELF_DIR, repoRoot });
       const packs = [];
       for (const { descriptor } of activePacks) {
         const owner = `${descriptor.id}@${descriptor.version}`;
-        const result = await reconcilePack({ repoRoot, descriptor, profileResult, owner });
+        const packOpts = { repoRoot, descriptor, profileResult, owner };
+        if (sourceRoot) packOpts.sourceRoots = [sourceRoot];
+        const result = await reconcilePack(packOpts);
         packs.push({
           id: descriptor.id,
           owner,
@@ -10109,7 +10157,17 @@ async function run(subcommand, flags) {
           report: result.report
         });
       }
-      return { plan: computedPlan, packs };
+      const plannedInstallCount = computedPlan.install.length;
+      const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
+      const totalFailure = plannedInstallCount > 0 && installedCount === 0;
+      return {
+        ok: !totalFailure,
+        planned_install_count: plannedInstallCount,
+        installed_count: installedCount,
+        source_root: sourceRoot ?? null,
+        plan: computedPlan,
+        packs
+      };
     }
     default:
       throw new Error(`unknown subcommand: ${subcommand}`);

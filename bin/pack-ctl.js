@@ -93,9 +93,9 @@
 // stage outcome (no write) is still `ok: true, exit 0` — it is a legitimate,
 // deterministic result of the gate, not a CLI usage error.
 
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 
 import { readProjectMd } from '../src/project-md.js';
 import { scoreComplexity } from '../src/design-profile.js';
@@ -107,9 +107,22 @@ import { readLock } from '../src/integrations-lock.js';
 import { reconcilePack } from '../src/pack-orchestrator.js';
 import { assimilateSkill, computeSkillScan } from '../src/assimilate.js';
 import { detectLicense, classifyLicense } from '../src/license-detect.js';
+import { resolveOwnedSourceRoot } from '../src/plugin-root.js';
 
 const LOCK_FILENAME = 'integrations.lock.json';
 const SKILL_FILENAME = 'SKILL.md';
+
+// TASK-181 — directory of the RUNNING file, used to locate this plugin's own
+// `assimilated-skills/`. Both launch modes must work: native ESM
+// (bin/pack-ctl.js in the framework repo) and the esbuild CJS bundle
+// (dist/pack-ctl.cjs in a plugin cache). esbuild rewrites `import.meta` to `{}`,
+// so `import.meta.url` is undefined there — the same reason __isEntry below
+// carries a require.main fallback — while `__dirname` is a genuine CJS global.
+// `typeof` guards both directions: __dirname is undefined under ESM, and the
+// ternary short-circuits so import.meta is never read in the bundle.
+const SELF_DIR = typeof __dirname !== 'undefined'
+  ? __dirname
+  : dirname(fileURLToPath(import.meta.url));
 
 const SUBCOMMANDS = new Set(['resolve', 'reconcile-plan', 'reconcile-apply', 'assimilate']);
 
@@ -404,10 +417,23 @@ async function run(subcommand, flags) {
       // this module's header.
       const computedPlan = plan(desired, lock, actual);
 
+      // TASK-181 — the owned copies live with the PLUGIN, not in the consumer's
+      // repo. Without this, reconcilePack falls back to
+      // `<repoRoot>/assimilated-skills`, which exists only in the framework repo
+      // — so every built-in pack skill soft-failed with "owned source not found"
+      // in every downstream project. Undefined is passed through untouched so
+      // reconcilePack keeps its documented default.
+      // Fallbacks only: applyPlan always leads with <repoRoot>/assimilated-skills
+      // so a skill the project assimilated for itself still wins over a built-in
+      // of the same id.
+      const sourceRoot = resolveOwnedSourceRoot({ selfDir: SELF_DIR, repoRoot });
+
       const packs = [];
       for (const { descriptor } of activePacks) {
         const owner = `${descriptor.id}@${descriptor.version}`;
-        const result = await reconcilePack({ repoRoot, descriptor, profileResult, owner });
+        const packOpts = { repoRoot, descriptor, profileResult, owner };
+        if (sourceRoot) packOpts.sourceRoots = [sourceRoot];
+        const result = await reconcilePack(packOpts);
         packs.push({
           id: descriptor.id,
           owner,
@@ -417,7 +443,23 @@ async function run(subcommand, flags) {
         });
       }
 
-      return { plan: computedPlan, packs };
+      // TASK-181 — a materialize failure is `required: "soft"`, so it degrades
+      // into `report` and the run still exits 0. Reporting a bare ok:true made
+      // "nothing needed installing" indistinguishable from "everything failed",
+      // which is how the sourceRoot defect survived multiple releases. Surface
+      // the counts and fail the ok flag when a non-empty plan installed nothing.
+      const plannedInstallCount = computedPlan.install.length;
+      const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
+      const totalFailure = plannedInstallCount > 0 && installedCount === 0;
+
+      return {
+        ok: !totalFailure,
+        planned_install_count: plannedInstallCount,
+        installed_count: installedCount,
+        source_root: sourceRoot ?? null,
+        plan: computedPlan,
+        packs,
+      };
     }
     default:
       throw new Error(`unknown subcommand: ${subcommand}`);

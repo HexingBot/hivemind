@@ -66,7 +66,7 @@ const DEFAULT_LOCK_FILENAME = 'integrations.lock.json';
  *   lock (applyPlan's own leave-and-report guarantee).
  */
 export async function reconcilePack(opts = {}) {
-  const { repoRoot, descriptor, profileResult, sourceRoot } = opts;
+  const { repoRoot, descriptor, profileResult, sourceRoot, sourceRoots } = opts;
   if (!repoRoot) throw new Error('reconcilePack: repoRoot is required');
   if (!descriptor) throw new Error('reconcilePack: descriptor is required');
 
@@ -88,6 +88,10 @@ export async function reconcilePack(opts = {}) {
 
   const applyOpts = { plan: reconcilePlan, lockPath, root: repoRoot, owner };
   if (sourceRoot) applyOpts.sourceRoot = sourceRoot;
+  // TASK-181 — fallback owned-copy dirs (the plugin's own assimilated-skills/),
+  // searched after the project's own staging dir. Forwarded verbatim; applyPlan
+  // owns the ordering and dedupe.
+  if (sourceRoots) applyOpts.sourceRoots = sourceRoots;
 
   let applyReport = [];
   let aborted = false;

@@ -254,12 +254,24 @@ export function hashOwnedSkillDir(dir, opts = {}) {
 // Materializes the owned copy, then records/updates the lock entry with the
 // pack as an owner. Throws on failure (missing owned source, fs error) —
 // the caller decides hard-abort vs soft-report.
-function executeInstall(lock, op, { root, sourceRoot, owner }) {
+function executeInstall(lock, op, { root, sourceRoot, sourceRoots, owner }) {
   const { id, resource } = op;
   const bareId = resource.id;
-  const sourceDir = join(sourceRoot, bareId);
-  if (!existsSync(sourceDir)) {
-    throw new Error(`owned source not found for "${bareId}": ${sourceDir}`);
+  // TASK-181 — owned copies can live in more than one place, so this is a
+  // SEARCH PATH, not a single directory. The project's own
+  // `<repoRoot>/assimilated-skills/` comes first (that is where
+  // src/assimilate.js stages a skill the project itself adopted, and a local
+  // adoption must always beat a built-in of the same id), with the plugin's own
+  // owned copies as the fallback that makes built-in packs work in a consumer
+  // project at all. A single-element path is exactly the old behavior.
+  const searchPath = Array.isArray(sourceRoots) && sourceRoots.length ? sourceRoots : [sourceRoot];
+  const sourceDir = searchPath
+    .filter(Boolean)
+    .map((base) => join(base, bareId))
+    .find((dir) => existsSync(dir));
+  if (!sourceDir) {
+    const tried = searchPath.filter(Boolean).map((base) => join(base, bareId)).join(', ');
+    throw new Error(`owned source not found for "${bareId}": ${tried}`);
   }
 
   // TASK-142 — TOCTOU close: verify BEFORE touching the live tree at all (see
@@ -333,15 +345,31 @@ function executeRemove(lock, op, { root, owner }) {
  * @param {string} opts.owner - this run's ownership edge, e.g. "design-power@0.1.0".
  * @param {string} [opts.sourceRoot] - owned-copy staging dir; defaults to
  *   <root>/assimilated-skills (docs/design/addon-packs-plan.md §7).
+ * @param {string[]} [opts.sourceRoots] - TASK-181. Ordered SEARCH PATH of
+ *   owned-copy dirs, first match wins per resource. Supersedes `sourceRoot`
+ *   when non-empty. Exists because a built-in pack's owned copy ships with the
+ *   PLUGIN while a project's self-assimilated skill lives under its own root —
+ *   one directory cannot serve both. `<root>/assimilated-skills` is prepended
+ *   by default so a local adoption always beats a built-in of the same id.
  * @returns {Promise<{ report: object[] }>} apply-time report entries — soft
  *   failures and deferred (unexecuted) replace ops. Does not include the
  *   planner's own report (that stays the caller's to inspect separately).
  * @throws {HardResourceFailureError} on a hard-required resource's failure;
  *   the lock is still committed with whatever ops already succeeded.
  */
-export async function applyPlan({ plan, lockPath, root, owner, sourceRoot = join(root, DEFAULT_SOURCE_SUBDIR) }) {
+export async function applyPlan({
+  plan, lockPath, root, owner,
+  sourceRoot = join(root, DEFAULT_SOURCE_SUBDIR),
+  sourceRoots,
+}) {
   const lock = await readLock(lockPath);
   const report = [];
+
+  // The project's own staging dir always leads the search path; extra roots
+  // (the plugin's owned copies) are fallbacks appended in caller order, deduped
+  // so a framework-repo run — where repoRoot IS the plugin root — does not probe
+  // the same directory twice.
+  const searchPath = [...new Set([sourceRoot, ...(sourceRoots || [])].filter(Boolean))];
 
   async function abort(id, cause) {
     await writeLock(lockPath, lock); // leave-and-report: persist prior successful ops
@@ -350,7 +378,7 @@ export async function applyPlan({ plan, lockPath, root, owner, sourceRoot = join
 
   for (const op of plan.install || []) {
     try {
-      executeInstall(lock, op, { root, sourceRoot, owner });
+      executeInstall(lock, op, { root, sourceRoots: searchPath, owner });
     } catch (err) {
       if (op.resource.required === 'hard') await abort(op.id, err);
       report.push({ id: op.id, reason: err.message, blocking: false });
