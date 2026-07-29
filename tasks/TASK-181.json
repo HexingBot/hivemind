@@ -1,0 +1,33 @@
+{
+  "key": "TASK-181",
+  "title": "Define precedence when a pack resource is ALSO shipped at plugin root (watch dual-copy)",
+  "description": "Raised as a MEDIUM by the TASK-180 gating review (reviewer, full depth, 2026-07-29). TASK-180 shipped the `watch` skill at plugin-root `skills/` while deliberately leaving the addon-pack resource intact, so `watch` is now delivered through two independent channels with no rule stating which wins.\n\nConsumer-visible consequence: a project that has run `pack-ctl reconcile-apply` carries `.claude/skills/watch/` (loads as `/watch`) AND receives the plugin's `skills/watch/` (loads as `/hivemind:watch`). The two are byte-identical today, so nothing is broken right now.\n\nThe divergence arrives on the next release that re-pins `watch`: the plugin copy advances with the plugin version, while the project copy stays frozen at whatever pin `integrations.lock.json` recorded until someone re-runs reconcile. The consumer then has two near-identically-named skills at different versions of pinned third-party code, and neither the reconciler nor the docs say which is authoritative. A user typing `/watch` vs `/hivemind:watch` would silently get different code.\n\nNote why the obvious fix is wrong: simply dropping the pack resource makes the reconciler compute a REMOVE op against every project whose lockfile already owns `skill:watch`, deleting a working skill out from under existing consumers. TASK-180 avoided this deliberately (see its close comment) — any solution here must handle already-installed projects, not just new ones.\n\nCandidate directions (decide, do not assume):\n1. Teach the reconciler to skip — or actively retire — a project-scope resource when the plugin ships the same resource id at an equal-or-newer pin, with the lockfile edge released cleanly rather than left dangling.\n2. Keep both channels but define and DOCUMENT precedence, plus a way for a consumer to see which copy is active and at what pin.\n3. Reverse TASK-180's direction: make plugin-root shipping the only channel and give the pack a one-time migration path that retires the project copy without a bare REMOVE.\n\nThis is a design decision about the reconciler contract, so it needs a human call on the direction before implementation. Investigate first, propose, then implement the chosen option.",
+  "acceptance_criteria": [
+    "The precedence rule between a plugin-root-shipped resource and the same resource installed project-scope via integrations.lock.json is decided by the human and recorded in writing (docs/design/addon-packs.md or the pack-descriptor docs), including which copy is authoritative when the pins differ",
+    "The chosen behavior is implemented in src/pack-reconcile.js / src/pack-orchestrator.js and covered by specs, including the already-installed-project case (a lockfile that already owns skill:watch must NOT be left with a dangling edge, and must NOT silently lose a working skill)",
+    "A regression spec proves the specific divergence scenario: plugin ships watch at pin B while a project lockfile owns watch at older pin A — assert the documented precedence actually holds end to end",
+    "`/hivemind:design-pack` and any reconcile-facing docs state what a consumer should expect when both copies are present, and how to tell which is active",
+    "npm run test:all is green and no existing pack/reconcile/assimilate spec regresses"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "addon-packs",
+    "reconciler",
+    "watch",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-180"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-29T14:47:49.466Z",
+  "updated_at": "2026-07-29T14:47:49.466Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

@@ -1320,6 +1320,12 @@
       "type": "task",
       "ref": "tasks/TASK-179.json",
       "label": "Offer 1-click consented install of tracked external design tools in /hivemind:design-pack (super-design out-of-box)"
+    },
+    {
+      "id": "task-180",
+      "type": "task",
+      "ref": "tasks/TASK-180.json",
+      "label": "Ship the assimilated `watch` skill out of the box at plugin-root skills/"
     }
   ],
   "edges": [

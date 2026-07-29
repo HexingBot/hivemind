@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-29T04:51:34.574Z",
+  "generated_at": "2026-07-29T14:48:17.846Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1054,8 +1054,14 @@
     {
       "key": "TASK-180",
       "title": "Ship the assimilated `watch` skill out of the box at plugin-root skills/",
-      "status": "in_review",
+      "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-181",
+      "title": "Define precedence when a pack resource is ALSO shipped at plugin root (watch dual-copy)",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }
