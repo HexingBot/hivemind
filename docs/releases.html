@@ -32,6 +32,23 @@
 // index.html, prepend the new entry below, and update CHANGELOG.md to match.
 const RELEASES = [
   {
+    v: "0.19.0", date: "2026-07-28", tag: "Watch skill ships out of the box",
+    highlights: [
+      "The watch video skill now ships at plugin-root skills/, so /hivemind:watch loads the moment the plugin is installed — no pack-ctl reconcile-apply step required.",
+      "New byte-identity sensor compares the shipped copy against the pinned assimilated-skills/watch/ tree file-for-file (scripts included), so a shipped copy can never drift from the copy the provenance hashes cover.",
+      "The addon-pack path is unchanged and additive: projects that already installed watch via integrations.lock.json keep it.",
+    ],
+  },
+  {
+    v: "0.18.0", date: "2026-07-23", tag: "Design-pack expansion",
+    highlights: [
+      "watch video skill assimilated (github.com/bradautomates/claude-video, MIT) and registered as a built-in pack.",
+      "Generic reconciler activation seam: activate_when 'always' decouples non-design packs from the design profile.",
+      "Tracked external design tools (Impeccable, Taste Skill, Higgsfield, 21st.dev Magic) registered as upstream-tracking Wave-2 resources.",
+      "/hivemind:design-pack offers to install those tools on an explicit, per-tool human yes — never autonomous.",
+    ],
+  },
+  {
     v: "0.17.0", date: "2026-07-18", tag: "Queryable knowledge graph & intake quality",
     highlights: [
       "New kb_graph_query MCP tool: deterministic graph queries on the canonical-first merge seam, with a total no-silent-drop filter contract (typed E_UNANCHORED_EDGE_FILTER).",

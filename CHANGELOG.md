@@ -8,6 +8,41 @@ The single source of version truth is `.claude-plugin/plugin.json`. Because the
 plugin installs from this repository's `main` branch via the marketplace, a
 release is the `main` HEAD at the tagged version.
 
+## [0.19.0] — 2026-07-28
+
+Delivery fix: the `watch` video skill now works out of the box on any machine
+that installs the plugin.
+
+### Fixed
+- **`watch` ships at plugin-root `skills/`** — 0.18.0 delivered `watch` only as
+  an addon-pack resource, with files at `assimilated-skills/watch/` (owned copy)
+  and `.claude/skills/watch/` (framework dogfood mirror). Claude Code
+  auto-discovers plugin skills **only** from plugin-root `skills/`, so a
+  consumer install surfaced no `watch` skill at all until someone manually ran
+  `pack-ctl reconcile-apply --repo-root <root>`. A third, byte-identical copy now
+  ships at `skills/watch/`, so `/hivemind:watch` loads immediately on install
+  with zero in-project setup. (TASK-180)
+
+### Added
+- **`watch` copy-drift sensor** (`tests/watch-skill-parity.spec.js`) — compares
+  the shipped and dogfood copies against the owned copy **file-for-file and
+  byte-for-byte**, `scripts/*.py` included, since watch's behavior lives in its
+  scripts and a `SKILL.md`-only check would let a modified downloader or Whisper
+  client ship unnoticed. Also pins that the pack resource still resolves. (TASK-180)
+
+### Notes
+- The addon-pack path is **unchanged and additive**. Removing the pack resource
+  would make the reconciler compute a REMOVE op against projects that already
+  installed `watch` via `integrations.lock.json`, deleting a working skill from
+  existing consumers.
+- No pinned third-party script was modified — those files are covered by the
+  `source_integrity` / `content_integrity` hashes in the provenance block.
+- `watch` still shells out to `python`, `ffmpeg`/`ffprobe` and `yt-dlp`, which
+  cannot be bundled into a plugin. Its `scripts/setup.py` preflight detects what
+  is missing and prints the exact install command per platform.
+- This release also restores the site release mirror (`docs/releases.html`),
+  which was not updated when 0.18.0 was cut.
+
 ## [0.18.0] — 2026-07-23
 
 Design-pack expansion release. Adds the `watch` video skill as a built-in pack, a generic (non-design) reconciler activation seam, and a tracked, human-consented way for framework consumers to adopt best-in-class third-party design skills/MCPs "out of the box" without vendoring them.
