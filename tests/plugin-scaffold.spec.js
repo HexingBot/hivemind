@@ -120,6 +120,30 @@ const SELF_IMPROVE_SKILL = 'hive-self-improve';
 // surface -current-project names — it always means the framework itself).
 const SELF_IMPROVE_CURRENT_PROJECT_SKILL = 'hive-self-improve-current-project';
 const ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL = 'hive-adversarial-improve-current-project';
+// TASK-180 — the assimilated `watch` skill (third-party, pinned at
+// github.com/bradautomates/claude-video@83da59f) ships to consumers DIRECTLY at
+// plugin-root skills/, which is a deliberate departure from the assimilated-skill
+// precedent set by ui-ux-pro-max.
+//
+// Precedent it departs from: TASK-176 delivered watch as an addon-pack resource
+// (packs/watch/descriptor.json, scope: project, activate_when: always) whose files
+// live at assimilated-skills/watch/ (owned copy) + .claude/skills/watch/ (dogfood
+// mirror). Neither directory is loaded by a consumer plugin install — Claude Code
+// auto-discovers plugin skills ONLY from plugin-root skills/ — so a consumer saw no
+// watch skill at all until someone manually ran
+// `pack-ctl reconcile-apply --repo-root <root>`. That opt-in step IS the supply-chain
+// stance for vendored third-party code: it does not auto-install everywhere.
+//
+// Human directive (2026-07-28): /watch must work out of the box on any computer
+// immediately after installing the plugin, with zero in-project setup. Shipping the
+// third copy here is what satisfies that; the pack path is deliberately left intact
+// and additive (removing the pack resource would make the reconciler compute a REMOVE
+// op against projects that already installed it via integrations.lock.json, deleting a
+// working skill from existing consumers).
+//
+// The byte-identity sensor below is the guard that keeps this shipped copy from ever
+// drifting from the owned/pinned copy the provenance hashes cover.
+const WATCH_SKILL = 'watch';
 
 // Framework-only channel: present in .claude/skills/ ONLY, absent from
 // plugin-root skills/ (never shipped to consumer installs).
@@ -136,6 +160,8 @@ const CONSUMER_SHIPPED_SKILLS = [
   ...MANIFEST_SKILLS, VERIFIER_SKILL,
   SELF_IMPROVE_CURRENT_PROJECT_SKILL, ADVERSARIAL_IMPROVE_CURRENT_PROJECT_SKILL,
   ASSIMILATE_CURRENT_PROJECT_SKILL,
+  // TASK-180 — assimilated third-party skill, shipped out of the box (see WATCH_SKILL).
+  WATCH_SKILL,
 ].sort();
 
 /** Read + JSON.parse a manifest, surfacing a clear failure when it's absent. */

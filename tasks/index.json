@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-24T00:58:38.512Z",
+  "generated_at": "2026-07-29T04:25:01.375Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1049,6 +1049,12 @@
       "key": "TASK-179",
       "title": "Offer 1-click consented install of tracked external design tools in /hivemind:design-pack (super-design out-of-box)",
       "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-180",
+      "title": "Ship the assimilated `watch` skill out of the box at plugin-root skills/",
+      "status": "todo",
       "priority": "high"
     }
   ]

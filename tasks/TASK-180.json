@@ -1,0 +1,33 @@
+{
+  "key": "TASK-180",
+  "title": "Ship the assimilated `watch` skill out of the box at plugin-root skills/",
+  "description": "Human directive (2026-07-28): `/watch` must work on ANY computer immediately after installing the hivemind plugin, with zero setup steps inside the project.\n\nToday it does not. TASK-176 delivered `watch` as an addon-pack resource (`packs/watch/descriptor.json`, `scope: project`, `activate_when: always`) whose skill files live at `assimilated-skills/watch/` (owned copy) and `.claude/skills/watch/` (framework dogfood mirror). Neither directory is loaded by a consumer plugin install — Claude Code auto-discovers plugin skills ONLY from plugin-root `skills/`. A consumer therefore sees no `watch` skill at all until someone manually runs `node ${CLAUDE_PLUGIN_ROOT}/dist/pack-ctl.cjs reconcile-apply --repo-root <root>`, which is exactly the manual step the human is rejecting.\n\nFix: add a third, byte-identical copy at plugin-root `skills/watch/` so the plugin ships it directly and it loads as `/hivemind:watch` on install.\n\nExplicitly IN scope:\n- Copy `assimilated-skills/watch/` -> `skills/watch/` byte-for-byte, including `.skillignore` and all of `scripts/`, preserving the \"Sources & provenance (hivemind)\" block in SKILL.md verbatim (origin/pin/spdx_id/source_integrity/content_integrity/assimilated_at must survive unchanged — the provenance block is the supply-chain record and must not be edited or regenerated).\n- Update `tests/plugin-scaffold.spec.js`: `CONSUMER_SHIPPED_SKILLS` is a strict `readdirSync(skills/)` EQUALITY target at line ~252, so `watch` must be added there or the suite fails. Add it via a named const alongside the existing ones, with a comment recording WHY an assimilated third-party skill ships to consumers (human directive: out-of-the-box availability) — this is a deliberate departure from the ui-ux-pro-max precedent, where assimilated skills stay project-scoped and opt-in.\n- Add a byte-identity parity sensor asserting `skills/watch/` matches `assimilated-skills/watch/` file-for-file and byte-for-byte (same shape as the existing assimilate parity sensor added for TASK-136), so the shipped copy can never silently drift from the owned/pinned copy.\n\nExplicitly OUT of scope (do NOT do these):\n- Do NOT modify any file under `scripts/` in ANY of the three watch copies. They are pinned third-party code covered by `source_integrity`/`content_integrity` hashes in the provenance block; editing them invalidates the pin.\n- Do NOT remove `watch` from `packs/watch/descriptor.json` or from `BUILTIN_PACK_DESCRIPTORS` in `src/builtin-packs.js`. The pack path stays intact and additive — removing the resource would make the reconciler compute a REMOVE op against projects that already installed it via the lockfile, deleting a working skill from existing consumer projects.\n- Do NOT add `watch` to `FRAMEWORK_ONLY_SKILLS`.\n\nNote on residual runtime deps: the skill still shells out to `python`/`ffmpeg`/`yt-dlp`, which cannot be bundled. Its own `scripts/setup.py` preflight already handles detection and remediation guidance, and SKILL.md already documents the Windows `python` (not `python3`) substitution. This ticket does not attempt to change that.",
+  "acceptance_criteria": [
+    "`skills/watch/SKILL.md` and `skills/watch/scripts/*` exist at plugin root, and the directory is byte-identical to `assimilated-skills/watch/` (verifiable with `diff -r assimilated-skills/watch skills/watch` reporting no differences)",
+    "The 'Sources & provenance (hivemind)' block in `skills/watch/SKILL.md` is byte-identical to the one in `assimilated-skills/watch/SKILL.md` — origin, pin, spdx_id, source_integrity, content_integrity and assimilated_at all unchanged",
+    "`tests/plugin-scaffold.spec.js` passes: `watch` is added to `CONSUMER_SHIPPED_SKILLS` so the strict `readdirSync(skills/)` equality assertion (line ~252) holds, with a comment recording the human directive and the departure from the opt-in assimilated-skill precedent",
+    "A new parity sensor fails loudly if `skills/watch/` ever drifts from `assimilated-skills/watch/` (non-vacuous: prove it fails when a byte is changed, then restore)",
+    "`watch` is NOT added to `FRAMEWORK_ONLY_SKILLS`, and the TASK-153 framework-only assertions still pass unchanged",
+    "`packs/watch/descriptor.json` and `src/builtin-packs.js` are unmodified — the pack/reconcile path still resolves and applies `watch` exactly as before (existing pack/reconcile/assimilate specs unchanged and green)",
+    "No file under `scripts/` in any watch copy is modified (verifiable via `git diff --stat` showing zero changes under `assimilated-skills/watch/scripts/` and `.claude/skills/watch/scripts/`)",
+    "`npm run test:all` is green (this ticket touches the plugin delivery surface and a lock spec, so the full gate applies, including `tests/e2e/dist-parity.spec.js`)"
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "plugin-delivery",
+    "skills",
+    "watch"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-07-29T04:25:01.375Z",
+  "updated_at": "2026-07-29T04:25:01.375Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
