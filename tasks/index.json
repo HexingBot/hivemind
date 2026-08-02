@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T20:50:14.469Z",
+  "generated_at": "2026-08-02T20:55:58.606Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1084,7 +1084,7 @@
     {
       "key": "TASK-186",
       "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
-      "status": "in_review",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -1108,7 +1108,7 @@
     {
       "key": "TASK-190",
       "title": "deep-review silently ignores its args: docs pass a string, the script reads an object",
-      "status": "in_progress",
+      "status": "done",
       "priority": "medium"
     },
     {

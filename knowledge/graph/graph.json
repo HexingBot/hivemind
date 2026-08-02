@@ -1356,6 +1356,12 @@
       "type": "task",
       "ref": "tasks/TASK-185.json",
       "label": "safeRef path guard is defeated by one leading space, and half its claimed forms are untested"
+    },
+    {
+      "id": "task-190",
+      "type": "task",
+      "ref": "tasks/TASK-190.json",
+      "label": "deep-review silently ignores its args: docs pass a string, the script reads an object"
     }
   ],
   "edges": [
