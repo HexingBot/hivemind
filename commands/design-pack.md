@@ -48,17 +48,39 @@ human before applying — it is the same plan `reconcile-apply` will act on.
 node ${CLAUDE_PLUGIN_ROOT}/dist/pack-ctl.cjs reconcile-apply --repo-root <project-root>
 ```
 
-Prints `{ plan, packs: [{ id, owner, aborted, installed, report }] }` — `installed` is the list of
-skill resource ids actually materialized under `.claude/skills/`. Idempotent: running it again with
-nothing changed reproduces the same plan with empty `install`/`remove`/`replace`.
+Prints `{ ok, planned_install_count, installed_count, source_root, plan, packs: [{ id, owner,
+aborted, installed, report }] }`. Idempotent: running it again with nothing changed reproduces the
+same `plan` with empty `install`/`remove`/`replace`.
 
-A skill can be in the plan's top-level `install` bucket (Step 3) and still fail to materialize here
-— e.g. it has no owned copy the reconciler can vendor from. When that happens the CLI does not
-crash; it records the miss as a **per-pack** report entry, `packs[].report`, with an id of the form
-`skill:<resource-id>` (distinct from the top-level `plan.report`, which only ever holds `mcp`/
-`plugin` entries). Step 5 turns every such entry into an adoption instruction — treat `installed`
-being short of the desired skill set as expected, not a bug, whenever a matching `skill:` entry
-exists in `packs[].report`.
+- `plan` is the same plan Step 3 previewed, recomputed just before applying — that recomputation is
+  the idempotency proof described above.
+- `packs[]` is per-pack: `installed` is the list of skill resource ids THAT pack actually
+  materialized under `.claude/skills/`; `report` is that pack's own per-pack report, with entries of
+  the form `skill:<resource-id>` (distinct from the top-level `plan.report`, which only ever holds
+  `mcp`/`plugin` entries).
+- `planned_install_count` (= `plan.install.length`) and `installed_count` (= the sum of every pack's
+  `installed.length`) are the run-level triage numbers — read these FIRST, before looking at any
+  individual pack's `report`. `source_root` is the directory the reconciler vendored owned skill
+  copies from (post-TASK-181, normally the plugin's own `assimilated-skills/`, or the project's own
+  if it has one); `null` when no owned-source root could be resolved at all.
+- **`ok: false` means a total materialize failure**: the plan called for at least one skill install
+  (`planned_install_count > 0`) and NONE of them materialized (`installed_count === 0`) — e.g. no
+  owned copy could be found for any planned skill. Treat `ok: false` as a hard stop: show the human
+  the full `packs[].report` before doing anything else; do not proceed to Step 5's normal reporting.
+- `ok: true` covers both a fully successful apply and a legitimate no-op (`planned_install_count ===
+  0` — nothing was ever desired). It also covers a PARTIAL outcome (`installed_count` greater than
+  zero but less than `planned_install_count`) — still worth surfacing to the human via Step 5's list
+  2, but not a hard stop.
+- A skill can be in the plan's top-level `install` bucket (Step 3) and still fail to materialize here
+  for a documented, expected reason (no owned copy to vendor from) — that shows up as a
+  `skill:<resource-id>` entry in `packs[].report`, and Step 5 turns every such entry into an adoption
+  instruction. **Triage with `ok`/`installed_count` first, not with the presence of a `skill:` report
+  entry.** Use them to tell "nothing needed installing" (`planned_install_count === 0`, `ok: true`)
+  apart from "something failed to install" (`installed_count < planned_install_count`); only once
+  you've done that does a matching `skill:` report entry explain WHICH skill and why. Do not read a
+  short `installed` as automatically expected merely because *some* `skill:` report entry exists
+  elsewhere in `packs[].report` — a materialize miss is not guaranteed to always carry a matching
+  report entry, so its absence does not itself prove success.
 
 ## Step 5 — Report the split, honestly
 
@@ -72,7 +94,10 @@ Present **three** lists to the human, never conflating them:
    - Strip the `skill:` prefix to get the resource id, and look up that id in
      `packs/design-power/descriptor.json`'s `resources[]` to read its `origin` and `pin`.
    - Instruct the human to run the human-gated **`assimilate-current-project`** skill to vendor it,
-     giving it the resource's `origin` and `pin`, e.g.:
+     giving it the resource's `origin` and `pin`, e.g. (illustrative shape only — post-TASK-181
+     `ui-ux-pro-max` normally installs automatically from the plugin's owned copy per Step 4/5's
+     fresh-project note below, so this exact resource id would only ever land here if that owned copy
+     were somehow missing; substitute whichever resource id actually appears in `packs[].report`):
 
      ```
      ui-ux-pro-max (skill, required: soft) — not installed; no owned copy found.
@@ -95,11 +120,21 @@ Present **three** lists to the human, never conflating them:
    Do this for every report entry, not just the `blocking: true` ones — a `soft` gap is still a
    gap the human should know about, just not one that blocked the run.
 
-On a **fresh project** where nothing has been assimilated yet, the expected first run of this
-command is `installed: []` with `ui-ux-pro-max` appearing under "skills that still need adoption"
-and its assimilate instruction shown — never a bare "nothing installed" with no next step. If list 2
-is empty and `installed` is also empty, that means the profile genuinely desired no skills (e.g. a
-non-design-heavy resolve), not that something silently failed.
+On a **fresh project** where nothing has been assimilated yet, the built-in pack skills install
+automatically from the plugin's own owned copies (post-TASK-181) — do NOT expect a bare `installed:
+[]` as the normal first run. Expect list 1 to include `watch` unconditionally (it is `activate_when:
+"always"`) plus `ui-ux-pro-max` whenever the resolved profile desires it (`tier != LIGERO`); neither
+needs `assimilate-current-project` on a fresh project that has the shipped plugin, because the
+plugin already carries their owned copies. List 2 (skills that still need adoption) is expected to be
+non-empty only for a genuinely third-party resource that has no owned copy anywhere in the plugin or
+the project — that is the exceptional case now, not the default.
+
+If list 2 is empty and `installed` is also empty, check Step 4's `ok`/`planned_install_count` before
+concluding the profile genuinely desired no skills: a true no-op has `planned_install_count === 0`
+AND `ok: true`. A short or empty `installed` alongside a non-empty `planned_install_count` — with
+nothing in list 2 to explain it — is the signal Step 4 describes as a possible total or partial
+failure; it can also be a materialize miss with no corresponding `skill:` report entry to explain it
+at all (a known limitation — do not treat that silence as proof of success either).
 
 ## Step 6 — Offer the tracked external design tools (upstream, consented)
 
@@ -205,10 +240,15 @@ offer to let them run the command themselves instead of pasting a credential int
 ## Notes
 
 - This command never assimilates a third-party skill on its own initiative — a resource whose
-  `install` says "vendor via assimilate" (e.g. `ui-ux-pro-max`) still needs the full human-gated
-  `assimilate-current-project` protocol (the shipped, consumer-project entry point — this project
-  is never the hivemind framework repo itself); point the human at that skill rather than trying to
-  shortcut it here.
+  `install` says "vendor via assimilate" still needs the full human-gated `assimilate-current-project`
+  protocol (the shipped, consumer-project entry point — this project is never the hivemind framework
+  repo itself) whenever no owned copy already exists to vendor from. `ui-ux-pro-max`'s `install` field
+  still reads "vendor via assimilate (FP-5)", but post-TASK-181 the plugin ships an owned copy
+  (`assimilated-skills/ui-ux-pro-max/`), so Step 4 now materializes it automatically on a fresh
+  project without ever reaching this path — assimilate only becomes necessary if that owned copy is
+  ever missing, or for a genuinely different third-party resource the plugin has not vendored. Point
+  the human at `assimilate-current-project` only when Step 5 list 2 actually names the resource; do
+  not preemptively suggest it for something that already installed.
 - Step 6's tracked-tool offer is a separate mechanism from assimilation and from Wave-2 report
   printing: it runs an upstream installer directly, on consent, rather than vendoring a copy or
   merely printing a command for the human to run themselves. It never overlaps the two — a resource

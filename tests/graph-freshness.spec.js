@@ -30,6 +30,13 @@
 //         Captured verbatim in the TASK-169 hand-off.
 //   GREEN: ran scripts/backfill-graph-task-nodes.mjs (adds the 74 missing
 //         nodes via the real addNode API) → re-ran this spec → PASSED.
+//
+// TASK-184 addendum — the live-repo assertion's failure message now calls
+// buildMissingMessage (below) to distinguish a derivable-but-missing key
+// (backfill adds it) from a malformed key (backfill throws on it), so the
+// advice given always matches what scripts/backfill-graph-task-nodes.mjs
+// actually does. See the "TASK-184 AC4" describe block for the seeded-fixture
+// regression lock on that message split.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -128,6 +135,65 @@ describe('AC2 — findDoneTicketsMissingGraphNodes: only done status is required
 });
 
 // ---------------------------------------------------------------------------
+// TASK-184 AC4 — the sensor message distinguishes the two cases
+// findDoneTicketsMissingGraphNodes now folds into `missing`
+// (src/graph-freshness.js:61, TASK-175 item 13): (a) a derivable
+// task-<digits> id with no matching graph node — the backfill script adds
+// it; and (b) a key that does not even match TASK-<digits> — no node id can
+// be derived, and scripts/backfill-graph-task-nodes.mjs:60-70 deliberately
+// THROWS on that exact case. buildMissingMessage is shared by the live-repo
+// assertion below and the seeded-fixture unit tests, so both prove the same
+// per-case advice.
+// ---------------------------------------------------------------------------
+
+function buildMissingMessage(missing) {
+  const malformed = missing.filter((key) => taskKeyToNodeId(key) === null);
+  const missingNode = missing.filter((key) => taskKeyToNodeId(key) !== null);
+
+  const messages = [];
+  if (missingNode.length > 0) {
+    messages.push(
+      `${missingNode.length} done ticket(s) have a derivable task-<digits> id but no ` +
+        `matching node in knowledge/graph/graph.json: ${missingNode.join(', ')}\n` +
+        'Run scripts/backfill-graph-task-nodes.mjs to add the missing node(s) (or add the ' +
+        'node via src/knowledge-graph.js addNode) before landing a done transition.',
+    );
+  }
+  if (malformed.length > 0) {
+    messages.push(
+      `${malformed.length} done ticket(s) have a malformed key that does not match ` +
+        `TASK-<digits>, so no node id can be derived: ${malformed.join(', ')}\n` +
+        'scripts/backfill-graph-task-nodes.mjs deliberately THROWS on this exact case — fix ' +
+        'the ticket key first, then re-run the backfill (or add the node manually via ' +
+        'src/knowledge-graph.js addNode) before landing a done transition.',
+    );
+  }
+  return messages.join('\n\n');
+}
+
+describe('TASK-184 AC4 — buildMissingMessage gives per-case advice that matches the backfill script', () => {
+  it('a derivable-but-missing key gets the "run the backfill" advice, not the malformed-key one', () => {
+    const message = buildMissingMessage(['TASK-999']);
+    expect(message).toMatch(/derivable task-<digits> id but no/);
+    expect(message).toMatch(/Run scripts\/backfill-graph-task-nodes\.mjs to add the missing node/);
+    expect(message).not.toMatch(/deliberately THROWS/);
+  });
+
+  it('a malformed key gets the "fix the key first, backfill throws" advice, not the run-it-normally one', () => {
+    const message = buildMissingMessage(['NOT-A-KEY']);
+    expect(message).toMatch(/malformed key that does not match/);
+    expect(message).toMatch(/deliberately THROWS on this exact case — fix the ticket key first/);
+    expect(message).not.toMatch(/Run scripts\/backfill-graph-task-nodes\.mjs to add the missing node/);
+  });
+
+  it('a mix of both surfaces BOTH pieces of advice, one per case', () => {
+    const message = buildMissingMessage(['TASK-999', 'NOT-A-KEY']);
+    expect(message).toMatch(/Run scripts\/backfill-graph-task-nodes\.mjs to add the missing node/);
+    expect(message).toMatch(/deliberately THROWS on this exact case/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // AC1/AC3/AC5 — live-repo assertion: THIS is the permanent sensor.
 // Reads the repo's own tasks/*.json + knowledge/graph/graph.json (committed
 // files, sync read — same precedent as tests/use-case-policy.spec.js reading
@@ -151,12 +217,6 @@ describe('graph-freshness sensor — every done ticket in tasks/ has a graph nod
     const graph = loadGraph();
     const missing = findDoneTicketsMissingGraphNodes({ tasks, graph });
 
-    expect(
-      missing,
-      `${missing.length} done ticket(s) have no task-<digits> node in ` +
-        `knowledge/graph/graph.json: ${missing.join(', ')}\n` +
-        'Run the backfill (or add the node via src/knowledge-graph.js addNode) ' +
-        'before landing a done transition.',
-    ).toEqual([]);
+    expect(missing, buildMissingMessage(missing)).toEqual([]);
   });
 });
