@@ -399,20 +399,50 @@ export class UatGuardError extends Error {
   }
 }
 
+// TASK-186 AC2/AC6 — harness mode's design assumption is that a human is
+// genuinely present, so this stays a LIGHT content check, not the full
+// structured per-step machinery loop mode's Gate 2 enforces in
+// src/close-guard.js (hasExplicitHumanVerdictMarker): a recognizable verdict
+// word must appear in a non-empty body. That is deliberately weaker than
+// Gate 2 — the asymmetry is the documented answer to "how does harness mode
+// differ from loop mode here": loop mode has no human in the loop by
+// definition, so it earns the stricter structured check; harness mode trusts
+// a human recorded the comment and only closes the "mere presence of ANY
+// author:'uat' comment, regardless of content" hole (an empty body, or a
+// body carrying no verdict word at all, no longer satisfies it).
+const UAT_VERDICT_WORD_RE = /\bpass\b/i;
+
 /**
- * TASK-082 — a task whose verification_tier is 'uat-only' may only reach
- * 'done' once a comment authored 'uat' is present (the recorded UAT
- * verdict). Self-contained: reads only task.verification_tier + task.comments,
- * no bundle/session access. Throws UatGuardError; callers run this BEFORE any
+ * TASK-186 — true when task's most recent 'uat'-authored comment has a
+ * non-empty body naming a recognizable verdict (the word PASS). False when
+ * there is no 'uat' comment at all, the body is empty/whitespace-only, or
+ * the body names no verdict word — see the doc comment above for why this is
+ * a lighter check than close-guard.js's loop-mode Gate 2 marker.
+ */
+export function hasRecordedUatVerdict(task) {
+  const comments = Array.isArray(task && task.comments) ? task.comments : [];
+  const uatComments = comments.filter((c) => c && c.author === 'uat');
+  if (uatComments.length === 0) return false;
+  const last = uatComments[uatComments.length - 1];
+  const body = String((last && last.body) || '').trim();
+  if (body === '') return false;
+  return UAT_VERDICT_WORD_RE.test(body);
+}
+
+/**
+ * TASK-082 (TASK-186 hardened) — a task whose verification_tier is
+ * 'uat-only' may only reach 'done' once its most recent comment authored
+ * 'uat' records a recognizable verdict (see hasRecordedUatVerdict).
+ * Self-contained: reads only task.verification_tier + task.comments, no
+ * bundle/session access. Throws UatGuardError; callers run this BEFORE any
  * mutation/write so a thrown guard leaves the task file untouched.
  */
 function checkUatGuard(task) {
   if (task.verification_tier !== 'uat-only') return;
-  const comments = Array.isArray(task.comments) ? task.comments : [];
-  const hasUatComment = comments.some((c) => c && c.author === 'uat');
-  if (!hasUatComment) {
+  if (!hasRecordedUatVerdict(task)) {
     throw new UatGuardError(
-      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without a "uat" comment recording the UAT verdict`,
+      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without its `
+        + 'most recent "uat" comment recording a recognizable verdict (a non-empty body naming a PASS result)',
     );
   }
 }

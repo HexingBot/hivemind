@@ -75,31 +75,112 @@ const OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
 // narrowing, so both land together.
 const FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 
+// TASK-186 — a token blacklist over prose cannot be made reliable by
+// extending the token list (a real failure phrased "Verdict: PASS
+// (deferred)" contains no FAIL-family token and still satisfies "Overall
+// result: PASS" — that is the exact defect this ticket fixes). The
+// structured-verdict path below makes the marker ARITHMETIC over a per-step
+// list instead: it activates only when the body carries the literal
+// "Verdict:" label — already the real convention in use (see e.g. this
+// repo's own TASK-109/112/155/170 uat comments) — and then requires EVERY
+// recognized step block to end, once its own whitespace is normalized, with
+// exactly "Verdict: PASS" or "Verdict: PASS." (an optional trailing period,
+// nothing else). A step whose verdict is qualified ("PASS (deferred)"),
+// missing, or explicitly FAIL fails the whole comment closed. Bodies with no
+// literal "Verdict:" label anywhere are unaffected — they keep using the
+// pre-existing FAIL_VERDICT_RE/OVERALL_PASS_RE token-scan below (the
+// documented legacy path; see tests/uat-verdict-marker-compat.spec.js for
+// the backward-compat proof against this repo's real tasks/).
+const VERDICT_LABEL_PRESENT_RE = /verdict\s*:/i;
+const STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
+const OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
+const STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
+
 /**
- * TASK-099 Gate 2 — a uat-only ticket's `uat` comment carries an "explicit
- * human verdict marker" when its most recent `uat`-authored comment (a) has
- * no orchestrator-delegation phrasing anywhere in the body, (b) has no FAIL
- * verdict anywhere in the body (a single failing step means the UAT did not
- * pass overall, however the body otherwise reads), and (c) states the
- * overall result as PASS per the SKILL.md recording convention. If the
- * comment shows delegated-verification phrasing anywhere, at least one step
- * was recorded as Orchestrator-verified, so the close still requires
- * `uat_delegated_to_orchestrator` to be explicitly granted.
+ * Split a uat comment body into logical step blocks for the structured
+ * per-step check. A line (after trim) matching STEP_START_RE ("1.", "2)",
+ * "Step 3:", ...) starts a new block; every following line up to the next
+ * step-start line, the "Overall result:" line, or the end of the body is a
+ * continuation of that block (this is what lets a single step's verdict
+ * line span several physical lines, e.g. a wrapped Observed: paragraph).
+ * Text before the first recognized step-start line (a preamble like "UAT
+ * script:") is dropped. If NO step-start line is found at all, the whole
+ * body (minus any "Overall result:" line) is treated as a single block —
+ * a reasonable fallback for a non-numbered single-verdict comment.
+ */
+function splitIntoStepBlocks(body) {
+  const lines = String(body).split(/\r?\n/);
+  const boundaries = [];
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+    if (STEP_START_RE.test(trimmed)) boundaries.push({ idx, type: 'step' });
+    else if (OVERALL_LINE_RE.test(trimmed)) boundaries.push({ idx, type: 'overall' });
+  });
+  const stepBoundaries = boundaries.filter((b) => b.type === 'step');
+  if (stepBoundaries.length === 0) {
+    const overall = boundaries.find((b) => b.type === 'overall');
+    const end = overall ? overall.idx : lines.length;
+    return [lines.slice(0, end).join(' ')];
+  }
+  return stepBoundaries.map((b) => {
+    const next = boundaries.find((other) => other.idx > b.idx);
+    const end = next ? next.idx : lines.length;
+    return lines.slice(b.idx, end).join(' ');
+  });
+}
+
+/**
+ * TASK-186 AC3 — evaluates the structured per-step verdicts in a body that
+ * carries at least one literal "Verdict:" label. Returns true only when
+ * EVERY recognized step block cleanly ends with "Verdict: PASS" (no
+ * qualifier, no missing label, no FAIL) AND the overall body still passes
+ * the legacy FAIL/PASS checks as a defense-in-depth backstop.
+ */
+function evaluateStructuredStepVerdicts(body) {
+  const blocks = splitIntoStepBlocks(body).map((b) => b.replace(/\s+/g, ' ').trim());
+  if (blocks.length === 0) return false;
+  for (const block of blocks) {
+    const m = STRICT_STEP_VERDICT_RE.exec(block);
+    if (!m) return false; // unparseable/qualified/ambiguous step — conservative reject
+    if (m[1].toLowerCase() === 'fail') return false;
+  }
+  if (FAIL_VERDICT_RE.test(body)) return false;
+  return OVERALL_PASS_RE.test(body);
+}
+
+/**
+ * TASK-099 Gate 2 (TASK-186 restructure) — a uat-only ticket's `uat` comment
+ * carries an "explicit human verdict marker" when its most recent
+ * `uat`-authored comment (a) has no orchestrator-delegation phrasing
+ * anywhere in the body, and (b) either — for bodies using the structured
+ * "Verdict:" convention — every recognized step cleanly records PASS (see
+ * evaluateStructuredStepVerdicts), or — for bodies with no such label at all
+ * — has no FAIL verdict anywhere and states the overall result as PASS per
+ * the SKILL.md recording convention (the pre-TASK-186 legacy path,
+ * unchanged). If the comment shows delegated-verification phrasing anywhere,
+ * at least one step was recorded as Orchestrator-verified, so the close
+ * still requires `uat_delegated_to_orchestrator` to be explicitly granted.
  *
  * This is a textual-convention check, not a cryptographic one: it cannot
- * prove a human actually authored the bare PASS, only that the comment does
- * not itself claim delegated verification and does not itself record a
- * failure. It narrows — it does not eliminate — the prior hole where ANY
- * comment authored 'uat' satisfied the done-guard regardless of content (see
- * the TASK-099 hand-off for the residual-limitation note).
+ * prove a human actually authored the recorded verdict, only that the
+ * comment does not itself claim delegated verification and does not itself
+ * record a failure (structured or prose). It narrows — it does not
+ * eliminate — the prior hole where ANY comment authored 'uat' satisfied the
+ * done-guard regardless of content (see the TASK-099 hand-off for the
+ * original residual-limitation note, and the TASK-186 hand-off for why a
+ * token blacklist over prose could not be hardened further by extending the
+ * token list alone).
  */
-function hasExplicitHumanVerdictMarker(task) {
+export function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
   const uatComments = comments.filter((c) => c && c.author === 'uat');
   if (uatComments.length === 0) return false;
   const last = uatComments[uatComments.length - 1];
   const body = String((last && last.body) || '');
   if (DELEGATED_MARKER_RE.test(body)) return false;
+  if (VERDICT_LABEL_PRESENT_RE.test(body)) {
+    return evaluateStructuredStepVerdicts(body);
+  }
   if (FAIL_VERDICT_RE.test(body)) return false;
   return OVERALL_PASS_RE.test(body);
 }

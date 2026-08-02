@@ -326,3 +326,130 @@ describe('AC3 — closeTask applies transition + comment + commits + prs + index
     expect(readIndexBytes(repoDir)).toBe(beforeIndex);
   });
 });
+
+// ===========================================================================
+// TASK-186 AC2 + AC6 — harness-mode checkUatGuard (the ONLY defense in
+// harness mode — there is no closeGuard composed there) previously asked
+// only "does an author:'uat' comment exist", not "does it record a
+// verdict". Replays adversarial probes A1/A2/A3 verbatim
+// (state/sessions/20260708T154259Z-29a27eda/artifacts/ac-fidelity-round2.mjs)
+// as permanent regression locks — before this fix all three MISSED (closed
+// to done). Design decision (AC6): harness mode's assumption is that a human
+// is genuinely present, so the fix stays a light content check — a non-empty
+// body naming a recognizable verdict word (PASS) — rather than the full
+// structured per-step machinery loop mode's Gate 2 enforces in
+// src/close-guard.js. That asymmetry is deliberate and documented on
+// hasRecordedUatVerdict's doc comment.
+// ===========================================================================
+describe('TASK-186 AC2/AC6 — harness-mode checkUatGuard requires a recognizable verdict, not mere presence', () => {
+  it('A1 — a uat comment whose own recorded verdict is FAIL does not satisfy the gate', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a1-explicit-fail');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-901': makeTask({
+          key: 'TASK-901',
+          verification_tier: 'uat-only',
+          comments: [{
+            author: 'uat',
+            at: '2026-08-02T00:00:00Z',
+            body: '1. Run it, expect the banner. Observed: crash. FAIL\n\nOverall result: FAIL',
+          }],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-901',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatGuardError);
+  });
+
+  it('A2 — an empty uat comment body does not satisfy the gate', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a2-empty-body');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-902': makeTask({
+          key: 'TASK-902',
+          verification_tier: 'uat-only',
+          comments: [{ author: 'uat', at: '2026-08-02T00:00:00Z', body: '' }],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-902',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatGuardError);
+  });
+
+  it('A3 — a uat comment with unrelated content and no verdict word does not satisfy the gate', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a3-unrelated');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-903': makeTask({
+          key: 'TASK-903',
+          verification_tier: 'uat-only',
+          comments: [{
+            author: 'uat',
+            at: '2026-08-02T00:00:00Z',
+            body: 'Reminder: order sandwiches for the Thursday planning session.',
+          }],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-903',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatGuardError);
+  });
+
+  it('positive control — a bare "All steps PASS." body still satisfies the gate (unaffected legacy convention)', async () => {
+    const { closeTask } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a-positive-pass');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-904': makeTask({
+          key: 'TASK-904',
+          verification_tier: 'uat-only',
+          comments: [{ author: 'uat', at: '2026-08-02T00:00:00Z', body: 'All steps PASS.' }],
+        }),
+      },
+    });
+
+    await closeTask({
+      repoRoot: repoDir,
+      key: 'TASK-904',
+      comment: { author: 'orchestrator', body: 'Closing.' },
+    });
+    expect(readTaskFile(repoDir, 'TASK-904').status).toBe('done');
+  });
+});

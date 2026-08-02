@@ -553,6 +553,185 @@ describe('TASK-108 — loopModeUatCommentGuard', () => {
 // hasExplicitHumanVerdictMarker (and thus no longer bypasses Gate 2's
 // loopModeCloseGuard).
 // ===========================================================================
+// ===========================================================================
+// TASK-186 — Gate 2's human-verdict marker was a pure TOKEN SCAN: a per-step
+// failure phrased "Verdict: PASS (deferred)" contains no FAIL-family token
+// and satisfies "Overall result: PASS", so it closed a uat-only ticket to
+// done autonomously, in loop mode with uat_delegated_to_orchestrator FALSE,
+// while the ticket's own record said an AC crashed. These specs replay the
+// round-3b probe fixtures verbatim
+// (state/sessions/20260708T154259Z-29a27eda/artifacts/ac-fidelity-round3b.mjs),
+// composed EXACTLY as src/mcp-server.js composes the guards
+// (loopModeUatCommentGuard on the write path, loopModeCloseGuard as
+// closeTask's closeGuard) — calling closeTask() directly without a
+// closeGuard bypasses the loop-mode guards entirely and proves nothing (an
+// earlier probe run made exactly that mistake and produced three false
+// positives — see the artifacts' round-3 vs round-3b note).
+//
+// AC3 design decision: the marker becomes ARITHMETIC over a per-step list
+// rather than pattern-matching prose. When a uat comment's body carries at
+// least one literal "Verdict:" label (already the real convention in use —
+// see e.g. TASK-109/112/155/170's actual bodies), each recognized step block
+// must end, once whitespace-normalized, with EXACTLY "Verdict: PASS" or
+// "Verdict: PASS." — nothing else. A qualified, missing, or FAIL verdict on
+// any one step fails the whole comment closed. Bodies with no literal
+// "Verdict:" label at all keep using the pre-existing token-scan path
+// unchanged (the documented legacy path — see AC4's backward-compat sensor,
+// tests/uat-verdict-marker-compat.spec.js).
+// ===========================================================================
+const R3B_DENY = {
+  auto_close_on_green_review: false,
+  uat_delegated_to_orchestrator: false,
+  auto_consolidate: false,
+  auto_push_after_close: false,
+  auto_version_bump_on_milestone: false,
+};
+const R3B_GRANT_CLOSE = { ...R3B_DENY, auto_close_on_green_review: true };
+
+async function mcpCloseTask({ repoRoot, key, comment, linked_commits = [] }) {
+  const { loopModeUatCommentGuard, loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+  const { closeTask } = await import(TASK_STORE_URL);
+  await loopModeUatCommentGuard({ repoRoot, author: comment.author });
+  return closeTask({
+    repoRoot, key, comment, linked_commits, closeGuard: loopModeCloseGuard,
+  });
+}
+
+async function mcpAppendComment({ repoRoot, key, author, body }) {
+  const { loopModeUatCommentGuard } = await import(CLOSE_GUARD_URL);
+  const { appendComment } = await import(TASK_STORE_URL);
+  await loopModeUatCommentGuard({ repoRoot, author });
+  return appendComment({ repoRoot, key, author, body });
+}
+
+function rewriteBundleMode(root, sessionId, mode, loopAuth) {
+  writeFileSync(join(root, 'state', 'sessions', sessionId, 'session.json'), JSON.stringify({
+    schema_version: 2,
+    session_id: sessionId,
+    lifecycle_state: 'active',
+    updated_at: '2026-08-02T00:00:00Z',
+    active_task: null,
+    workflow_step: 'idle',
+    next_action: 'p',
+    handoff_summary: 'p',
+    open_questions: [],
+    blockers: [],
+    decisions: [],
+    subagent_results: [],
+    pending_human_confirmation: null,
+    mode,
+    loop_auth: loopAuth,
+  }, null, 2), 'utf8');
+}
+
+describe('TASK-186 — round-3b adversarial probes replayed as permanent regression locks (real mcp-server composition)', () => {
+  it('V0 (control) — loop mode + auto_close_on_green_review:false still throws LOOP_CLOSE_GUARD_DENIED', async () => {
+    const { createTask } = await import(TASK_STORE_URL);
+    const { LoopCloseGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: R3B_DENY });
+    const t = await createTask({
+      repoRoot: root, title: 'V0', description: 'd', priority: 'medium',
+      acceptance_criteria: ['ships'], verification_tier: 'tests-after',
+    });
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(LoopCloseGuardError);
+    expect(caught.code).toBe('LOOP_CLOSE_GUARD_DENIED');
+  });
+
+  it('V1 — Gate 2 vs a real failure phrased "Verdict: PASS (deferred)" (the ticket-title defect) — now CAUGHT', async () => {
+    const { createTask } = await import(TASK_STORE_URL);
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'V1', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    const body = [
+      'UAT script:',
+      '1. Run `npm run export -- --format=csv`, expect a CSV. Observed: file created. Verdict: PASS',
+      '2. Open the CSV, expect correct headers. Observed: headers present. Verdict: PASS',
+      '3. Run with --format=xlsx, expect an XLSX file. Observed: command exited with an unhandled',
+      '   TypeError and no file was written; deferred to a follow-up ticket, not a blocker for this',
+      '   scope. Verdict: PASS (deferred)',
+      '', 'Overall result: PASS',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+
+    // Flip to loop mode WITHOUT the delegation grant — Gate 1 satisfied, Gate 2 not delegated.
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatDelegationGuardError);
+    expect(caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+
+  it('V2 (control) — the literal "Step 1 ... FAILED" + "Overall result: PASS" form still throws LOOP_UAT_DELEGATION_REQUIRED', async () => {
+    const { createTask } = await import(TASK_STORE_URL);
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'V2', description: 'd', priority: 'medium',
+      acceptance_criteria: ['Works.'], verification_tier: 'uat-only',
+    });
+    await mcpAppendComment({
+      repoRoot: root,
+      key: t.key,
+      author: 'uat',
+      body: '1. Step one. Observed: broken. FAILED\n\nOverall result: PASS',
+    });
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UatDelegationGuardError);
+  });
+
+  it('positive control — a cleanly structured multi-step "Verdict: PASS" comment (no delegation phrasing) still satisfies Gate 2', async () => {
+    const { createTask } = await import(TASK_STORE_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'V1-positive', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    const body = [
+      '1. Run the csv export, expect a CSV. Observed: file created. Verdict: PASS',
+      '2. Run the xlsx export, expect an XLSX file. Observed: file created. Verdict: PASS',
+      '', 'Overall result: PASS',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    await expect(
+      mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'Closing.' },
+      }),
+    ).resolves.not.toThrow();
+  });
+});
+
 describe('TASK-108 — FAIL_VERDICT_RE widened to FAILED/failing/fails', () => {
   it('a body with "Step 2 FAILED" (past tense) does NOT satisfy the marker, even though the overall line says PASS', async () => {
     const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
