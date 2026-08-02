@@ -63,6 +63,8 @@ Wrinkle: a pathspec-limited commit cannot introduce a brand-new (untracked) file
 
 **Mandatory post-commit verification, every commit, no exceptions:** immediately after committing, run `git show --stat HEAD` and confirm the file list is exactly what you intended. If it is not, STOP and report to the Orchestrator rather than repairing silently — do not `git reset` or otherwise rewrite history without explicit instruction. This check is nearly free and is what caught the TASK-184 incident.
 
+**Limitation — same-path collisions are NOT caught by this protocol:** a pathspec-limited commit records the WORKING-TREE content of the named paths at commit time. If a sibling spawn concurrently edits the SAME path you are committing, that edit is silently swept into your commit — and the `git show --stat HEAD` check above cannot detect it, because the file list still matches your intent exactly (only the file's content differs, not its presence in the list). This protocol protects against the disjoint-file sweep described above; it does not protect against same-path collisions.
+
 This protocol applies to every commit you make, whether or not you know a sibling spawn is active — you cannot see a sibling's state from inside your own context window.
 
 ## Observability & minimalism (Spine)

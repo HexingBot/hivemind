@@ -23,7 +23,7 @@
 // behavior when a live-race reproduction is impractical.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { writeFileSync, appendFileSync, readFileSync } from 'node:fs';
+import { writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -119,9 +119,11 @@ describe('AC1/AC5 — shared-index commit hazard and pathspec-limited mitigation
     const status = git(dir, ['status', '--porcelain']);
     expect(status).toContain('M  fileB.txt');
 
-    // AC5 — mandatory post-commit verification is exactly this same
-    // `git show --stat HEAD` call; assert it is sufficient on its own to
-    // detect a would-be over-broad commit (proven by the sibling spec above).
-    expect(readFileSync(fileA, 'utf8')).toContain('a-edit');
+    // AC5's real mechanical content is the `expect(committed).toEqual(['fileA.txt'])`
+    // assertion above, which IS `git show --stat`'s file list — the same call the
+    // developer briefing's mandatory post-commit verification uses. (A prior
+    // version of this spec also asserted fileA's on-disk content here, but that
+    // check is near-vacuous — it cannot fail short of working-tree destruction —
+    // so it has been dropped rather than left to overstate this spec's coverage.)
   });
 });
