@@ -1,8 +1,15 @@
 // workflows/deep-review.js
 // TASK-037 — Deep-review workflow script for release gates and large diffs.
+// TASK-190 — args is the documented CLI-style STRING ("base=<ref> ticket=<key>"),
+//   not an object. The runtime hands this script a raw string (same convention
+//   as deep-research.js) — a prior version read args.base/args.ticket, which
+//   silently discarded every real invocation (both fields always undefined off
+//   a string). See the args-shape guard below for the parse + refuse contract.
 //
 // Invocation: /deep-review  (Claude Code >= 2.1.154 required; human approval per run)
-// Args: { base?: string, ticket?: string }
+// Args: args (string) — "base=<git-ref> ticket=<TASK-key>", space-separated,
+//   both keys optional. See skills/orchestrator-routing/SKILL.md for the
+//   documented invocation this parses.
 //   base   — git ref to diff against (defaults to 'origin/main')
 //   ticket — optional TASK key whose ACs anchor the AC-compliance dimension
 //
@@ -19,7 +26,7 @@
 
 export const meta = {
   name: "deep-review",
-  description: "Multi-agent adversarial review for release gates and large diffs. Fans out four review dimensions (AC-compliance, correctness/bugs, security, test-adequacy) with schema-validated findings, then adversarially verifies each finding. Accepts args { base, ticket }.",
+  description: "Multi-agent adversarial review for release gates and large diffs. Fans out four review dimensions (AC-compliance, correctness/bugs, security, test-adequacy) with schema-validated findings, then adversarially verifies each finding. Accepts args as a 'base=<ref> ticket=<key>' string.",
   whenToUse: "At release/milestone gates, for unusually large diffs, or on explicit human request. Requires Claude Code >= 2.1.154 and human approval per run. COMPLEMENTS (never replaces) the per-ticket fresh-context reviewer.",
   phases: [
     { title: "Review", detail: "Fan out four review dimensions concurrently — each agent inspects git diff <base>...HEAD and produces schema-validated findings." },
@@ -71,28 +78,96 @@ const VERDICT_SCHEMA = {
 // Length cap: 200 chars is far more than any real git ref needs.
 const GIT_REF_RE = /^[A-Za-z0-9._\/~^-]{1,200}$/;
 const TICKET_KEY_RE = /^TASK-\d{3,}$/;
+const KNOWN_ARG_KEYS = new Set(['base', 'ticket']);
+
+// ---------------------------------------------------------------------------
+// Args shape guard (TASK-190)
+// ---------------------------------------------------------------------------
+//
+// args is the documented CLI-style string ("base=<ref> ticket=<key>", both
+// keys optional). null/undefined/empty-string means "both fields omitted" —
+// that is a documented, valid case (defaults silently, no warning).
+//
+// Anything else that cannot be parsed into recognizable base=/ticket= tokens
+// is UNUSABLE, and this workflow REFUSES to run rather than proceeding on
+// defaults: a silently-redirected review is worse than no review, because the
+// human believes a gate ran against the ref/ticket they asked for. This is
+// the exact live incident this ticket fixes (two human-requested reviews
+// silently ran against origin/main with no ticket anchor and reported
+// success). Refusal covers:
+//   - args present but not a string (object/array/number/boolean) — the
+//     shape the workflow wrongly required before this fix.
+//   - args a non-empty string with zero recognizable base=/ticket= tokens.
+// A string with SOME recognizable tokens plus unrecognized noise (unknown
+// keys, malformed `key` tokens with no `=`) does not refuse — it WARNS
+// naming exactly what was ignored and proceeds using the recognized fields.
+// Per-field invalid VALUES (bad git ref, bad ticket key) keep the pre-existing
+// [warn]-and-fall-back-to-default behavior unchanged.
+function refuse(reason) {
+  log(`[error] deep-review: refusing to run — ${reason}`);
+  return {
+    confirmed: [],
+    summary: { total: 0, high: 0, medium: 0, low: 0, blocked: false, refused: true, reason },
+  };
+}
+
+let baseRef = 'origin/main';
+let ticketKey = null;
+
+if (args !== null && args !== undefined && args !== '') {
+  if (typeof args !== 'string') {
+    return refuse(`args must be a "base=<ref> ticket=<key>" string — got ${Array.isArray(args) ? 'array' : typeof args}`);
+  }
+
+  const trimmedArgs = args.trim();
+  if (trimmedArgs.length > 0) {
+    const parsed = {};
+    const ignoredTokens = [];
+
+    for (const token of trimmedArgs.split(/\s+/)) {
+      const eqIdx = token.indexOf('=');
+      if (eqIdx <= 0) {
+        ignoredTokens.push(token);
+        continue;
+      }
+      const key = token.slice(0, eqIdx);
+      const value = token.slice(eqIdx + 1);
+      if (KNOWN_ARG_KEYS.has(key)) {
+        parsed[key] = value;
+      } else {
+        ignoredTokens.push(token);
+      }
+    }
+
+    if (Object.keys(parsed).length === 0) {
+      return refuse(`args "${trimmedArgs}" contained no recognizable base=/ticket= tokens`);
+    }
+
+    if (ignoredTokens.length > 0) {
+      log(`[warn] args "${trimmedArgs}" contained unrecognized token(s) — ignored: ${ignoredTokens.map((t) => `"${t}"`).join(', ')}`);
+    }
+
+    if (parsed.base) {
+      if (GIT_REF_RE.test(parsed.base) && !parsed.base.startsWith('-')) {
+        baseRef = parsed.base;
+      } else {
+        log(`[warn] args.base "${parsed.base}" failed the git-ref allowlist — falling back to 'origin/main'`);
+      }
+    }
+
+    if (parsed.ticket) {
+      if (TICKET_KEY_RE.test(parsed.ticket)) {
+        ticketKey = parsed.ticket;
+      } else {
+        log(`[warn] args.ticket "${parsed.ticket}" is not a valid TASK-NNN key — dropping ticket context`);
+      }
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Review dimensions
 // ---------------------------------------------------------------------------
-
-let baseRef = 'origin/main';
-if (args && args.base) {
-  if (GIT_REF_RE.test(args.base) && !args.base.startsWith('-')) {
-    baseRef = args.base;
-  } else {
-    log(`[warn] args.base "${args.base}" failed the git-ref allowlist — falling back to 'origin/main'`);
-  }
-}
-
-let ticketKey = null;
-if (args && args.ticket) {
-  if (TICKET_KEY_RE.test(args.ticket)) {
-    ticketKey = args.ticket;
-  } else {
-    log(`[warn] args.ticket "${args.ticket}" is not a valid TASK-NNN key — dropping ticket context`);
-  }
-}
 
 const acCompliancePrompt = ticketKey
   ? `You are an adversarial code reviewer performing an AC-compliance audit.
