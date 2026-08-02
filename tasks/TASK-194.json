@@ -24,9 +24,15 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-02T21:00:03.440Z",
+      "body": "SCOPE ADDITION from TASK-192's full-depth review (MEDIUM-2), folded here because this ticket will reuse the same detection code.\n\n**Nothing pins `hasAnyChangedFiles` to vitest's own `--changed` algorithm across upgrades.**\n\n`scripts/test-since.mjs:109-125` reimplements vitest's change detection by issuing the identical three git commands vitest 2.1.9's `VitestGit` issues: `diff --name-only <ref>...HEAD`, `diff --cached --name-only`, and `ls-files --other --modified --exclude-standard`. The reviewer verified the mirror is verbatim TODAY. It is not pinned for tomorrow.\n\nTwo specific rot risks: the in-code comment cites a content-hash-named chunk (`node_modules/vitest/dist/chunks/git.B5SDxu-n.js`) whose filename changes on the next vitest bump, and no sensor asserts the three command arrays still match what vitest actually runs.\n\n**Blast radius is bounded, which is why it is MEDIUM and not HIGH.** Drift can only produce a wrong reason LABEL, never a wrong exit code — the `no-spec-matched` decision itself comes from vitest's own `vitest list --changed`, so the mirror only ever picks BETWEEN the two markers. But the label is the whole deliverable of that seam, so a silently-wrong reason defeats the purpose.\n\n**Suggested fix, cheap:** a fast-tier spec that globs `node_modules/vitest/dist/chunks/git.*.js` (glob, not the hashed name) and asserts the three git-argument sequences still appear. That survives a version bump and fails loudly when vitest changes its algorithm.\n\nSince this ticket implements the equivalent detection for `test:changed`, doing both under one mechanism — and pinning both with one sensor — is cheaper than solving it twice. Treat it as in scope here rather than minting a third ticket.\n\n**Also inherited: the measured cost.** TASK-192's `vitest list` pre-check adds 5.2s to every `test:since` run with a non-empty diff. This ticket's AC5 already requires measuring the added latency for `test:changed` — note that `test:changed` is the FAST iteration command, run far more often than `test:since`, so the same 5s would be a materially worse trade there. If the cost lands anywhere near that, prefer a cheaper signal over a thorough one, exactly as AC5 says."
+    }
+  ],
   "created_at": "2026-08-02T20:50:14.469Z",
-  "updated_at": "2026-08-02T20:50:14.469Z",
+  "updated_at": "2026-08-02T21:00:03.440Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",

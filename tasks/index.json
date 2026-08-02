@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T20:55:58.606Z",
+  "generated_at": "2026-08-02T21:00:03.440Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1114,13 +1114,13 @@
     {
       "key": "TASK-191",
       "title": "Parallel developer spawns share one git index, so explicit-path staging is not safe",
-      "status": "in_review",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
       "key": "TASK-192",
       "title": "Empty results must declare themselves empty: absence of evidence keeps rendering as evidence of absence",
-      "status": "in_review",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -1132,6 +1132,12 @@
     {
       "key": "TASK-194",
       "title": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-195",
+      "title": "Worktree isolation for parallel agents: remove the shared index instead of briefing around it",
       "status": "todo",
       "priority": "medium"
     }

@@ -1362,6 +1362,12 @@
       "type": "task",
       "ref": "tasks/TASK-190.json",
       "label": "deep-review silently ignores its args: docs pass a string, the script reads an object"
+    },
+    {
+      "id": "task-192",
+      "type": "task",
+      "ref": "tasks/TASK-192.json",
+      "label": "Empty results must declare themselves empty: absence of evidence keeps rendering as evidence of absence"
     }
   ],
   "edges": [

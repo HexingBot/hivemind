@@ -1,0 +1,35 @@
+{
+  "key": "TASK-195",
+  "title": "Worktree isolation for parallel agents: remove the shared index instead of briefing around it",
+  "description": "Recommended by TASK-191's full-depth review as the permanent disposition of the shared-index hazard. TASK-191 shipped the only mitigation implementable at its own scope (a briefing-text convention); this ticket removes the shared resource.\n\n**Why the current mitigation is not the end state.** TASK-191 landed a pathspec-limited commit protocol plus a mandatory post-commit `git show --stat HEAD` verification. The reviewer's assessment, which I accept: it is worth shipping, it demonstrably caught the live incident, and it is *a convention backed by a second convention, with no sensor on either behaviour.* Three residual gaps, all verified against real git in a scratchpad repo during that review:\n\n1. **Compliance-dependent.** Nothing enforces that an agent uses the pathspec form. An agent that reverts to `git add` + `git commit` reproduces the original hazard exactly.\n2. **Same-path collisions are invisible.** A pathspec commit records the WORKING-TREE content of the named paths. If a sibling edits the same file concurrently, that edit is silently committed — and `git show --stat HEAD` cannot detect it, because the file list still matches intent. The backstop is blind to this class by construction.\n3. **Nothing verifies the verification.** The post-commit check is itself advisory; an agent that forgets both instructions is caught by nothing.\n\n**Why worktree isolation is the real fix.** It removes the shared index rather than coordinating access to it. The `Agent` tool already supports `isolation: 'worktree'`, giving each agent its own checkout — so the primitive exists; what does not exist is the merge/handback machinery for commits made inside a worktree. TASK-191 rejected this option **correctly for its own scope** (building that machinery is code, and that ticket was doc-only), but the reviewer was explicit that the rejection is not sound as a permanent disposition.\n\n**The hazard is live, not theoretical.** It fired once today (an 11-file commit from two agents that had each staged only their own files, caught by post-commit inspection and repaired), and the TASK-191 developer observed siblings landing and reverting files in the shared tree in real time while implementing the ticket about it.\n\n**Decide, do not assume.** Worktree isolation is the reviewer's recommendation, but enforced commit serialization is a legitimate alternative (`src/session-lock.js` already exists) — though note the reviewer's caveat that an advisory lock is *also* compliance-dependent, so it is not categorically stronger than what TASK-191 already shipped. A `pre-commit` hook backstop is a third option the TASK-191 developer raised. Evaluate against the three residual gaps above, not against convenience.\n\n**Cost is a first-class input.** Worktrees cost setup time and disk per agent. Today's drive ran up to four concurrent agents; the design should say when isolation is warranted (concurrent writers) versus wasteful (a single agent, or read-only reviewers, which share the tree harmlessly today).",
+  "acceptance_criteria": [
+    "The chosen approach is decided and recorded with reasoning, assessed explicitly against all three residual gaps TASK-191 leaves open (compliance-dependence, same-path invisibility, unverified verification) — state which gaps the choice closes and which it does not.",
+    "If worktree isolation is chosen, the merge/handback path for commits made inside a worktree is specified and implemented, not assumed: how a worktree commit reaches main, what happens on conflict, and what happens if the agent dies mid-work leaving an orphaned worktree.",
+    "The same-path collision class is addressed or explicitly risk-accepted with reasoning. This is the gap the current post-commit check is structurally blind to, so a solution that does not consider it has not improved on TASK-191.",
+    "Guidance states when isolation applies and when it does not — concurrent writers versus a single agent versus read-only reviewers (which share the tree harmlessly today). Isolation applied indiscriminately is a real cost for no benefit.",
+    "The behaviour is covered by specs that would fail if the mechanism were removed, following the precedent of tests/e2e/git-pathspec-commit-isolation.spec.js which reproduces the hazard and locks the mitigation.",
+    "TASK-191's pathspec protocol and post-commit verification are NOT removed unless the new mechanism strictly supersedes them — if both are kept, say which is the primary control and which is the backstop, in the briefing docs.",
+    "npm run test:all is green; no existing spec regresses; parity copies byte-identical for any briefing doc touched; dist rebuilt and committed if any bundled source changes."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "orchestration",
+    "concurrency",
+    "process",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-191"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T20:58:57.921Z",
+  "updated_at": "2026-08-02T20:58:57.921Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
