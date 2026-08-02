@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T21:00:03.440Z",
+  "generated_at": "2026-08-02T21:07:58.607Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1084,7 +1084,7 @@
     {
       "key": "TASK-186",
       "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     },
     {
@@ -1114,7 +1114,7 @@
     {
       "key": "TASK-191",
       "title": "Parallel developer spawns share one git index, so explicit-path staging is not safe",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "medium"
     },
     {
@@ -1132,7 +1132,7 @@
     {
       "key": "TASK-194",
       "title": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
@@ -1140,6 +1140,12 @@
       "title": "Worktree isolation for parallel agents: remove the shared index instead of briefing around it",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-196",
+      "title": "The documented UAT recording convention no longer produces a comment the loop-mode gate accepts",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

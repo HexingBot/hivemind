@@ -1,0 +1,36 @@
+{
+  "key": "TASK-196",
+  "title": "The documented UAT recording convention no longer produces a comment the loop-mode gate accepts",
+  "description": "Surfaced by TASK-186's fix round as an immediate consequence of its own change. **This is a live doc-vs-code contradiction, not a cosmetic one** — following the documented procedure verbatim now produces a UAT comment that the close gate rejects.\n\n**What changed.** TASK-186 made the structured per-step verdict convention MANDATORY in loop mode: `hasExplicitHumanVerdictMarker` now unconditionally evaluates `evaluateStructuredStepVerdicts`, and a body with no literal `Verdict:` label on any step is rejected outright. The label-free legacy fallback is gone.\n\n**What the docs still say.** `skills/orchestrator-routing/SKILL.md` (and its `.claude/skills/` parity copy), UAT procedure step 3 around lines 452-455, describes the recording convention only as \"per-step verdict ... overall result (PASS or FAIL)\". It never mandates the literal `Verdict:` label. CLAUDE.md's UAT step has the same shape.\n\n**The consequence.** A human or Orchestrator following the documented procedure would naturally write `1. Run X, expect Y. Observed: Y. PASS` — which now FAILS Gate 2 in loop mode and forces a `uat_delegated_to_orchestrator` grant that should not have been needed. The UAT path is documented one way and enforced another.\n\n**This is the third instance of the same pattern in two days,** and that is the reason this is `high` rather than `medium`: TASK-181 changed reconcile-apply's behaviour and left `commands/design-pack.md` describing the old one; TASK-183 changed it again and made TASK-184's freshly-corrected doc stale within two minutes; now TASK-186 changes the UAT contract and leaves the procedure that generates UAT comments describing the old format. Each time, the code was right and the instructions that drive humans and agents were wrong.\n\n**Fix direction.** Update the UAT-recording convention in both `SKILL.md` parity copies (byte-identical) and in `CLAUDE.md`'s Workflow UAT step so the documented format is exactly what the gate accepts: a literal `Verdict: PASS` / `Verdict: FAIL` per step, plus the overall-result line. Show a correct worked example, since the format is now load-bearing rather than stylistic.\n\n**Also worth deciding here:** whether the gate should accept the previously-documented bare form as well. TASK-186 chose strictness deliberately and measured it as corpus-safe, so loosening it would undo that — but the docs and the gate must agree one way or the other, and right now they do not.\n\nNote also that `tests/e2e/close-guard.spec.js`'s `DELEGATED_UAT_COMMENT`, `OVERALL_FAIL_UAT_COMMENT` and `FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT` fixtures still use bare \"verdict PASS\" prose without the colon. Their assertions are all rejections that hold regardless (a delegation marker or FAIL token short-circuits before the structured check), so this is not a functional gap — but the fixtures now model a format the docs should no longer teach.",
+  "acceptance_criteria": [
+    "A failing doc-lock spec first demonstrates the contradiction: the UAT recording convention documented in skills/orchestrator-routing/SKILL.md does not describe a format that hasExplicitHumanVerdictMarker accepts. Capture the red-run output.",
+    "The documented UAT recording convention in BOTH skills/orchestrator-routing/SKILL.md parity copies (byte-identical) and in CLAUDE.md's Workflow UAT step describes exactly the format the loop-mode gate accepts, including the literal per-step 'Verdict: PASS' / 'Verdict: FAIL' label and the overall-result line, with a correct worked example.",
+    "A doc-lock pins the correspondence so it cannot silently drift again — ideally by deriving the accepted format from the real guard code rather than restating it, so a future change to the guard breaks the lock. Prove non-vacuity by mutation: change the documented example to a form the gate rejects and confirm the spec fails.",
+    "The open question is decided and recorded in the closing comment: does the gate keep TASK-186's strict mandate (docs change to match), or does it also accept the previously-documented bare form (code loosens to match)? Do not leave docs and gate disagreeing.",
+    "If the strict mandate is kept, verify no already-closed ticket is retroactively affected — TASK-186 established that close-time guards never re-gate a closed ticket and that exactly one real ticket (TASK-133, already done) relied on the label-free path. Re-verify that count against the current corpus rather than trusting the recorded figure.",
+    "tests/e2e/close-guard.spec.js's bare-'verdict PASS' fixtures are either updated to the documented format or explicitly left with a comment stating why they intentionally model a rejected shape.",
+    "npm run test:all is green; no existing close-guard or UAT spec regresses; dist rebuilt and committed if any bundled source changes."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "docs",
+    "uat",
+    "close-guard",
+    "review-followup",
+    "silent-failure"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-186"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T21:07:58.607Z",
+  "updated_at": "2026-08-02T21:07:58.607Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
