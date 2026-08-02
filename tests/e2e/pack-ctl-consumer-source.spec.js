@@ -147,16 +147,39 @@ describe('TASK-181 — reconcile-apply materializes built-in pack skills into a 
     expect(existsSync(join(root, '.claude', 'skills', 'watch', 'scripts', 'watch.py'))).toBe(true);
   });
 
-  it('does NOT regress the framework repo: its own owned copies still resolve and steady-state no-ops', async () => {
-    const result = runCli(SRC_CLI, ['reconcile-apply', '--repo-root', REPO_ROOT]);
+  // TASK-183 item 3 — this spec previously ran reconcile-apply (a WRITE
+  // command) with `--repo-root REPO_ROOT`, the live git-tracked framework
+  // repo: applyPlan unconditionally writeLock()s integrations.lock.json and
+  // executeInstall rmSync+cpSync's under the real .claude/skills/. It only
+  // ever passed because the round-trip happened to be byte-identical — a
+  // content coincidence, not isolation. Restructured to mirror the exact
+  // fs state (PROJECT.md, .claude/skills/, integrations.lock.json) into a
+  // tmp fixture and run against THAT root instead; the real REPO_ROOT tree
+  // is asserted untouched.
+  it('does NOT regress the framework repo: its own owned copies still resolve and steady-state no-ops (read-only w.r.t. the real REPO_ROOT)', async () => {
+    const root = await makeTmpDir('framework-repo-mirror');
+    cpSync(join(REPO_ROOT, 'PROJECT.md'), join(root, 'PROJECT.md'));
+    cpSync(join(REPO_ROOT, '.claude', 'skills'), join(root, '.claude', 'skills'), { recursive: true });
+    cpSync(join(REPO_ROOT, 'integrations.lock.json'), join(root, 'integrations.lock.json'));
+
+    const lockBefore = readFileSync(join(REPO_ROOT, 'integrations.lock.json'), 'utf8');
+
+    // SRC_CLI's own directory (REPO_ROOT/bin) still ancestor-resolves to
+    // REPO_ROOT/assimilated-skills regardless of --repo-root's value, so the
+    // fixture still exercises the "framework repo resolves its own owned
+    // copies" path this spec is named for.
+    const result = runCli(SRC_CLI, ['reconcile-apply', '--repo-root', root]);
     expect(result.status).toBe(0);
-    // The framework repo already has both skills live under .claude/skills/, so a
-    // reconcile must be a pure no-op — never a reinstall loop.
+    // The mirrored fixture already has both skills live and lock-recorded,
+    // so a reconcile must be a pure no-op — never a reinstall loop.
     expect(result.json.plan.install).toEqual([]);
     const notFound = result.json.packs
       .flatMap((p) => p.report)
       .filter((r) => /owned source not found/.test(r.reason || ''));
     expect(notFound).toEqual([]);
+
+    // The real, git-tracked REPO_ROOT lockfile was never rewritten.
+    expect(readFileSync(join(REPO_ROOT, 'integrations.lock.json'), 'utf8')).toBe(lockBefore);
   });
 });
 
@@ -174,5 +197,37 @@ describe('TASK-181 — a total materialize failure is distinguishable from "noth
     expect(result.json.planned_install_count).toBeGreaterThan(0);
     expect(result.json.installed_count).toBe(0);
     expect(result.json.ok).toBe(false);
+
+    // TASK-183 AC6 — the exit code and the documented output contract
+    // (bin/pack-ctl.js:90-94) now agree: ok:false also means a non-zero
+    // exit, a code, a message, and something on stderr -- not just a
+    // json.ok flag a caller has to remember to check.
+    expect(result.status).not.toBe(0);
+    expect(result.json.code).toBeTruthy();
+    expect(result.json.message).toBeTruthy();
+    expect(result.stderr).toMatch(/failure/i);
+  });
+
+  // TASK-183 AC5 — mutation-confirmed gap: the pre-fix guard only ever
+  // falsified `ok` when installedCount === 0 (TOTAL failure). With the two
+  // built-in packs shipping today, one soft-failing while the other lands
+  // yields `0 < installedCount < plannedInstallCount` and read as ok:true.
+  it('a PARTIAL materialize failure (some but not all planned installs land) is also ok:false with a non-zero exit', async () => {
+    const root = await makeConsumerProject();
+    // A custom owned root with a REAL "watch" copy but no "ui-ux-pro-max" at
+    // all -- one of the two desired skills materializes, the other cannot.
+    const customOwnedRoot = join(root, 'partial-owned-root');
+    mkdirSync(customOwnedRoot, { recursive: true });
+    cpSync(join(REPO_ROOT, 'assimilated-skills', 'watch'), join(customOwnedRoot, 'watch'), { recursive: true });
+
+    const result = runCli(SRC_CLI, ['reconcile-apply', '--repo-root', root], {
+      env: { HIVEMIND_OWNED_SOURCE_ROOT: customOwnedRoot },
+    });
+
+    expect(result.json.planned_install_count).toBeGreaterThan(1);
+    expect(result.json.installed_count).toBeGreaterThan(0);
+    expect(result.json.installed_count).toBeLessThan(result.json.planned_install_count);
+    expect(result.json.ok).toBe(false);
+    expect(result.status).not.toBe(0);
   });
 });

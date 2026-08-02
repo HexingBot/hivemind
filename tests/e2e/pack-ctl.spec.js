@@ -256,13 +256,17 @@ describe('AC3 — reconcile-apply materializes skills and writes integrations.lo
       env: { HIVEMIND_OWNED_SOURCE_ROOT: join(root, 'no-such-owned-root') },
     });
 
-    expect(result.status).toBe(0);
     const designPowerPack = result.json.packs.find((p) => p.id === 'design-power');
     expect(designPowerPack.aborted).toBe(false);
     expect(existsSync(join(root, '.claude', 'skills', 'ui-ux-pro-max'))).toBe(false);
     // And the run must no longer read as an unqualified success (TASK-181).
     expect(result.json.ok).toBe(false);
     expect(result.json.installed_count).toBe(0);
+    // TASK-183 AC6 — a soft-only failure still degrades via leave-and-report
+    // (never aborts), but ok:false now ALSO means a non-zero exit, matching
+    // this module's own documented output contract (bin/pack-ctl.js:90-94)
+    // instead of silently exiting 0 the way the pre-TASK-183 CLI did.
+    expect(result.status).not.toBe(0);
   });
 });
 

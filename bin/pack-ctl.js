@@ -446,14 +446,41 @@ async function run(subcommand, flags) {
       // TASK-181 — a materialize failure is `required: "soft"`, so it degrades
       // into `report` and the run still exits 0. Reporting a bare ok:true made
       // "nothing needed installing" indistinguishable from "everything failed",
-      // which is how the sourceRoot defect survived multiple releases. Surface
-      // the counts and fail the ok flag when a non-empty plan installed nothing.
+      // which is how the sourceRoot defect survived multiple releases.
+      //
+      // TASK-183 — the TASK-181 guard (`installedCount === 0`) only ever caught
+      // a TOTAL failure: with two built-in packs shipping today, one
+      // soft-failing while the other lands still read as `ok:true` (mutation-
+      // confirmed — rewriting the guard to `installedCount < plannedInstallCount`
+      // left all 30 pack-ctl specs green, meaning the partial branch was
+      // untested). A hard-abort also read as `ok:true` even though `aborted`
+      // was already computed per pack below and simply never consulted here.
+      // `ok` now requires BOTH every planned install to have actually landed
+      // AND no pack to have hard-aborted — full success is the only path to
+      // `ok:true`.
       const plannedInstallCount = computedPlan.install.length;
       const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
-      const totalFailure = plannedInstallCount > 0 && installedCount === 0;
+      const anyAborted = packs.some((p) => p.aborted);
+      const failureKind = anyAborted
+        ? 'aborted'
+        : plannedInstallCount > 0 && installedCount === 0
+          ? 'total'
+          : installedCount < plannedInstallCount
+            ? 'partial'
+            : null;
+      const ok = failureKind === null;
 
       return {
-        ok: !totalFailure,
+        ok,
+        // TASK-183 AC6 — the CLI's documented output contract (this module's
+        // header, `{ok:false, code, message}` + non-zero exit + stderr) now
+        // actually holds for a materialize failure, not just an argument
+        // error: main() below checks `payload.ok` and exits 1 with this
+        // message on stderr.
+        ...(ok ? {} : {
+          code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
+          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs${anyAborted ? ' (a hard-required resource aborted the run)' : ''}`,
+        }),
         planned_install_count: plannedInstallCount,
         installed_count: installedCount,
         source_root: sourceRoot ?? null,
@@ -484,6 +511,21 @@ async function main() {
   const payload = { ok: true, ...result };
   // eslint-disable-next-line no-console
   console.log(JSON.stringify(payload));
+
+  // TASK-183 AC6 — the CLI's own header (`{ok:false, code, message}` +
+  // non-zero exit) previously only held for a thrown argument/setup error
+  // (caught below); a `run()` result that resolves NORMALLY with `ok:false`
+  // (e.g. a reconcile-apply materialize failure) exited 0 with nothing on
+  // stderr, contradicting it. DECISION: conform the code to the header
+  // rather than rewrite the header — any `ok:false` result now also exits
+  // non-zero with its message on stderr, exactly like a thrown error does.
+  if (payload.ok === false) {
+    if (payload.message) {
+      // eslint-disable-next-line no-console
+      console.error(payload.message);
+    }
+    process.exit(1);
+  }
 }
 
 // Only run when invoked as the entry script (not on import from tests).

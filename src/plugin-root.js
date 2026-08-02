@@ -38,16 +38,49 @@ import { join, dirname } from 'node:path';
 
 export const OWNED_SOURCE_SUBDIR = 'assimilated-skills';
 
+// TASK-183 AC10 — CONTESTED, now resolved. The 2026-08-02 deep review's pass 1
+// flagged this walk as MEDIUM ("walks to the filesystem root, accepts any
+// stray assimilated-skills/ it finds"); pass 2's verifier REFUTED it,
+// reasoning that exploiting a NEAR ancestor requires write access to a tree
+// the resolver already implicitly trusts (wherever the running file itself
+// lives) — an attacker with that access could tamper with the plugin's own
+// files directly and would not need this walk at all.
+//
+// Both are partly right. A compromised NEAR ancestor is not meaningfully
+// worse than a compromised plugin install, as pass 2 argues. But the walk as
+// originally written had NO upper bound at all: on a deeply nested `selfDir`
+// it keeps climbing past every plausible install boundary, all the way to a
+// FAR ancestor shared by unrelated software (a user's home directory, a
+// drive root) that could hold its OWN unrelated `assimilated-skills/` — no
+// attacker and no compromised trust required, just an unlucky coincidence of
+// directory names picking up someone else's files. That risk survives pass
+// 2's own framing and costs nothing to close.
+//
+// DECISION: bound the walk rather than (a) leave it unbounded, matching pass
+// 1's MEDIUM as still-live, or (b) add stronger hardening (e.g. requiring a
+// provenance check on an ancestor-discovered root) — the latter is
+// unwarranted complexity for a risk this walk only ever hands back a PATH
+// from; the actual trust boundary is materialize-time SKILL.md validation
+// (isRealOwnedSkillCopy, src/pack-apply.js#executeInstall) and, when a
+// stage-time baseline exists, the TASK-142 content-integrity re-hash — both
+// of which apply regardless of which candidate in the search path won. Every
+// real launch mode (framework bin/, bundled dist/ under a plugin cache)
+// resolves within 1-2 ancestor levels; MAX_ANCESTOR_LEVELS below is far more
+// generous than any plausible install nesting while still meaningfully
+// bounding the blast radius on a pathologically deep `selfDir`.
+const MAX_ANCESTOR_LEVELS = 12;
+
 /**
- * Every ancestor of `dir`, nearest first, including `dir` itself.
- * Terminates on the filesystem root (dirname stops changing) rather than
- * counting levels, so it is correct for POSIX and Windows drive roots alike.
+ * Every ancestor of `dir`, nearest first, including `dir` itself, bounded to
+ * MAX_ANCESTOR_LEVELS (TASK-183 AC10, see the decision above) — never walks
+ * all the way to the filesystem root on a deeply nested `dir`. The
+ * fixed-point check (`parent === current`) still terminates early on a
+ * shallow path, so this is correct for POSIX and Windows drive roots alike.
  */
 function ancestorsOf(dir) {
   const out = [];
   let current = dir;
-  // Bounded by the path's own depth; the fixed-point check is the real guard.
-  for (;;) {
+  for (let i = 0; i < MAX_ANCESTOR_LEVELS; i++) {
     out.push(current);
     const parent = dirname(current);
     if (!parent || parent === current) break;

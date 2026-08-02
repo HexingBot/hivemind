@@ -485,6 +485,149 @@ describe('TASK-142 -- TOCTOU close: staged content is re-verified against the re
   });
 });
 
+// TASK-183 — src/pack-apply.js:266-275 selected the owned source with
+// `existsSync(dir)`, which only proves a DIRECTORY exists, never that it
+// holds a real owned skill copy (unlike src/assimilate.js's own source
+// validation, which checks for a readable SKILL.md). Before TASK-181 there
+// was one sourceRoot and nothing to shadow; the multi-root search path
+// TASK-181 added makes this load-bearing: an EMPTY assimilated-skills/<id>/
+// earlier in the search path silently shadows a perfectly good candidate
+// later in the path, materializes an empty skill dir, and blesses it with
+// the empty-tree SHA-256 as a "verified" integrity at the upstream pin.
+describe('TASK-183 — owned-source selection validates a REAL owned skill copy, not a bare existsSync directory test', () => {
+  it('AC1/AC2/AC3 — an EMPTY candidate earlier in the search path is skipped in favour of a valid candidate later in the path; no false integrity is ever recorded', async () => {
+    const { applyPlan, hashDir } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-183-empty-box-skip');
+    const localSourceRoot = join(root, 'assimilated-skills');
+    // The reproduced defect: a consumer fixture with an EMPTY
+    // assimilated-skills/watch/ -- e.g. `mkdir -p` with nothing ever staged
+    // into it -- shadowing a valid plugin copy later in the search path.
+    mkdirSync(join(localSourceRoot, 'watch'), { recursive: true });
+
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch\nReal owned copy.\n');
+
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {});
+
+    const plan = {
+      install: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({
+      plan, lockPath, root, owner: 'watch@0.2.0',
+      sourceRoot: localSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    // AC2 — no report entry: the empty candidate was skipped, the valid
+    // fallback materialized successfully.
+    expect(result.report).toEqual([]);
+
+    // Installed from the PLUGIN copy, not the empty local shadow -- the live
+    // dir actually has content, not an empty directory with no SKILL.md.
+    const liveFile = join(root, '.claude', 'skills', 'watch', 'SKILL.md');
+    expect(existsSync(liveFile)).toBe(true);
+    expect(readFileSync(liveFile, 'utf8')).toBe('# Watch\nReal owned copy.\n');
+
+    // AC3 — the recorded integrity is a REAL hash of the materialized
+    // content, never the empty-tree SHA-256 (the ticket's reproduced value).
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:watch'];
+    expect(entry).toBeDefined();
+    expect(entry.integrity).not.toBe('sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+    expect(entry.integrity).toBe(`sha256:${hashDir(join(root, '.claude', 'skills', 'watch'))}`);
+  });
+
+  it('AC2/AC4 — when NO candidate anywhere is a real owned copy, the install fails loudly naming what was tried, and a second run does not re-bless it (self-healing, not sticky)', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-183-no-valid-candidate');
+    const localSourceRoot = join(root, 'assimilated-skills');
+    const emptyCandidateDir = join(localSourceRoot, 'watch');
+    mkdirSync(emptyCandidateDir, { recursive: true }); // still empty, no fallback provided at all
+
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {});
+
+    const plan = {
+      install: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const applyOnce = () => applyPlan({ plan, lockPath, root, owner: 'watch@0.2.0', sourceRoot: localSourceRoot });
+
+    const first = await applyOnce();
+    expect(first.report).toHaveLength(1);
+    expect(first.report[0].id).toBe('skill:watch');
+    expect(first.report[0].reason).toMatch(/owned source not found/);
+    expect(first.report[0].reason).toContain(emptyCandidateDir);
+    expect(existsSync(join(root, '.claude', 'skills', 'watch'))).toBe(false);
+    const lockAfterFirst = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(lockAfterFirst.resources['skill:watch']).toBeUndefined();
+
+    // AC4 — a second run against the SAME still-broken fixture behaves
+    // identically: the failure is not sticky, and the empty dir never wins
+    // on a re-run (the permanently-broken re-run path the ticket describes,
+    // now closed).
+    const second = await applyOnce();
+    expect(second.report).toHaveLength(1);
+    expect(second.report[0].id).toBe('skill:watch');
+    expect(existsSync(join(root, '.claude', 'skills', 'watch'))).toBe(false);
+    const lockAfterSecond = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(lockAfterSecond.resources['skill:watch']).toBeUndefined();
+  });
+});
+
+// TASK-183 AC8(b) — applyPlan's multi-root search had no spec proving
+// local-beats-plugin precedence when BOTH candidates are valid (as opposed to
+// AC1/AC2's "one candidate is invalid" case above).
+describe('TASK-183 — precedence: applyPlan multi-root search proves a local adoption beats a built-in of the same id', () => {
+  it('when both the local staging dir and a fallback (plugin) root hold a VALID copy of the same id, the local one wins', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-183-precedence-local-wins');
+    const localSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(localSourceRoot, 'watch', '# Watch\nLOCAL adoption -- must win.\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch\nBuilt-in plugin copy -- must lose.\n');
+
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {});
+
+    const plan = {
+      install: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    await applyPlan({
+      plan, lockPath, root, owner: 'watch@0.2.0',
+      sourceRoot: localSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    const liveFile = join(root, '.claude', 'skills', 'watch', 'SKILL.md');
+    expect(readFileSync(liveFile, 'utf8')).toBe('# Watch\nLOCAL adoption -- must win.\n');
+  });
+});
+
 describe('a replace op is surfaced in the report as deferred, never silently dropped', () => {
   it('does_not_touch_the_lock_entry_or_live_dir_and_reports_executed_false', async () => {
     const { applyPlan } = await import(PROD.packApply);

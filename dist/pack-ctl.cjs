@@ -8952,14 +8952,23 @@ function hashOwnedSkillDir(dir, opts = {}) {
   }
   return hash.digest("hex");
 }
-function executeInstall(lock, op, { root, sourceRoot, sourceRoots, owner }) {
+function isRealOwnedSkillCopy(dir) {
+  const skillPath = (0, import_node_path4.join)(dir, SKILL_FILENAME);
+  if (!(0, import_node_fs4.existsSync)(skillPath)) return false;
+  try {
+    (0, import_node_fs4.readFileSync)(skillPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function executeInstall(lock, op, { root, sourceRoots, owner }) {
   const { id, resource } = op;
   const bareId = resource.id;
-  const searchPath = Array.isArray(sourceRoots) && sourceRoots.length ? sourceRoots : [sourceRoot];
-  const sourceDir = searchPath.filter(Boolean).map((base) => (0, import_node_path4.join)(base, bareId)).find((dir) => (0, import_node_fs4.existsSync)(dir));
+  const candidates = (Array.isArray(sourceRoots) ? sourceRoots : []).filter(Boolean).map((base) => (0, import_node_path4.join)(base, bareId));
+  const sourceDir = candidates.find((dir) => isRealOwnedSkillCopy(dir));
   if (!sourceDir) {
-    const tried = searchPath.filter(Boolean).map((base) => (0, import_node_path4.join)(base, bareId)).join(", ");
-    throw new Error(`owned source not found for "${bareId}": ${tried}`);
+    throw new Error(`owned source not found for "${bareId}" (no candidate held a readable ${SKILL_FILENAME}): ${candidates.join(", ")}`);
   }
   const priorEntry = lock.resources[id];
   const hasStageTimeBaseline = Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
@@ -9916,10 +9925,11 @@ async function assimilateSkill(opts) {
 var import_node_fs9 = require("node:fs");
 var import_node_path9 = require("node:path");
 var OWNED_SOURCE_SUBDIR = "assimilated-skills";
+var MAX_ANCESTOR_LEVELS = 12;
 function ancestorsOf(dir) {
   const out = [];
   let current = dir;
-  for (; ; ) {
+  for (let i = 0; i < MAX_ANCESTOR_LEVELS; i++) {
     out.push(current);
     const parent = (0, import_node_path9.dirname)(current);
     if (!parent || parent === current) break;
@@ -10159,9 +10169,20 @@ async function run(subcommand, flags) {
       }
       const plannedInstallCount = computedPlan.install.length;
       const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
-      const totalFailure = plannedInstallCount > 0 && installedCount === 0;
+      const anyAborted = packs.some((p) => p.aborted);
+      const failureKind = anyAborted ? "aborted" : plannedInstallCount > 0 && installedCount === 0 ? "total" : installedCount < plannedInstallCount ? "partial" : null;
+      const ok = failureKind === null;
       return {
-        ok: !totalFailure,
+        ok,
+        // TASK-183 AC6 — the CLI's documented output contract (this module's
+        // header, `{ok:false, code, message}` + non-zero exit + stderr) now
+        // actually holds for a materialize failure, not just an argument
+        // error: main() below checks `payload.ok` and exits 1 with this
+        // message on stderr.
+        ...ok ? {} : {
+          code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
+          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs${anyAborted ? " (a hard-required resource aborted the run)" : ""}`
+        },
         planned_install_count: plannedInstallCount,
         installed_count: installedCount,
         source_root: sourceRoot ?? null,
@@ -10188,6 +10209,12 @@ async function main() {
   const result = await run(subcommand, flags);
   const payload = { ok: true, ...result };
   console.log(JSON.stringify(payload));
+  if (payload.ok === false) {
+    if (payload.message) {
+      console.error(payload.message);
+    }
+    process.exit(1);
+  }
 }
 var __isEntry = import_meta.url ? Boolean(process.argv[1]) && import_meta.url === (0, import_node_url.pathToFileURL)(process.argv[1]).href : typeof require !== "undefined" && typeof module !== "undefined" && require.main === module;
 if (__isEntry) {

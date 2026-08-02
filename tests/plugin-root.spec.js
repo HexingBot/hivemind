@@ -129,4 +129,40 @@ describe('TASK-181 — resolveOwnedSourceRoot', () => {
     });
     expect(got).toBeUndefined();
   });
+
+  // TASK-183 AC8(a) — precedence lock: no existing spec above seeds TWO
+  // ancestors that both hold assimilated-skills/, so flipping the ancestor
+  // walk to root-first (e.g. `out.unshift` instead of `out.push`) left every
+  // spec in this file green. The nearest ancestor must win, not the farthest.
+  it('TASK-183: nearest ancestor wins when TWO ancestors both hold assimilated-skills/ (nearest-first, not root-first)', async () => {
+    const { resolveOwnedSourceRoot } = await import(PROD);
+    const got = resolveOwnedSourceRoot({
+      env: {},
+      selfDir: '/plugins/hivemind/0.19.0/dist',
+      repoRoot: undefined,
+      exists: existsIn([
+        `/plugins/hivemind/${ASSIMILATED}`, // nearer ancestor -- must win
+        `/plugins/${ASSIMILATED}`, // farther ancestor -- must NOT win
+      ]),
+    });
+    expect(got.split('\\').join('/')).toBe(`/plugins/hivemind/${ASSIMILATED}`);
+  });
+
+  // TASK-183 AC10 — contested unbounded-ancestor-walk decision, resolved by
+  // bounding rather than leaving it unbounded (see src/plugin-root.js's
+  // MAX_ANCESTOR_LEVELS decision comment for the full reasoning). A selfDir
+  // nested far deeper than any realistic install layout must NOT reach an
+  // assimilated-skills/ seeded only at the true filesystem root -- an
+  // unbounded walk would find it; the bounded walk must not.
+  it('TASK-183 AC10: the ancestor walk is BOUNDED, not unbounded to the filesystem root', async () => {
+    const { resolveOwnedSourceRoot } = await import(PROD);
+    const deepSelfDir = '/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/dist';
+    const got = resolveOwnedSourceRoot({
+      env: {},
+      selfDir: deepSelfDir,
+      repoRoot: undefined,
+      exists: existsIn([`/${ASSIMILATED}`]), // only at the true filesystem root
+    });
+    expect(got).toBeUndefined();
+  });
 });

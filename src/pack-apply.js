@@ -250,28 +250,58 @@ export function hashOwnedSkillDir(dir, opts = {}) {
   return hash.digest('hex');
 }
 
+// TASK-183 — a bare `existsSync(dir)` only ever proved a DIRECTORY exists, not
+// that it holds a real owned skill copy (unlike src/assimilate.js's own
+// source-validation, which requires a readable SKILL.md before assimilating
+// anything). Before TASK-181 there was a single sourceRoot, so nothing could
+// shadow it; the multi-root search path TASK-181 introduced made this
+// load-bearing — an EMPTY assimilated-skills/<id>/ passed the old check and
+// shadowed a perfectly good candidate later in the search path, silently
+// materializing an empty skill dir and blessing it with the empty-tree
+// SHA-256 as a "verified" integrity. This applies the SAME SKILL.md-presence
+// rule assimilate.js already uses, so an invalid/empty candidate is skipped
+// in favour of the next entry instead of winning by mere existsSync presence.
+function isRealOwnedSkillCopy(dir) {
+  const skillPath = join(dir, SKILL_FILENAME);
+  if (!existsSync(skillPath)) return false;
+  try {
+    readFileSync(skillPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // install op = { id: "skill:<bareId>", resource: <descriptor resource> }.
 // Materializes the owned copy, then records/updates the lock entry with the
-// pack as an owner. Throws on failure (missing owned source, fs error) —
+// pack as an owner. Throws on failure (no valid owned source, fs error) —
 // the caller decides hard-abort vs soft-report.
-function executeInstall(lock, op, { root, sourceRoot, sourceRoots, owner }) {
+//
+// TASK-183 AC9 — this function's ONLY caller (applyPlan, below) always builds
+// and passes `sourceRoots` (never a bare `sourceRoot`) — the old
+// `sourceRoots.length ? sourceRoots : [sourceRoot]` fallback was therefore
+// unreachable dead code. Removed rather than kept "for safety"; `sourceRoots`
+// is now the sole, required search-path input.
+function executeInstall(lock, op, { root, sourceRoots, owner }) {
   const { id, resource } = op;
   const bareId = resource.id;
   // TASK-181 — owned copies can live in more than one place, so this is a
-  // SEARCH PATH, not a single directory. The project's own
-  // `<repoRoot>/assimilated-skills/` comes first (that is where
-  // src/assimilate.js stages a skill the project itself adopted, and a local
-  // adoption must always beat a built-in of the same id), with the plugin's own
-  // owned copies as the fallback that makes built-in packs work in a consumer
-  // project at all. A single-element path is exactly the old behavior.
-  const searchPath = Array.isArray(sourceRoots) && sourceRoots.length ? sourceRoots : [sourceRoot];
-  const sourceDir = searchPath
+  // SEARCH PATH, not a single directory. applyPlan (the only caller) always
+  // leads this array with the project's own `<repoRoot>/assimilated-skills/`
+  // (where src/assimilate.js stages a skill the project itself adopted, so a
+  // local adoption always beats a built-in of the same id), with the
+  // plugin's own owned copies as fallbacks that make built-in packs work in
+  // a consumer project at all.
+  const candidates = (Array.isArray(sourceRoots) ? sourceRoots : [])
     .filter(Boolean)
-    .map((base) => join(base, bareId))
-    .find((dir) => existsSync(dir));
+    .map((base) => join(base, bareId));
+  // TASK-183 AC2 — an invalid/empty candidate is skipped in favour of the
+  // next entry; if NO candidate is valid the resource fails loudly (an
+  // Error, dispatched by the caller into either a report entry naming what
+  // was tried, or a hard abort) instead of silently materializing nothing.
+  const sourceDir = candidates.find((dir) => isRealOwnedSkillCopy(dir));
   if (!sourceDir) {
-    const tried = searchPath.filter(Boolean).map((base) => join(base, bareId)).join(', ');
-    throw new Error(`owned source not found for "${bareId}": ${tried}`);
+    throw new Error(`owned source not found for "${bareId}" (no candidate held a readable ${SKILL_FILENAME}): ${candidates.join(', ')}`);
   }
 
   // TASK-142 — TOCTOU close: verify BEFORE touching the live tree at all (see
