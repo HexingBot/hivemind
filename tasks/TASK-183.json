@@ -15,7 +15,7 @@
     "The contested unbounded-ancestor-walk question is investigated and a decision recorded in the closing comment (harden, bound the walk, or accept with rationale) — pass 1 confirmed it MEDIUM, pass 2 refuted it; the ticket must not close with that disagreement unresolved.",
     "npm run test:all is green; no existing pack/reconcile/assimilate/apply spec regresses; dist/pack-ctl.cjs rebuilt via npm run build:plugin and committed, with tests/e2e/dist-parity.spec.js passing."
   ],
-  "status": "in_progress",
+  "status": "in_review",
   "priority": "high",
   "labels": [
     "addon-packs",
@@ -31,7 +31,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T19:20:06.228Z",
-  "updated_at": "2026-08-02T19:21:35.370Z",
+  "updated_at": "2026-08-02T19:43:37.192Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

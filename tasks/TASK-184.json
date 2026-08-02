@@ -10,7 +10,7 @@
     "No behavioral change to reconcile/apply logic in this ticket — verify with git diff that only docs, the sensor message, and their specs changed. Behavioral fixes belong to TASK-183.",
     "npm test (fast tier) and npm run test:all are green; no existing spec regresses."
   ],
-  "status": "in_progress",
+  "status": "in_review",
   "priority": "high",
   "labels": [
     "docs",
@@ -26,7 +26,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T19:20:33.678Z",
-  "updated_at": "2026-08-02T19:21:39.782Z",
+  "updated_at": "2026-08-02T19:43:42.318Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T19:42:33.964Z",
+  "generated_at": "2026-08-02T19:45:29.175Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1066,13 +1066,13 @@
     {
       "key": "TASK-183",
       "title": "Pack install integrity: empty owned-copy shadows the plugin and is blessed with a false integrity hash",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     },
     {
       "key": "TASK-184",
       "title": "Operator docs contradict reality: design-pack command still says built-in skills never install",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     },
     {
@@ -1108,6 +1108,12 @@
     {
       "key": "TASK-190",
       "title": "deep-review silently ignores its args: docs pass a string, the script reads an object",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-191",
+      "title": "Parallel developer spawns share one git index, so explicit-path staging is not safe",
       "status": "todo",
       "priority": "medium"
     }
