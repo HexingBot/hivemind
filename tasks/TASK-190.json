@@ -1,0 +1,33 @@
+{
+  "key": "TASK-190",
+  "title": "deep-review silently ignores its args: docs pass a string, the script reads an object",
+  "description": "Observed live on 2026-08-02 during a human-requested deep review of TASK-181 and TASK-175. Both runs silently discarded their arguments and reviewed the wrong thing by default. This is the same silent-success class as TASK-181's `ok:true` defect and TASK-184's stale operator doc — a control that reports success while not doing what was asked.\n\n**The contradiction.**\n- `skills/orchestrator-routing/SKILL.md:963` (and the `.claude/skills/` parity copy) documents the invocation as a CLI-style string: `/deep-review base=<git-ref> ticket=<TASK-key>`. Line 948 repeats the same shape in prose.\n- `workflows/deep-review.js:80` and `:89` read `args.base` and `args.ticket` — i.e. they require `args` to be an OBJECT.\n\nPassing the documented string form (`args: \"base=bc585e3 ticket=TASK-181\"`) leaves `args.base` and `args.ticket` `undefined`.\n\n**Why it is silent.** The guard validates arg CONTENT but never arg SHAPE:\n\n```js\nlet baseRef = 'origin/main';\nif (args && args.base) { ... else log('[warn] args.base ... falling back') }\nlet ticketKey = null;\nif (args && args.ticket) { ... else log('[warn] args.ticket ... dropping ticket context') }\n```\n\nBoth `[warn]` branches sit INSIDE `if (args && args.<field>)`, so they fire only when a field is present but invalid. A `args` that is a string, a malformed object, or missing the fields entirely takes neither branch and produces no warning at all. The run proceeds against `origin/main` with `ticketKey = null` and logs a cheerful `Deep review starting — base: origin/main`.\n\n**Observed consequence.** Two runs were launched with explicit `base=` and `ticket=`. Both reviewed `origin/main...HEAD` with no ticket anchor. The AC-compliance dimension fell back to its no-ticket prompt (`No ticket key was supplied`) and audited for generic incomplete-implementation smells instead of auditing the diff against the ticket's actual acceptance criteria — which is the single dimension most directly aimed at \"did we build what was asked\". The second run, intended to anchor on TASK-175, became a duplicate of the first.\n\nCoverage survived only by coincidence: `origin/main` happened to equal the requested base (`bc585e3`). Had HEAD been pushed first, both runs would have reviewed an empty or near-empty diff and reported findings against nothing, with no signal that anything was wrong.\n\n**Fix direction (decide, do not assume).** Two independent problems, and BOTH need fixing — correcting only the docs leaves the silent-degradation path intact for the next malformed call:\n1. Make the documented invocation and the accepted arg shape agree. Decide which is canonical — accept the documented `key=value` string form by parsing it, or change the docs (both parity copies) to the object form — and make the other conform.\n2. Fail loudly on an unusable `args`. A deep review that cannot honour its requested base or ticket must say so prominently, not proceed on defaults. Consider refusing to run at all when `args` is present but unparseable, since a silently-redirected review is worse than no review — the human believes a gate ran.\n\nNote for whoever picks this up: `workflows/deep-research.js` may share the arg-shape convention; check it for the same defect rather than fixing this one in isolation.",
+  "acceptance_criteria": [
+    "A failing spec first reproduces the defect: invoking the workflow's arg-handling with the DOCUMENTED string form ('base=<ref> ticket=<KEY>') currently yields baseRef 'origin/main' and ticketKey null, with no warning emitted. Capture the red-run output verbatim as the tests-first evidence.",
+    "The documented invocation and the accepted arg shape agree. Decide which is canonical and record the decision in the closing comment; whichever is chosen, skills/orchestrator-routing/SKILL.md and its .claude/skills/ parity copy are updated byte-identically, and the workflow accepts what the docs describe.",
+    "An unusable args value (a string when an object is expected, a malformed object, or fields present but unparseable) no longer degrades silently: it emits a prominent warning naming what was ignored, or refuses to run. Decide which — a silently-redirected review is worse than no review, since the human believes a gate ran.",
+    "The shape guard is covered by specs for each distinct bad input: args as a string, args as null/undefined, args as an object with unknown keys, and args with a present-but-invalid base or ticket (the existing [warn] paths must keep working — they are correct today and must not regress).",
+    "workflows/deep-research.js is checked for the same arg-shape convention and either fixed in the same pass or explicitly cleared, with the finding recorded in the closing comment.",
+    "An end-to-end check proves a ticket-anchored run actually anchors: with a valid ticket arg, the AC-compliance dimension receives the ticket's acceptance criteria rather than the no-ticket fallback prompt.",
+    "npm run test:all is green; no existing workflow spec regresses; if any bundled source changed, dist rebuilt via npm run build:plugin and committed with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "deep-review",
+    "workflows",
+    "docs",
+    "silent-failure"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T19:42:33.964Z",
+  "updated_at": "2026-08-02T19:42:33.964Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

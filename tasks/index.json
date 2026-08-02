@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T19:39:16.596Z",
+  "generated_at": "2026-08-02T19:42:33.964Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1102,6 +1102,12 @@
     {
       "key": "TASK-189",
       "title": "Acceptance criteria accept vacuous, invisible, and mis-tiered inputs with no validation",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-190",
+      "title": "deep-review silently ignores its args: docs pass a string, the script reads an object",
       "status": "todo",
       "priority": "medium"
     }
