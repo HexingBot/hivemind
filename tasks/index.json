@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T18:12:37.731Z",
+  "generated_at": "2026-08-02T18:16:06.161Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -11,12 +11,6 @@
       "key": "TASK-002",
       "title": "Add a `new-task` helper script",
       "status": "done",
-      "priority": "medium"
-    },
-    {
-      "key": "TASK-003",
-      "title": "Implement Jira migration command",
-      "status": "blocked",
       "priority": "medium"
     },
     {
