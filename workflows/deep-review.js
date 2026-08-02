@@ -107,7 +107,10 @@ function refuse(reason) {
   log(`[error] deep-review: refusing to run — ${reason}`);
   return {
     confirmed: [],
-    summary: { total: 0, high: 0, medium: 0, low: 0, blocked: false, refused: true, reason },
+    // blocked: true — a refusal is a review that could not run at all, which
+    // must never read as "not blocked" to a consumer checking only
+    // summary.blocked (fix round on 0d40fd1, LOW finding).
+    summary: { total: 0, high: 0, medium: 0, low: 0, blocked: true, refused: true, reason },
   };
 }
 
@@ -147,7 +150,14 @@ if (args !== null && args !== undefined && args !== '') {
       log(`[warn] args "${trimmedArgs}" contained unrecognized token(s) — ignored: ${ignoredTokens.map((t) => `"${t}"`).join(', ')}`);
     }
 
-    if (parsed.base) {
+    // Use presence ('key' in parsed), not truthiness (parsed.key), so a
+    // present-but-empty value (e.g. "base=") is treated as present-but-
+    // unparseable and routed through the same [warn]-and-fallback path as
+    // any other invalid value — AC3 covers "present but unparseable", and an
+    // empty value is exactly that, not "omitted" (fix round on 0d40fd1,
+    // MEDIUM-1 finding). GIT_REF_RE / TICKET_KEY_RE both require length >= 1,
+    // so '' correctly falls into the existing else branch below.
+    if ('base' in parsed) {
       if (GIT_REF_RE.test(parsed.base) && !parsed.base.startsWith('-')) {
         baseRef = parsed.base;
       } else {
@@ -155,7 +165,7 @@ if (args !== null && args !== undefined && args !== '') {
       }
     }
 
-    if (parsed.ticket) {
+    if ('ticket' in parsed) {
       if (TICKET_KEY_RE.test(parsed.ticket)) {
         ticketKey = parsed.ticket;
       } else {

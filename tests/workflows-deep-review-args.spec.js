@@ -239,6 +239,63 @@ describe('AC4 — shape guard: distinct bad-input categories', () => {
 });
 
 // ---------------------------------------------------------------------------
+// MEDIUM-1 fix round (review of 0d40fd1) — a present-but-empty value is
+// present-but-unparseable per AC3's own text, not "omitted". It must route
+// through the existing per-field [warn]-and-fallback path, same as any other
+// invalid value, rather than silently skipping both the warn and the apply
+// because '' is falsy.
+// ---------------------------------------------------------------------------
+
+describe('MEDIUM-1 fix round — present-but-empty values warn and fall back (not silently ignored)', () => {
+  it('reviewer-probed repro: "base= ticket=TASK-181" warns on the empty base and still anchors the valid ticket', async () => {
+    const fn = buildDeepReview();
+    const mocks = makeMocks();
+    await fn(
+      'base= ticket=TASK-181',
+      mocks.phase, mocks.log, mocks.pipeline, mocks.agent, mocks.parallel,
+      mocks.budget, mocks.workflow,
+    );
+    const startLine = mocks.logs.find((l) => l.startsWith('Deep review starting'));
+    expect(startLine).toBe('Deep review starting — base: origin/main, ticket: TASK-181');
+    const warnLines = mocks.logs.filter((l) => l.includes('[warn]'));
+    expect(warnLines.some((l) => l.includes('args.base')), `expected an args.base warning; got: ${JSON.stringify(warnLines)}`).toBe(true);
+  });
+
+  it('a present-but-empty ticket value ("ticket=") warns and drops ticket context, not silently ignored', async () => {
+    const fn = buildDeepReview();
+    const mocks = makeMocks();
+    await fn(
+      'ticket=',
+      mocks.phase, mocks.log, mocks.pipeline, mocks.agent, mocks.parallel,
+      mocks.budget, mocks.workflow,
+    );
+    const startLine = mocks.logs.find((l) => l.startsWith('Deep review starting'));
+    expect(startLine).toBe('Deep review starting — base: origin/main');
+    const warnLines = mocks.logs.filter((l) => l.includes('[warn]'));
+    expect(warnLines.some((l) => l.includes('args.ticket')), `expected an args.ticket warning; got: ${JSON.stringify(warnLines)}`).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LOW fix round (review of 0d40fd1) — refusal must not read as "not blocked".
+// ---------------------------------------------------------------------------
+
+describe('LOW fix round — refusal sets summary.blocked to true', () => {
+  it('a refused run (wrong-type args) reports summary.blocked === true, not false', async () => {
+    const fn = buildDeepReview();
+    const mocks = makeMocks();
+    const result = await fn(
+      { base: 'x' },
+      mocks.phase, mocks.log,
+      throwIfCalled('pipeline'), throwIfCalled('agent'), throwIfCalled('parallel'),
+      mocks.budget, mocks.workflow,
+    );
+    expect(result.summary.refused).toBe(true);
+    expect(result.summary.blocked, 'a refusal must not read as non-blocking to a consumer checking only summary.blocked').toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // AC6 — end-to-end: a ticket-anchored run actually anchors the AC-compliance
 // dimension's prompt on the ticket, instead of falling back to the no-ticket
 // generic-smells prompt.
