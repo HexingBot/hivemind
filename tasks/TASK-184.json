@@ -1,0 +1,34 @@
+{
+  "key": "TASK-184",
+  "title": "Operator docs contradict reality: design-pack command still says built-in skills never install",
+  "description": "From the 2026-08-02 deep review (HIGH in pass 2, LOW in pass 1 — the severity disagreement is itself recorded; treat as HIGH because it is consumer-facing and actively misleads an autonomous agent).\n\n**The defect.** TASK-181 changed what `reconcile-apply` actually does for a consumer, and touched NO file under `commands/`. The shipped operator-facing doc now describes the opposite of reality.\n\n`commands/design-pack.md` still states that on a fresh project the expected first run is `installed: []`, with `ui-ux-pro-max` appearing under \"skills that still need adoption\" and its assimilate instruction shown. It further instructs: *\"treat `installed` being short of the desired skill set as expected, not a bug, whenever a matching `skill:` entry exists in `packs[].report`.\"*\n\nPost-TASK-181 a fresh consumer installs BOTH `skill:watch` and `skill:ui-ux-pro-max` from the plugin's owned copies (locked by `tests/e2e/pack-ctl-consumer-source.spec.js`). Consequences:\n\n1. An orchestrator following Step 5 will tell a human to run `assimilate-current-project` for a skill that was already materialized.\n2. Worse, it will read a genuine total failure as \"expected\" — re-creating precisely the blindness TASK-181 existed to remove.\n3. Per the empty-box defect (TASK-183), a short `installed` can occur with NO matching `skill:` report entry at all, so the documented triage rule cannot detect that case even in principle.\n\nStep 4's documented output shape is also stale: it says reconcile-apply \"Prints `{ plan, packs: [{ id, owner, aborted, installed, report }] }`\" with no mention of `ok`, `planned_install_count`, `installed_count`, or `source_root`. A grep for those field names across all `*.md` returns zero hits — they are documented nowhere in the repo.\n\n**Second, independent item folded in (disjoint file, same class of drift).** `src/graph-freshness.js:61` now folds a malformed done-ticket key into the `missing` bucket (TASK-175 item 13). The live sensor message at `tests/graph-freshness.spec.js:155-159` still reports every entry uniformly as \"have no `task-<digits>` node in knowledge/graph/graph.json\" and advises \"Run the backfill (or add the node via src/knowledge-graph.js addNode)\". For a malformed key BOTH statements are wrong: no node id is derivable, and `scripts/backfill-graph-task-nodes.mjs:60-70` now deliberately THROWS on exactly that case. The detection changed; the remediation instruction did not.\n\n**Scope note:** docs and one sensor message. This ticket must NOT change reconcile behavior — the behavioral fixes live in TASK-183. If writing the doc reveals that the behavior itself is wrong, raise it rather than fixing it here.",
+  "acceptance_criteria": [
+    "commands/design-pack.md Step 4 documents reconcile-apply's ACTUAL output shape, including the ok, planned_install_count, installed_count and source_root fields, and states what ok:false means for the operator.",
+    "The 'treat a short installed as expected, not a bug' triage instruction is corrected so an agent following it can distinguish 'nothing needed installing' from 'something failed to install'. The fresh-project expectation (Steps 5 and the Notes bullet) is rewritten to match post-TASK-181 reality: built-in pack skills DO install from the plugin's owned copies.",
+    "A doc-lock spec pins the correspondence so this cannot silently drift again — e.g. asserting that the field names the CLI actually emits from reconcile-apply all appear in commands/design-pack.md. The spec must fail if a new top-level output field is added without documenting it (prove it fails by mutation).",
+    "The graph-freshness sensor message distinguishes the two cases it now detects: a done ticket with a derivable key but no graph node (backfill is the correct remedy) versus a done ticket with a malformed key (the backfill THROWS — the key must be fixed first). The advice given matches what the referenced script actually does.",
+    "No behavioral change to reconcile/apply logic in this ticket — verify with git diff that only docs, the sensor message, and their specs changed. Behavioral fixes belong to TASK-183.",
+    "npm test (fast tier) and npm run test:all are green; no existing spec regresses."
+  ],
+  "status": "in_progress",
+  "priority": "high",
+  "labels": [
+    "docs",
+    "addon-packs",
+    "deep-review-followup",
+    "kb-graph"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-181"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T19:20:33.678Z",
+  "updated_at": "2026-08-02T19:21:39.782Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

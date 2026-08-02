@@ -1,0 +1,33 @@
+{
+  "key": "TASK-185",
+  "title": "safeRef path guard is defeated by one leading space, and half its claimed forms are untested",
+  "description": "From the 2026-08-02 deep review (MEDIUM, confirmed independently by BOTH passes; the bypass was verified by direct execution of the committed regex).\n\n**The defect.** TASK-175 item 4 added read-steering hardening: `kb_graph_query` nulls an unsafe `ref` before returning it, because `orchestrator-routing` SKILL.md explicitly instructs agents to auto-follow a node's `ref` as a path.\n\n```\nconst UNSAFE_REF_RE = /^[/\\\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)/;\n```\n\nThe absolute-path, home-shorthand and scheme checks are `^`-anchored, and `safeRef` performs no trimming. Verified by direct execution of the committed regex — every one of these is ALLOWED through:\n\n- `\" /etc/passwd\"` (single leading space)\n- `\"\\t/etc/passwd\"` (tab)\n- `\"  ~/.ssh/id_rsa\"`\n- `\" \\\\\\\\evil-host\\\\share\\\\payload\"` (UNC path — an SMB credential-leak vector on Windows)\n- `\"a\\n/etc/passwd\"`\n- `\"%2e%2e/x\"` (percent-encoded traversal — not covered by the pattern at all)\n\nA single leading space defeats the entire control, while the value still resolves as the intended path for any consumer that trims it. The write side is deliberately unvalidated (`GRAPH_SCHEMA` has `ref: {type: 'string', minLength: 1}`), so nothing upstream prevents such a ref being stored in `knowledge/graph/graph.json`.\n\n**Second defect — the control is mostly untested.** The only spec exercising `safeRef` (`tests/e2e/kb-graph-query.spec.js`) feeds exactly three inputs: `../../etc/passwd`, `/etc/passwd`, `https://evil.example/x`. Mutation-confirmed: deleting `~` from the first character class, deleting `\\\\` from it, or deleting the `(?:^|[/\\\\])` mid-path prefix each leaves the ENTIRE suite green while re-opening `~/secrets`, `\\\\host\\share`, and `docs/../../etc/passwd` respectively. Only the drive-letter case is incidentally covered, because it rides the same scheme alternation as the https input.\n\n**Third item — the suppression is invisible at the consumption point.** `safeRef` introduces a `ref: null` value that `GRAPH_SCHEMA` says is impossible (ref is a required non-empty string). The `kb_graph_query` tool description still documents output as `{ query, source, nodes }` with no mention that `ref` can be null, and `orchestrator-routing` SKILL.md — edited in the very same diff — still tells agents to follow `ref` without noting the nulled case. An agent told to follow `ref` receives `null` with no explanation.\n\n**Scope note:** keep this at the READ boundary as TASK-175 deliberately scoped it. Hardening `GRAPH_SCHEMA` on the write side is a genuine trust-boundary change and is explicitly OUT of scope here — if the work argues for it, raise it as a separate ticket rather than widening this one.",
+  "acceptance_criteria": [
+    "A failing spec first reproduces the bypass: refs with leading whitespace (space, tab, newline) preceding an absolute path, a ~ home shorthand, or a UNC \\\\host\\share path are currently returned UNCHANGED by safeRef. Capture the red-run output verbatim as the tests-first evidence.",
+    "safeRef normalizes before matching (or the pattern is rewritten) so leading and trailing whitespace cannot defeat the guard. All six forms named in the ticket are blocked: leading-whitespace absolute, tab-prefixed absolute, whitespace + ~ shorthand, UNC \\\\host\\share, embedded-newline absolute, and percent-encoded traversal (%2e%2e).",
+    "Every alternation in the pattern is individually locked by a test that fails under mutation. Specifically: deleting ~ from the character class, deleting \\\\ from it, or deleting the (?:^|[/\\\\]) mid-path prefix must EACH break at least one test. Prove this by actually running the three mutations and recording the failures in the hand-off.",
+    "The ref: null case is documented where it is consumed: the kb_graph_query tool description states that ref may be null and why, and orchestrator-routing SKILL.md (BOTH parity copies, byte-identical) tells agents what to do when ref is null rather than assuming it is always a followable path.",
+    "No write-side change: GRAPH_SCHEMA stays as-is and this ticket does not widen into write-boundary validation. Verify with git diff. If the work argues the write side needs hardening, raise it as a separate ticket in the closing comment instead.",
+    "npm run test:all is green; no existing kb-graph/mcp spec regresses; dist/mcp-server.cjs rebuilt via npm run build:plugin and committed, with tests/e2e/dist-parity.spec.js passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "kb-graph",
+    "security",
+    "deep-review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-175"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T19:21:02.292Z",
+  "updated_at": "2026-08-02T19:21:02.292Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

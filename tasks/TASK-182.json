@@ -27,9 +27,15 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-02T19:21:30.768Z",
+      "body": "SCOPE CHANGE after the 2026-08-02 deep review (both passes, 31 confirmed findings total).\n\n**Item 1 (pack-ctl header output contract) MOVES to TASK-183.** The deep review escalated it — pass 2 rated it HIGH — and, more importantly, it is the same code path as TASK-183's `ok`/`installed_count` predicate work. Fixing them in two tickets would mean two passes over `bin/pack-ctl.js`'s reconcile-apply branch and two `dist/pack-ctl.cjs` rebuilds. TASK-183 AC6 carries it, including the new requirement that a spec assert `result.status` and not just `json.ok` (the current spec asserts only the latter, which is why the exit-code gap shipped).\n\n**Item 2 (spec env hygiene, `runCli` not deleting `CLAUDE_PLUGIN_ROOT`) STAYS here.** Note it is now adjacent to TASK-183's rework of `tests/e2e/pack-ctl-consumer-source.spec.js` — sequence after TASK-183 to avoid a collision on the same spec files.\n\n**Item 3 (dual-copy precedence) STAYS here, and the deep review gave it teeth.** It is no longer a purely hypothetical design question: pass 1 proved that the current de-facto rule (local staging dir always leads, selected by a bare `existsSync`) lets an EMPTY `assimilated-skills/<id>/` shadow the plugin's valid copy, materialize an empty skill, and record the empty-tree SHA-256 as a verified integrity at the upstream pin. TASK-183 fixes the validation hole; it does NOT decide the precedence policy. This ticket still owns that decision, and should now be decided with the empty/partial-copy case as a first-class input rather than as a clean two-valid-copies thought experiment.\n\nAdditional confirmed findings from the deep review that belong to neither TASK-183 nor TASK-185 and are folded in here as LOW: `src/mcp-server.js` line ~169 comment cites `tests/e2e/mcp-server.spec.js` as justification for exporting `recordTaskGraphNode`, but the actual lock lives in `tests/e2e/mcp-close-task.spec.js` — the comment misdirects anyone auditing the export. And `HIVEMIND_OWNED_SOURCE_ROOT` is documented as an explicit override yet is outranked by `<repoRoot>/assimilated-skills` in the full `applyPlan` pipeline (it wins inside `resolveOwnedSourceRoot`, then loses because `sourceRoot` leads `searchPath`) — decide whether the documentation or the ordering is wrong."
+    }
+  ],
   "created_at": "2026-08-02T18:37:52.484Z",
-  "updated_at": "2026-08-02T18:37:52.484Z",
+  "updated_at": "2026-08-02T19:21:30.768Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
