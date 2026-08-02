@@ -48,39 +48,48 @@ human before applying — it is the same plan `reconcile-apply` will act on.
 node ${CLAUDE_PLUGIN_ROOT}/dist/pack-ctl.cjs reconcile-apply --repo-root <project-root>
 ```
 
-Prints `{ ok, planned_install_count, installed_count, source_root, plan, packs: [{ id, owner,
-aborted, installed, report }] }`. Idempotent: running it again with nothing changed reproduces the
-same `plan` with empty `install`/`remove`/`replace`.
+On success, prints `{ ok: true, planned_install_count, installed_count, source_root, plan, packs: [{
+id, owner, aborted, installed, report }] }`. On failure it ALSO prints two more top-level fields,
+`code` and `message` — see the `ok: false` bullet below. Idempotent: running it again with nothing
+changed reproduces the same `plan` with empty `install`/`remove`/`replace`.
 
 - `plan` is the same plan Step 3 previewed, recomputed just before applying — that recomputation is
   the idempotency proof described above.
 - `packs[]` is per-pack: `installed` is the list of skill resource ids THAT pack actually
-  materialized under `.claude/skills/`; `report` is that pack's own per-pack report, with entries of
-  the form `skill:<resource-id>` (distinct from the top-level `plan.report`, which only ever holds
-  `mcp`/`plugin` entries).
+  materialized under `.claude/skills/`; `aborted` is `true` when that pack hit a `required: "hard"`
+  resource it could not materialize and stopped short; `report` is that pack's own per-pack report,
+  with entries of the form `skill:<resource-id>` (distinct from the top-level `plan.report`, which
+  only ever holds `mcp`/`plugin` entries).
 - `planned_install_count` (= `plan.install.length`) and `installed_count` (= the sum of every pack's
   `installed.length`) are the run-level triage numbers — read these FIRST, before looking at any
   individual pack's `report`. `source_root` is the directory the reconciler vendored owned skill
   copies from (post-TASK-181, normally the plugin's own `assimilated-skills/`, or the project's own
   if it has one); `null` when no owned-source root could be resolved at all.
-- **`ok: false` means a total materialize failure**: the plan called for at least one skill install
-  (`planned_install_count > 0`) and NONE of them materialized (`installed_count === 0`) — e.g. no
-  owned copy could be found for any planned skill. Treat `ok: false` as a hard stop: show the human
-  the full `packs[].report` before doing anything else; do not proceed to Step 5's normal reporting.
-- `ok: true` covers both a fully successful apply and a legitimate no-op (`planned_install_count ===
-  0` — nothing was ever desired). It also covers a PARTIAL outcome (`installed_count` greater than
-  zero but less than `planned_install_count`) — still worth surfacing to the human via Step 5's list
-  2, but not a hard stop.
+- **`ok: true` is the ONLY success path, and it means EVERY planned install actually materialized**
+  (`installed_count === planned_install_count`) **and no pack aborted** (`packs.every(p =>
+  !p.aborted)`). It also covers the legitimate no-op (`planned_install_count === 0` — nothing was
+  ever desired).
+- **`ok: false` covers three distinct failure kinds** — total (`planned_install_count > 0` and
+  `installed_count === 0`), partial (`0 < installed_count < planned_install_count`), and aborted (at
+  least one pack hard-aborted, checked first and taking precedence over the total/partial split). On
+  ANY of the three, the process also prints two extra top-level fields: `code` — one of
+  `E_PACK_APPLY_TOTAL_FAILURE`, `E_PACK_APPLY_PARTIAL_FAILURE`, or `E_PACK_APPLY_ABORTED_FAILURE` —
+  and `message`, a human-readable summary of the installed/planned counts (and whether a hard-required
+  resource aborted the run). The CLI process itself **exits 1** on any `ok: false` result (`message`
+  is also written to stderr) — a shell caller sees a non-zero exit exactly when the JSON says
+  `ok: false`, never a silent 0. Treat `ok: false` as a hard stop regardless of which of the three
+  kinds it is: show the human the full `packs[].report` (and `code`/`message`) before doing anything
+  else; do not proceed to Step 5's normal reporting.
 - A skill can be in the plan's top-level `install` bucket (Step 3) and still fail to materialize here
   for a documented, expected reason (no owned copy to vendor from) — that shows up as a
   `skill:<resource-id>` entry in `packs[].report`, and Step 5 turns every such entry into an adoption
   instruction. **Triage with `ok`/`installed_count` first, not with the presence of a `skill:` report
   entry.** Use them to tell "nothing needed installing" (`planned_install_count === 0`, `ok: true`)
-  apart from "something failed to install" (`installed_count < planned_install_count`); only once
-  you've done that does a matching `skill:` report entry explain WHICH skill and why. Do not read a
-  short `installed` as automatically expected merely because *some* `skill:` report entry exists
-  elsewhere in `packs[].report` — a materialize miss is not guaranteed to always carry a matching
-  report entry, so its absence does not itself prove success.
+  apart from "something failed to install" (`ok: false`); only once you've done that does a matching
+  `skill:` report entry explain WHICH skill and why. Do not read a short `installed` as automatically
+  expected merely because *some* `skill:` report entry exists elsewhere in `packs[].report` — a
+  materialize miss is not guaranteed to always carry a matching report entry, so its absence does not
+  itself prove success.
 
 ## Step 5 — Report the split, honestly
 
@@ -132,9 +141,10 @@ the project — that is the exceptional case now, not the default.
 If list 2 is empty and `installed` is also empty, check Step 4's `ok`/`planned_install_count` before
 concluding the profile genuinely desired no skills: a true no-op has `planned_install_count === 0`
 AND `ok: true`. A short or empty `installed` alongside a non-empty `planned_install_count` — with
-nothing in list 2 to explain it — is the signal Step 4 describes as a possible total or partial
-failure; it can also be a materialize miss with no corresponding `skill:` report entry to explain it
-at all (a known limitation — do not treat that silence as proof of success either).
+nothing in list 2 to explain it — is the signal Step 4 describes as a possible total, partial, or
+aborted failure (`ok: false`, with `code`/`message` alongside); it can also be a materialize miss with
+no corresponding `skill:` report entry to explain it at all (a known limitation — do not treat that
+silence as proof of success either).
 
 ## Step 6 — Offer the tracked external design tools (upstream, consented)
 
