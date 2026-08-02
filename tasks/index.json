@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T20:24:43.412Z",
+  "generated_at": "2026-08-02T20:39:37.647Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1108,13 +1108,13 @@
     {
       "key": "TASK-190",
       "title": "deep-review silently ignores its args: docs pass a string, the script reads an object",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "medium"
     },
     {
       "key": "TASK-191",
       "title": "Parallel developer spawns share one git index, so explicit-path staging is not safe",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
