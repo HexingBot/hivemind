@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { resolveSafeRef } from '../scripts/test-since.mjs';
+import { resolveSafeRef, hasAnyChangedFiles } from '../scripts/test-since.mjs';
 
 /** Fake `spawnSync`-shaped exec for a successful `git rev-parse --verify`. */
 function fakeExecOk(sha) {
@@ -63,5 +63,49 @@ describe('TASK-081 HIGH-1 — resolveSafeRef fails loudly instead of silently se
 
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/usage:/);
+  });
+});
+
+// TASK-192 AC4 — hasAnyChangedFiles mirrors vitest's own --changed detection
+// (committed diff since ref, staged, unstaged) independently of vitest's own
+// exit code, so the wrapper can tell "genuinely empty diff" apart from "diff
+// non-empty but the import graph matched nothing" without trusting vitest's
+// exit code (which is 0 either way — passWithNoTests defaults true).
+describe('TASK-192 AC4 — hasAnyChangedFiles mirrors vitest\'s three-source change detection', () => {
+  /** A fake exec returning empty stdout for every git invocation (status 0). */
+  function fakeExecAllEmpty() {
+    return () => ({ status: 0, stdout: '', stderr: '' });
+  }
+
+  it('all_three_sources_empty_returns_false', () => {
+    expect(hasAnyChangedFiles('deadbeef~0', fakeExecAllEmpty())).toBe(false);
+  });
+
+  it('a_committed_diff_file_makes_it_true', () => {
+    const exec = (git, args) => (args[0] === 'diff' && !args.includes('--cached')
+      ? { status: 0, stdout: 'data.json\n', stderr: '' }
+      : { status: 0, stdout: '', stderr: '' });
+    expect(hasAnyChangedFiles('deadbeef~0', exec)).toBe(true);
+  });
+
+  it('a_staged_file_alone_makes_it_true', () => {
+    const exec = (git, args) => (args.includes('--cached')
+      ? { status: 0, stdout: 'staged.js\n', stderr: '' }
+      : { status: 0, stdout: '', stderr: '' });
+    expect(hasAnyChangedFiles('deadbeef~0', exec)).toBe(true);
+  });
+
+  it('an_unstaged_untracked_file_alone_makes_it_true', () => {
+    const exec = (git, args) => (args[0] === 'ls-files'
+      ? { status: 0, stdout: 'new-file.js\n', stderr: '' }
+      : { status: 0, stdout: '', stderr: '' });
+    expect(hasAnyChangedFiles('deadbeef~0', exec)).toBe(true);
+  });
+
+  it('a_git_failure_is_treated_conservatively_as_possibly_changed', () => {
+    // A git error must never be read as "nothing changed" (fail-safe bias),
+    // even though every stdout is empty.
+    const exec = () => ({ status: 128, stdout: '', stderr: 'fatal: some git error' });
+    expect(hasAnyChangedFiles('deadbeef~0', exec)).toBe(true);
   });
 });

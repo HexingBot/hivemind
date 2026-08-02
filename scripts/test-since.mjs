@@ -24,6 +24,47 @@
 // `resolveSafeRef` is exported (injectable `exec`) so tests/test-since.spec.js
 // can lock the numeric-coercion and invalid-ref branches deterministically,
 // without spawning a real git process or the (slow) inner vitest run.
+//
+// TASK-192 AC4 — a THIRD silent-false-positive mode, distinct from the two
+// above: even a fully-resolved, well-formed ref can select zero specs, and
+// `vitest run` exits 0 either way (`resolved.passWithNoTests ??= true` is
+// vitest's own default — see resolveConfig.rBxzbVsl.js — so exit code alone
+// never distinguishes "0 specs because nothing needed testing" from "0
+// specs because the import graph missed something"). CLAUDE.md already
+// warned about this in prose; this wrapper now closes it mechanically —
+// with output, NOT exit code, carrying the distinction:
+//
+//   - `hasAnyChangedFiles` mirrors vitest's own change-detection exactly
+//     (git.B5SDxu-n.js's getFilesSince/getStagedFiles/getUnstagedFiles: a
+//     `<ref>...HEAD` diff, plus staged, plus unstaged) so it answers the
+//     same question vitest itself answers, independently of vitest's exit
+//     code.
+//   - When that check finds NO changed files at all, the zero-spec result is
+//     the legitimate "genuinely empty diff" case (verified live against a
+//     real ref==HEAD run on a clean tree) — vitest's own "No test files
+//     found, exiting with code 0" is correct here, and the wrapper prints a
+//     `TEST_SINCE_ZERO_SELECTION: reason=empty-diff` marker so a reader
+//     never has to infer it from silence.
+//   - When it finds changed files but a fast `vitest list` pre-check (same
+//     --changed ref, no test execution) matches zero spec files, the
+//     wrapper prints a DISTINCT `TEST_SINCE_ZERO_SELECTION:
+//     reason=no-spec-matched` marker naming the files, but does NOT exit
+//     non-zero for it. A cross-ticket audit run the same day this AC was
+//     implemented found the earlier hard-fail design (committed, then
+//     reverted before hand-off) breaks a common legitimate case: a
+//     docs-only diff enters no import graph and genuinely, correctly
+//     selects zero specs — several real docs-only tickets hit exactly this
+//     shape the same day. A blanket non-zero exit here would turn every one
+//     of those into a red gate needing manual override on every review,
+//     which is alarm fatigue that WEAKENS the control rather than
+//     strengthening it (this is the same "empty is always false" trap the
+//     ticket's own description explicitly warns against). Making the
+//     zero-selection reason SELF-DESCRIBING in the output — not fatal —
+//     satisfies AC4's "made unambiguous some other way, with the reasoning
+//     recorded" branch: a caller (human or the Reviewer) can now always
+//     read WHY zero specs were selected instead of having to infer it, and
+//     is still pointed at `npm test` (the fs-read sensors the import graph
+//     is blind to) as the actual coverage check for that case.
 
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -57,6 +98,32 @@ export function resolveSafeRef(ref, exec = spawnSync) {
   return { ok: true, safeRef: `${verify.stdout.trim()}~0` };
 }
 
+/**
+ * TASK-192 AC4 — mirrors vitest's own `--changed` file-detection exactly
+ * (node_modules/vitest/dist/chunks/git.B5SDxu-n.js's getFilesSince /
+ * getStagedFiles / getUnstagedFiles): a `<safeRef>...HEAD` diff, plus
+ * staged, plus unstaged (untracked-but-not-ignored) files. Returns `true`
+ * when that union is non-empty. `exec` is injectable for tests (default:
+ * real `git diff`/`git ls-files`).
+ */
+export function hasAnyChangedFiles(safeRef, exec = spawnSync) {
+  const runs = [
+    ['diff', '--name-only', `${safeRef}...HEAD`],
+    ['diff', '--cached', '--name-only'],
+    ['ls-files', '--other', '--modified', '--exclude-standard'],
+  ];
+  return runs.some((args) => {
+    const result = exec('git', args, { encoding: 'utf8' });
+    // A git failure here is treated conservatively as "there might be
+    // changes" (status !== 0 -> non-empty stdout string check below still
+    // holds since result.stdout defaults to '' and the `.some` short-
+    // circuits false only when EVERY run reports empty stdout) — this keeps
+    // the wrapper on the safe side of the "closed mechanically" contract
+    // rather than silently treating a git error as "nothing changed".
+    return result.status !== 0 || (result.stdout || '').trim().length > 0;
+  });
+}
+
 function main(argv = process.argv.slice(2)) {
   const [ref, ...extraArgs] = argv;
   const resolved = resolveSafeRef(ref);
@@ -69,6 +136,38 @@ function main(argv = process.argv.slice(2)) {
   process.stderr.write(
     `test:since: resolved "${ref}" -> ${resolved.safeRef} (forwarded as a string; never all-digit)\n`,
   );
+
+  if (hasAnyChangedFiles(resolved.safeRef)) {
+    // Fast pre-check (no test execution): does the import graph route ANY
+    // of those real, non-empty-diff changes to a spec? This is informational
+    // ONLY — see the TASK-192 AC4 header comment for why a non-empty diff
+    // that legitimately selects zero specs (a docs-only change, for
+    // example) must not become a hard failure here.
+    const listCheck = spawnSync(
+      'vitest',
+      ['list', '--config', 'vitest.config.all.js', '--changed', resolved.safeRef, ...extraArgs],
+      { encoding: 'utf8', shell: true },
+    );
+    const matched = !listCheck.error && listCheck.status === 0 && (listCheck.stdout || '').trim().length > 0;
+    if (!matched) {
+      process.stderr.write(
+        'test:since: TEST_SINCE_ZERO_SELECTION: reason=no-spec-matched — '
+          + `the diff since "${ref}" is non-empty but the import graph routed none of it to a\n`
+          + 'spec. This is commonly a legitimate docs/config/fs-read-only change (the import\n'
+          + 'graph cannot see those) rather than a broken selection, so this is NOT treated as\n'
+          + 'a failure here — but the result below must not be read as "everything relevant\n'
+          + 'was tested": confirm coverage via `npm test` (the fs-read sensors: parity,\n'
+          + 'live-state, doc-locks) and any affected e2e specs named at hand-off before\n'
+          + 'treating this ticket as verified.\n',
+      );
+    }
+  } else {
+    process.stderr.write(
+      'test:since: TEST_SINCE_ZERO_SELECTION: reason=empty-diff — no changed files since '
+        + `"${ref}"\n(committed diff + staged + unstaged are all empty) — a zero-spec result below\n`
+        + 'is expected here, not a failure.\n',
+    );
+  }
 
   const result = spawnSync(
     'vitest',
