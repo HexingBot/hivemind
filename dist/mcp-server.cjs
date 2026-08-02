@@ -11197,7 +11197,8 @@ var mcp_server_exports = {};
 __export(mcp_server_exports, {
   createServer: () => createServer,
   main: () => main,
-  recordTaskGraphNode: () => recordTaskGraphNode
+  recordTaskGraphNode: () => recordTaskGraphNode,
+  safeRef: () => safeRef
 });
 module.exports = __toCommonJS(mcp_server_exports);
 var import_promises3 = require("node:fs/promises");
@@ -26515,9 +26516,11 @@ var KEY_RE = /^TASK-\d{3,}$/;
 function ok(value) {
   return { content: [{ type: "text", text: JSON.stringify(value) }] };
 }
-var UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\])\.\.(?:[/\\]|$)/;
+var UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\])\.\.(?:[/\\]|$)|%2e%2e/i;
 function safeRef(ref) {
-  if (typeof ref !== "string" || UNSAFE_REF_RE.test(ref)) return null;
+  if (typeof ref !== "string") return null;
+  if (ref !== ref.trim() || /[\r\n]/.test(ref)) return null;
+  if (UNSAFE_REF_RE.test(ref)) return null;
   return ref;
 }
 function sortNodesById(nodes) {
@@ -26734,7 +26737,7 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
   server.registerTool(
     "kb_graph_query",
     {
-      description: "Query the internal knowledge graph (knowledge/graph/graph.json) deterministically. Input: { id?, type?, relation?, direction? }. An `id` query returns connected nodes via graph-sync.js#neighborsCanonicalFirst (canonical-first when a brain AND a canonicalId are both present; local-projection fallback otherwise \u2014 this tool forwards an injected brain but has no canonicalId input, so every call here still uses the local fallback today). A `type`-only query returns all nodes of that type via nodesByType (local only). `relation`/`direction` narrow an `id` query and are LOCAL-ONLY (no canonical-first equivalent yet). Output is { query, source, nodes } with nodes sorted by id ascending \u2014 byte-stable/reproducible for the same graph.json + args on the brain-absent (local) path; brain-present results depend on live brain state and are outside that determinism guarantee. A missing id yields empty nodes, never a throw; omitting both id and type also yields an empty, documented result. No supplied filter is ever silently dropped: { id, type } applies `type` as a POST-FILTER on the neighbor result (only neighbors whose own type matches survive); `relation` or `direction` supplied WITHOUT an `id` \u2014 alone, together, or combined with `type` \u2014 has no edge to anchor the filter on and is REJECTED with a typed error (E_UNANCHORED_EDGE_FILTER) instead of silently ignoring relation/direction.",
+      description: "Query the internal knowledge graph (knowledge/graph/graph.json) deterministically. Input: { id?, type?, relation?, direction? }. An `id` query returns connected nodes via graph-sync.js#neighborsCanonicalFirst (canonical-first when a brain AND a canonicalId are both present; local-projection fallback otherwise \u2014 this tool forwards an injected brain but has no canonicalId input, so every call here still uses the local fallback today). A `type`-only query returns all nodes of that type via nodesByType (local only). `relation`/`direction` narrow an `id` query and are LOCAL-ONLY (no canonical-first equivalent yet). Output is { query, source, nodes } with nodes sorted by id ascending \u2014 byte-stable/reproducible for the same graph.json + args on the brain-absent (local) path; brain-present results depend on live brain state and are outside that determinism guarantee. A missing id yields empty nodes, never a throw; omitting both id and type also yields an empty, documented result. A node's `ref` is normally a repo-relative path \u2014 but it is replaced with `null` (TASK-175/TASK-185) when the stored value would be unsafe to auto-follow as a path (absolute, a `..` traversal, a `~`/UNC shorthand, a URL scheme, or disguised via padding/percent-encoding); treat `ref: null` as \"no safe path available\", never as an error, and fall back to the node's `id`/`label` instead of opening it. No supplied filter is ever silently dropped: { id, type } applies `type` as a POST-FILTER on the neighbor result (only neighbors whose own type matches survive); `relation` or `direction` supplied WITHOUT an `id` \u2014 alone, together, or combined with `type` \u2014 has no edge to anchor the filter on and is REJECTED with a typed error (E_UNANCHORED_EDGE_FILTER) instead of silently ignoring relation/direction.",
       inputSchema: {
         id: external_exports.string().optional().describe("Node id, e.g. task-168 or decision-20260101-x"),
         type: GRAPH_NODE_TYPE.optional().describe("Node type \u2014 filters a type-only query"),
@@ -26818,7 +26821,8 @@ if (__isEntryScript) {
 0 && (module.exports = {
   createServer,
   main,
-  recordTaskGraphNode
+  recordTaskGraphNode,
+  safeRef
 });
 /*! Bundled license information:
 

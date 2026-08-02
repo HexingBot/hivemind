@@ -95,15 +95,34 @@ function ok(value) {
 // boundary rather than in GRAPH_SCHEMA (src/knowledge-graph.js) — schema is
 // the WRITE-side contract every addNode/addEdge/writeGraph call validates
 // against, and tightening it is a real trust-boundary change (deliberately
-// out of scope for this LOW cleanup item; see the TASK-175 hand-off). A ref
-// that is an absolute path, a `..` traversal segment, a home-dir shorthand,
-// or carries a URL scheme (http:, file:, javascript:, a Windows drive
-// letter, ...) is replaced with null rather than surfaced for an agent to
-// blindly open.
-const UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\])\.\.(?:[/\\]|$)/;
+// out of scope for this LOW cleanup item; see the TASK-175 hand-off, and
+// TASK-185's hand-off which re-confirmed the boundary). A ref that is an
+// absolute path, a `..` traversal segment (literal or percent-encoded), a
+// home-dir shorthand, a UNC \\host\share path, or carries a URL scheme
+// (http:, file:, javascript:, a Windows drive letter, ...) is replaced with
+// null rather than surfaced for an agent to blindly open. Case-insensitive
+// (`i`) so `%2E%2E` is caught alongside `%2e%2e`.
+const UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\])\.\.(?:[/\\]|$)|%2e%2e/i;
 
-function safeRef(ref) {
-  if (typeof ref !== 'string' || UNSAFE_REF_RE.test(ref)) return null;
+// TASK-175 — exported (was module-private) solely so tests/safe-ref.spec.js
+// can unit-lock the guard directly (including running the AC3 mutation
+// drills against it) without paying for a full MCP client/server round trip
+// per input.
+//
+// TASK-185 — UNSAFE_REF_RE's checks are `^`-anchored, so a single leading
+// space/tab defeated the whole guard while the value still resolved as the
+// intended unsafe path for any consumer that trims (verified by direct
+// execution of the pre-fix regex: " /etc/passwd", "\t/etc/passwd",
+// "  ~/.ssh/id_rsa", and a leading-space UNC path all passed through
+// unchanged). Reject outright — rather than silently clean and pass through —
+// any ref that carries leading/trailing whitespace or an embedded CR/LF: no
+// legitimate ref in this graph is ever padded, and a mid-string newline
+// (e.g. "a\n/etc/passwd") can hide a later unsafe line from a naive consumer
+// even though it isn't leading/trailing whitespace itself.
+export function safeRef(ref) {
+  if (typeof ref !== 'string') return null;
+  if (ref !== ref.trim() || /[\r\n]/.test(ref)) return null;
+  if (UNSAFE_REF_RE.test(ref)) return null;
   return ref;
 }
 
@@ -523,7 +542,13 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         + 'depend on live brain state and are outside that determinism '
         + 'guarantee. A missing id yields empty nodes, never a throw; '
         + 'omitting both id and type also yields an empty, documented '
-        + 'result. No supplied filter is ever silently dropped: { id, type } '
+        + 'result. A node\'s `ref` is normally a repo-relative path — but it '
+        + 'is replaced with `null` (TASK-175/TASK-185) when the stored value '
+        + 'would be unsafe to auto-follow as a path (absolute, a `..` '
+        + 'traversal, a `~`/UNC shorthand, a URL scheme, or disguised via '
+        + 'padding/percent-encoding); treat `ref: null` as "no safe path '
+        + 'available", never as an error, and fall back to the node\'s `id`/'
+        + '`label` instead of opening it. No supplied filter is ever silently dropped: { id, type } '
         + 'applies `type` as a POST-FILTER on the neighbor result (only '
         + 'neighbors whose own type matches survive); `relation` or '
         + '`direction` supplied WITHOUT an `id` — alone, together, or '

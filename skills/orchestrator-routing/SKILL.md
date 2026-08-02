@@ -989,6 +989,16 @@ up. Use `kb_graph_query({ id: 'task-<n>' })` for a ticket's neighbors or
 (lookup + graph) answers the question, use that — do not reach for the
 workflow.
 
+**A node's `ref` can be `null` (TASK-175/TASK-185):** a returned node's `ref`
+is normally a repo-relative path safe to open directly — but `kb_graph_query`
+nulls it before returning when the stored value would be unsafe to
+auto-follow as a path (an absolute path, a `..` traversal, a `~`/UNC
+shorthand, a URL scheme, or one of those disguised via leading/trailing
+whitespace, an embedded newline, or percent-encoding). Treat `ref: null` as
+"no safe path available," never as an error or as license to guess a path —
+fall back to the node's `id`/`label` for context instead of attempting to
+open it.
+
 **OFFER** (do not auto-run) deep-research when ALL of the following hold:
 - The KB lookup misses (no sufficiently relevant existing knowledge entry).
 - The question is broad or touches unfamiliar territory where multiple independent angles are
