@@ -45,7 +45,25 @@ For `tests-after` and `uat-only` tickets, skip this step — there is no tests-f
 3. For `tests-after` tickets, add minimal regression locks after implementation.
 4. Run the per-ticket gate: `npm run test:changed` plus `npm test` (fast tier, ~2s test-execution / ~7s wall-clock — carries the fs-read sensors the import graph can't see: parity, live-state, doc-locks) plus any affected e2e specs named at hand-off. `npm run test:changed` diffs against uncommitted changes only — once your commits land, use `npm run test:since -- <base-ref>` (a validating wrapper, `scripts/test-since.mjs`, that resolves the ref and fails loudly on a bad one) to reproduce the same selection against a committed range; this is what the Reviewer runs against your hand-off, and **a zero-specs / "No test files found" result from it is a gate FAILURE to investigate, never a green.** Run `npm run test:all` only when the ticket touches test infrastructure or `tasks/schema.json`, or at release/milestone/publish points.
 5. Run the project's linter and type checker.
-6. Commit using Conventional Commits, referencing the ticket key. For `tdd` tickets, tests and implementation land together in a **single commit** — the captured red-run evidence above is the tests-first proof, not commit separation (a separate `test:` commit followed by an impl commit, e.g. `test(TICKET-123): ...` then `feat(TICKET-123): ...`, remains allowed but is no longer required). For other tiers this may be your only commit.
+6. Commit using Conventional Commits, referencing the ticket key, following the Git commit protocol below. For `tdd` tickets, tests and implementation land together in a **single commit** — the captured red-run evidence above is the tests-first proof, not commit separation (a separate `test:` commit followed by an impl commit, e.g. `test(TICKET-123): ...` then `feat(TICKET-123): ...`, remains allowed but is no longer required). For other tiers this may be your only commit.
+
+## Git commit protocol (parallel-spawn safe) (TASK-191)
+
+Other `developer` spawns may be committing against the same working tree at the same time, staging their own, disjoint files. **Disjoint file surfaces do NOT give you disjoint git-index access** — every spawn shares one `.git/index`, so `git add <your files>` followed by a plain `git commit` is not atomic against a sibling staging its own files in that window: a plain commit can silently sweep up whatever the sibling has staged and attribute it to your ticket's commit message (observed live during the TASK-183/TASK-184 parallel drive). Briefing yourself to "stage only your own files" is necessary but not sufficient by itself.
+
+Always commit with a **pathspec-limited commit** instead of `add`-then-plain-commit:
+
+```
+git commit -m "..." -- <explicit paths>
+```
+
+(note the arg order — `-m` before the `--` pathspec separator). This commits exactly the named paths regardless of what else is sitting in the shared index, and does not depend on a prior `git add` for files that are already tracked.
+
+Wrinkle: a pathspec-limited commit cannot introduce a brand-new (untracked) file — `git add` untracked paths first, then run the pathspec-limited commit; the pathspec still limits what actually lands in that commit to the named paths.
+
+**Mandatory post-commit verification, every commit, no exceptions:** immediately after committing, run `git show --stat HEAD` and confirm the file list is exactly what you intended. If it is not, STOP and report to the Orchestrator rather than repairing silently — do not `git reset` or otherwise rewrite history without explicit instruction. This check is nearly free and is what caught the TASK-184 incident.
+
+This protocol applies to every commit you make, whether or not you know a sibling spawn is active — you cannot see a sibling's state from inside your own context window.
 
 ## Observability & minimalism (Spine)
 
@@ -82,6 +100,7 @@ REQUEST-CHANGES loops are the most expensive path in the workflow — a cold Dev
 
 - **Tests before implementation for tdd tickets.** Never write implementation code before you have written the failing tests and captured the red-run evidence — the captured evidence, not commit ordering, is the proof.
 - Never use `git commit --no-verify`, `git push --force`, or `rm -rf` on directories you did not create in this session.
+- **Every commit is pathspec-limited and post-commit-verified** — see the Git commit protocol above. Never assume that disjoint file surfaces make concurrent commits safe; the shared git index is the resource that matters, not the file list.
 - Stay within the scope of the ticket. If you discover incidental bugs or cleanup opportunities, list them in your return summary instead of fixing them.
 - If a test cannot reasonably be written for an acceptance criterion (e.g., a visual UI tweak), say so explicitly and propose a verification approach.
 

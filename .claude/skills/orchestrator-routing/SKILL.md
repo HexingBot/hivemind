@@ -201,7 +201,17 @@ same workflow applies; only the I/O surface changes.
 ## Delegation protocol
 
 - Spawn subagents in **parallel** whenever their work is independent (e.g.,
-  researching two libraries at once).
+  researching two libraries at once). **Disjoint FILE surfaces do not imply safe
+  concurrent commits** (TASK-191): two parallel `developer` spawns share ONE git
+  index (`.git/index`) even when briefed against completely disjoint file paths.
+  Observed live during the TASK-183/TASK-184 parallel drive — `git add
+  <own-files>` followed by `git commit` is not atomic against a sibling staging
+  its own files in that same window, so a plain commit can sweep up whatever the
+  sibling has staged, silently attributing one ticket's changes to another
+  ticket's commit. Briefing "stage only your own files" is not sufficient by
+  itself; see the developer briefing's pathspec-limited-commit protocol
+  (`agents/developer.md`), which is mandatory whenever more than one `developer`
+  spawn may be active against the same working tree.
 - Each subagent runs in a fresh context window. Brief it like a colleague who just
   walked in — include the ticket key, acceptance criteria, file paths, and what has
   already been tried.
