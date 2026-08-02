@@ -7,7 +7,7 @@
     "Existing suites stay green; dist rebuilt + committed if bundled source changes; dist-parity green.",
     "New-test budget respected: locks only for real gaps; the redundant-spec items (11) REMOVE tests rather than add."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "low",
   "labels": [
     "review-followup",
@@ -17,17 +17,24 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "80edf15"
+  ],
   "linked_prs": [],
   "comments": [
     {
       "author": "orchestrator",
       "at": "2026-07-18T21:36:20.339Z",
       "body": "Item 16 (from rev of the deep-review fix commit d101885, LOW): orchestrator-routing SKILL.md:978-984 (both parity copies) still says an id query \"resolves against the canonical wisearcher brain graph first when the brain is wired in\" — over-promises vs the reconciled tool description (canonical path needs brain AND canonicalId; the tool cannot accept canonicalId today). Not a direct contradiction (operational guidance unaffected) but repeats the imprecision MEDIUM-1 fixed in the tool. Fix wording to \"when a brain and canonical id are wired in\" — or fold into whichever follow-up plumbs canonicalId through kb_graph_query."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-08-02T18:37:16.985Z",
+      "body": "CLOSED. Tier `tests-after`; single commit `80edf15` (17 files, 528+/103-).\n\n**PROCESS DEVIATION — read this before trusting the close.** This ticket closed WITHOUT an independent fresh-context Reviewer pass, on explicit human direction (2026-08-02: \"dont over review we want to do a general review after\"). The per-ticket reviewer is normally the load-bearing quality gate here; for this ticket the only verification is the Developer's own self-report plus the Orchestrator's independent full-suite run. **This diff is unvetted by an independent reviewer and should be treated as such by the deferred general review.**\n\n**AC1 — no silent drops: all 16 items dispositioned.** 14 fixed, 2 waived with rationale:\n\nFIXED: (1) backlog-seeder whitespace-only `problem_statement` now trims before the placeholder guard; (2) `buildScopeOverlapWarning` echoes the user's ORIGINAL casing via a new `computeScopeOverlapConflicts` tracking `{normalized, original}`; (3) that same helper computed once and passed to the builder, killing the double computation; (4) read-side `safeRef()`/`UNSAFE_REF_RE` in `sortNodesById` nulls absolute paths, `..` traversal and URL schemes — write-side `GRAPH_SCHEMA` deliberately untouched as a genuine trust-boundary change out of scope; (5) `{id, relation, type}` composition now tested; (6) `recordNode` failed-canonical shape locked; (7) singular-verb branch tested; (8) `normalizeDefinitionList` comma-string branch tested; (9) `recordTaskGraphNode` exported (both branches were unreachable through the `close_task` tool because the schema's key pattern is a strict subset of `taskKeyToNodeId`'s) and directly tested; (10) `backfill-graph-task-nodes.mjs` refactored to an injectable `main({repoRoot})` with a new e2e spec covering the idempotency claim; (11) redundant specs REMOVED — net -1 test in that file even after item 7's addition; (12) `mintTicket` docblock invariant scoped to common/use-case tags; (13) graph-freshness now folds a malformed-key done ticket into `missing` (fails CLOSED) instead of silently skipping, and the backfill script throws loudly rather than calling `addNode` with `id: null`; (16) orchestrator-routing SKILL.md canonical-first wording corrected in BOTH parity copies, verified byte-identical.\n\nWAIVED: (14) canonical-mirror status in `close_task`'s `graph_node` — no production call site wires a real brain (always `null`), and surfacing canonical status is a breaking shape change to a documented string contract; belongs in its own ticket once a brain is actually wired. (15) `makeErr` message-format divergence — realigning across 7+ call sites risks breaking message-substring assertions elsewhere for a cosmetic LOW; divergence accepted deliberately.\n\n**AC2 — suites green, dist fresh.** Developer gate: `test:changed` 14 files/149 passed; `npm test` 76 files/1027 passed, 2 skipped; `test:all` after `build:plugin` 169 files/1944 passed. `dist/init.cjs` + `dist/mcp-server.cjs` rebuilt and committed; `dist/pack-ctl.cjs` came out byte-identical and was correctly left alone per the concurrent-work constraint. Orchestrator re-ran `test:all` independently on the post-merge tree: **169 files / 1944 passed, 4 skipped, dist-parity green.**\n\n**AC3 — new-test budget.** Locks added only for real gaps; item 11 removed tests as required. Developer reports red-green planting (revert → confirm red → restore) for the 8 items with genuine behavior changes: 1, 2, 4, 5, 6, 9, 10, 13. Items 3, 7, 8, 11, 12, 16 are refactors/doc fixes/dead-branch coverage where the fix IS the test, with no toggleable src behavior. **This red-green claim is self-reported and was not independently reproduced** — see the process deviation above.\n\n**No UAT run.** Tier is `tests-after` and most items are internal, but items 2 (user-visible warning casing) and 16 (skill doc wording) are human-observable; neither was UAT-verified. Worth eyeballing during the general review.\n\n**Affected e2e specs for the general review to re-run:** `intake-scope-overlap-warn`, `intake-underspecified-warn`, `backlog-seeder-plan-ticket`, `kb-graph-query`, `mcp-close-task`, `backfill-graph-task-nodes` (new), plus fast-tier `graph-freshness` and `graph-sync`."
     }
   ],
   "created_at": "2026-07-18T21:25:03.126Z",
-  "updated_at": "2026-08-02T18:12:24.543Z",
+  "updated_at": "2026-08-02T18:37:16.985Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",

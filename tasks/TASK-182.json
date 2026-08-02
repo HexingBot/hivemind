@@ -1,0 +1,37 @@
+{
+  "key": "TASK-182",
+  "title": "pack-ctl output-contract drift + dual-copy precedence (TASK-181 carry-forward)",
+  "description": "Carry-forward batch from TASK-181's gating review (light depth, 2026-08-02) plus the design question TASK-181 deliberately deferred. Three independent items, grouped because they all sit on the same pack-ctl / reconciler surface.\n\n**Item 1 (MEDIUM, from TASK-181 review) — bin/pack-ctl.js header documents an output contract the code no longer honors.**\nThe header at `bin/pack-ctl.js:90-95` states: \"`{ ok: true, ... }` on success (exit 0) or `{ ok: false, code, message }` on failure (exit 1; message also goes to stderr)\". TASK-181 introduced a new total-failure path for `reconcile-apply` that emits `ok: false` with **exit 0** and **no** `code` and **no** `message` — it carries `planned_install_count` / `installed_count` / `source_root` instead. A consumer scripting against the documented contract will mis-parse precisely the failure mode TASK-181's AC6 existed to surface, which is the same class of invisibility that let the original outage survive multiple releases. Decide deliberately whether the CODE should conform to the header (emit code/message, exit non-zero) or the HEADER should document the new shape — do not just paper over one side.\n\n**Item 2 (LOW, from TASK-181 review) — spec env-hygiene inconsistency.**\n`tests/e2e/pack-ctl.spec.js:89-91`'s `runCli` deletes `CLAUDE_PROJECT_DIR` but not `CLAUDE_PLUGIN_ROOT`, while `tests/e2e/pack-ctl-consumer-source.spec.js:70-74`'s `runCli` deletes both. Harmless today — the one test relying on resolution order uses the verbatim `HIVEMIND_OWNED_SOURCE_ROOT` override, which outranks `CLAUDE_PLUGIN_ROOT` — but a future test in that file depending on fallback order could flake when run inside a real plugin session where `CLAUDE_PLUGIN_ROOT` is set in the ambient environment.\n\n**Item 3 (design decision, deferred out of TASK-181) — dual-copy precedence for `watch`, now genuinely live.**\nThis was TASK-181's ORIGINAL scope. It was voided at re-scope time because the premise was false: the project-scope copy was unreachable for consumers, so two copies could never disagree. TASK-181 fixed exactly that, so the premise is now TRUE and the question is live for the first time.\n\nA consumer can now hold `.claude/skills/watch/` (loads as `/watch`, installed via `pack-ctl reconcile-apply`, pinned by `integrations.lock.json`) AND receive the plugin's `skills/watch/` (loads as `/hivemind:watch`, advances with the plugin version). They are byte-identical today. They diverge on the next release that re-pins `watch`: the plugin copy moves, the project copy stays frozen until someone re-runs reconcile. Two near-identically-named skills at different versions of pinned third-party code, with no rule saying which is authoritative.\n\nNote why the obvious fix is wrong: simply dropping the pack resource makes the reconciler compute a REMOVE op against every project whose lockfile already owns `skill:watch`, deleting a working skill out from under existing consumers. TASK-180 avoided this deliberately. Any solution must handle already-installed projects, not just new ones.\n\nRelevant new fact from TASK-181: owned copies are now a SEARCH PATH, not one directory — `src/pack-apply.js#applyPlan` builds `[...new Set([sourceRoot, ...(sourceRoots || [])])]` where `sourceRoot` defaults to `<root>/assimilated-skills` and the plugin root arrives via `sourceRoots`. So the consumer's own staging dir already LEADS the plugin, per-resource, via first-existing-match in `executeInstall`. That is a de-facto precedence rule that is implemented but nowhere documented, and it may or may not be the rule we want. Candidate directions (decide, do not assume): (a) teach the reconciler to skip or actively retire a project-scope resource when the plugin ships the same id at an equal-or-newer pin, releasing the lockfile edge cleanly; (b) keep both channels, document the precedence that already exists, and give consumers a way to see which copy is active and at what pin; (c) make plugin-root shipping the only channel with a one-time migration that retires the project copy without a bare REMOVE.\n\nItem 3 needs a human call on direction before implementation — investigate, propose, then implement the chosen option.",
+  "acceptance_criteria": [
+    "Item 1: a deliberate decision is recorded (in the closing comment) on whether bin/pack-ctl.js's code conforms to its documented output contract or the header is updated to document the new reconcile-apply shape. Whichever way it goes, the header and the actual emitted shape agree, and a spec asserts the agreement so the two cannot drift again.",
+    "Item 1: if the decision is to change the exit code or add code/message, verify no existing caller or spec depends on the current exit-0 behavior before changing it — TASK-181's AC6 spec asserts the ok:false shape and must be updated in step, not broken.",
+    "Item 2: tests/e2e/pack-ctl.spec.js's runCli mirrors the env hygiene of tests/e2e/pack-ctl-consumer-source.spec.js:70-74 (deletes CLAUDE_PLUGIN_ROOT as well as CLAUDE_PROJECT_DIR), so no test in that file can be influenced by an ambient plugin-session environment.",
+    "Item 3: the precedence rule between a plugin-root-shipped resource and the same resource installed project-scope via integrations.lock.json is decided by the human and recorded in writing (docs/design/addon-packs.md or the pack-descriptor docs), including which copy is authoritative when the pins differ, and whether the de-facto search-path precedence introduced by TASK-181 is the intended rule or an accident to be changed.",
+    "Item 3: the chosen behavior is implemented and covered by specs INCLUDING the already-installed-project case — a lockfile that already owns skill:watch must NOT be left with a dangling edge and must NOT silently lose a working skill (a bare REMOVE op against existing consumers is a defect, not a solution).",
+    "Item 3: a regression spec proves the divergence scenario end to end — plugin ships watch at pin B while a project lockfile owns watch at older pin A — asserting the documented precedence actually holds.",
+    "Item 3: /hivemind:design-pack and any reconcile-facing docs state what a consumer should expect when both copies are present, and how to tell which is active and at what pin.",
+    "npm run test:all is green; no existing pack/reconcile/assimilate/apply spec regresses; dist/pack-ctl.cjs rebuilt via npm run build:plugin and committed if bundled source changes, with tests/e2e/dist-parity.spec.js passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "addon-packs",
+    "reconciler",
+    "watch",
+    "review-followup",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-181"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T18:37:52.484Z",
+  "updated_at": "2026-08-02T18:37:52.484Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

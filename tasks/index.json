@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T18:16:06.161Z",
+  "generated_at": "2026-08-02T18:37:52.484Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1018,7 +1018,7 @@
     {
       "key": "TASK-175",
       "title": "Post-epic LOW batch: deep-review + per-ticket-review cosmetic/test-gap follow-ups (TASK-165..174 drive)",
-      "status": "in_progress",
+      "status": "done",
       "priority": "low"
     },
     {
@@ -1054,7 +1054,13 @@
     {
       "key": "TASK-181",
       "title": "Built-in pack skills never install for consumers — pack-ctl passes no sourceRoot",
-      "status": "in_review",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-182",
+      "title": "pack-ctl output-contract drift + dual-copy precedence (TASK-181 carry-forward)",
+      "status": "todo",
       "priority": "medium"
     }
   ]

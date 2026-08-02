@@ -1298,6 +1298,12 @@
       "label": "Intake: interactive-path skipped definition fields become null and render a stray '- null' bullet in PROJECT.md"
     },
     {
+      "id": "task-175",
+      "type": "task",
+      "ref": "tasks/TASK-175.json",
+      "label": "Post-epic LOW batch: deep-review + per-ticket-review cosmetic/test-gap follow-ups (TASK-165..174 drive)"
+    },
+    {
       "id": "task-176",
       "type": "task",
       "ref": "tasks/TASK-176.json",
@@ -1326,6 +1332,12 @@
       "type": "task",
       "ref": "tasks/TASK-180.json",
       "label": "Ship the assimilated `watch` skill out of the box at plugin-root skills/"
+    },
+    {
+      "id": "task-181",
+      "type": "task",
+      "ref": "tasks/TASK-181.json",
+      "label": "Built-in pack skills never install for consumers — pack-ctl passes no sourceRoot"
     }
   ],
   "edges": [
