@@ -1338,6 +1338,12 @@
       "type": "task",
       "ref": "tasks/TASK-181.json",
       "label": "Built-in pack skills never install for consumers — pack-ctl passes no sourceRoot"
+    },
+    {
+      "id": "task-183",
+      "type": "task",
+      "ref": "tasks/TASK-183.json",
+      "label": "Pack install integrity: empty owned-copy shadows the plugin and is blessed with a false integrity hash"
     }
   ],
   "edges": [

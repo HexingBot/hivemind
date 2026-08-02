@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T19:45:29.175Z",
+  "generated_at": "2026-08-02T19:57:14.373Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1066,19 +1066,19 @@
     {
       "key": "TASK-183",
       "title": "Pack install integrity: empty owned-copy shadows the plugin and is blessed with a false integrity hash",
-      "status": "in_review",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-184",
       "title": "Operator docs contradict reality: design-pack command still says built-in skills never install",
-      "status": "in_review",
+      "status": "in_progress",
       "priority": "high"
     },
     {
       "key": "TASK-185",
       "title": "safeRef path guard is defeated by one leading space, and half its claimed forms are untested",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium"
     },
     {

@@ -10,7 +10,7 @@
     "No write-side change: GRAPH_SCHEMA stays as-is and this ticket does not widen into write-boundary validation. Verify with git diff. If the work argues the write side needs hardening, raise it as a separate ticket in the closing comment instead.",
     "npm run test:all is green; no existing kb-graph/mcp spec regresses; dist/mcp-server.cjs rebuilt via npm run build:plugin and committed, with tests/e2e/dist-parity.spec.js passing."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "medium",
   "labels": [
     "kb-graph",
@@ -25,7 +25,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T19:21:02.292Z",
-  "updated_at": "2026-08-02T19:21:02.292Z",
+  "updated_at": "2026-08-02T19:57:14.373Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
