@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-29T14:48:17.846Z",
+  "generated_at": "2026-08-02T18:12:37.731Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1024,7 +1024,7 @@
     {
       "key": "TASK-175",
       "title": "Post-epic LOW batch: deep-review + per-ticket-review cosmetic/test-gap follow-ups (TASK-165..174 drive)",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "low"
     },
     {
@@ -1059,8 +1059,8 @@
     },
     {
       "key": "TASK-181",
-      "title": "Define precedence when a pack resource is ALSO shipped at plugin root (watch dual-copy)",
-      "status": "todo",
+      "title": "Built-in pack skills never install for consumers — pack-ctl passes no sourceRoot",
+      "status": "in_review",
       "priority": "medium"
     }
   ]
