@@ -1344,6 +1344,12 @@
       "type": "task",
       "ref": "tasks/TASK-183.json",
       "label": "Pack install integrity: empty owned-copy shadows the plugin and is blessed with a false integrity hash"
+    },
+    {
+      "id": "task-184",
+      "type": "task",
+      "ref": "tasks/TASK-184.json",
+      "label": "Operator docs contradict reality: design-pack command still says built-in skills never install"
     }
   ],
   "edges": [

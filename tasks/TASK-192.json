@@ -1,0 +1,33 @@
+{
+  "key": "TASK-192",
+  "title": "Empty results must declare themselves empty: absence of evidence keeps rendering as evidence of absence",
+  "description": "A repo-wide contract ticket, not a single-site bug. Minted 2026-08-02 after the same defect class was confirmed THREE times in one day, in three unrelated subsystems. Two instances have been fixed at their individual call sites; nothing prevents the fourth.\n\n**The class.** A operation produces an empty result — zero items selected, zero installed, an empty set of things to check — and reports success. The caller cannot distinguish \"nothing needed doing\" from \"the thing that finds work is broken and found nothing.\" Absence of evidence is rendered as evidence of absence.\n\n**Confirmed instances (all three verified this week, not hypothetical):**\n\n1. **`test:since` zero-spec selection.** A ref that fails to resolve, or a diff range that selects nothing, produces \"No test files found\" — visually indistinguishable from a green run. `CLAUDE.md` already warns in PROSE that \"a zero-specs result from `test:since` is a gate FAILURE to investigate, never a green\" — which is exactly the shape of control this repo has repeatedly found insufficient. The warning is real; the enforcement is a human remembering to read it.\n\n2. **`reconcile-apply` returning `installed: []` with `ok: true`.** Every built-in pack skill soft-failed to materialize, nothing installed, and the CLI reported unqualified success. This shipped through at least two releases and broke `/hivemind:design-pack`'s headline promise for every downstream consumer. Fixed at that call site by TASK-181 (adding counts) and TASK-183 (adding a failure predicate and a non-zero exit).\n\n3. **The design-pack doc-lock's empty checked-set.** The spec derived the field names it would verify from a SUCCESS-path fixture run. Failure-only fields (`code`, `message`) therefore formed an empty set — which was dutifully checked, passed, and reported green while the document it guarded was materially wrong. The lock had been written that same morning specifically to prevent silent drift. Fixed at that site by TASK-184.\n\nThree subsystems, one root shape. Instances 2 and 3 were each fixed in isolation, by different tickets, without either recognizing the other as the same defect.\n\n**The contract to establish (this is the deliverable).** An operation that can return an empty result must make emptiness self-describing: the result carries enough information for a caller to tell \"zero because there was nothing to do\" apart from \"zero because the search/selection/derivation failed.\" The `planned_install_count` / `installed_count` pair TASK-183 added is the reference implementation — zero installed is fine when zero were planned, and a hard failure when two were.\n\n**IMPORTANT — do not over-apply this.** \"Empty responses are always false\" is too strong and would produce a wave of false positives. Plenty of empty results are legitimate and unambiguous (`list_todos` on a drained board; a diff that genuinely touches nothing). The rule is NOT \"reject empty\"; it is **\"empty must be distinguishable from failed, and the caller must never have to infer which.\"** A seam where emptiness is already unambiguous needs no change, and saying so explicitly is a valid outcome for that seam.\n\n**Scope guidance.** The audit is the valuable part — the fixes are mostly small once a seam is identified. Prioritise seams where an empty result feeds a GATE or a decision (test selection, guard evaluation, sensor derivation, install/apply counts), over seams where it merely feeds a display.",
+  "acceptance_criteria": [
+    "An audit enumerates the seams in this repo where an operation can return an empty/zero result that a caller could read as success. The enumeration is recorded (a doc or the closing comment) with, for each seam, whether emptiness is currently self-describing or ambiguous. Prioritise seams feeding a gate, guard, sensor, or count over display-only seams. An honest 'this seam is already unambiguous' is a valid per-seam outcome.",
+    "The contract is written down in a durable location (CLAUDE.md's Testing/Rules section or a docs/ page, whichever fits the existing structure) in the form: an operation that can return empty must let the caller distinguish 'nothing to do' from 'the finder failed', and MUST NOT report unqualified success for the latter. Cite the three confirmed instances as the motivating evidence so a future reader can see the class, not just the rule.",
+    "The two already-fixed instances are verified to CONFORM to the written contract rather than merely being patched — reconcile-apply's planned/installed counts and the doc-lock's failure-path derivation. If either fix does not actually satisfy the contract as written, say so and reconcile the two.",
+    "The test:since zero-spec case is closed mechanically rather than by prose: scripts/test-since.mjs (or its caller) fails loudly, with a non-zero exit, when a resolved ref selects zero specs — or, if that turns out to produce false failures in a legitimate case (a genuinely empty diff), the seam is made unambiguous some other way and the reasoning is recorded. Verify against a real zero-selection run, not a mocked one.",
+    "At least one new seam beyond the three known instances is either fixed or explicitly cleared. If the audit genuinely finds none, state that and show the search that supports it — a null result here is acceptable ONLY if it is itself self-describing, which is the point of the ticket.",
+    "ESCALATION CLAUSE: if any seam identified turns out to sit on a close-guard, state-mutation, or security path, do NOT fix it here — surface it and it will be minted as its own tdd ticket. This ticket is tests-after because the expected work is additive assertions and reporting; a guard-path change is not.",
+    "npm run test:all is green; no existing spec regresses; if any bundled source changed, dist rebuilt via npm run build:plugin and committed with tests/e2e/dist-parity.spec.js passing."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "silent-failure",
+    "process",
+    "test-infrastructure",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T20:18:36.828Z",
+  "updated_at": "2026-08-02T20:18:36.828Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

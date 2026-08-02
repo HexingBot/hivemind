@@ -10,7 +10,7 @@
     "No behavioral change to reconcile/apply logic in this ticket — verify with git diff that only docs, the sensor message, and their specs changed. Behavioral fixes belong to TASK-183.",
     "npm test (fast tier) and npm run test:all are green; no existing spec regresses."
   ],
-  "status": "in_progress",
+  "status": "done",
   "priority": "high",
   "labels": [
     "docs",
@@ -22,11 +22,20 @@
   "depends_on": [
     "TASK-181"
   ],
-  "linked_commits": [],
+  "linked_commits": [
+    "ff1d07b",
+    "e6a9810"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-02T20:19:15.103Z",
+      "body": "CLOSED on a green re-review after one RC loop. **APPROVE — 0 HIGH / 0 MEDIUM / 3 LOW.** All 6 ACs PASS.\n\n**Review depth: `full`** on both passes — rubric inputs for the fix round: 210 changed lines (>=150) and the diff modifies a sensor spec (test infrastructure).\n\n## RC loop history (one round)\nFirst attempt `ff1d07b` returned REQUEST-CHANGES with 2 HIGH. Both are now verified CLOSED by the reviewer's own external mutation runs, not by taking the developer's word:\n\n**HIGH-1 (doc stale at HEAD) — CLOSED.** The doc was accurate when written, then sibling ticket TASK-183 (`0a76ae2`) landed two minutes later and changed the behavior underneath it. Fix round `e6a9810` re-synced Step 4 against HEAD field-for-field: `ok:true` is now the only success path (requiring `installed_count === planned_install_count` AND no abort), all three failure kinds are named with correct predicates and abort precedence, all three `E_PACK_APPLY_*` code values are enumerated verbatim, and the exit-1 + message-on-stderr contract is documented. Crucially the fix caught DOWNSTREAM surfaces too, not just the paragraph it was pointed at — Step 4's triage bullet, Step 5's tail note, the fresh-project paragraph, and the Notes bullet. A whole-file grep for surviving \"short/zero installed is expected\" claims returns none.\n\n**HIGH-2 (vacuous doc-lock) — CLOSED.** Both structural blind spots closed and mutation-proven externally: (1) a failure-path fixture forcing `ok:false` via `HIVEMIND_OWNED_SOURCE_ROOT` so failure-only fields actually enter the checked set; (2) a word-boundary predicate replacing `doc.includes(field)`. The decisive proof: with every standalone word `code` stripped from the doc but \"hardcoded\"/\"hardcode\" left intact, the failure-path lock FAILS — simultaneously demonstrating the substring coincidence no longer fools it AND that the new fixture is what carries the failure-only fields.\n\n## LOW-1 — the residual worth carrying forward (read this before the next pack-ctl change)\nThe reviewer pushed past the ACs and found the boundary of what this lock can do: **it pins field-NAME presence anywhere in the file, not Step-4 locality and not semantics.** Mutation 3 showed that adding the word \"code\" in an unrelated appended sentence makes the lock pass again, and by construction a field whose name is documented but whose MEANING is wrong — which is precisely the HIGH-1 drift mode — still passes.\n\nAssessed as an acceptable residual against AC3's own letter (which specifies a name-presence lock), and both historical drifts did involve UNDOCUMENTED NEW fields, which this lock now catches on both output paths. But a pure semantics-only drift (e.g. `ok`'s meaning changing again with no field change) remains **process-covered only**. Cheap hardening the reviewer identified for whoever next touches this surface: the doc enumerates the three `E_PACK_APPLY_*_FAILURE` values, but the spec only locks the word `code` — asserting the actual `result.code` VALUE from the failure run appears in the doc would pin one semantic edge for free.\n\n## Other LOWs (non-blocking)\nTest (b) of the predicate-hardening block exercises an inline reimplementation of the OLD substring predicate — dead code that cannot catch a live regression, since a revert of `assertFieldsDocumented` is already caught by test (a). Documentation value only; redundant under the new-test budget. And `source_root` is described as \"the directory the reconciler vendored owned skill copies from\" when it is really the resolved FALLBACK root appended to the search path — `applyPlan` always leads with `<repoRoot>/assimilated-skills`, so a self-assimilated skill vendors from the project root even when `source_root` names the plugin's dir. The null-vs-non-null triage the doc emphasizes is unaffected.\n\n## Gate\n`test:since -- 180fa3d` 10 files / 99 passed (non-empty selection) · `npm test` 77 files / 1043 passed, 2 skipped · `design-pack-doc-lock.spec.js` 5/5 · `npm run test:all` 171 files / 1969 passed, 4 skipped — identical to the `fb2692d` baseline the Orchestrator independently verified on a clean tree · `graph-freshness.spec.js` 11/11 including the 3 AC4 tests · `check:calibration` no violations.\n\n## AC4 and AC5 preserved from the first attempt\nThe graph-freshness message split (`buildMissingMessage`) was untouched by the fix round and its three tests still pass; `scripts/backfill-graph-task-nodes.mjs` really does throw on the malformed-key case the message claims. `git diff 180fa3d e6a9810 --stat` confirms exactly 2 files, no `src/`/`bin/`/`dist/`.\n\n## Concurrency hygiene — the mitigation worked\n`e6a9810` was committed while TASK-185 had uncommitted work in the same tree, using a pathspec-limited `git commit -- <paths>` instead of `git add` + `git commit`. `git show --name-only` lists exactly the 2 intended files with no sibling contamination — in contrast to the first attempt, which produced an 11-file commit and had to be reset. The hazard and the mitigation are tracked in TASK-191.\n\n## Provenance\nThis ticket's defect was found by the 2026-08-02 two-pass adversarial deep review (HIGH in one pass, LOW in the other — the severity disagreement is recorded in the ticket description). Its own fix then went stale within two minutes because a sibling ticket changed the documented behavior, which is itself the clearest available evidence for why doc-vs-code correspondence needs a mechanical lock rather than a convention."
+    }
+  ],
   "created_at": "2026-08-02T19:20:33.678Z",
-  "updated_at": "2026-08-02T19:57:08.018Z",
+  "updated_at": "2026-08-02T20:19:15.103Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",
