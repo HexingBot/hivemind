@@ -87,6 +87,25 @@ describe('AC1 — findDoneTicketsMissingGraphNodes: seeded drift fixture fails, 
   });
 });
 
+describe('TASK-175 item 13 — a malformed done-ticket key fails closed, not silently skipped', () => {
+  it('flags a done ticket whose key does not match TASK-<digits>, alongside a real drift', () => {
+    const tasks = [
+      { key: 'NOT-A-KEY', status: 'done' },
+      { key: 'TASK-001', status: 'done' },
+    ];
+    const graph = {
+      nodes: [
+        { id: 'task-001', type: 'task', ref: 'tasks/TASK-001.json', label: 'x' },
+      ],
+    };
+    // Before this fix, taskKeyToNodeId('NOT-A-KEY') === null made the old
+    // guard (`nodeId !== null && ...`) skip the ticket entirely — it never
+    // reached `missing`, even though the sensor could not prove a graph node
+    // existed for it. Fail closed instead: name it.
+    expect(findDoneTicketsMissingGraphNodes({ tasks, graph })).toEqual(['NOT-A-KEY']);
+  });
+});
+
 describe('AC2 — findDoneTicketsMissingGraphNodes: only done status is required to have a node', () => {
   it('passes (empty) when the node is present for a done ticket', () => {
     const tasks = [{ key: 'TASK-001', status: 'done' }];

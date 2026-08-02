@@ -333,7 +333,7 @@ function buildPlanTemplate(answers) {
       'implementation ticket for this project starts.',
     '',
     'Problem statement (captured verbatim at intake):',
-    problemStatement.length > 0 ? problemStatement : '(none captured at intake)',
+    problemStatement.trim().length > 0 ? problemStatement : '(none captured at intake)',
   ].join('\n');
 
   const acceptance_criteria = [
@@ -369,10 +369,14 @@ function buildPlanTemplate(answers) {
  * Mint a single seeded ticket from a template + a triggering tag ('common' or
  * a use-case slug). Returns the new ticket key.
  *
- * The opening comment body MUST contain the literal `tag` substring (the
- * test's commentNamesUseCase helper does String.includes(tag) to partition
- * minted tickets by trigger). Phrasing is deliberately anodyne for the
- * 'common' case so no incidental use-case slug appears in the body.
+ * For the 'common' tag and a use-case slug tag, the opening comment body MUST
+ * contain the literal `tag` substring (the test's commentNamesUseCase helper
+ * does String.includes(tag) to partition minted tickets by trigger). Phrasing
+ * is deliberately anodyne for the 'common' case so no incidental use-case
+ * slug appears in the body. The 'plan' tag (TASK-165) is the one exception to
+ * this invariant — its body is deliberately free of the literal substring
+ * "plan" (see the tag === 'plan' branch below), so this invariant is scoped
+ * to the common/use-case tags only, not every tag mintTicket accepts.
  *
  * TASK-017 AC6 — callers MUST await mintTicket sequentially (one ticket per
  * iteration, never Promise.all over the templates). The atomic-write key

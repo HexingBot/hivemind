@@ -465,13 +465,17 @@ function toScopeList(v) {
 }
 
 /**
- * TASK-167 — pure predicate: return the normalized tokens that appear in
- * BOTH scope_in and scope_out (case- and whitespace-insensitive). Returns []
- * when either list is empty/absent or when the lists are disjoint (AC2). No
- * I/O — safe to unit-test directly. Order follows scope_out's first
- * occurrence, deduped.
+ * TASK-167 — shared core: find the scope_out entries that overlap scope_in
+ * (case- and whitespace-insensitive), returning both the normalized token
+ * (for comparison/dedup) and the ORIGINAL scope_out casing (for display).
+ * Returns [] when either list is empty/absent or when the lists are disjoint
+ * (AC2). No I/O — pure. Order follows scope_out's first occurrence, deduped
+ * on the normalized token.
+ *
+ * TASK-175 item 3 — single source of truth so callers compute the overlap
+ * ONCE per warning emission (guard + message) instead of twice.
  */
-export function findScopeOverlap(answers) {
+function computeScopeOverlapConflicts(answers) {
   if (!answers || typeof answers !== 'object') return [];
   const scopeIn = toScopeList(answers.scope_in);
   const scopeOut = toScopeList(answers.scope_out);
@@ -484,23 +488,43 @@ export function findScopeOverlap(answers) {
     const norm = normalizeScopeToken(raw);
     if (norm.length > 0 && inSet.has(norm) && !seen.has(norm)) {
       seen.add(norm);
-      conflicts.push(norm);
+      conflicts.push({ normalized: norm, original: String(raw).trim() });
     }
   }
   return conflicts;
 }
 
 /**
- * TASK-167 — build the warn-and-reconfirm message naming the conflicting
- * scope item(s). Pure string builder (no I/O); only meaningful when
- * findScopeOverlap(answers) returns a non-empty array, but does not assume
- * it — it names whichever conflicts are actually present.
+ * TASK-167 — pure predicate: return the normalized tokens that appear in
+ * BOTH scope_in and scope_out (case- and whitespace-insensitive). Returns []
+ * when either list is empty/absent or when the lists are disjoint (AC2). No
+ * I/O — safe to unit-test directly. Order follows scope_out's first
+ * occurrence, deduped.
  */
-export function buildScopeOverlapWarning(answers) {
-  const conflicts = findScopeOverlap(answers);
-  const verb = conflicts.length === 1 ? 'appears' : 'appear';
+export function findScopeOverlap(answers) {
+  return computeScopeOverlapConflicts(answers).map((c) => c.normalized);
+}
+
+/**
+ * TASK-167 — build the warn-and-reconfirm message naming the conflicting
+ * scope item(s), using the user's ORIGINAL scope_out casing rather than the
+ * normalized lowercase comparison token (TASK-175 item 2). Pure string
+ * builder (no I/O); only meaningful when findScopeOverlap(answers) returns a
+ * non-empty array, but does not assume it — it names whichever conflicts are
+ * actually present.
+ *
+ * `conflicts` is an optional precomputed result of
+ * computeScopeOverlapConflicts(answers) — callers that already computed it
+ * for the guard check pass it through to avoid a second computation
+ * (TASK-175 item 3). When omitted, it is computed internally so this stays a
+ * drop-in single-arg call for existing/direct callers and tests.
+ */
+export function buildScopeOverlapWarning(answers, conflicts) {
+  const pairs = conflicts !== undefined ? conflicts : computeScopeOverlapConflicts(answers);
+  const originals = pairs.map((c) => c.original);
+  const verb = originals.length === 1 ? 'appears' : 'appear';
   return (
-    `Warning: "${conflicts.join('", "')}" ${verb} in both Scope (in) and ` +
+    `Warning: "${originals.join('", "')}" ${verb} in both Scope (in) and ` +
     'Scope (out). Confirm to proceed anyway, or go back and resolve the conflict.'
   );
 }
@@ -575,9 +599,10 @@ async function askConfirm({ answers, prompter }) {
     // eslint-disable-next-line no-console
     console.log(buildUnderspecifiedWarning(answers));
   }
-  if (findScopeOverlap(answers).length > 0) {
+  const scopeOverlapConflicts = computeScopeOverlapConflicts(answers);
+  if (scopeOverlapConflicts.length > 0) {
     // eslint-disable-next-line no-console
-    console.log(buildScopeOverlapWarning(answers));
+    console.log(buildScopeOverlapWarning(answers, scopeOverlapConflicts));
   }
   const summary = buildDefinitionSummary(answers);
   // eslint-disable-next-line no-console
@@ -703,9 +728,10 @@ async function runWizardAndWriteProjectMd({
       // eslint-disable-next-line no-console
       console.warn(buildUnderspecifiedWarning(answers));
     }
-    if (findScopeOverlap(answers).length > 0) {
+    const scopeOverlapConflicts = computeScopeOverlapConflicts(answers);
+    if (scopeOverlapConflicts.length > 0) {
       // eslint-disable-next-line no-console
-      console.warn(buildScopeOverlapWarning(answers));
+      console.warn(buildScopeOverlapWarning(answers, scopeOverlapConflicts));
     }
   }
   // TASK-128 — seam 2: merge active-pack PROJECT.md contributions

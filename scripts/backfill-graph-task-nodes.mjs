@@ -17,7 +17,7 @@
 //
 // Usage: node scripts/backfill-graph-task-nodes.mjs
 
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 
@@ -28,15 +28,20 @@ import { findDoneTicketsMissingGraphNodes, taskKeyToNodeId } from '../src/graph-
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dir, '..');
 
-function loadAllTasks() {
-  const tasksDir = join(REPO_ROOT, 'tasks');
+function loadAllTasks(repoRoot) {
+  const tasksDir = join(repoRoot, 'tasks');
   const files = readdirSync(tasksDir).filter((f) => TASK_FILENAME_RE.test(f));
   return files.map((f) => JSON.parse(readFileSync(join(tasksDir, f), 'utf8')));
 }
 
-async function main() {
-  const tasks = loadAllTasks();
-  const graph = await loadGraph({ repoRoot: REPO_ROOT });
+// TASK-175 item 10 — repoRoot is now an injectable option (defaulting to
+// this script's own repo, unchanged for the real one-time-backfill usage)
+// so tests/e2e/backfill-graph-task-nodes.spec.js can exercise this against a
+// disposable tmp-dir fixture (incl. the idempotency claim in the header
+// comment above) instead of the framework's own tasks/ + graph.json.
+export async function main({ repoRoot = REPO_ROOT } = {}) {
+  const tasks = loadAllTasks(repoRoot);
+  const graph = await loadGraph({ repoRoot });
   const missingKeys = findDoneTicketsMissingGraphNodes({ tasks, graph });
 
   if (missingKeys.length === 0) {
@@ -52,6 +57,17 @@ async function main() {
   for (const key of missingKeys) {
     const task = byKey.get(key);
     const id = taskKeyToNodeId(key);
+    if (id === null) {
+      // TASK-175 item 13 — findDoneTicketsMissingGraphNodes now folds a
+      // malformed done-ticket key into `missing` too (fail closed) instead
+      // of silently skipping it. There is no node id to derive here, so
+      // fail loudly with a clear message rather than calling addNode with a
+      // null id (which would otherwise surface as an opaque AJV dump).
+      throw new Error(
+        `backfill-graph-task-nodes: done ticket "${key}" has a malformed key `
+          + '(does not match TASK-<digits>) — fix the key before backfilling.',
+      );
+    }
     const node = {
       id,
       type: 'task',
@@ -59,7 +75,7 @@ async function main() {
       label: task.title,
     };
     // eslint-disable-next-line no-await-in-loop
-    await addNode({ repoRoot: REPO_ROOT, node });
+    await addNode({ repoRoot, node });
     // eslint-disable-next-line no-console
     console.log(`  + ${id} (${key}: ${task.title})`);
   }
@@ -68,8 +84,15 @@ async function main() {
   console.log(`backfill-graph-task-nodes: added ${missingKeys.length} node(s).`);
 }
 
-main().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error(err);
-  process.exit(1);
-});
+// Only auto-run when invoked directly (`node scripts/backfill-graph-task-nodes.mjs`);
+// importing `main` for testing must not trigger a real run against this repo's
+// own tasks/ + graph.json.
+const __isEntryScript = Boolean(process.argv[1])
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (__isEntryScript) {
+  main().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error(err);
+    process.exit(1);
+  });
+}

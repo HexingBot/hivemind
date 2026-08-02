@@ -32,13 +32,25 @@ export function taskKeyToNodeId(key) {
 }
 
 /**
- * Return the ticket keys with status 'done' that have no corresponding
- * task-<digits> node in the graph. Tickets in any other status (todo,
- * in_progress, blocked, in_review) are never flagged, per AC2.
+ * Return the ticket keys with status 'done' that either (a) have no
+ * corresponding task-<digits> node in the graph, or (b) have a key that
+ * doesn't even match the TASK-<digits> shape (a malformed key). Tickets in
+ * any other status (todo, in_progress, blocked, in_review) are never
+ * flagged, per AC2.
+ *
+ * TASK-175 item 13 — a malformed done-ticket key used to be silently
+ * skipped: taskKeyToNodeId(key) returns null for it, and the old guard
+ * (`nodeId !== null && !nodeIds.has(nodeId)`) only ever pushed when a real
+ * node id was derived, so a malformed key escaped detection forever instead
+ * of failing the sensor closed. A malformed key is folded into the same
+ * `missing` bucket now, by the same reasoning as a truly-missing node: the
+ * sensor cannot prove a graph node exists for it, so it must not pass
+ * silently — the malformed key itself is the defect to surface and fix.
  *
  * @param {{tasks: Array<{key: string, status: string}>,
  *          graph: {nodes: Array<{id: string}>}}} opts
- * @returns {string[]} ticket keys missing a graph node, in input order
+ * @returns {string[]} ticket keys missing a graph node (including malformed
+ *   keys), in input order
  */
 export function findDoneTicketsMissingGraphNodes({ tasks, graph }) {
   const nodeIds = new Set((graph?.nodes ?? []).map((n) => n.id));
@@ -46,7 +58,7 @@ export function findDoneTicketsMissingGraphNodes({ tasks, graph }) {
   for (const task of tasks ?? []) {
     if (task.status !== 'done') continue;
     const nodeId = taskKeyToNodeId(task.key);
-    if (nodeId !== null && !nodeIds.has(nodeId)) missing.push(task.key);
+    if (nodeId === null || !nodeIds.has(nodeId)) missing.push(task.key);
   }
   return missing;
 }

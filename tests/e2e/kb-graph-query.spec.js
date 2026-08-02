@@ -319,6 +319,25 @@ describe('TASK-168 — kb_graph_query MCP tool (canonical-first read seam, brain
   });
 
   // ---------------------------------------------------------------------------
+  // TASK-175 item 5 — { id, relation, type } composition was documented (the
+  // tool's registerTool description says `type` "applies... on the neighbor
+  // result" and "composes with relation/direction, which already narrow the
+  // edge set before type is applied") but had no direct test proving the two
+  // filters actually compose rather than one silently overriding the other.
+  // relation:'produced-by' narrows task-001's neighbors to
+  // decision-20260101-x FIRST; type:'task' then drops it because its own
+  // type is 'decision', not 'task' — proving type is a POST-filter applied
+  // after, not instead of, the relation narrowing.
+  // ---------------------------------------------------------------------------
+  it('id_relation_and_type_compose_relation_narrows_first_then_type_post_filters', async () => {
+    const result = parse(await client.callTool({
+      name: 'kb_graph_query',
+      arguments: { id: 'task-001', relation: 'produced-by', type: 'task' },
+    }));
+    expect(result.nodes).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------------------
   // { type, direction } (no id): BEFORE this ticket, `direction` was silently
   // ignored and the call returned every node of that type via nodesByType, as
   // if direction had never been supplied. CHOSEN SEMANTICS: direction (and
@@ -425,5 +444,66 @@ describe('TASK-168 — kb_graph_query MCP tool (canonical-first read seam, brain
     // Server survives — a subsequent valid call still works.
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toContain('kb_graph_query');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-175 item 4 — read-steering hardening (LOW, repo-local trust model):
+// an unsafe `ref` (absolute path, `..` traversal, or a URL scheme) must
+// never be surfaced verbatim to an agent that is told to auto-follow it.
+// ---------------------------------------------------------------------------
+describe('TASK-175 item 4 — kb_graph_query nulls out an unsafe ref instead of surfacing it', () => {
+  let repoRoot;
+  let client;
+  let server;
+
+  function writeUnsafeRefFixture(root) {
+    const graphDir = join(root, 'knowledge', 'graph');
+    mkdirSync(graphDir, { recursive: true });
+    const graph = {
+      schema_version: 1,
+      nodes: [
+        { id: 'task-900', type: 'task', ref: 'tasks/TASK-900.json', label: 'Safe ref' },
+        { id: 'task-901', type: 'task', ref: '../../etc/passwd', label: 'Traversal ref' },
+        { id: 'task-902', type: 'task', ref: '/etc/passwd', label: 'Absolute ref' },
+        { id: 'task-903', type: 'task', ref: 'https://evil.example/x', label: 'URL-scheme ref' },
+      ],
+      edges: [],
+    };
+    writeFileSync(join(graphDir, 'graph.json'), JSON.stringify(graph, null, 2) + '\n', 'utf8');
+  }
+
+  beforeEach(async () => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'kb-graph-query-unsafe-ref-'));
+    makeRepoSkeleton(repoRoot);
+    writeUnsafeRefFixture(repoRoot);
+
+    server = createServer({ repoRoot });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: 'task-175-unsafe-ref-test', version: '0.0.0' });
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+  });
+
+  afterEach(async () => {
+    if (client) await client.close();
+    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('nulls a traversal/absolute/URL-scheme ref while leaving a normal repo-relative ref untouched', async () => {
+    const result = parse(await client.callTool({
+      name: 'kb_graph_query',
+      arguments: { type: 'task' },
+    }));
+    const byId = Object.fromEntries(result.nodes.map((n) => [n.id, n]));
+
+    expect(byId['task-900'].ref).toBe('tasks/TASK-900.json');
+    expect(byId['task-901'].ref).toBeNull();
+    expect(byId['task-902'].ref).toBeNull();
+    expect(byId['task-903'].ref).toBeNull();
+    // id/type/label survive untouched even when ref is nulled.
+    expect(byId['task-901'].label).toBe('Traversal ref');
   });
 });

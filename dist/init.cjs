@@ -10667,7 +10667,7 @@ function buildPlanTemplate(answers) {
     "Draft an implementation plan against the stated goals/scope before any implementation ticket for this project starts.",
     "",
     "Problem statement (captured verbatim at intake):",
-    problemStatement.length > 0 ? problemStatement : "(none captured at intake)"
+    problemStatement.trim().length > 0 ? problemStatement : "(none captured at intake)"
   ].join("\n");
   const acceptance_criteria = [
     goals.length > 0 ? `Plan explicitly addresses every stated goal: ${goals.join("; ")}` : "Plan explicitly addresses the stated goals (none captured at intake).",
@@ -11360,7 +11360,7 @@ function toScopeList(v) {
   const str = typeof v === "string" ? v : String(v);
   return str.split(",").map((s) => s.trim()).filter(Boolean);
 }
-function findScopeOverlap(answers) {
+function computeScopeOverlapConflicts(answers) {
   if (!answers || typeof answers !== "object") return [];
   const scopeIn = toScopeList(answers.scope_in);
   const scopeOut = toScopeList(answers.scope_out);
@@ -11372,15 +11372,19 @@ function findScopeOverlap(answers) {
     const norm = normalizeScopeToken(raw);
     if (norm.length > 0 && inSet.has(norm) && !seen.has(norm)) {
       seen.add(norm);
-      conflicts.push(norm);
+      conflicts.push({ normalized: norm, original: String(raw).trim() });
     }
   }
   return conflicts;
 }
-function buildScopeOverlapWarning(answers) {
-  const conflicts = findScopeOverlap(answers);
-  const verb = conflicts.length === 1 ? "appears" : "appear";
-  return `Warning: "${conflicts.join('", "')}" ${verb} in both Scope (in) and Scope (out). Confirm to proceed anyway, or go back and resolve the conflict.`;
+function findScopeOverlap(answers) {
+  return computeScopeOverlapConflicts(answers).map((c) => c.normalized);
+}
+function buildScopeOverlapWarning(answers, conflicts) {
+  const pairs = conflicts !== void 0 ? conflicts : computeScopeOverlapConflicts(answers);
+  const originals = pairs.map((c) => c.original);
+  const verb = originals.length === 1 ? "appears" : "appear";
+  return `Warning: "${originals.join('", "')}" ${verb} in both Scope (in) and Scope (out). Confirm to proceed anyway, or go back and resolve the conflict.`;
 }
 function buildDefinitionSummary(answers) {
   const lines = [];
@@ -11430,8 +11434,9 @@ async function askConfirm({ answers, prompter }) {
   if (isDefinitionUnderspecified(answers)) {
     console.log(buildUnderspecifiedWarning(answers));
   }
-  if (findScopeOverlap(answers).length > 0) {
-    console.log(buildScopeOverlapWarning(answers));
+  const scopeOverlapConflicts = computeScopeOverlapConflicts(answers);
+  if (scopeOverlapConflicts.length > 0) {
+    console.log(buildScopeOverlapWarning(answers, scopeOverlapConflicts));
   }
   const summary = buildDefinitionSummary(answers);
   console.log("\n--- Captured definition ---");
@@ -11493,8 +11498,9 @@ async function runWizardAndWriteProjectMd({
     if (isDefinitionUnderspecified(answers)) {
       console.warn(buildUnderspecifiedWarning(answers));
     }
-    if (findScopeOverlap(answers).length > 0) {
-      console.warn(buildScopeOverlapWarning(answers));
+    const scopeOverlapConflicts = computeScopeOverlapConflicts(answers);
+    if (scopeOverlapConflicts.length > 0) {
+      console.warn(buildScopeOverlapWarning(answers, scopeOverlapConflicts));
     }
   }
   answers = applyProjectMdContributions(activePacks, answers);

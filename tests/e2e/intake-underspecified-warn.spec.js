@@ -125,6 +125,24 @@ describe('buildUnderspecifiedWarning (pure message builder)', () => {
     expect(msg).toMatch(/scope \(in\)/i);
     expect(msg).toMatch(/scope \(out\)/i);
   });
+
+  // TASK-175 item 7 — buildUnderspecifiedWarning is documented as NOT
+  // assuming isDefinitionUnderspecified is true ("it lists whichever of the
+  // three fields are actually empty"), so its singular-verb branch (exactly
+  // one empty field) is reachable through the exported function directly,
+  // even though the only production caller only ever invokes it when all
+  // three are empty (isDefinitionUnderspecified requires that). This was
+  // untested — direct lock on the pure builder.
+  it('uses_the_singular_verb_when_exactly_one_section_is_empty', async () => {
+    const { buildUnderspecifiedWarning } = await import(PROD.init);
+    const msg = buildUnderspecifiedWarning({
+      problem_statement: 'Teams lose context between sessions.',
+      goals: ['ship fast'],
+      scope_in: ['wizard'],
+      scope_out: [],
+    });
+    expect(msg).toMatch(/scope \(out\) is empty/i);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -170,28 +188,12 @@ describe('TASK-166 AC1/AC2 — interactive warn-and-reconfirm', () => {
     expect(allOutput).toMatch(/scope \(out\)/i);
   });
 
-  it('never_hard_blocks_PROJECT_md_is_still_written_after_confirm_with_empty_sections', async () => {
-    // AC2 — goals/scope_in/scope_out stay optional (TASK-048 preserved); a user
-    // who confirms at the (warning-augmented) gate proceeds with empty
-    // sections and PROJECT.md is written. (The exact rendering of a skipped
-    // optional field in the interactive path is a pre-existing project-md.js
-    // concern tracked separately — see hand-off punch list — and is not
-    // asserted on here.)
-    const { runInit } = await import(PROD.init);
-
-    const repoDir = makeTmpDir('af-underspec-never-block');
-    const prompter = makeScriptedPrompter(webSaasAnswers());
-
-    const result = await runInit({
-      argv: [],
-      prompter,
-      repoRoot: repoDir,
-      now: () => FIXED_NOW,
-    });
-
-    expect(result.state).toBe('created');
-    expect(existsSync(join(repoDir, 'PROJECT.md'))).toBe(true);
-  });
+  // TASK-175 item 11 — 'never_hard_blocks_PROJECT_md_is_still_written_after_
+  // confirm_with_empty_sections' removed: its assertions (result.state ===
+  // 'created' + PROJECT.md exists) were a strict subset of
+  // 'warns_and_still_proceeds_on_default_confirm_when_goals_scope_all_empty'
+  // above (same fixture/prompter, same AC2 "never hard-blocks" claim). AC2 is
+  // still covered by that test plus the explicit-'n' test right below it.
 
   it('explicit_n_at_the_reconfirm_step_aborts_without_writing_PROJECT_md', async () => {
     // The warning-augmented confirm gate is still the SAME voluntary
@@ -254,7 +256,12 @@ describe('TASK-166 AC3 — non-interactive paths are not broken', () => {
     expect(confirmCalls.length).toBe(0);
   });
 
-  it('answers_mode_proceeds_without_a_prompter_at_all', async () => {
+  // TASK-175 item 11 — folded 'answers_mode_proceeds_without_a_prompter_at_
+  // all' and 'answers_mode_notice_is_non_blocking_console_output_only' into
+  // one spec: both drove the identical answers-mode/no-goals-scope fixture
+  // through runInit and only differed in which half of the outcome
+  // (result+file vs. console notice) each one asserted.
+  it('answers_mode_proceeds_without_a_prompter_and_the_notice_is_non_blocking_console_output', async () => {
     const { runInit } = await import(PROD.init);
 
     const repoDir = makeTmpDir('af-underspec-answers-mode');
@@ -277,28 +284,6 @@ describe('TASK-166 AC3 — non-interactive paths are not broken', () => {
 
     expect(result.state).toBe('created');
     expect(existsSync(join(repoDir, 'PROJECT.md'))).toBe(true);
-  });
-
-  it('answers_mode_notice_is_non_blocking_console_output_only', async () => {
-    const { runInit } = await import(PROD.init);
-
-    const repoDir = makeTmpDir('af-underspec-answers-notice');
-
-    await runInit({
-      argv: [],
-      prompter: null,
-      repoRoot: repoDir,
-      now: () => FIXED_NOW,
-      answers: {
-        project_name: 'answers-mode-notice',
-        project_type: 'other',
-        project_description: 'Answers-mode with no goals/scope.',
-        target_users: 'devs',
-        success_criteria: 'works',
-        problem_statement: 'A real, substantive problem statement.',
-      },
-    });
-
     const allOutput = [...logSpy.mock.calls, ...warnSpy.mock.calls]
       .map((args) => args.join(' '))
       .join('\n');

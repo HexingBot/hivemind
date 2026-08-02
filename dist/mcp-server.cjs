@@ -11196,7 +11196,8 @@ var require_gray_matter = __commonJS({
 var mcp_server_exports = {};
 __export(mcp_server_exports, {
   createServer: () => createServer,
-  main: () => main
+  main: () => main,
+  recordTaskGraphNode: () => recordTaskGraphNode
 });
 module.exports = __toCommonJS(mcp_server_exports);
 var import_promises3 = require("node:fs/promises");
@@ -26514,11 +26515,16 @@ var KEY_RE = /^TASK-\d{3,}$/;
 function ok(value) {
   return { content: [{ type: "text", text: JSON.stringify(value) }] };
 }
+var UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\])\.\.(?:[/\\]|$)/;
+function safeRef(ref) {
+  if (typeof ref !== "string" || UNSAFE_REF_RE.test(ref)) return null;
+  return ref;
+}
 function sortNodesById(nodes) {
   return [...nodes].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map((n) => ({
     id: n.id,
     type: n.type,
-    ref: n.ref,
+    ref: safeRef(n.ref),
     label: n.label
   }));
 }
@@ -26811,7 +26817,8 @@ if (__isEntryScript) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   createServer,
-  main
+  main,
+  recordTaskGraphNode
 });
 /*! Bundled license information:
 

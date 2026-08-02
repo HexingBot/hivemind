@@ -70,6 +70,22 @@ describe('recordNode', () => {
     expect(out.canonical).toEqual({ source: 'skipped' });
     expect(addNode).toHaveBeenCalled();
   });
+
+  // TASK-175 item 6 — the failed-canonical shape ({ source: 'failed', error })
+  // was only ever exercised indirectly (tests/e2e/mcp-close-task.spec.js's
+  // throwing-brain case checks close_task's graph_node string, not this
+  // return value directly). Direct lock: the projection write still succeeds
+  // and the canonical failure is folded into `out.canonical`, never thrown.
+  it('folds a throwing brain.assert into { source: "failed", error } instead of throwing', async () => {
+    const addNode = vi.fn(async () => {});
+    const brain = { assert: vi.fn(async () => { throw new Error('brain unreachable'); }) };
+    const node = { id: 'TASK-2', type: 'task', ref: 'tasks/TASK-2.json', label: 'do another thing' };
+
+    const out = await recordNode({ brain, repoRoot: '/repo', node, topic: 'proj', addNode });
+
+    expect(out.projection).toBe('ok');
+    expect(out.canonical).toEqual({ source: 'failed', error: 'brain unreachable' });
+  });
 });
 
 describe('neighborsCanonicalFirst', () => {

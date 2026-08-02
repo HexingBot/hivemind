@@ -115,6 +115,20 @@ describe('buildScopeOverlapWarning (pure message builder)', () => {
     expect(msg).toMatch(/auth/i);
     expect(msg).toMatch(/billing/i);
   });
+
+  // TASK-175 item 2 — the warning used to echo the normalized (lowercased)
+  // comparison token rather than the user's own scope_out casing. Direct,
+  // case-sensitive lock (the two tests above are deliberately case-
+  // insensitive and would not have caught the regression).
+  it('preserves_the_users_original_scope_out_casing_rather_than_the_normalized_token', async () => {
+    const { buildScopeOverlapWarning } = await import(PROD.init);
+    const msg = buildScopeOverlapWarning({
+      scope_in: ['Auth'],
+      scope_out: ['AUTH'],
+    });
+    expect(msg).toContain('"AUTH"');
+    expect(msg).not.toContain('"auth"');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -89,6 +89,24 @@ function ok(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
 }
 
+// TASK-175 item 4 — read-steering hardening (LOW, repo-local trust model).
+// kb_graph_query hands `ref` to agents that are told (orchestrator-routing
+// SKILL.md) to auto-follow it as a path. Constrained here at the READ
+// boundary rather than in GRAPH_SCHEMA (src/knowledge-graph.js) — schema is
+// the WRITE-side contract every addNode/addEdge/writeGraph call validates
+// against, and tightening it is a real trust-boundary change (deliberately
+// out of scope for this LOW cleanup item; see the TASK-175 hand-off). A ref
+// that is an absolute path, a `..` traversal segment, a home-dir shorthand,
+// or carries a URL scheme (http:, file:, javascript:, a Windows drive
+// letter, ...) is replaced with null rather than surfaced for an agent to
+// blindly open.
+const UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\])\.\.(?:[/\\]|$)/;
+
+function safeRef(ref) {
+  if (typeof ref !== 'string' || UNSAFE_REF_RE.test(ref)) return null;
+  return ref;
+}
+
 /**
  * kb_graph_query (TASK-168) — reshape a node into a fixed key order (id, type,
  * ref, label) and sort the array by id ascending. This is what makes the
@@ -99,7 +117,7 @@ function sortNodesById(nodes) {
   return [...nodes]
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .map((n) => ({
-      id: n.id, type: n.type, ref: n.ref, label: n.label,
+      id: n.id, type: n.type, ref: safeRef(n.ref), label: n.label,
     }));
 }
 
@@ -147,7 +165,15 @@ async function readTask(repoRoot, key) {
  * @returns {Promise<string>} 'skipped' (key doesn't match TASK-<digits>),
  *   'exists' (node already present), 'created', or `failed:<code>`.
  */
-async function recordTaskGraphNode({
+// TASK-175 item 9 — exported (was module-private) solely so
+// tests/e2e/mcp-server.spec.js can lock the 'skipped' branch and the
+// `task?.title ?? key` label fallback directly. Both are effectively
+// unreachable THROUGH the close_task tool today: schema.json's key pattern
+// (`^TASK-[0-9]{3,}$`) is a strict subset of taskKeyToNodeId's own
+// `/^TASK-(\d+)$/`, so closeTask's validateTaskOrThrow rejects any task
+// whose key would make taskKeyToNodeId return null before this function is
+// ever called — hence the direct unit test rather than an MCP-tool-level one.
+export async function recordTaskGraphNode({
   repoRoot, key, brain, recordNode,
 }) {
   const nodeId = taskKeyToNodeId(key);

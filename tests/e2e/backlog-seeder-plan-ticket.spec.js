@@ -117,6 +117,64 @@ describe('AC1 — plan ticket minted from non-empty definition', () => {
     expect(planTickets.length).toBe(1);
     expect(planTickets[0].acceptance_criteria.join(' | ')).toContain('launch MVP');
   });
+
+  // TASK-175 item 1 — a whitespace-only problem_statement used to bypass the
+  // '(none captured at intake)' placeholder: buildPlanTemplate's hasDefinition
+  // guard already trimmed before checking length, but the description-body
+  // placeholder check did not, so a whitespace-only value was treated as
+  // "present" and embedded verbatim (as bare whitespace) instead of falling
+  // back to the placeholder.
+  it('whitespace_only_problem_statement_falls_back_to_the_placeholder_not_raw_whitespace', async () => {
+    const { seedBacklog } = await import(PROD.backlogSeeder);
+
+    const repoDir = makeTmpDir('af-seed-plan-whitespace-problem');
+    makeRepoSkeleton(repoDir);
+
+    const result = await seedBacklog({
+      repoRoot: repoDir,
+      answers: {
+        primary_use_cases: [],
+        problem_statement: '   ',
+        goals: ['launch MVP'],
+      },
+      now: () => FIXED_NOW,
+    });
+
+    expect(result.created.length).toBe(2);
+    const tasks = readAllTaskFiles(repoDir);
+    const planTickets = findPlanTickets(tasks);
+    expect(planTickets.length).toBe(1);
+    expect(planTickets[0].description).toContain('(none captured at intake)');
+  });
+
+  // TASK-175 item 8 — normalizeDefinitionList's raw comma-separated-string
+  // branch (a direct caller that hasn't gone through
+  // bin/init.js#normalizeDefinitionAnswers first, per its own doc comment)
+  // was untested. Every other spec in this file supplies goals/scope_in/
+  // scope_out as already-split arrays.
+  it('accepts_a_raw_comma_separated_goals_string_not_yet_split_into_an_array', async () => {
+    const { seedBacklog } = await import(PROD.backlogSeeder);
+
+    const repoDir = makeTmpDir('af-seed-plan-comma-string');
+    makeRepoSkeleton(repoDir);
+
+    const result = await seedBacklog({
+      repoRoot: repoDir,
+      answers: {
+        primary_use_cases: [],
+        goals: 'launch MVP, cut onboarding time',
+      },
+      now: () => FIXED_NOW,
+    });
+
+    expect(result.created.length).toBe(2);
+    const tasks = readAllTaskFiles(repoDir);
+    const planTickets = findPlanTickets(tasks);
+    expect(planTickets.length).toBe(1);
+    const acJoined = planTickets[0].acceptance_criteria.join(' | ');
+    expect(acJoined).toContain('launch MVP');
+    expect(acJoined).toContain('cut onboarding time');
+  });
 });
 
 // ===========================================================================

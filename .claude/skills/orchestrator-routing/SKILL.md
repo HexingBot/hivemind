@@ -978,7 +978,10 @@ alongside `kb_lookup` — never hand-read `knowledge/graph/graph.json`.
 `kb_graph_query` is the graph's single query surface in BOTH modes:
 canonical-first-then-local (`src/graph-sync.js#neighborsCanonicalFirst`) — an
 `id` query resolves against the canonical wisearcher brain graph first when
-the brain is wired in (opt-in/experimental, off by default), and falls back
+a brain and canonical id are wired in (opt-in/experimental, off by default —
+`kb_graph_query` forwards an injected brain but has no `canonicalId` input
+today, so every call still resolves via the local fallback in practice; see
+src/mcp-server.js's kb_graph_query doc comment), and falls back
 to the deterministic local `knowledge/graph/graph.json` projection when the
 brain is absent (the default) — so call it regardless of whether the brain is
 up. Use `kb_graph_query({ id: 'task-<n>' })` for a ticket's neighbors or

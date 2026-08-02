@@ -878,3 +878,48 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
     expect(graph.nodes.some((n) => n.id === nodeId)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-175 item 9 — recordTaskGraphNode's 'skipped' branch and its
+// `task?.title ?? key` label fallback have no direct test. Both are
+// effectively UNREACHABLE through the close_task tool: schema.json's key
+// pattern (`^TASK-[0-9]{3,}$`) is a strict subset of taskKeyToNodeId's own
+// `/^TASK-(\d+)$/`, so closeTask's validateTaskOrThrow rejects any task whose
+// key would make taskKeyToNodeId return null before this function is ever
+// invoked from the tool. recordTaskGraphNode was exported (TASK-175) solely
+// for this direct, function-level lock.
+// ---------------------------------------------------------------------------
+describe('TASK-175 item 9 — recordTaskGraphNode direct unit coverage', () => {
+  it('returns "skipped" for a key that does not match TASK-<digits>, without touching the graph', async () => {
+    const { recordTaskGraphNode } = await import('../../src/mcp-server.js');
+    const recordNode = async () => { throw new Error('must not be called'); };
+
+    const status = await recordTaskGraphNode({
+      repoRoot: '/does/not/matter', key: 'LEGACY-1', brain: null, recordNode,
+    });
+
+    expect(status).toBe('skipped');
+  });
+
+  it('falls back to the raw key as the node label when the task file cannot be read back', async () => {
+    const { recordTaskGraphNode } = await import('../../src/mcp-server.js');
+    const repoRoot = mkdtempSync(join(tmpdir(), 'mcp-record-graph-node-label-fallback-'));
+    makeRepoSkeleton(repoRoot);
+    let capturedNode;
+    const recordNode = async ({ node }) => { capturedNode = node; };
+
+    try {
+      // A well-formed key with no tasks/TASK-777.json on disk — readTask()
+      // inside recordTaskGraphNode returns null (ENOENT), so `task?.title`
+      // is undefined and the `?? key` fallback fires.
+      const status = await recordTaskGraphNode({
+        repoRoot, key: 'TASK-777', brain: null, recordNode,
+      });
+
+      expect(status).toBe('created');
+      expect(capturedNode).toMatchObject({ id: 'task-777', label: 'TASK-777' });
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+});
