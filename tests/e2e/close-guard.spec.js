@@ -248,10 +248,14 @@ const DELEGATED_UAT_COMMENT = {
   body: 'Step 1: expected X, observed X, verdict PASS — verified by Orchestrator at the human\'s request.\nOverall result: PASS.',
 };
 
+// TASK-186 fix round — the structured "Verdict:" label is now MANDATORY (the
+// label-free legacy path is removed from loop mode's Gate 2 marker; see the
+// P0 regression lock below), so this fixture uses the literal "Verdict:"
+// convention rather than the pre-fix-round "verdict PASS" (no colon) prose.
 const BARE_HUMAN_UAT_COMMENT = {
   author: 'uat',
   at: '2026-07-06T00:00:00Z',
-  body: 'Step 1: expected X, observed X, verdict PASS.\nOverall result: PASS.',
+  body: 'Step 1: expected X, observed X. Verdict: PASS.\nOverall result: PASS.',
 };
 
 describe('AC4 (TASK-099) — loopModeCloseGuard Gate 2: uat-only delegation', () => {
@@ -787,5 +791,135 @@ describe('TASK-108 — FAIL_VERDICT_RE widened to FAILED/failing/fails', () => {
     const task = makeUatTask('TASK-234', [BARE_HUMAN_UAT_COMMENT]);
 
     await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+});
+
+// ===========================================================================
+// TASK-186 fix round (HIGH) — P0: the structured convention was OPT-IN by
+// whoever wrote the comment. VERDICT_LABEL_PRESENT_RE only activated the
+// structured per-step check when the literal "Verdict:" label was present
+// ANYWHERE in the body; a body that recorded a real failure using bare
+// "PASS"/"PASS (deferred)" tokens with NO "Verdict:" label anywhere fell
+// straight through to the legacy FAIL-token/OVERALL_PASS_RE scan, where
+// "crashed", "TypeError", and "deferred" contain no FAIL-family token and
+// "Overall result: PASS" satisfies OVERALL_PASS_RE — closing the ticket
+// autonomously in loop mode with uat_delegated_to_orchestrator FALSE. This is
+// the reviewer's exact reproduction (composed through the real guards exactly
+// as src/mcp-server.js composes them — loopModeUatCommentGuard on the write
+// path, loopModeCloseGuard as closeTask's closeGuard — the same round-3b
+// discipline as the block above; calling closeTask() directly without a
+// closeGuard proves nothing).
+//
+// FIX: the structured convention is now MANDATORY for Gate 2's marker — there
+// is no more label-free legacy path in loop mode (see hasExplicitHumanVerdict
+// Marker's doc comment in src/close-guard.js for the corpus-safety reasoning:
+// exactly one real ticket, TASK-133, used the label-free legacy path, it is
+// already `done`, and closeGuard never re-runs on an already-closed ticket).
+// ===========================================================================
+describe('TASK-186 fix round (HIGH) — P0: label-free failure phrased without FAIL-words no longer bypasses Gate 2', () => {
+  it('a real crash recorded as bare "PASS"/"PASS (deferred)" with NO "Verdict:" label anywhere is REJECTED (not closed)', async () => {
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { createTask } = await import(TASK_STORE_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'P0', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    // Verbatim reproduction from the review: no "Verdict:" label anywhere,
+    // a real crash recorded, and no FAIL-family token in the body.
+    const body = [
+      '1. Run the export, expect a CSV. Observed: file created. PASS',
+      '2. Open it, expect headers. Observed: headers present. PASS',
+      '3. Run with --format=xlsx, expect an XLSX. Observed: crashed with an unhandled',
+      '   TypeError, no file written; deferred to a follow-up, not a blocker here. PASS (deferred)',
+      '',
+      'Overall result: PASS',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+
+    // Flip to loop mode WITHOUT the delegation grant — Gate 1 satisfied, Gate 2 not delegated.
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'expected close_task to be blocked by Gate 2 — a crash recorded without the '
+      + 'literal "Verdict:" label must not close the ticket just because it also lacks a FAIL-family '
+      + 'token').toBeInstanceOf(UatDelegationGuardError);
+    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+});
+
+// ===========================================================================
+// TASK-186 fix round (LOW) — STEP_START_RE's "Step N:"/"N)" forms and the
+// no-step-line single-block fallback previously had no committed spec
+// inputs; every structured-path spec used "N." numbering. These exercise
+// each form so the branches cannot be silently deleted.
+// ===========================================================================
+describe('TASK-186 fix round (LOW) — STEP_START_RE numbering-form and fallback coverage', () => {
+  it('the "Step N)" numbering form is recognized by the structured per-step check', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-240', [{
+      author: 'uat',
+      at: '2026-08-02T00:00:00Z',
+      body: 'Step 1) expected X, observed X. Verdict: PASS\nStep 2) expected Y, observed Y. Verdict: PASS\nOverall result: PASS',
+    }]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+
+  it('the bare "N)" numbering form is recognized by the structured per-step check', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-241', [{
+      author: 'uat',
+      at: '2026-08-02T00:00:00Z',
+      body: '1) expected X, observed X. Verdict: PASS\n2) expected Y, observed Y. Verdict: PASS\nOverall result: PASS',
+    }]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+
+  it('a body with no numbered step lines at all falls back to a single whole-body block (positive: ends cleanly with Verdict: PASS)', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-242', [{
+      author: 'uat',
+      at: '2026-08-02T00:00:00Z',
+      body: 'Ran the whole checklist by hand, everything matched. Verdict: PASS\nOverall result: PASS',
+    }]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
+  });
+
+  it('a body with no numbered step lines at all falls back to a single whole-body block (negative: ends with Verdict: FAIL)', async () => {
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = makeUatTask('TASK-243', [{
+      author: 'uat',
+      at: '2026-08-02T00:00:00Z',
+      body: 'Ran the whole checklist by hand, something broke. Verdict: FAIL\nOverall result: FAIL',
+    }]);
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
   });
 });

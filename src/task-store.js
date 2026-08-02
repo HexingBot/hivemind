@@ -412,12 +412,25 @@ export class UatGuardError extends Error {
 // body carrying no verdict word at all, no longer satisfies it).
 const UAT_VERDICT_WORD_RE = /\bpass\b/i;
 
+// TASK-186 fix round (MEDIUM) — UAT_VERDICT_WORD_RE alone fails open on a
+// mixed, honest record: one step "PASS", one step "FAIL", and an explicit
+// "Overall result: FAIL" line still contains the word "pass" (from the
+// passing step) and satisfied the gate. Reject outright whenever the body
+// records an explicit overall FAIL, regardless of any "pass" token
+// elsewhere. Corpus-safe: 0 of this repo's 45 real last-uat-comment bodies
+// carry an "Overall result: FAIL" line (verified against live tasks/, see
+// tests/uat-verdict-marker-compat.spec.js), so this costs nothing against
+// real data.
+const OVERALL_FAIL_RE = /overall result:?\s*fail/i;
+
 /**
  * TASK-186 — true when task's most recent 'uat'-authored comment has a
- * non-empty body naming a recognizable verdict (the word PASS). False when
- * there is no 'uat' comment at all, the body is empty/whitespace-only, or
- * the body names no verdict word — see the doc comment above for why this is
- * a lighter check than close-guard.js's loop-mode Gate 2 marker.
+ * non-empty body naming a recognizable verdict (the word PASS) and does not
+ * itself record an explicit overall FAIL. False when there is no 'uat'
+ * comment at all, the body is empty/whitespace-only, the body names no
+ * verdict word, or the body states "Overall result: FAIL" — see the doc
+ * comment above for why this is a lighter check than close-guard.js's
+ * loop-mode Gate 2 marker.
  */
 export function hasRecordedUatVerdict(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
@@ -426,6 +439,7 @@ export function hasRecordedUatVerdict(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String((last && last.body) || '').trim();
   if (body === '') return false;
+  if (OVERALL_FAIL_RE.test(body)) return false;
   return UAT_VERDICT_WORD_RE.test(body);
 }
 

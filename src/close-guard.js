@@ -80,18 +80,34 @@ const FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 // (deferred)" contains no FAIL-family token and still satisfies "Overall
 // result: PASS" — that is the exact defect this ticket fixes). The
 // structured-verdict path below makes the marker ARITHMETIC over a per-step
-// list instead: it activates only when the body carries the literal
-// "Verdict:" label — already the real convention in use (see e.g. this
-// repo's own TASK-109/112/155/170 uat comments) — and then requires EVERY
-// recognized step block to end, once its own whitespace is normalized, with
-// exactly "Verdict: PASS" or "Verdict: PASS." (an optional trailing period,
-// nothing else). A step whose verdict is qualified ("PASS (deferred)"),
-// missing, or explicitly FAIL fails the whole comment closed. Bodies with no
-// literal "Verdict:" label anywhere are unaffected — they keep using the
-// pre-existing FAIL_VERDICT_RE/OVERALL_PASS_RE token-scan below (the
-// documented legacy path; see tests/uat-verdict-marker-compat.spec.js for
-// the backward-compat proof against this repo's real tasks/).
-const VERDICT_LABEL_PRESENT_RE = /verdict\s*:/i;
+// list instead: it requires EVERY recognized step block to end, once its own
+// whitespace is normalized, with exactly "Verdict: PASS" or "Verdict: PASS."
+// (an optional trailing period, nothing else). A step whose verdict is
+// qualified ("PASS (deferred)"), missing, or explicitly FAIL fails the whole
+// comment closed.
+//
+// TASK-186 fix round (HIGH) — the structured convention was previously
+// OPT-IN: it activated only when the body happened to carry the literal
+// "Verdict:" label ANYWHERE, and a body with none fell straight through to
+// the FAIL_VERDICT_RE/OVERALL_PASS_RE token-scan below, where a real failure
+// phrased with bare "PASS"/"PASS (deferred)" tokens and no FAIL-family word
+// satisfied the scan and closed the ticket. Whoever WRITES the comment could
+// bypass the fix simply by omitting one word. The structured convention is
+// now MANDATORY for this marker — evaluateStructuredStepVerdicts is always
+// the check (see hasExplicitHumanVerdictMarker below); there is no more
+// label-free fallback in loop mode. FAIL_VERDICT_RE/OVERALL_PASS_RE remain in
+// use ONLY as the defense-in-depth backstop inside
+// evaluateStructuredStepVerdicts (every step must ALSO be free of any
+// FAIL-family token and the body must ALSO state "Overall result: PASS").
+//
+// Corpus-safety (see tests/uat-verdict-marker-compat.spec.js): of this
+// repo's own 45 real tickets carrying a uat comment, exactly ONE
+// (TASK-133) used the now-removed label-free legacy path — and it is
+// already `status: "done"`. hasExplicitHumanVerdictMarker/loopModeCloseGuard
+// only ever run at close time, and a closed ticket is never re-gated, so
+// this is the sole documented, zero-effect exception to the "no retroactive
+// invalidation" backward-compat proof (see that spec's fix-round amendment
+// comment for the full reasoning).
 const STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
 const OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 const STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
@@ -130,11 +146,16 @@ function splitIntoStepBlocks(body) {
 }
 
 /**
- * TASK-186 AC3 — evaluates the structured per-step verdicts in a body that
- * carries at least one literal "Verdict:" label. Returns true only when
- * EVERY recognized step block cleanly ends with "Verdict: PASS" (no
- * qualifier, no missing label, no FAIL) AND the overall body still passes
- * the legacy FAIL/PASS checks as a defense-in-depth backstop.
+ * TASK-186 AC3 (fix round: now the ONLY evaluation path, called
+ * unconditionally by hasExplicitHumanVerdictMarker — see that function's
+ * doc comment for why the prior "only when a 'Verdict:' label is present"
+ * gate was removed) — evaluates the structured per-step verdicts in a body.
+ * Returns true only when EVERY recognized step block cleanly ends with
+ * "Verdict: PASS" (no qualifier, no missing label, no FAIL) AND the overall
+ * body still passes the FAIL/PASS checks as a defense-in-depth backstop. A
+ * body with no step carrying a literal "Verdict:" label at all naturally
+ * returns false here (STRICT_STEP_VERDICT_RE fails to match), which is what
+ * makes the convention mandatory rather than opt-in.
  */
 function evaluateStructuredStepVerdicts(body) {
   const blocks = splitIntoStepBlocks(body).map((b) => b.replace(/\s+/g, ' ').trim());
@@ -149,17 +170,18 @@ function evaluateStructuredStepVerdicts(body) {
 }
 
 /**
- * TASK-099 Gate 2 (TASK-186 restructure) — a uat-only ticket's `uat` comment
+ * TASK-099 Gate 2 (TASK-186 restructure; TASK-186 fix round made the
+ * structured convention MANDATORY) — a uat-only ticket's `uat` comment
  * carries an "explicit human verdict marker" when its most recent
  * `uat`-authored comment (a) has no orchestrator-delegation phrasing
- * anywhere in the body, and (b) either — for bodies using the structured
- * "Verdict:" convention — every recognized step cleanly records PASS (see
- * evaluateStructuredStepVerdicts), or — for bodies with no such label at all
- * — has no FAIL verdict anywhere and states the overall result as PASS per
- * the SKILL.md recording convention (the pre-TASK-186 legacy path,
- * unchanged). If the comment shows delegated-verification phrasing anywhere,
- * at least one step was recorded as Orchestrator-verified, so the close
- * still requires `uat_delegated_to_orchestrator` to be explicitly granted.
+ * anywhere in the body, and (b) every recognized step in the body cleanly
+ * records "Verdict: PASS" (see evaluateStructuredStepVerdicts) — a body with
+ * no literal "Verdict:" label on any step is REJECTED, not passed through to
+ * a looser prose scan; see this file's STEP_START_RE-block doc comment for
+ * why the legacy label-free path was removed. If the comment shows
+ * delegated-verification phrasing anywhere, at least one step was recorded
+ * as Orchestrator-verified, so the close still requires
+ * `uat_delegated_to_orchestrator` to be explicitly granted.
  *
  * This is a textual-convention check, not a cryptographic one: it cannot
  * prove a human actually authored the recorded verdict, only that the
@@ -169,7 +191,7 @@ function evaluateStructuredStepVerdicts(body) {
  * done-guard regardless of content (see the TASK-099 hand-off for the
  * original residual-limitation note, and the TASK-186 hand-off for why a
  * token blacklist over prose could not be hardened further by extending the
- * token list alone).
+ * token list alone, nor by making the structured check merely opt-in).
  */
 export function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
@@ -178,11 +200,7 @@ export function hasExplicitHumanVerdictMarker(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String((last && last.body) || '');
   if (DELEGATED_MARKER_RE.test(body)) return false;
-  if (VERDICT_LABEL_PRESENT_RE.test(body)) {
-    return evaluateStructuredStepVerdicts(body);
-  }
-  if (FAIL_VERDICT_RE.test(body)) return false;
-  return OVERALL_PASS_RE.test(body);
+  return evaluateStructuredStepVerdicts(body);
 }
 
 /**

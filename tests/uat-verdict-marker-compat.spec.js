@@ -18,10 +18,26 @@
 // 29 — the earlier count scoped to status:done + verification_tier:uat-only
 // only). AC4 says "run the check against all 45, not a sample", so this
 // sensor validates every ticket with ANY author:'uat' comment, regardless of
-// its verification_tier or status, and asserts the validated count is
-// exactly the audited figure (45) — a silent corpus shrink (e.g. a ticket
-// file deleted or a comment rewritten) fails loudly here instead of quietly
-// narrowing what AC4's proof actually covers.
+// its verification_tier or status, and asserts the validated count is AT
+// LEAST the audited figure (45, a floor, not an exact match — the code below
+// uses toBeGreaterThanOrEqual so a growing corpus never breaks this sensor)
+// — a silent corpus SHRINK (e.g. a ticket file deleted or a comment
+// rewritten) fails loudly here instead of quietly narrowing what AC4's proof
+// actually covers.
+//
+// FIX-ROUND AMENDMENT (TASK-186, HIGH finding): the structured "Verdict:"
+// convention is now MANDATORY for hasExplicitHumanVerdictMarker (the
+// label-free legacy path is removed from loop mode's Gate 2 — see
+// src/close-guard.js's doc comment). This flips exactly ONE real ticket,
+// TASK-133, from old=true (it satisfied the pre-TASK-186 token scan via a
+// label-free "Overall result: PASS" body) to new=false (it carries no
+// literal "Verdict:" label on any step, so the now-mandatory structured
+// check rejects it). This is the single documented exception AC4's "old===
+// new" equality allows: TASK-133 is already `status: "done"`, and
+// closeGuard/hasExplicitHumanVerdictMarker is only ever invoked at close
+// time — an already-closed ticket is never re-gated, so the flip has zero
+// real effect. Every other ticket in the 45-ticket corpus is unaffected
+// (verified below): the equality assertion still holds for all of them.
 //
 // DECISION (stated in the TASK-186 hand-off): every pre-existing free-text
 // uat comment is a NEW-LEGACY-PATH case, not a migration — no tasks/*.json
@@ -36,12 +52,12 @@
 //     verdict word (PASS)". Proven below: true for all 45 real tickets.
 //   - hasExplicitHumanVerdictMarker: old behavior is reimplemented verbatim
 //     below as oldHasExplicitHumanVerdictMarker (the pre-TASK-186
-//     token-scan). Proven below: NEW === OLD for all 45 real tickets' last
-//     uat comment — the fix never flips a real recorded verdict from
-//     accepted to rejected. (It is allowed to newly REJECT bodies that were
-//     never exercised by a real close, and none of the real data does — the
-//     assertion below is full equality, not merely non-regression,
-//     precisely because no such case exists in tasks/ today.)
+//     token-scan). Proven below: NEW === OLD for 44 of the 45 real tickets'
+//     last uat comment (full equality, not merely non-regression — no other
+//     case in tasks/ today would newly reject a body that used to pass). The
+//     sole documented exception is TASK-133 (see the fix-round amendment
+//     above): it is excluded from the strict equality loop and asserted
+//     separately as the one intentional, corpus-safe flip.
 //
 // Neither predicate is actually INVOKED for a non-uat-only ticket during a
 // real close (checkUatGuard/loopModeCloseGuard's Gate 2 both short-circuit
@@ -98,6 +114,13 @@ function oldHasExplicitHumanVerdictMarker(task) {
 // audited figure) still fails loudly below.
 const AUDITED_UAT_COMMENT_TICKET_COUNT = 45;
 
+// TASK-186 fix round — the single documented exception to the old===new
+// equality below (see the fix-round amendment comment at the top of this
+// file): TASK-133 satisfied the pre-fix-round marker via the label-free
+// legacy path, which the HIGH fix removes from loop mode entirely. TASK-133
+// is already `status: "done"`, so this flip has no real effect.
+const DOCUMENTED_LEGACY_PATH_EXCEPTION_KEYS = ['TASK-133'];
+
 function loadRealTicketsWithUatComment() {
   const tasksDir = join(REPO_ROOT, 'tasks');
   const files = readdirSync(tasksDir).filter((f) => TASK_FILENAME_RE.test(f));
@@ -129,8 +152,9 @@ describe('TASK-186 AC4 — real tasks/: no ticket with a pre-existing free-text 
     ).toEqual([]);
   });
 
-  it('loop-mode Gate 2: hasExplicitHumanVerdictMarker (new) agrees exactly with the pre-TASK-186 logic (old) for every real uat comment', () => {
-    const tickets = loadRealTicketsWithUatComment();
+  it('loop-mode Gate 2: hasExplicitHumanVerdictMarker (new) agrees exactly with the pre-TASK-186 logic (old) for every real uat comment except the one documented legacy-path exception', () => {
+    const tickets = loadRealTicketsWithUatComment()
+      .filter((t) => !DOCUMENTED_LEGACY_PATH_EXCEPTION_KEYS.includes(t.key));
     const flipped = tickets.filter(
       (t) => hasExplicitHumanVerdictMarker(t) !== oldHasExplicitHumanVerdictMarker(t),
     );
@@ -145,5 +169,19 @@ describe('TASK-186 AC4 — real tasks/: no ticket with a pre-existing free-text 
           + 'documented legacy-path adjustment.'
         : '',
     ).toEqual([]);
+  });
+
+  it('the one documented legacy-path exception (TASK-133) flips old=true -> new=false, and is already `done` so the flip has no real effect', () => {
+    const tickets = loadRealTicketsWithUatComment()
+      .filter((t) => DOCUMENTED_LEGACY_PATH_EXCEPTION_KEYS.includes(t.key));
+    expect(tickets.map((t) => t.key)).toEqual(DOCUMENTED_LEGACY_PATH_EXCEPTION_KEYS);
+    for (const t of tickets) {
+      expect(oldHasExplicitHumanVerdictMarker(t), `${t.key} was expected to satisfy the pre-fix-round `
+        + 'legacy token scan (that is WHY it is the documented exception)').toBe(true);
+      expect(hasExplicitHumanVerdictMarker(t), `${t.key} was expected to be rejected by the now-mandatory `
+        + 'structured "Verdict:" convention (it carries no such label)').toBe(false);
+      expect(t.status, `${t.key} must already be "done" — an active/open ticket flipping to reject would `
+        + 'be a real regression, not a documented no-op exception').toBe('done');
+    }
   });
 });

@@ -7989,6 +7989,7 @@ var UatGuardError = class extends Error {
   }
 };
 var UAT_VERDICT_WORD_RE = /\bpass\b/i;
+var OVERALL_FAIL_RE = /overall result:?\s*fail/i;
 function hasRecordedUatVerdict(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
   const uatComments = comments.filter((c) => c && c.author === "uat");
@@ -7996,6 +7997,7 @@ function hasRecordedUatVerdict(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String(last && last.body || "").trim();
   if (body === "") return false;
+  if (OVERALL_FAIL_RE.test(body)) return false;
   return UAT_VERDICT_WORD_RE.test(body);
 }
 function checkUatGuard(task) {
@@ -8226,7 +8228,6 @@ var UatDelegationGuardError = class extends Error {
 var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
 var OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
 var FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
-var VERDICT_LABEL_PRESENT_RE = /verdict\s*:/i;
 var STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
 var OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 var STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
@@ -8268,11 +8269,7 @@ function hasExplicitHumanVerdictMarker(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String(last && last.body || "");
   if (DELEGATED_MARKER_RE.test(body)) return false;
-  if (VERDICT_LABEL_PRESENT_RE.test(body)) {
-    return evaluateStructuredStepVerdicts(body);
-  }
-  if (FAIL_VERDICT_RE.test(body)) return false;
-  return OVERALL_PASS_RE.test(body);
+  return evaluateStructuredStepVerdicts(body);
 }
 function readLoopAuth(repoRoot) {
   try {

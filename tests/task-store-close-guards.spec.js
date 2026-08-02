@@ -431,6 +431,47 @@ describe('TASK-186 AC2/AC6 — harness-mode checkUatGuard requires a recognizabl
     expect(caught).toBeInstanceOf(UatGuardError);
   });
 
+  // TASK-186 fix round (MEDIUM) — the committed A1 lock above only holds for
+  // bodies with NO "pass" token anywhere. UAT_VERDICT_WORD_RE is a bare
+  // /\bpass\b/i scan, so one word of realistic noise (a passing step sitting
+  // next to a failing one, with an honest "Overall result: FAIL" line) flips
+  // the harness-mode gate straight back to satisfied. Fix: also reject when
+  // the body records an explicit overall FAIL.
+  it('a mixed body (one step PASS, one step FAIL, "Overall result: FAIL") does NOT satisfy the harness-mode gate', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a1-mixed-overall-fail');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-905': makeTask({
+          key: 'TASK-905',
+          verification_tier: 'uat-only',
+          comments: [{
+            author: 'uat',
+            at: '2026-08-02T00:00:00Z',
+            body: 'Step 1: expected X, observed X. Verdict: PASS.\nStep 2: expected Y, observed crash. Verdict: FAIL.\nOverall result: FAIL.',
+          }],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-905',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(
+      caught,
+      'a body recording "Overall result: FAIL" must not satisfy the harness-mode gate merely because '
+        + 'the word "pass" appears in one of its passing steps',
+    ).toBeInstanceOf(UatGuardError);
+  });
+
   it('positive control — a bare "All steps PASS." body still satisfies the gate (unaffected legacy convention)', async () => {
     const { closeTask } = await import('../src/task-store.js');
 
