@@ -1,0 +1,34 @@
+{
+  "key": "TASK-194",
+  "title": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned",
+  "description": "Surfaced by TASK-192's seam audit as the one seam in its class that fell outside that ticket's file scope. This is the third time the defect class has been confirmed and the **second time this specific instance has been flagged** — it was raised in a deep-review synthesis on 2026-07-06 (recorded as R23 in `state/sessions/20260524T000000Z-65fa92c6/artifacts/deep-review-synthesis-2026-07-06.md`) and never actioned.\n\n**The defect.** `npm run test:changed` compares against `HEAD`, so it selects only UNCOMMITTED changes — it selects zero specs once a diff is committed, and zero specs on a clean tree. A zero-selection run is visually indistinguishable from a run where everything passed. `CLAUDE.md` documents the behaviour (\"it selects zero specs once the diff is committed\"), but a developer running it after committing gets a green-looking result that verified nothing.\n\nTASK-192 closed exactly this ambiguity for `test:since` by adding self-describing `TEST_SINCE_ZERO_SELECTION` markers to `scripts/test-since.mjs`, distinguishing `reason=empty-diff` from `reason=no-spec-matched` without changing the exit code. `test:changed` has no wrapper at all — it is a bare `vitest --changed` invocation in `package.json`, so there is nowhere for a marker to live today.\n\n**Why it matters more than it looks.** `test:changed` is the FIRST command in the per-ticket hand-off gate. A developer who commits and then runs it as a final check gets a confident green from a run that selected nothing. That is the precise sequence a careful developer would follow.\n\n**Follow the precedent, and follow the amendment that shaped it.** TASK-192's implementer first built a hard-fail version and had to revert it: a docs-only diff legitimately selects zero specs, so a blanket non-zero exit would red-gate every docs ticket. **Do not repeat that mistake here.** The goal is a self-describing empty, not a fatal one. Read `scripts/test-since.mjs`'s header comment and the \"Empty-result contract\" section of `CLAUDE.md` before designing anything — both were written specifically to record that reasoning.\n\nNote the difference from `test:since`: for `test:changed`, the \"clean tree / already committed\" case is the COMMON one and is entirely legitimate, so the marker matters more than any failure ever could.",
+  "acceptance_criteria": [
+    "A failing spec first demonstrates the ambiguity: `npm run test:changed` on a clean tree (or immediately after committing a diff) currently produces output indistinguishable from a successful verification run. Capture the red-run output verbatim.",
+    "The seam is made self-describing following the TASK-192 precedent: a caller can tell 'zero because nothing is uncommitted' from 'zero because the selection failed' without inferring it. Reuse the marker shape and reasoning already established in scripts/test-since.mjs rather than inventing a second convention.",
+    "The change MUST NOT make a zero selection fatal. A clean tree is the common and legitimate case for this command, and a hard failure would red-gate ordinary use — the same over-application TASK-192 built and had to revert. State explicitly in the closing comment that this was considered and rejected.",
+    "The real vitest exit code is passed through unchanged — verify that a genuine test FAILURE still exits non-zero after the change. A wrapper that swallows failures would be far worse than the ambiguity it fixes.",
+    "Any added pre-check does not meaningfully slow the inner development loop. test:changed is the fast iteration command; measure the added latency and record it. If the cost is material, prefer a cheaper signal over a thorough one.",
+    "Regression locks cover both branches (zero-selection marker present; normal selection produces no marker), red-green planted.",
+    "npm run test:all is green; no existing spec regresses; CLAUDE.md's Empty-result contract section is extended to record this instance alongside the three already listed."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "silent-failure",
+    "test-infrastructure",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-192"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T20:50:14.469Z",
+  "updated_at": "2026-08-02T20:50:14.469Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

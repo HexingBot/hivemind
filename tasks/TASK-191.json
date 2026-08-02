@@ -10,7 +10,7 @@
     "Mandatory post-commit verification (git show --stat HEAD immediately after committing, asserting the file list matches intent) is added to the developer briefing contract regardless of which mitigation is chosen — it is what caught this incident and it is nearly free.",
     "npm run test:all is green; no existing spec regresses; if any bundled source changed, dist rebuilt and committed with dist-parity passing."
   ],
-  "status": "in_progress",
+  "status": "in_review",
   "priority": "medium",
   "labels": [
     "orchestration",
@@ -24,7 +24,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T19:45:29.175Z",
-  "updated_at": "2026-08-02T20:39:37.647Z",
+  "updated_at": "2026-08-02T20:49:49.554Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",

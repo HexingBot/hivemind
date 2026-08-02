@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T20:39:37.647Z",
+  "generated_at": "2026-08-02T20:50:14.469Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1084,7 +1084,7 @@
     {
       "key": "TASK-186",
       "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     },
     {
@@ -1108,24 +1108,30 @@
     {
       "key": "TASK-190",
       "title": "deep-review silently ignores its args: docs pass a string, the script reads an object",
-      "status": "in_review",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
       "key": "TASK-191",
       "title": "Parallel developer spawns share one git index, so explicit-path staging is not safe",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "medium"
     },
     {
       "key": "TASK-192",
       "title": "Empty results must declare themselves empty: absence of evidence keeps rendering as evidence of absence",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     },
     {
       "key": "TASK-193",
       "title": "Ref safety follow-up: reject % outright, and decide the write-side question",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-194",
+      "title": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned",
       "status": "todo",
       "priority": "medium"
     }
