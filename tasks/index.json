@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T19:21:39.782Z",
+  "generated_at": "2026-08-02T19:39:16.596Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1078,6 +1078,30 @@
     {
       "key": "TASK-185",
       "title": "safeRef path guard is defeated by one leading space, and half its claimed forms are untested",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-186",
+      "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-187",
+      "title": "A ticket can go todo to done in one hop with no review and no evidence",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-188",
+      "title": "Close guards live in the MCP wrapper, not the primitive, and any caller can sign the reviewer's name",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-189",
+      "title": "Acceptance criteria accept vacuous, invisible, and mis-tiered inputs with no validation",
       "status": "todo",
       "priority": "medium"
     }

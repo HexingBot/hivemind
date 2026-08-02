@@ -1,0 +1,32 @@
+{
+  "key": "TASK-189",
+  "title": "Acceptance criteria accept vacuous, invisible, and mis-tiered inputs with no validation",
+  "description": "From the 2026-08-02 adversarial hardening run (hive-adversarial-improve, AC-fidelity chain). The batch of input-side defects at the request-to-AC boundary — individually LOW/MEDIUM, collectively the reason the downstream gates have nothing solid to check against.\n\n**P1/P2/P3 (MISSED) — vacuous acceptance criteria are accepted.** `create_task` accepted all of:\n- `[\"It works correctly.\"]` — unfalsifiable\n- `[\"\"]` — an empty string\n- `[\"   \\t  \"]` — whitespace only\n\nThe schema requires `minItems: 1` on the array but places no constraint on the members. An AC that cannot fail gives the reviewer's AC-compliance step no target: any diff that touches the feature can be asserted to satisfy it. The Challenger independently proposed the same class with more realistic phrasing (`\"Data export works correctly for all supported formats.\"`, `\"No existing functionality is broken.\"`) — note these read as completely normal spec language, which is what makes the class matter. The fix must not become a style police that rejects legitimate prose.\n\n**P4 (MISSED) — a binding criterion can be invisible to the reviewer.** A 12,034-character AC was accepted. The orchestrator briefing template caps `acceptance_criteria` at 4,000 characters with a truncation marker. So a criterion placed after the cut is still binding on the ticket while never reaching the agent that verifies it. Today the truncation is silent from the ticket's point of view — nothing warns that the ACs a reviewer saw were not the ACs on record.\n\n**P5 (MISSED) — tier and content are never compared.** A ticket whose description reads \"Change tasks/schema.json to add a new required field and migrate all existing task files\" was accepted at `verification_tier: 'uat-only'` — the tier requiring no tests at all — even though CLAUDE.md RESERVES `tdd` for schema changes. Nothing compares the declared tier against what the ticket says it will do. This is the tier gate's known structural weakness (the orchestrator both assigns the tier and benefits from a lighter one), and there is no sensor behind it.\n\n**C2 (MISSED) — calibration laundering, the class the review rubric names as recurring HIGH.** `create_task` accepted `marker: '[EXPLICIT]'` together with `source_tier: 'T4'`. `tasks/schema.json` states in PROSE that `[EXPLICIT]` requires T1/T2 and that T4 is orientation-only — but expresses it as description text, not as a JSON-Schema `if/then` between the two enums. Each field is individually valid, so the strongest-certainty marker paired with the weakest evidence tier sails through unchallenged.\n\n**Fix direction.** These are input-validation defects with a straightforward shape, but the judgement is in the calibration: a rule strict enough to reject `\"\"` and `\"   \"` is trivially safe; a rule that tries to reject `\"It works correctly.\"` risks false-positives on legitimate criteria and would need to be advisory rather than blocking. Recommend: hard-reject the mechanically-detectable cases (empty, whitespace-only, the marker/source_tier contradiction), make truncation loud rather than silent, and treat tier-vs-content as a WARNING surfaced to the human rather than a block — an autonomous system that silently downgrades its own rigor is the failure mode, and a warning the human sees closes it without pretending the check is decidable.\n\n**Replayable fixtures (protocol rule 2):** `ac-fidelity-probes.mjs` (P1-P5) and `ac-fidelity-round3.mjs` (C2).",
+  "acceptance_criteria": [
+    "Empty-string and whitespace-only acceptance criteria are rejected by create_task with a clear typed error. Probes P2 and P3 replay as CAUGHT.",
+    "The marker/source_tier contradiction is enforced as a real cross-field schema rule (if/then between the two enums) rather than prose in a description field: marker '[EXPLICIT]' with source_tier 'T4' is rejected. Probe C2 replays as CAUGHT. Verify the rule against the repo's own existing tasks/ corpus and report any pre-existing violations rather than silently breaking them.",
+    "AC truncation at the briefing cap is no longer silent: when a ticket's acceptance_criteria exceed the documented 4000-char cap, the condition is surfaced (so a criterion cannot be binding-but-invisible to the reviewer). Decide whether that means rejecting at create time, warning at spawn time, or both — record the decision.",
+    "Tier-versus-content mismatch produces a visible WARNING rather than silent acceptance — e.g. a ticket describing a schema or state-schema change declared uat-only. This must NOT hard-block (the check is not decidable), and it must not produce so many false positives that it gets ignored; state the heuristic and show its behaviour on the repo's real tasks/ corpus, including how many existing tickets it would have flagged.",
+    "Unfalsifiable-but-well-formed criteria ('It works correctly.') are handled deliberately: either an advisory signal, or an explicit decision NOT to police prose, with the reasoning recorded. Do not ship a strict rule that rejects legitimate spec language — a false-positive-heavy check is worse than none here.",
+    "The probe scripts are ported into the repo as permanent regression specs, each asserting the previously-MISSED input is now CAUGHT (or, where the decision was deliberately not to block, asserting the advisory signal fires), per the hive-adversarial-improve protocol's replayable-fixture rule.",
+    "npm run test:all is green; no existing task-store, schema, mcp-server, or intake spec regresses; dist bundles rebuilt and committed if bundled source changed, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "adversarial-followup",
+    "schema",
+    "intake-improvement"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T19:39:16.596Z",
+  "updated_at": "2026-08-02T19:39:16.596Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

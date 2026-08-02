@@ -1,0 +1,34 @@
+{
+  "key": "TASK-186",
+  "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
+  "description": "From the 2026-08-02 adversarial hardening run (hive-adversarial-improve, AC-fidelity chain). Probe V1. **HIGH — this closes a ticket to `done` autonomously, with no human, while the ticket's own UAT record states an acceptance criterion is broken.**\n\n**Reproduced against the real shipped code**, composed exactly as `src/mcp-server.js` composes it (`loopModeUatCommentGuard` + `closeTask({ closeGuard: loopModeCloseGuard })`). Fixture: `uat-only` ticket, ACs `['CSV export works.', 'XLSX export works.']`, loop mode active, `uat_delegated_to_orchestrator: FALSE`.\n\nThe `uat` comment body:\n\n```\nUAT script:\n1. Run `npm run export -- --format=csv`, expect a CSV. Observed: file created. Verdict: PASS\n2. Open the CSV, expect correct headers. Observed: headers present. Verdict: PASS\n3. Run with --format=xlsx, expect an XLSX file. Observed: command exited with an unhandled\n   TypeError and no file was written; deferred to a follow-up ticket, not a blocker for this\n   scope. Verdict: PASS (deferred)\n\nOverall result: PASS\n```\n\nResult: **closed to `done`.** AC2 is recorded as crashing with no output, and the ticket closed anyway, in the autonomous path, without the delegation grant.\n\n**Why it happens.** Gate 2's human-verdict marker is a token scan: it requires an \"Overall result: PASS\" line, the absence of FAIL-family tokens, and the absence of the \"verified by Orchestrator at the human's request\" qualifier. TASK-108 widened the token list (FAIL/FAILED/failing/fails) precisely to catch a self-contradictory body — and it works for that literal shape. It cannot work for a failure phrased in words outside the list. `PASS (deferred)` is such a phrasing, and it is not exotic; it is how people actually write triage notes.\n\n**Controls run in the same harness (both CAUGHT — the guards are not broken, this is a generalization gap, not a wiring bug):**\n- `V0`: loop mode, `auto_close_on_green_review: false` -> `LOOP_CLOSE_GUARD_DENIED`. Gate 1 fires correctly.\n- `V2`: the literal `\"Step 1 ... FAILED\"` + `\"Overall result: PASS\"` form -> `LOOP_UAT_DELEGATION_REQUIRED`. The widened token match fires correctly for the shape it was built for.\n\n**Also in scope — the same gate in HARNESS mode is presence-only** (probes A1/A2/A3, all MISSED): a `uat-only` ticket closes on a `uat` comment whose body is `Overall result: FAIL`, on an EMPTY body, and on a body reading `Reminder: order sandwiches for the Thursday planning session.` In harness mode `checkUatGuard` asks only whether a comment authored `uat` exists. That is defensible when a human is genuinely present — but the orchestrator is an agent, and nothing establishes that a human ever saw the verdict.\n\n**Fix direction (decide, do not assume): make the verdict machine-checkable rather than machine-read.** A token scan over prose cannot be made reliable by extending the token list — that is a losing arms race, and V1 is the proof. Prefer a structured per-step verdict (each step carrying an explicit pass/fail value) so the gate becomes arithmetic over a list rather than pattern-matching over a paragraph. Backward compatibility is mandatory: every existing `uat` comment in `tasks/` is free text and must keep working, or be migrated deliberately.\n\n**Replayable fixtures (protocol rule 2):** `ac-fidelity-round3b.mjs` (V0/V1/V2, real composition) and `ac-fidelity-round2.mjs` (A1/A2/A3, harness mode). Both are self-contained, build their own temp repos, and touch no working tree. Port them into `tests/` as the regression locks.",
+  "acceptance_criteria": [
+    "A failing spec first replays probe V1 verbatim — uat-only ticket, loop mode, uat_delegated_to_orchestrator FALSE, the exact 'PASS (deferred)' body from the description — and demonstrates it currently closes to done. Capture the red-run output verbatim as the tests-first evidence.",
+    "Failing specs also replay harness-mode probes A1 (body states 'Overall result: FAIL'), A2 (empty body), and A3 (unrelated content), demonstrating each currently closes a uat-only ticket to done.",
+    "A UAT verdict becomes machine-checkable rather than prose-scanned: the recorded verdict carries an explicit per-step pass/fail value, and the close gate decides from those values rather than by pattern-matching the body text. The V1 body can no longer satisfy the gate, because a step whose observed result is a crash cannot be recorded as passing without saying so explicitly.",
+    "Backward compatibility is explicit and tested: every pre-existing free-text uat comment in the repo's own tasks/ either still satisfies the gate under a documented legacy path, or is migrated — decide which, state it in the closing comment, and prove no already-done ticket becomes retroactively invalid. Run the check against the real tasks/ directory, not a fixture.",
+    "The controls stay green: V0 (LOOP_CLOSE_GUARD_DENIED with the grant absent) and V2 (LOOP_UAT_DELEGATION_REQUIRED for the literal FAILED + Overall result: PASS form) must still be CAUGHT after the change. A fix that closes V1 by loosening either control is a regression.",
+    "Harness mode no longer treats bare presence of an author:'uat' comment as a verdict: an empty body, or a body carrying no per-step verdicts at all, does not satisfy the gate. Decide and record how harness mode differs from loop mode here, since a human genuinely being present is the design assumption.",
+    "The probe scripts are ported into the repo as permanent regression specs (not left in a scratchpad), each asserting the previously-MISSED input is now CAUGHT, per the hive-adversarial-improve protocol's replayable-fixture rule.",
+    "npm run test:all is green; no existing close-guard, task-store, mcp-server, or drive-loop spec regresses; dist bundles rebuilt via npm run build:plugin and committed if bundled source changed, with tests/e2e/dist-parity.spec.js passing."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "adversarial-followup",
+    "close-guard",
+    "uat",
+    "security"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T19:37:43.613Z",
+  "updated_at": "2026-08-02T19:37:43.613Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

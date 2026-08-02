@@ -1,0 +1,33 @@
+{
+  "key": "TASK-187",
+  "title": "A ticket can go todo to done in one hop with no review and no evidence",
+  "description": "From the 2026-08-02 adversarial hardening run (hive-adversarial-improve, AC-fidelity chain). Probes A5 and P9. Two defects with one root cause: **`done` has no preconditions beyond the uat-only guard.**\n\n**A5 — no state machine.** A `tdd`-tier ticket was created (`status: todo`) and closed straight to `done` in a single call. It was never `in_progress`, never `in_review`. Nothing anywhere requires that a review happened before a ticket closes. The `todo -> in_progress -> in_review -> done` sequence in CLAUDE.md is a described convention with no enforcement behind it.\n\n**P9 — promises are not bound to receipts.** A `tdd` ticket whose acceptance criteria read:\n\n```\n1. A failing test is written first and its red run captured verbatim.\n2. The feature is implemented and all tests pass.\n3. npm run test:all is green.\n```\n\nclosed to `done` with the comment body `\"Done.\"` and no `linked_commits`, no reviewer comment, no evidence of any kind. Nothing mechanically relates an acceptance criterion to a proof that it was met — the entire binding is the reviewer's prose, and nothing checks that a reviewer ever ran.\n\n**Why this matters more than it looks.** These are the two defects that make every other prose-level control optional rather than mandatory. The tier rubric, the red-run evidence discipline, the review-depth rubric, the AC-compliance check — all of them are things an agent is *told* to do, and A5/P9 show the mutation seam does not care whether any of them happened. This is not hypothetical: on 2026-08-02 TASK-175 closed to `done` with no independent reviewer at all, and the board is indistinguishable from a ticket that was properly reviewed.\n\n**Fix direction (decide, do not assume).** Give `done` real preconditions at the mutation seam:\n- A status-transition validity rule, so `done` is reachable only from a state that implies review occurred.\n- An evidence requirement proportional to `verification_tier` — at minimum, a `tdd` or `tests-after` ticket should not close without a reviewer-authored comment and a non-empty `linked_commits`.\n\n**This changes close semantics repo-wide and WILL break flows that currently work.** That is the point, but it means the migration is the hard part, not the check. Specifically: the repo's own `tasks/` contains ~180 already-`done` tickets, many of which never passed through `in_review` because the convention was not enforced when they closed. A naive rule makes the history retroactively invalid. Decide explicitly whether the rule applies only to new transitions, and prove the existing corpus still validates.\n\nNote the related MEDIUM tracked separately in TASK-188: the loop-mode guards are composed by the MCP wrapper rather than living in the primitive, so a direct `closeTask` call (including the documented `Edit` fallback) skips them entirely. Any precondition added here should live where every caller gets it, not only the MCP path.\n\n**Replayable fixture (protocol rule 2):** `ac-fidelity-probes.mjs` (P9) and `ac-fidelity-round2.mjs` (A5). Self-contained, temp-repo only. Port into `tests/`.",
+  "acceptance_criteria": [
+    "Failing specs first replay probes A5 (a tdd ticket created as todo and closed straight to done in one call) and P9 (a tdd ticket whose ACs demand captured red-run evidence, closed with a four-word comment and no linked_commits), demonstrating both currently succeed. Capture the red-run output verbatim as the tests-first evidence.",
+    "Reaching status 'done' now requires a valid predecessor state that implies a review occurred — a todo -> done transition in one hop is rejected with a typed, named error rather than silently accepted.",
+    "Closing carries an evidence requirement proportional to verification_tier: at minimum a tdd or tests-after ticket cannot close without a reviewer-authored comment AND a non-empty linked_commits. Decide the exact requirement per tier and record the decision in the closing comment.",
+    "MIGRATION IS PROVEN, NOT ASSUMED: run the new rules against the repo's OWN tasks/ directory (~180 already-done tickets, many of which never passed through in_review). Demonstrate that no already-done ticket becomes retroactively invalid, or that the rule is explicitly scoped to new transitions only. State which, and show the check output.",
+    "The preconditions live where EVERY caller gets them, not only the MCP wrapper path — a direct closeTask/transitionStatus call must be subject to the same rules (see TASK-188 for the related guard-composition gap; coordinate rather than duplicate).",
+    "An escape hatch exists for legitimate exceptions (e.g. a ticket closed as won't-do, or a documented recovery path), and it is explicit and auditable rather than a silent bypass. If no escape hatch is warranted, say so and justify it.",
+    "The probe scripts are ported into the repo as permanent regression specs, each asserting the previously-MISSED input is now CAUGHT, per the hive-adversarial-improve protocol's replayable-fixture rule.",
+    "npm run test:all is green; no existing task-store, close-guard, mcp-server, drive-loop, or task-board spec regresses; dist bundles rebuilt and committed if bundled source changed, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "adversarial-followup",
+    "close-guard",
+    "state-machine"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T19:38:12.847Z",
+  "updated_at": "2026-08-02T19:38:12.847Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

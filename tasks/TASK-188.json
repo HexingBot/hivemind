@@ -1,0 +1,34 @@
+{
+  "key": "TASK-188",
+  "title": "Close guards live in the MCP wrapper, not the primitive, and any caller can sign the reviewer's name",
+  "description": "From the 2026-08-02 adversarial hardening run (hive-adversarial-improve, AC-fidelity chain). Two related MEDIUMs about WHERE the guards live and WHO can claim to have run.\n\n**1. The guards are composed by the caller, not enforced by the primitive.**\n\n`closeTask` (`src/task-store.js`) accepts an OPTIONAL `closeGuard` callback and calls it only `if (typeof closeGuard === 'function')`. `src/mcp-server.js` passes `loopModeCloseGuard` on `close_task` and `transition_status`, and calls `loopModeUatCommentGuard` before both. So the loop-mode protections exist only on the MCP path.\n\nThis was discovered the hard way: an initial probe run called `closeTask()` directly and appeared to show Gate 1 failing to fire. Re-running through the real composition proved Gate 1 works correctly (`LOOP_CLOSE_GUARD_DENIED`). The probe was wrong — but what it accidentally demonstrated is real and worth fixing: **any caller that omits `closeGuard` silently loses every loop-mode protection.** `checkUatGuard` is called unconditionally inside `closeTask` and does not have this problem, which is the shape the loop guards should match.\n\nConcretely this matters because the orchestrator-routing skill documents a fallback: \"if the MCP server is unavailable, a direct `Edit` of `tasks/<KEY>.json` ... is acceptable\". That fallback bypasses all four guards, and the docs acknowledge it, placing the burden on the orchestrator to \"manually verify\" the preconditions. A guard that depends on the caller remembering to compose it is a convention, not a control.\n\n**2. `author` is an unconstrained string, so anyone can sign anyone's name.**\n\nProbe A6 (MISSED): a ticket was closed with `comment: { author: 'reviewer', body: 'APPROVE. All acceptance criteria met.' }` — written by the orchestrator, with no reviewer subagent having run. Nothing binds an `author: 'reviewer'` comment to an actual reviewer. The Challenger independently proposed the same class (probe #4) plus a variant (#14): fabricating an `author: 'orchestrator'` comment reading `\"Review depth: light (rubric inputs: 42 changed lines, no mandatory-FULL surfaces touched). Clean review, no findings.\"` before any reviewer spawn, poisoning the audit trail with a review that never happened.\n\n`author: 'uat'` is the one author with any protection, and only in loop mode without the delegation grant (TASK-108/163). Every other author string is free.\n\nThere is no cryptographic identity here and inventing one is out of scope. The realistic goal is narrower: constrain the author set to a known enum, and make claims that IMPLY a process step actually require that step (see TASK-187, which makes a reviewer comment a close precondition — the two tickets must agree on the mechanism rather than each inventing one).\n\n**Also folded in (LOW, same seam):** `closeTask` validates `linked_commits` against `COMMIT_SHA_RE` for FORM but never for EXISTENCE. Probe P8 closed a ticket with `['0000000000000000000000000000000000000000', 'deadbeef']`, both well-formed and neither real. The audit trail records commits that do not exist.\n\n**Replayable fixture (protocol rule 2):** `ac-fidelity-round2.mjs` (A6), `ac-fidelity-probes.mjs` (P8), `ac-fidelity-round3b.mjs` (the corrected composition harness showing V0/V2 CAUGHT only when composed).",
+  "acceptance_criteria": [
+    "A failing spec first demonstrates the composition gap: calling closeTask (and transitionStatus) directly WITHOUT a closeGuard, in loop mode with auto_close_on_green_review false, currently succeeds — while the same call through the MCP composition is blocked. Capture the red-run output verbatim.",
+    "A failing spec also replays probe A6: a ticket closed with comment author 'reviewer' authored by a non-reviewer caller currently succeeds.",
+    "The loop-mode guards are enforced by default at the primitive, matching how checkUatGuard already works — a caller that passes nothing gets the protection. Any opt-out is explicit, named, and used only by tests; prove no production path relies on the opt-out.",
+    "The comment author set is constrained to a known enum rather than an arbitrary string, and an author value that implies a process step occurred cannot be written by a caller for whom that step did not occur. Coordinate the mechanism with TASK-187 (which makes a reviewer comment a close precondition) — the two tickets must share one mechanism, not invent two.",
+    "The documented direct-Edit fallback is re-assessed in light of this change: either it is no longer needed, or the docs state precisely which guards it still bypasses after this ticket. Update the orchestrator-routing SKILL.md and CLAUDE.md text (BOTH parity copies, byte-identical) so the fallback's real risk is stated accurately.",
+    "linked_commits existence is either verified, or the docs stop implying the audit trail is trustworthy — decide which and record the decision. If verification is added, it must not make the task store depend on a git binary in environments that lack one; state how that is handled.",
+    "The probe scripts are ported into the repo as permanent regression specs, each asserting the previously-MISSED input is now CAUGHT, per the hive-adversarial-improve protocol's replayable-fixture rule.",
+    "npm run test:all is green; no existing task-store, close-guard, mcp-server, or task-board spec regresses; dist bundles rebuilt and committed if bundled source changed, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "adversarial-followup",
+    "close-guard",
+    "security",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T19:38:44.299Z",
+  "updated_at": "2026-08-02T19:38:44.299Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
