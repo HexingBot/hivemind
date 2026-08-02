@@ -1,21 +1,25 @@
 {
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
-  "lifecycle_state": "paused",
-  "updated_at": "2026-07-18T20:55:10.613Z",
+  "lifecycle_state": "active",
+  "updated_at": "2026-08-02T18:40:14.162Z",
   "active_task": null,
   "workflow_step": "idle",
-  "next_action": "IDLE — v0.17.0 RELEASED + TAGGED + PUSHED (2026-07-18, human-approved full pipeline: deep-review -> push -> release). Epic drive complete: TASK-165..174 all closed reviewer-approved (zero RC, zero HIGH), epic-gate deep-review 0 HIGH / 3 MEDIUM (fixed pre-release in d10188 5, reviewer-approved) / 12 LOW (batched into TASK-175 with per-ticket-review carryovers, 16 items). Release: both pins 0.17.0, CHANGELOG + releases.html + index.html VERSION, gate test:all 1906/4 + plugin validate PASS, tag v0.17.0 at c026009 pushed. origin/main in sync. OPEN: TASK-175 (low cleanup batch), TASK-003 (blocked, Atlassian creds). SUGGEST to human: run /hivemind:update so the installed plugin/MCP picks up 0.17.0 (kb_graph_query + auto graph-node close go live in sessions).",
-  "handoff_summary": "2026-07-18 session complete: pulled repo 0.9.0->0.16.0, drained TASK-163/164, ran the intake+KB-graph design review, minted + autonomously drove both epics (TASK-165..174, unattended preset, push OFF), epic-gate deep-review clean after a 3-MEDIUM pre-release fix, then human-approved push + v0.17.0 release cut (tag c026009). The knowledge graph is now queryable (kb_graph_query on the merge seam, total filter contract), self-maintaining (freshness sensor + auto node-on-close), and wired into the KB-first contract; intake gained plan-ticket seeding + ambiguity warnings + the null-bullet fix. Open: TASK-175 (16-item LOW batch), TASK-003 (Atlassian). Recommend /hivemind:update to bring the installed plugin to 0.17.0.",
+  "next_action": "WAIT FOR HUMAN COMMAND to run the general review across the batch. Human said: \"finish all task then we run review but wait on my command\" — all tasks are finished; do NOT launch any review until they say go. Scope when it comes: commits 66ee5d9 (TASK-181, packs/reconciler + dist) and 80edf15 (TASK-175, intake/kb-graph cleanup, 17 files). TWO KNOWN GAPS the general review must cover: (1) TASK-181 got light depth when the rubric computed FULL (609 lines, packaging/dist + core tdd-tier reconciler) — its dist bundle and reconciler changes never had a full-depth pass; (2) TASK-175 closed with NO independent reviewer at all, so its diff is entirely unvetted and its red-green planting claim for items 1/2/4/5/6/9/10/13 is self-reported and unreproduced. Also un-UAT-ed: TASK-175 items 2 (user-visible warning casing) and 16 (skill doc wording). Open board: TASK-182 only (todo).",
+  "handoff_summary": "Session 2026-08-02: resumed from a stale bundle (last written 2026-07-18; it did not reflect TASK-180/181 work at all — ticket files + git log were the accurate state). Pull: already up to date. Board drained from 3 open to 1. TASK-003 (Jira migration, blocked since inception on Atlassian creds that are not being provisioned) DELETED outright at human request — verified zero depends_on references and that every TASK-003 mention in the suite is a synthetic temp-dir fixture. TASK-181 and TASK-175 were driven IN PARALLEL (reviewer + developer, disjoint file surfaces) at human direction and both closed green. Human directed reduced per-ticket review depth with a single general review to follow on their explicit command — that review has NOT been run and is the pending next step.",
   "open_questions": [
-    "Human to approve/adjust docs/design/design-profile-spec.md (esp. open Q#4 no canvas-motion resource, Q#5 playwright/web-UI predicate inferred, 1:1 axis weighting, uncalibrated tier thresholds).",
-    "Phase F: resource pins/origins for frontend-design/ui-ux-pro-max/shadcn-vue/gsap/firecrawl/openart/playwright — external facts needing a human decision before the production design-power descriptor can be authored (uat-only per §7).",
-    "Phase F: the on-disk pack discovery convention (where a project's active descriptors+modules live, wired into loadActivePacks' params) was explicitly deferred by TASK-128 and must be decided.",
-    "frontend_framework is web-saas-gated so `framework` is unset for canvas/other design projects — a design-interview framework question or a relaxed gate is still open (Phase E carryover).",
-    "Assimilate path (frontend-design/ui-ux-pro-max/shadcn-vue/gsap as skills) requires explicit per-skill human sign-off via src/assimilate.js — not liftable by any loop switch; the human must be in the loop for each adoption."
+    "General review scope/depth: does the human want the full deep-review workflow (/deep-review base=<ref>) across both commits, or a standard fresh-context reviewer pass per commit? Deep-review needs explicit per-run human approval.",
+    "TASK-182 item 3 (dual-copy precedence) needs a human decision on DIRECTION before implementation — candidates (a) reconciler skips/retires the project-scope copy when the plugin ships an equal-or-newer pin, (b) keep both channels and document the precedence TASK-181 already created de facto, (c) plugin-root-only with a one-time migration. Any solution must not emit a bare REMOVE against already-installed consumers.",
+    "TASK-182 item 1: should bin/pack-ctl.js CODE conform to its documented output contract (code/message + non-zero exit) or should the HEADER document the new ok:false/exit-0/counts shape? Changing the exit code requires updating the TASK-181 AC6 spec in step.",
+    "Carried from the prior session, still unanswered: PROJECT.md design-profile spec approval (docs/design/design-profile-spec.md open Qs), Phase F resource pins/origins, and the on-disk pack discovery convention deferred by TASK-128."
   ],
   "blockers": [],
   "decisions": [
+    {
+      "at": "2026-08-02T18:40:14.162Z",
+      "decision": "Human directed a reduced-review, parallel-drive mode for the final two tickets: run TASK-181 (reviewer) and TASK-175 (developer) concurrently in one working tree with deliberately disjoint file surfaces, downgrade TASK-181 review depth from the rubric-computed FULL to light, and skip the per-ticket reviewer for TASK-175 entirely — deferring both to a single general review to be launched only on explicit human command. Also deleted TASK-003 outright rather than closing it to done. Both tickets closed green; TASK-182 minted to carry the three deferred items.",
+      "rationale": "Human explicitly chose speed with a consolidated review at the end (\"dont over review we want to do a general review after\", \"finish all task then we run review but wait on my command\"). Concurrency was made safe by surface-partitioning: the reviewer read only the committed range bc585e3..66ee5d9 while the developer was instructed to stage explicitly and never touch pack-ctl surfaces — which held (the developer left tasks/ and dist/pack-ctl.cjs alone, and the reviewer correctly attributed the transient dist/init.cjs parity failure to the concurrent work rather than to TASK-181). The review reductions are real risk taken knowingly, so both were recorded ON the tickets and in next_action rather than left implicit. TASK-181 AC1 red-run evidence had ALSO been lost with its developer session, so the reviewer reproduced it independently against base bc585e3 before approving. TASK-003 was deleted rather than closed because the schema has no cancelled state and a done close would have been both dishonest about the outcome and a graph-freshness node obligation."
+    },
     {
       "at": "2026-07-12T04:00:00.000Z",
       "decision": "Ran hive-adversarial-improve against the bin/init.js intake trust boundary (attacker-controlled --answers-file -> generated PROJECT.md / project-context.md / seed backlog / use-case .spec.js). Honored both load-bearing rules: the live pipeline was the REAL runInit executed end-to-end (node harness, fresh temp dir per probe), and every gap became a tdd ticket with the exact probe as replayable fixture. Challenger was a researcher subagent briefed with the failure-mode catalog + attacker's-eye component view ONLY (no sight of sink source). 10 probes -> 4 gaps ticketed: TASK-157 (HIGH), TASK-158/159 (MEDIUM), TASK-160 (LOW); 3 defenses confirmed good (P5 JSON.stringify codegen, P6 slugify path, P7 structured seed).",
@@ -58,6 +62,18 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-08-02T18:40:14.162Z",
+      "summary": "TASK-181 APPROVE (light depth — human override of rubric-computed FULL). 0 HIGH / 2 MEDIUM / 1 LOW. All 8 ACs met. AC1 red-run evidence was MISSING (developer session lost) so the reviewer reproduced it itself in an isolated extraction of base bc585e3: pre-fix consumer fixture gives installed:[] for both packs with \"owned source not found ... consumer-red/assimilated-skills/watch\" (sourced from the CONSUMER root — the exact defect) plus a masking ok:true/exit 0; post-fix the same fixture gives planned:2 installed:2. Confirmed the prior soft-failure test WAS vacuous (relied on fixture silence, a precondition no consumer has) — that is why the suite stayed green through the whole outage; the replacement forces a genuinely unreachable source. Verified in-code that no path uses process.cwd() and that the consumer staging dir leads the plugin per-resource. MEDIUM-1 bin/pack-ctl.js:90-95 header contract now false (ok:false with exit 0, no code/message); MEDIUM-2 hand-off evidence unpreserved; LOW-1 spec env hygiene. The dist-parity failure was proven to be TASK-175 working-tree churn, not this ticket.",
+      "task": "TASK-181"
+    },
+    {
+      "agent": "developer",
+      "at": "2026-08-02T18:40:14.162Z",
+      "summary": "TASK-175 (tests-after) DONE, commit 80edf15, 17 files 528+/103-. All 16 LOW-batch items dispositioned: 14 fixed, 2 waived (item 14 canonical-mirror shape — no production brain wired, breaking string-contract change; item 15 makeErr divergence — realignment across 7+ call sites risks breaking message-substring assertions for a cosmetic LOW). Highest-risk item 13 done: graph-freshness now folds malformed-key done tickets into missing (fails CLOSED) and the backfill script throws instead of addNode(id:null). Item 4 kept minimal: read-side safeRef() in sortNodesById only, GRAPH_SCHEMA write side deliberately untouched as an out-of-scope trust boundary. Item 11 REMOVED tests as required (net -1 in that file). Item 16 fixed in BOTH SKILL.md parity copies, verified byte-identical. Gate: test:all 169 files/1944 passed, dist-parity green; dist/init.cjs + dist/mcp-server.cjs committed, dist/pack-ctl.cjs byte-identical and correctly left alone. NOT independently reviewed (human direction).",
+      "task": "TASK-175"
+    },
     {
       "agent": "reviewer",
       "at": "2026-07-08T21:58:00.000Z",
@@ -141,10 +157,10 @@
     "auto_version_bump_on_milestone": false
   },
   "loop_state": {
-    "current_ticket": "TASK-174",
-    "phase": "update",
-    "iteration": 10,
-    "completed_this_run": 10,
-    "run_started_at": "2026-07-18T18:00:00Z"
+    "current_ticket": null,
+    "phase": "idle",
+    "iteration": 0,
+    "completed_this_run": 2,
+    "run_started_at": "2026-08-02T13:00:00Z"
   }
 }
