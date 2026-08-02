@@ -1,0 +1,35 @@
+{
+  "key": "TASK-193",
+  "title": "Ref safety follow-up: reject % outright, and decide the write-side question",
+  "description": "Follow-up required by TASK-185's AC5 and its LOW-1, both recorded at close. Two related items on the same control.\n\n**Item 1 — the percent-encoding defense is narrower than the docs that ship with it (LOW-1).**\n\n`UNSAFE_REF_RE` matches only the literal token `%2e%2e`. The TASK-185 reviewer executed the committed guard against adjacent forms and found these pass through:\n\n```\n\"%252e%252e/x\"             (double-encoded)\n\"..%2fx\"  \"..%5cx\"         (literal .. with an encoded separator)\n\"..%2f..%2fetc%2fpasswd\"\n\"x%2f..%2fetc\"\n\"....//etc/passwd\"         (naive ../-stripper bait)\n\"a%00/etc/passwd\"\n```\n\nNone is exploitable today: every one needs a consumer that percent-decodes or naively strips `../` BEFORE resolving, and no such consumer exists — agents open a ref as a literal repo-relative path. That is why it closed as LOW rather than blocking.\n\nThe part that does matter is the overclaim. `skills/orchestrator-routing/SKILL.md:997` and the `kb_graph_query` tool description at `src/mcp-server.js:550` both tell agents the guard covers refs \"disguised via ... percent-encoding\" with no qualification. False confidence in a control is the exact failure class this repo keeps paying for.\n\n**Recommended fix (from the reviewer, and it is a good one): reject any ref containing `%` outright.** Evidence it is safe: the reviewer ran all 225 refs currently in `knowledge/graph/graph.json` through the guard and **zero contain a `%`**. So the false-negative cost is provably zero today, and it replaces a token blacklist — which loses arms races by construction — with a whitelist-shaped rule. If that is adopted, the docs become true rather than needing softening.\n\n**Item 2 — the write side (TASK-185 AC5's deferred question).**\n\n`GRAPH_SCHEMA` in `src/knowledge-graph.js` has `ref: {type: 'string', minLength: 1}` and validates no shape, so an unsafe ref can still be WRITTEN into `knowledge/graph/graph.json`. It simply will not be surfaced by `kb_graph_query`.\n\nThe TASK-185 reviewer assessed this as **correctly scoped out and NOT a weakness**, with reasoning worth preserving: `safeRef` sits at the point of consumption — the only place a ref becomes an instruction to open a file — so the control is complete regardless of what is stored. Schema hardening would be defense-in-depth, would be a genuine trust-boundary change, and **would break existing graphs at load time**.\n\nSo this ticket must not assume the write side needs hardening. Decide it deliberately: either add write-side validation with a migration path for the existing 225-node graph, or record an explicit decision that consumption-point validation is the right and sufficient boundary. Both are legitimate outcomes; an undecided residual is not.",
+  "acceptance_criteria": [
+    "A failing spec first demonstrates the current residuals: '..%2fx', '..%5cx', '%252e%252e/x' and '....//etc/passwd' currently pass through safeRef unchanged. Capture the red-run output verbatim as the tests-first evidence.",
+    "Item 1 is resolved by a rule that does not lose an arms race. If the recommended '%'-rejection is adopted, first re-verify against the CURRENT knowledge/graph/graph.json that zero live refs contain '%' (the 225-ref figure is from 2026-08-02 and the graph grows every close) — do not rely on the recorded number.",
+    "The docs stop overclaiming: skills/orchestrator-routing/SKILL.md and the kb_graph_query tool description describe exactly what the guard does and does not cover. Both SKILL.md parity copies byte-identical.",
+    "Item 2 is DECIDED and the decision recorded in the closing comment: either write-side validation lands with a proven migration path for the existing graph, or an explicit reasoned decision that consumption-point validation is the sufficient boundary. An undecided residual is not an acceptable close.",
+    "If write-side validation IS adopted, prove it does not break the existing graph at load time — run the real knowledge/graph/graph.json through the new schema and show the result. This is the specific risk the TASK-185 reviewer flagged.",
+    "No regression in false-negative behaviour: every ref in the live graph must still pass through unchanged after the fix. Show the count.",
+    "npm run test:all is green; dist/mcp-server.cjs rebuilt via npm run build:plugin and committed, with tests/e2e/dist-parity.spec.js passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "kb-graph",
+    "security",
+    "review-followup",
+    "docs"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-185"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-02T20:24:31.568Z",
+  "updated_at": "2026-08-02T20:24:31.568Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

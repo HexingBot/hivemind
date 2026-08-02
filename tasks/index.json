@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T20:19:15.103Z",
+  "generated_at": "2026-08-02T20:24:43.412Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1078,13 +1078,13 @@
     {
       "key": "TASK-185",
       "title": "safeRef path guard is defeated by one leading space, and half its claimed forms are untested",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
       "key": "TASK-186",
       "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -1108,7 +1108,7 @@
     {
       "key": "TASK-190",
       "title": "deep-review silently ignores its args: docs pass a string, the script reads an object",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
@@ -1120,8 +1120,14 @@
     {
       "key": "TASK-192",
       "title": "Empty results must declare themselves empty: absence of evidence keeps rendering as evidence of absence",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
+    },
+    {
+      "key": "TASK-193",
+      "title": "Ref safety follow-up: reject % outright, and decide the write-side question",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }

@@ -11,7 +11,7 @@
     "An end-to-end check proves a ticket-anchored run actually anchors: with a valid ticket arg, the AC-compliance dimension receives the ticket's acceptance criteria rather than the no-ticket fallback prompt.",
     "npm run test:all is green; no existing workflow spec regresses; if any bundled source changed, dist rebuilt via npm run build:plugin and committed with dist-parity passing."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "medium",
   "labels": [
     "deep-review",
@@ -25,7 +25,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T19:42:33.964Z",
-  "updated_at": "2026-08-02T19:42:33.964Z",
+  "updated_at": "2026-08-02T20:24:43.412Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

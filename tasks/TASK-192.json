@@ -11,7 +11,7 @@
     "ESCALATION CLAUSE: if any seam identified turns out to sit on a close-guard, state-mutation, or security path, do NOT fix it here — surface it and it will be minted as its own tdd ticket. This ticket is tests-after because the expected work is additive assertions and reporting; a guard-path change is not.",
     "npm run test:all is green; no existing spec regresses; if any bundled source changed, dist rebuilt via npm run build:plugin and committed with tests/e2e/dist-parity.spec.js passing."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "high",
   "labels": [
     "silent-failure",
@@ -25,7 +25,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T20:18:36.828Z",
-  "updated_at": "2026-08-02T20:18:36.828Z",
+  "updated_at": "2026-08-02T20:23:06.580Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",

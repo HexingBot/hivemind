@@ -1350,6 +1350,12 @@
       "type": "task",
       "ref": "tasks/TASK-184.json",
       "label": "Operator docs contradict reality: design-pack command still says built-in skills never install"
+    },
+    {
+      "id": "task-185",
+      "type": "task",
+      "ref": "tasks/TASK-185.json",
+      "label": "safeRef path guard is defeated by one leading space, and half its claimed forms are untested"
     }
   ],
   "edges": [
