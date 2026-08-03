@@ -67,7 +67,6 @@ const DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
 // this line (not a bare PASS anywhere in the body) is what TASK-099 review
 // M1 requires: a per-step "PASS" inside an otherwise-failing UAT (or a
 // "FAIL — but PASS on retry" aside) must not satisfy the marker.
-const OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
 // TASK-108 (fix-round scope addition, folded in here) — widened from
 // /\bfail\b/i so a self-contradictory body ("Step 2 FAILED ... Overall
 // result: PASS") cannot satisfy the marker: FAILED/failing/fails are the
@@ -88,17 +87,60 @@ const FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 //
 // TASK-186 fix round (HIGH) — the structured convention was previously
 // OPT-IN: it activated only when the body happened to carry the literal
-// "Verdict:" label ANYWHERE, and a body with none fell straight through to
-// the FAIL_VERDICT_RE/OVERALL_PASS_RE token-scan below, where a real failure
+// "Verdict:" label ANYWHERE, and a body with none fell straight through to a
+// legacy FAIL_VERDICT_RE/body-wide-PASS token-scan, where a real failure
 // phrased with bare "PASS"/"PASS (deferred)" tokens and no FAIL-family word
 // satisfied the scan and closed the ticket. Whoever WRITES the comment could
 // bypass the fix simply by omitting one word. The structured convention is
 // now MANDATORY for this marker — evaluateStructuredStepVerdicts is always
 // the check (see hasExplicitHumanVerdictMarker below); there is no more
-// label-free fallback in loop mode. FAIL_VERDICT_RE/OVERALL_PASS_RE remain in
-// use ONLY as the defense-in-depth backstop inside
-// evaluateStructuredStepVerdicts (every step must ALSO be free of any
-// FAIL-family token and the body must ALSO state "Overall result: PASS").
+// label-free fallback in loop mode.
+//
+// TASK-186 fix round (third round) — round 1 (this comment block) and round 2
+// (the parseUatBody doc comment below) each closed a REGION where a real
+// failure could hide, by rejecting that specific region: a blocklist
+// strategy. It kept losing — round 2's own fix (require no non-whitespace
+// text outside the recognized step blocks and the overall-result line) found
+// the SAME failure-in-prose defect reappear a third time, on the
+// "Overall result:" line itself (probes E1/E2): that line was exempted
+// WHOLESALE from the "text outside step blocks" rejection, and the only
+// content check applied to it was a body-wide substring match
+// (the now-removed OVERALL_PASS_RE) that tolerated arbitrary trailing prose
+// after "PASS". Rather than patch a fourth region when one is inevitably
+// found next, the accepted body is now defined as a strict ALLOWLIST
+// GRAMMAR, and a body is accepted only when it parses as exactly that
+// grammar in full:
+//
+//     <body> ::= <step-block>+ <overall-line>
+//
+// where:
+//   <step-block>   a recognized step (STEP_START_RE) whose own text, once
+//                  whitespace-normalized, ends with EXACTLY "Verdict: PASS"
+//                  or "Verdict: PASS." (STRICT_STEP_VERDICT_RE, anchored at
+//                  the end) — no qualifier, no missing label, no FAIL;
+//   <overall-line> a single physical line whose own text, once
+//                  whitespace-normalized, IS EXACTLY "Overall result: PASS"
+//                  or "Overall: PASS" (optional trailing period)
+//                  (STRICT_OVERALL_RE, anchored at BOTH ends) — no trailing
+//                  prose, no qualifier;
+//   the `+`        at least as many step blocks as the task has acceptance
+//                  criteria (see evaluateStructuredStepVerdicts) — a floor
+//                  on count, not a coverage proof (see that function's doc
+//                  comment for the distinction);
+// and nothing else is permitted ANYWHERE in the body: no preamble before the
+// first step, no non-whitespace text between step blocks (any such text is
+// absorbed into the preceding block's own text and must still let that block
+// end cleanly per STRICT_STEP_VERDICT_RE), and no text after the overall
+// line. Every component of the grammar is now strict — there is no longer a
+// wholesale-exempted region left for a failure to hide behind (that is what
+// made the overall line a hole: it was the one component still checked with
+// a loose, unanchored, body-wide rule instead of the grammar's own strict
+// rule). FAIL_VERDICT_RE remains in use ONLY as defense-in-depth inside
+// evaluateStructuredStepVerdicts, checked over the whole body in addition to
+// (not instead of) the grammar above — see that function for why prose
+// INSIDE an otherwise-clean step block is the one thing this grammar cannot
+// see through (it is not exempted from the grammar, it is a limit of what a
+// textual convention check can prove about a block's own content).
 //
 // Corpus-safety (see tests/uat-verdict-marker-compat.spec.js): of this
 // repo's own 45 real tickets carrying a uat comment, exactly ONE
@@ -107,39 +149,64 @@ const FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 // only ever run at close time, and a closed ticket is never re-gated, so
 // this is the sole documented, zero-effect exception to the "no retroactive
 // invalidation" backward-compat proof (see that spec's fix-round amendment
-// comment for the full reasoning). The second fix round below (HIGH:
-// preamble/postscript evasion) is ALSO corpus-safe for a stronger reason:
-// hasExplicitHumanVerdictMarker already evaluates false for all 45 real
-// tickets under the first fix round's mandatory-"Verdict:"-label rule (their
-// bodies use conventions like "Verdict = PASS" or "STEP 1 (...)" that the
-// strict per-step regex already rejected), so tightening it further cannot
-// flip any of them from true to false — there is nothing left to flip.
+// comment for the full reasoning). Every fix round since (preamble/postscript
+// evasion, padded step count, and now the strict overall-line grammar) is
+// ALSO corpus-safe for a stronger reason: hasExplicitHumanVerdictMarker
+// already evaluates false for all 45 real tickets under the first fix
+// round's mandatory-"Verdict:"-label rule (their bodies use conventions like
+// "Verdict = PASS" or "STEP 1 (...)" that the strict per-step regex already
+// rejected), so tightening it further cannot flip any of them from true to
+// false — there is nothing left to flip.
 const STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
 const OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 const STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
+// TASK-186 fix round (third round) — the <overall-line> half of the grammar
+// above. Anchored at BOTH ends (unlike OVERALL_LINE_RE, which only anchors
+// the head, used solely to LOCATE which physical line is the overall line —
+// see parseUatBody), so trailing prose after "PASS" fails the match instead
+// of being silently accepted as a substring hit. This is what closes E1
+// ("Overall result: PASS — however the xlsx export crashed ... deferring.")
+// and E2 ("Overall result: PASS (deferred — xlsx crashed, no file
+// produced)") — both clean step blocks, both a body-wide-substring "PASS"
+// hit under the old OVERALL_PASS_RE, both rejected here because the overall
+// line's own text does not end at "pass" (or "pass.").
+const STRICT_OVERALL_RE = /^overall(?:\s+result)?\s*:\s*pass\.?$/i;
 
 /**
- * Parse a uat comment body into the pieces the structured per-step check
- * needs. A line (after trim) matching STEP_START_RE ("1.", "2)", "Step 3:",
- * ...) starts a new step block; every following line up to the next
- * step-start line, the "Overall result:" line, or the end of the body is a
- * continuation of that block (this is what lets a single step's verdict line
- * span several physical lines, e.g. a wrapped Observed: paragraph). If NO
- * step-start line is found at all, the whole body (minus any "Overall
- * result:" line) is treated as a single block — a reasonable fallback for a
- * non-numbered single-verdict comment.
+ * Parse a uat comment body into the pieces the <body> ::= <step-block>+
+ * <overall-line> grammar (see the STRICT_OVERALL_RE comment block above)
+ * needs to be checked in full. A line (after trim) matching STEP_START_RE
+ * ("1.", "2)", "Step 3:", ...) starts a new step block; every following line
+ * up to the next step-start line, the "Overall result:" line, or the end of
+ * the body is a continuation of that block (this is what lets a single
+ * step's verdict line span several physical lines, e.g. a wrapped Observed:
+ * paragraph). If NO step-start line is found at all, the whole body (minus
+ * any "Overall result:" line) is treated as a single block — a reasonable
+ * fallback for a non-numbered single-verdict comment.
  *
- * TASK-186 fix round (HIGH, second round) — text OUTSIDE those blocks (a
+ * TASK-186 fix round (HIGH, second round) — text OUTSIDE those step blocks (a
  * preamble before the first recognized step, or a postscript after the
  * "Overall result:" line) used to be silently dropped, which was the exact
  * defect: a real failure disclosed only in that discarded text was invisible
- * to the per-step check and satisfied the marker via the FAIL-token/
- * OVERALL_PASS_RE backstop alone. `extraneousText` now surfaces that
- * discarded text (trimmed, newline-joined) so evaluateStructuredStepVerdicts
- * can reject it outright instead of dropping it. `recognizedStepCount` is
- * the number of step-start lines actually recognized (0 in the
- * no-step-lines fallback) — see evaluateStructuredStepVerdicts for how this
- * pairs with `blocks.length` in the AC-count floor check.
+ * to the per-step check and satisfied the marker via the FAIL-token backstop
+ * alone. `extraneousText` now surfaces that discarded text (trimmed,
+ * newline-joined) so evaluateStructuredStepVerdicts can reject it outright
+ * instead of dropping it. `recognizedStepCount` is the number of step-start
+ * lines actually recognized (0 in the no-step-lines fallback) — see
+ * evaluateStructuredStepVerdicts for how this pairs with `blocks.length` in
+ * the AC-count floor check.
+ *
+ * TASK-186 fix round (third round) — `overallLine` returns the RAW (trimmed,
+ * un-normalized-whitespace) text of the single physical line that matched
+ * OVERALL_LINE_RE (`null` when no such line exists), so
+ * evaluateStructuredStepVerdicts can hold it to the grammar's own
+ * <overall-line> rule (STRICT_OVERALL_RE, anchored at both ends) instead of
+ * the old body-wide substring test. Note this line's own text is captured
+ * ONLY as that one physical line — any further physical lines after it are
+ * still swept into `extraneousText` (postscript) exactly as round 2 already
+ * did, so a multi-line "overall" statement is rejected the same way a
+ * postscript is: the grammar's <overall-line> is, by construction, a single
+ * self-contained line.
  */
 function parseUatBody(body) {
   const lines = String(body).split(/\r?\n/);
@@ -151,6 +218,7 @@ function parseUatBody(body) {
   });
   const stepBoundaries = boundaries.filter((b) => b.type === 'step');
   const overallBoundary = boundaries.find((b) => b.type === 'overall');
+  const overallLine = overallBoundary ? lines[overallBoundary.idx].trim() : null;
 
   if (stepBoundaries.length === 0) {
     const end = overallBoundary ? overallBoundary.idx : lines.length;
@@ -159,6 +227,7 @@ function parseUatBody(body) {
       blocks: [lines.slice(0, end).join(' ')],
       recognizedStepCount: 0,
       extraneousText: afterOverall.trim(),
+      overallLine,
     };
   }
 
@@ -174,6 +243,7 @@ function parseUatBody(body) {
     blocks,
     recognizedStepCount: stepBoundaries.length,
     extraneousText: [preamble, postscript].filter((s) => s.trim() !== '').join('\n'),
+    overallLine,
   };
 }
 
@@ -181,8 +251,9 @@ function parseUatBody(body) {
  * TASK-186 AC3 (fix round: now the ONLY evaluation path, called
  * unconditionally by hasExplicitHumanVerdictMarker — see that function's
  * doc comment for why the prior "only when a 'Verdict:' label is present"
- * gate was removed) — evaluates the structured per-step verdicts in a body.
- * Returns true only when:
+ * gate was removed) — evaluates a body against the full
+ * <body> ::= <step-block>+ <overall-line> grammar (see the STRICT_OVERALL_RE
+ * comment block above for the grammar statement). Returns true only when:
  *   - no non-whitespace text sits outside the recognized step blocks and the
  *     overall-result line (TASK-186 fix round HIGH, second round — closes
  *     the preamble/postscript evasion where a real failure was disclosed
@@ -193,25 +264,47 @@ function parseUatBody(body) {
  *     AC's step rather than writing a qualified verdict for it; a step count
  *     that happens to match the AC count is NOT sufficient on its own — see
  *     the R3 regression lock in tests/e2e/close-guard.spec.js for why both
- *     checks are needed together);
+ *     checks are needed together. NOTE this is a FLOOR, not a coverage
+ *     proof: nothing here ties a given step block to a specific AC, so
+ *     duplicate step numbering — e.g. two blocks both labelled "1." — still
+ *     satisfies a 2-AC floor with only one AC actually addressed. Not
+ *     exploitable without full fabrication of every step's content, which
+ *     loopModeUatCommentGuard already gates on the write side in loop mode;
+ *     noted here so the floor is not misread as per-AC coverage.);
  *   - EVERY recognized step block cleanly ends with "Verdict: PASS" (no
- *     qualifier, no missing label, no FAIL); and
- *   - the overall body still passes the FAIL/PASS checks as a
- *     defense-in-depth backstop.
- * A body with no step carrying a literal "Verdict:" label at all naturally
- * returns false here (STRICT_STEP_VERDICT_RE fails to match), which is what
- * makes the convention mandatory rather than opt-in.
+ *     qualifier, no missing label, no FAIL) — STRICT_STEP_VERDICT_RE,
+ *     anchored at the end;
+ *   - the overall-result line's OWN text, whitespace-normalized, is EXACTLY
+ *     "Overall result: PASS" / "Overall: PASS" (optional trailing period) —
+ *     STRICT_OVERALL_RE, anchored at BOTH ends (TASK-186 fix round, third
+ *     round — closes E1/E2, where trailing prose after "PASS" on the overall
+ *     line itself disclosed a real failure that the prior body-wide
+ *     substring test (OVERALL_PASS_RE) silently ignored); and
+ *   - the overall body still passes the FAIL_VERDICT_RE check as
+ *     defense-in-depth (a FAIL-family token anywhere, even inside an
+ *     otherwise-clean step's own prose, still voids the whole comment).
+ * A body with no step carrying a literal "Verdict:" label at all, or with no
+ * recognizable overall-result line at all, naturally returns false here,
+ * which is what makes the grammar mandatory rather than opt-in.
  *
- * HONEST RESIDUAL (documented, not closed by this fix): this is a textual
- * check, not a semantic one. Prose INSIDE a step that still ends cleanly
- * with "Verdict: PASS" is not read for meaning — a step whose Observed: text
+ * HONEST RESIDUAL (documented, not closed by this fix; this is the CURRENT,
+ * accurate scope after the third fix round — see hasExplicitHumanVerdictMarker
+ * below for the same statement at the marker's own doc comment): this is a
+ * textual check, not a semantic one, and the grammar above governs the
+ * body's STRUCTURE (which regions exist, and how each region's own text must
+ * end), not the MEANING of text that lives INSIDE a structurally-valid
+ * region. Concretely, the one remaining hole is prose INSIDE a step block
+ * that still ends cleanly with "Verdict: PASS" — a step whose Observed: text
  * itself narrates a failure but is followed by a bare "Verdict: PASS" label
- * still satisfies this check. Closing that would require actually
- * understanding the Observed: text, which is out of reach for a textual
- * convention check.
+ * still satisfies this check, because nothing here reads the Observed: text
+ * for meaning. This is a narrower residual than any prior round: round 1
+ * closed the label-free legacy path, round 2 closed the preamble/postscript/
+ * padded-step-count regions, and this round closes the overall-line region —
+ * every region the grammar defines is now strict, so the only thing left
+ * unchecked is content that is not itself a distinct grammar region at all.
  */
 function evaluateStructuredStepVerdicts(body, requiredStepCount) {
-  const { blocks: rawBlocks, extraneousText } = parseUatBody(body);
+  const { blocks: rawBlocks, extraneousText, overallLine } = parseUatBody(body);
   if (rawBlocks.length === 0) return false;
   if (extraneousText !== '') return false; // preamble/postscript evasion — reject outright
   if (typeof requiredStepCount === 'number' && rawBlocks.length < requiredStepCount) return false;
@@ -222,42 +315,52 @@ function evaluateStructuredStepVerdicts(body, requiredStepCount) {
     if (m[1].toLowerCase() === 'fail') return false;
   }
   if (FAIL_VERDICT_RE.test(body)) return false;
-  return OVERALL_PASS_RE.test(body);
+  if (overallLine === null) return false; // no recognizable overall-result line at all
+  return STRICT_OVERALL_RE.test(overallLine.replace(/\s+/g, ' ').trim());
 }
 
 /**
  * TASK-099 Gate 2 (TASK-186 restructure; TASK-186 fix rounds made the
- * structured convention MANDATORY and closed the preamble/postscript/
- * padded-step-count evasions) — a uat-only ticket's `uat` comment carries an
- * "explicit human verdict marker" when its most recent `uat`-authored
- * comment (a) has no orchestrator-delegation phrasing anywhere in the body,
- * (b) carries no non-whitespace text outside its recognized step blocks and
- * the overall-result line, (c) recognizes at least as many step blocks as
- * the task has acceptance criteria, and (d) every recognized step in the
- * body cleanly records "Verdict: PASS" (see evaluateStructuredStepVerdicts)
- * — a body with no literal "Verdict:" label on any step is REJECTED, not
- * passed through to a looser prose scan; see this file's STEP_START_RE-block
- * doc comment for why the legacy label-free path was removed. If the
- * comment shows delegated-verification phrasing anywhere, at least one step
- * was recorded as Orchestrator-verified, so the close still requires
- * `uat_delegated_to_orchestrator` to be explicitly granted.
+ * structured convention MANDATORY and, across three rounds, closed the
+ * preamble/postscript, padded-step-count, and overall-line-trailing-prose
+ * evasions) — a uat-only ticket's `uat` comment carries an "explicit human
+ * verdict marker" when its most recent `uat`-authored comment parses as the
+ * full <body> ::= <step-block>+ <overall-line> grammar (see the
+ * STRICT_OVERALL_RE comment block above): (a) has no orchestrator-delegation
+ * phrasing anywhere in the body, (b) carries no non-whitespace text outside
+ * its recognized step blocks and the overall-result line, (c) recognizes at
+ * least as many step blocks as the task has acceptance criteria (a floor,
+ * not per-AC coverage — see evaluateStructuredStepVerdicts), (d) every
+ * recognized step in the body cleanly records "Verdict: PASS", and (e) the
+ * overall-result line's own text is EXACTLY "Overall result: PASS" (or
+ * "Overall: PASS"), nothing appended (see evaluateStructuredStepVerdicts) —
+ * a body with no literal "Verdict:" label on any step, or no clean overall
+ * line, is REJECTED, not passed through to a looser prose scan; see this
+ * file's STEP_START_RE-block doc comment for why the legacy label-free path
+ * was removed. If the comment shows delegated-verification phrasing
+ * anywhere, at least one step was recorded as Orchestrator-verified, so the
+ * close still requires `uat_delegated_to_orchestrator` to be explicitly
+ * granted.
  *
  * This is a textual-convention check, not a cryptographic one: it cannot
- * prove a human actually authored the recorded verdict. TASK-186's second
- * fix round closed the two evasions it was written to close — a failure
- * disclosed only in a discarded preamble/postscript (R1/R2), and the same
- * disclosure smuggled past an AC-count floor by padding the step count
- * (R3) — but it does NOT eliminate every way prose can mislead: a step
- * whose Observed: text itself narrates a failure yet still ends with a bare
- * "Verdict: PASS" label is not read for meaning and still satisfies this
- * check (see evaluateStructuredStepVerdicts's doc comment for the same
- * residual, stated once there as the canonical location). It narrows — it
- * does not eliminate — the prior hole where ANY comment authored 'uat'
- * satisfied the done-guard regardless of content (see the TASK-099 hand-off
- * for the original residual-limitation note, and the TASK-186 hand-offs for
- * why a token blacklist over prose could not be hardened further by
- * extending the token list alone, nor by making the structured check merely
- * opt-in).
+ * prove a human actually authored the recorded verdict. Across its three fix
+ * rounds this ticket closed every evasion IT WAS SHOWN — a failure disclosed
+ * only in a discarded preamble/postscript (R1/R2), the same disclosure
+ * smuggled past an AC-count floor by padding the step count (R3), and the
+ * same disclosure moved onto the overall-result line itself as trailing
+ * prose (E1/E2, third round) — but it does NOT eliminate every way prose can
+ * mislead: a step whose Observed: text itself narrates a failure yet still
+ * ends with a bare "Verdict: PASS" label is not read for meaning and still
+ * satisfies this check (see evaluateStructuredStepVerdicts's doc comment for
+ * the same residual, stated once there as the canonical location, and for
+ * why this is now a narrower and more accurately-scoped residual than either
+ * prior round claimed). It narrows — it does not eliminate — the prior hole
+ * where ANY comment authored 'uat' satisfied the done-guard regardless of
+ * content (see the TASK-099 hand-off for the original residual-limitation
+ * note, and the TASK-186 hand-offs for why a token blacklist over prose
+ * could not be hardened further by extending the token list alone, nor by
+ * making the structured check merely opt-in, nor by treating any one grammar
+ * region as wholesale-exempt from its own strict rule).
  */
 export function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];

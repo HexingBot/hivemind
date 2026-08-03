@@ -1056,3 +1056,93 @@ describe('TASK-186 fix round (LOW) — STEP_START_RE numbering-form and fallback
     await expect(loopModeCloseGuard({ repoRoot: root, task })).rejects.toBeInstanceOf(UatDelegationGuardError);
   });
 });
+
+// ===========================================================================
+// TASK-186 fix round (HIGH, third round) — E1/E2: the "Overall result:" line
+// was a THIRD unread disclosure channel. Round 2 closed the preamble and
+// postscript regions (R1/R2) and the padded-step-count evasion (R3) by
+// rejecting non-whitespace text OUTSIDE the recognized step blocks and the
+// overall-result line — but the overall-result line itself was exempted
+// WHOLESALE from that rejection, and the only content check ever applied to
+// it was a body-wide substring match (the now-removed OVERALL_PASS_RE) that
+// tolerated arbitrary trailing prose after "PASS". E1/E2 move the SAME crash
+// disclosure from R1/R2's preamble/postscript onto that one remaining
+// unchecked line. Composed exactly as src/mcp-server.js composes the guards
+// (mcpAppendComment/mcpCloseTask above), same round-3b/R1-R3 discipline: two
+// clean "Verdict: PASS" steps (matching the 2-AC fixture), loop mode with
+// auto_close_on_green_review true and uat_delegated_to_orchestrator false.
+//
+// FIX (third round): the accepted body is now a strict allowlist grammar,
+// <body> ::= <step-block>+ <overall-line>, with BOTH components checked by
+// an anchored-at-both-ends regex (STRICT_STEP_VERDICT_RE for each step,
+// STRICT_OVERALL_RE for the overall line) — see src/close-guard.js's
+// STRICT_OVERALL_RE comment block for the full grammar statement. There is
+// no longer any region exempted wholesale from a strict check.
+// ===========================================================================
+describe('TASK-186 fix round (HIGH, third round) — E1/E2: trailing prose ON the overall-result line no longer bypasses Gate 2', () => {
+  it('E1 — "Overall result: PASS — however the xlsx export crashed ... deferring." is REJECTED (not closed)', async () => {
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { createTask } = await import(TASK_STORE_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'E1', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    const body = [
+      '1. Run `npm run export -- --format=csv`, expect a CSV. Observed: file created. Verdict: PASS',
+      '2. Run with --format=xlsx, expect an XLSX file. Observed: file created. Verdict: PASS',
+      '',
+      'Overall result: PASS — however the xlsx export crashed with an unhandled TypeError and no '
+        + 'file was written; deferring.',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+
+    // Flip to loop mode WITHOUT the delegation grant — Gate 1 satisfied, Gate 2 not delegated.
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'trailing prose disclosing a real crash, appended directly onto the '
+      + '"Overall result: PASS" line, must not close the ticket').toBeInstanceOf(UatDelegationGuardError);
+    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+
+  it('E2 — "Overall result: PASS (deferred — xlsx crashed, no file produced)" is REJECTED (not closed)', async () => {
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { createTask } = await import(TASK_STORE_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'E2', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    const body = [
+      '1. Run `npm run export -- --format=csv`, expect a CSV. Observed: file created. Verdict: PASS',
+      '2. Run with --format=xlsx, expect an XLSX file. Observed: file created. Verdict: PASS',
+      '',
+      'Overall result: PASS (deferred — xlsx crashed, no file produced)',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a qualified "(deferred — ...)" aside appended directly onto the '
+      + '"Overall result: PASS" line must not close the ticket').toBeInstanceOf(UatDelegationGuardError);
+    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+});

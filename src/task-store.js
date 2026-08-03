@@ -432,6 +432,21 @@ const UAT_VERDICT_WORD_RE = /\bpass\b/i;
 // (see tests/uat-verdict-marker-compat.spec.js): none of the 45 real bodies
 // carries either pattern, so this tightening is additive-only against real
 // data, same as the first fix round.
+//
+// TASK-186 fix round (third round, LOW-2, deliberate tradeoff — NOT
+// changed): OVERALL_FAIL_RE's `:?` makes the colon optional, so it also
+// matches bare prose with no verdict-line structure at all, e.g. "no overall
+// failures were observed" (the `overall ... fail` shape reads as a match
+// even though the sentence is a PASS). That would false-deny a genuinely
+// passing UAT in harness mode. Left deliberately fail-closed rather than
+// tightened: harness mode's design assumption is a human wrote the body
+// (see this file's UAT_VERDICT_WORD_RE comment above), so a false-deny here
+// costs the human one re-edit, never an autonomous wrong-close — a strictly
+// cheaper failure mode than the false-ALLOW this whole gate exists to
+// prevent. Zero corpus hits today (verified in the same sweep as above), so
+// this costs nothing against real data either way; noted here so the
+// asymmetry (accepted false-deny risk, at zero real cost) is a documented
+// choice rather than an unnoticed side effect of the widening.
 const VERDICT_FAIL_RE = /verdict\s*:\s*fail/i;
 const OVERALL_FAIL_RE = /overall(?:\s+result)?\s*:?\s*fail/i;
 

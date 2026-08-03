@@ -8227,11 +8227,11 @@ var UatDelegationGuardError = class extends Error {
   }
 };
 var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
-var OVERALL_PASS_RE = /overall result:?\s*pass\b/i;
 var FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 var STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
 var OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 var STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
+var STRICT_OVERALL_RE = /^overall(?:\s+result)?\s*:\s*pass\.?$/i;
 function parseUatBody(body) {
   const lines = String(body).split(/\r?\n/);
   const boundaries = [];
@@ -8242,13 +8242,15 @@ function parseUatBody(body) {
   });
   const stepBoundaries = boundaries.filter((b) => b.type === "step");
   const overallBoundary = boundaries.find((b) => b.type === "overall");
+  const overallLine = overallBoundary ? lines[overallBoundary.idx].trim() : null;
   if (stepBoundaries.length === 0) {
     const end = overallBoundary ? overallBoundary.idx : lines.length;
     const afterOverall = overallBoundary ? lines.slice(overallBoundary.idx + 1).join("\n") : "";
     return {
       blocks: [lines.slice(0, end).join(" ")],
       recognizedStepCount: 0,
-      extraneousText: afterOverall.trim()
+      extraneousText: afterOverall.trim(),
+      overallLine
     };
   }
   const blocks = stepBoundaries.map((b) => {
@@ -8261,11 +8263,12 @@ function parseUatBody(body) {
   return {
     blocks,
     recognizedStepCount: stepBoundaries.length,
-    extraneousText: [preamble, postscript].filter((s) => s.trim() !== "").join("\n")
+    extraneousText: [preamble, postscript].filter((s) => s.trim() !== "").join("\n"),
+    overallLine
   };
 }
 function evaluateStructuredStepVerdicts(body, requiredStepCount) {
-  const { blocks: rawBlocks, extraneousText } = parseUatBody(body);
+  const { blocks: rawBlocks, extraneousText, overallLine } = parseUatBody(body);
   if (rawBlocks.length === 0) return false;
   if (extraneousText !== "") return false;
   if (typeof requiredStepCount === "number" && rawBlocks.length < requiredStepCount) return false;
@@ -8276,7 +8279,8 @@ function evaluateStructuredStepVerdicts(body, requiredStepCount) {
     if (m[1].toLowerCase() === "fail") return false;
   }
   if (FAIL_VERDICT_RE.test(body)) return false;
-  return OVERALL_PASS_RE.test(body);
+  if (overallLine === null) return false;
+  return STRICT_OVERALL_RE.test(overallLine.replace(/\s+/g, " ").trim());
 }
 function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
