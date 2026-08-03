@@ -98,21 +98,26 @@ export function resolveSafeRef(ref, exec = spawnSync) {
   return { ok: true, safeRef: `${verify.stdout.trim()}~0` };
 }
 
+// TASK-194 folded scope (MEDIUM-2 from TASK-192's review): the three git
+// argument arrays below are duplicated, verbatim, from vitest's own
+// `VitestGit` class (node_modules/vitest/dist/chunks/git.<hash>.js —
+// content-hash-named, so never reference the exact filename; glob it). That
+// mirror is verified correct TODAY but isn't pinned for the next vitest
+// bump — see tests/vitest-changed-algorithm-pin.spec.js, which globs the
+// chunk and asserts these three sequences still appear in it. If that spec
+// ever goes red, these two functions (and test:changed.mjs, which shares
+// them) have drifted from what vitest actually runs.
+const GIT_DIFF_SINCE_ARGS = (ref) => ['diff', '--name-only', `${ref}...HEAD`];
+const GIT_STAGED_ARGS = () => ['diff', '--cached', '--name-only'];
+const GIT_UNSTAGED_ARGS = () => ['ls-files', '--other', '--modified', '--exclude-standard'];
+
 /**
- * TASK-192 AC4 — mirrors vitest's own `--changed` file-detection exactly
- * (node_modules/vitest/dist/chunks/git.B5SDxu-n.js's getFilesSince /
- * getStagedFiles / getUnstagedFiles): a `<safeRef>...HEAD` diff, plus
- * staged, plus unstaged (untracked-but-not-ignored) files. Returns `true`
- * when that union is non-empty. `exec` is injectable for tests (default:
- * real `git diff`/`git ls-files`).
+ * Run each `git <args>` command in `argsList` and return `true` if ANY of
+ * them reports a non-empty result. `exec` is injectable for tests (default:
+ * real `spawnSync`).
  */
-export function hasAnyChangedFiles(safeRef, exec = spawnSync) {
-  const runs = [
-    ['diff', '--name-only', `${safeRef}...HEAD`],
-    ['diff', '--cached', '--name-only'],
-    ['ls-files', '--other', '--modified', '--exclude-standard'],
-  ];
-  return runs.some((args) => {
+function anyGitCommandReportsChange(argsList, exec) {
+  return argsList.some((args) => {
     const result = exec('git', args, { encoding: 'utf8' });
     // A git failure here is treated conservatively as "there might be
     // changes" (status !== 0 -> non-empty stdout string check below still
@@ -122,6 +127,33 @@ export function hasAnyChangedFiles(safeRef, exec = spawnSync) {
     // rather than silently treating a git error as "nothing changed".
     return result.status !== 0 || (result.stdout || '').trim().length > 0;
   });
+}
+
+/**
+ * TASK-192 AC4 — mirrors vitest's own `--changed <ref>` file-detection
+ * exactly: a `<safeRef>...HEAD` diff, plus staged, plus unstaged
+ * (untracked-but-not-ignored) files. Returns `true` when that union is
+ * non-empty. `exec` is injectable for tests (default: real
+ * `git diff`/`git ls-files`).
+ */
+export function hasAnyChangedFiles(safeRef, exec = spawnSync) {
+  return anyGitCommandReportsChange(
+    [GIT_DIFF_SINCE_ARGS(safeRef), GIT_STAGED_ARGS(), GIT_UNSTAGED_ARGS()],
+    exec,
+  );
+}
+
+/**
+ * TASK-194 — mirrors vitest's own refless `--changed` file-detection
+ * exactly: the SAME function as `hasAnyChangedFiles` minus the
+ * committed-since-ref source, because `getFilesSince` never runs when
+ * `--changed` is invoked without a value (vitest's `VitestGit.
+ * findChangedFiles` branches on `typeof changedSince === 'string'` and
+ * only checks staged+unstaged otherwise). Used by scripts/test-changed.mjs,
+ * which has no ref to diff since. `exec` is injectable for tests.
+ */
+export function hasAnyUncommittedChanges(exec = spawnSync) {
+  return anyGitCommandReportsChange([GIT_STAGED_ARGS(), GIT_UNSTAGED_ARGS()], exec);
 }
 
 function main(argv = process.argv.slice(2)) {

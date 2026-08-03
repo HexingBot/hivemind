@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { resolveSafeRef, hasAnyChangedFiles } from '../scripts/test-since.mjs';
+import { resolveSafeRef, hasAnyChangedFiles, hasAnyUncommittedChanges } from '../scripts/test-since.mjs';
 
 /** Fake `spawnSync`-shaped exec for a successful `git rev-parse --verify`. */
 function fakeExecOk(sha) {
@@ -107,5 +107,52 @@ describe('TASK-192 AC4 — hasAnyChangedFiles mirrors vitest\'s three-source cha
     // even though every stdout is empty.
     const exec = () => ({ status: 128, stdout: '', stderr: 'fatal: some git error' });
     expect(hasAnyChangedFiles('deadbeef~0', exec)).toBe(true);
+  });
+});
+
+// TASK-194 — hasAnyUncommittedChanges is hasAnyChangedFiles minus the
+// committed-since-ref source: only staged + unstaged. It backs
+// scripts/test-changed.mjs, which has no ref to diff since (mirrors
+// vitest's own refless --changed behavior, which skips getFilesSince
+// entirely when `changedSince` isn't a string).
+describe('TASK-194 — hasAnyUncommittedChanges mirrors vitest\'s refless --changed detection (staged+unstaged only)', () => {
+  function fakeExecAllEmpty() {
+    return () => ({ status: 0, stdout: '', stderr: '' });
+  }
+
+  it('staged_and_unstaged_both_empty_returns_false', () => {
+    expect(hasAnyUncommittedChanges(fakeExecAllEmpty())).toBe(false);
+  });
+
+  it('a_staged_file_alone_makes_it_true', () => {
+    const exec = (git, args) => (args.includes('--cached')
+      ? { status: 0, stdout: 'staged.js\n', stderr: '' }
+      : { status: 0, stdout: '', stderr: '' });
+    expect(hasAnyUncommittedChanges(exec)).toBe(true);
+  });
+
+  it('an_unstaged_untracked_file_alone_makes_it_true', () => {
+    const exec = (git, args) => (args[0] === 'ls-files'
+      ? { status: 0, stdout: 'new-file.js\n', stderr: '' }
+      : { status: 0, stdout: '', stderr: '' });
+    expect(hasAnyUncommittedChanges(exec)).toBe(true);
+  });
+
+  it('never_issues_a_committed_since_ref_diff_command', () => {
+    // Regression lock for the "minus the first of the three" design: if this
+    // ever regresses to calling hasAnyChangedFiles's ref-diff source, this
+    // fake would see a `diff --name-only <ref>...HEAD`-shaped call (three+
+    // args including a non---cached diff) and fail the assertion below.
+    const seenArgs = [];
+    const exec = (git, args) => {
+      seenArgs.push(args);
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    hasAnyUncommittedChanges(exec);
+    const calledCommittedSinceDiff = seenArgs.some(
+      (args) => args[0] === 'diff' && !args.includes('--cached'),
+    );
+    expect(calledCommittedSinceDiff, `unexpected git calls: ${JSON.stringify(seenArgs)}`).toBe(false);
+    expect(seenArgs.length).toBe(2);
   });
 });

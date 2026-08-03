@@ -8,7 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:all": "vitest run --config vitest.config.all.js",
-    "test:changed": "vitest run --changed --config vitest.config.all.js",
+    "test:changed": "node scripts/test-changed.mjs",
     "test:since": "node scripts/test-since.mjs",
     "test:e2e": "vitest run --config vitest.config.all.js tests/e2e",
     "test:use-cases": "vitest run --config vitest.config.all.js tests/use-cases tests/use-case-policy.spec.js --passWithNoTests",
