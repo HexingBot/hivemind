@@ -490,7 +490,7 @@ behavior.
    **Harness mode vs loop mode.** In harness mode (a human is present — the
    default), `src/task-store.js`'s uat-only done-guard (`hasRecordedUatVerdict`)
    runs a deliberately LIGHT content check: the body must be non-empty and
-   name a recognizable PASS/FAIL verdict word — the strict per-step
+   name a PASS verdict and record no FAIL shape — the strict per-step
    `Verdict:` label and overall-line grammar above are NOT required. In loop
    mode (no human present by definition), Gate 2 below
    (`hasExplicitHumanVerdictMarker`) enforces the full strict grammar, or
@@ -499,7 +499,7 @@ behavior.
 
    Two documented tradeoffs, worth knowing wherever a `uat` comment is
    recorded:
-   - The AC-count check (both modes) is a **floor, not per-AC coverage**:
+   - The AC-count check (loop mode's Gate 2) is a **floor, not per-AC coverage**:
      nothing ties a given step block to a specific AC, so duplicate step
      numbering (two blocks both labelled "1.") still satisfies a 2-AC floor
      with only one AC actually addressed.

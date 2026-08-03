@@ -246,17 +246,22 @@ function makeUatTask(key, comments = []) {
 // FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT further down) intentionally keep the
 // bare "verdict PASS" (no colon) prose the docs no longer teach — a
 // deliberate choice, not an oversight. Every test that uses them asserts a
-// REJECTION that is decided by a check that runs BEFORE (and independently
-// of) the strict per-step "Verdict:" grammar: DELEGATED_UAT_COMMENT's own
+// REJECTION that holds under any labelling. DELEGATED_UAT_COMMENT's own
 // assertions turn on the delegation-phrasing short-circuit
-// (DELEGATED_MARKER_RE in src/close-guard.js), and
-// OVERALL_FAIL_UAT_COMMENT/FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT's turn on the
-// FAIL-token backstop (FAIL_VERDICT_RE). Relabelling these fixtures to the
+// (DELEGATED_MARKER_RE in src/close-guard.js) regardless of step-grammar
+// formatting. OVERALL_FAIL_UAT_COMMENT and FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT
+// are rejected as written because their bodies fail the strict per-step
+// "Verdict:" grammar (no colon, so STRICT_STEP_VERDICT_RE never matches —
+// src/close-guard.js:314); relabelled to the documented convention they
+// would still be rejected — OVERALL_FAIL_UAT_COMMENT's explicit step-level
+// "Verdict: FAIL" by the per-step FAIL branch (:315), and
+// FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT's residual "FAIL" token by the
+// FAIL_VERDICT_RE backstop (:317). Relabelling these fixtures to the
 // documented "Verdict:" convention would not change any assertion's outcome
-// and would blur the fixture's actual point (proving delegation phrasing /
-// FAIL tokens reject regardless of label formatting) — see the positive
-// control at "positive control — a cleanly structured multi-step..." below
-// for the fixture that DOES model, and is held to, the documented convention.
+// and would blur the fixture's actual point (proving these rejections hold
+// regardless of label formatting) — see the positive control at "positive
+// control — a cleanly structured multi-step..." below for the fixture that
+// DOES model, and is held to, the documented convention.
 const DELEGATED_UAT_COMMENT = {
   author: 'uat',
   at: '2026-07-06T00:00:00Z',

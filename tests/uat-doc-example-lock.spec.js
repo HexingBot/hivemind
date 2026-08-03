@@ -96,6 +96,47 @@ describe('TASK-196 AC1/AC3 — SKILL.md UAT worked example vs the live loop-mode
     ).toBe(true);
   });
 
+  // TASK-196 fix round (MEDIUM-2) — the docs also claim the guard tolerates
+  // the short "Overall: PASS" form (no "result") and an optional trailing
+  // period on the overall line. The canonical example above exercises
+  // neither (it reads "Overall result: PASS", no period), so without these
+  // two assertions a future narrowing of STRICT_OVERALL_RE could silently
+  // falsify the published tolerance claims while this file stayed green.
+  // Both transforms apply to the extracted example itself (never a
+  // spec-local re-encoding of the grammar), consistent with this file's
+  // derived-from-doc design.
+  describe('AC3 documented tolerances — transforms of the doc example are still ACCEPTED', () => {
+    it('the short "Overall:" form (result omitted) is ACCEPTED by hasExplicitHumanVerdictMarker', () => {
+      const raw = extractWorkedExample();
+      const stepCount = countStepLines(raw);
+      const mutated = raw.replace(
+        /^([ \t]*overall)(?:\s+result)?(\s*:\s*pass\.?)([ \t]*)$/im,
+        '$1$2$3',
+      );
+      expect(mutated, 'mutation must actually change the text').not.toBe(raw);
+      const task = taskWithAcCount(stepCount, mutated);
+      expect(
+        hasExplicitHumanVerdictMarker(task),
+        `the documented short "Overall:" form was REJECTED by the live guard:\n${mutated}`,
+      ).toBe(true);
+    });
+
+    it('an optional trailing period on the overall-result line is ACCEPTED by hasExplicitHumanVerdictMarker', () => {
+      const raw = extractWorkedExample();
+      const stepCount = countStepLines(raw);
+      const mutated = raw.replace(
+        /^([ \t]*overall(?:\s+result)?\s*:\s*pass)\.?([ \t]*)$/im,
+        '$1.$2',
+      );
+      expect(mutated, 'mutation must actually change the text').not.toBe(raw);
+      const task = taskWithAcCount(stepCount, mutated);
+      expect(
+        hasExplicitHumanVerdictMarker(task),
+        `the documented trailing-period tolerance was REJECTED by the live guard:\n${mutated}`,
+      ).toBe(true);
+    });
+  });
+
   describe('AC3 non-vacuity-by-mutation — each mutation of the doc example is REJECTED', () => {
     it('mutation: strip the "Verdict:" label from the first step', () => {
       const raw = extractWorkedExample();
