@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-03T04:54:30.955Z",
+  "generated_at": "2026-08-03T05:06:41.857Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1144,7 +1144,7 @@
     {
       "key": "TASK-196",
       "title": "The documented UAT recording convention no longer produces a comment the loop-mode gate accepts",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     }
   ]
