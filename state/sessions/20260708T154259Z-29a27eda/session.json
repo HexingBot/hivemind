@@ -2,16 +2,16 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
-  "updated_at": "2026-08-03T02:34:44.826Z",
-  "active_task": "TASK-186",
-  "workflow_step": "impl",
-  "next_action": "IN FLIGHT: TASK-186 fix-round developer (tdd tier). Scope is deliberately narrow — harden splitIntoStepBlocks / evaluateStructuredStepVerdicts so failure text in a PREAMBLE or POSTSCRIPT can no longer satisfy the gate (reproduced bodies R1/R2 are in the ticket comment), replay R1/R2 as permanent red specs, fix the now-false contract comment at src/close-guard.js:187-190, optionally take the hasRecordedUatVerdict MEDIUM (src/task-store.js:413-444) but ONLY after re-running the real-corpus check, and clean up the two stale spec banners. dist rebuild REQUIRED (both files are bundled). Explicitly OUT of scope: the SKILL.md/CLAUDE.md convention drift, which is TASK-196.\n\nDO NOT let the fix round redo what is already verified — AC1/AC2/AC4/AC5/AC7/AC8 all stand per the recorded review, including the real-corpus AC4 sweep (191 tasks, 45 uat comments, 1 flip on the already-done TASK-133, zero open uat-only stranded) and the twice-reproduced red state.\n\nON RETURN: review at rubric depth (expect FULL again — close-guard write path + 2 dist bundles + tdd), then close. TASK-186 will owe a knowledge draft at close (TASK-105 trigger: the gating review recorded a HIGH).\n\nTHEN: TASK-196 (high) should land promptly — the documented UAT recording convention no longer produces a comment the mandatory gate accepts. Fail-CLOSED, which is the only reason deferring it was tolerable.\n\nREMAINING TODO: TASK-182, 187, 188, 189, 193, 195, 196.",
-  "handoff_summary": "Session 2026-08-02. Board drove from 181 -> 183 done. TASK-191 CLOSED (APPROVE, light depth). TASK-194 CLOSED (APPROVE, FULL depth, commit 7ca9cd4) - test:changed is now a self-describing wrapper and the vitest --changed algorithm is pinned by a non-vacuous glob sensor. TASK-186 is the ONLY open work item: a fix-round developer is RUNNING against a reproduced HIGH. All ticket bookkeeping is committed and the tree was clean at spawn time.",
+  "updated_at": "2026-08-03T03:26:35.187Z",
+  "active_task": null,
+  "workflow_step": "idle",
+  "next_action": "NOTHING IS IN FLIGHT. Board is 184 done / 7 todo / 0 in_review / 0 in_progress. Tree clean.\n\nRECOMMENDED NEXT: **TASK-196 (high)** — it is now BLOCKING, not routine, and its scope addendum is recorded on the ticket. Two independent reviewers confirmed that 0 of 45 historical uat comments satisfy the marker, and that an orchestrator following the documented convention verbatim CANNOT produce a comment the gate accepts. The accepted grammar accumulated four undocumented requirements across the TASK-186 rounds (mandatory Verdict: label; no preamble at all; step count >= AC count; strict overall line anchored both ends). Fail-CLOSED, so nothing unsafe shipped — but the documented process is wrong. Its doc-lock must derive the FULL grammar from the guard, not just the label, or the next tightening re-opens the same gap.\n\nALSO PENDING: the two knowledge drafts in knowledge/proposed/ (parallel-spawns-share-one-git-index, blocklist-content-gates-lose-to-relocation) await batch promotion or discard under Gate 5 — they are excluded from lookupKnowledge until promoted.\n\nREMAINING TODO: TASK-182 (needs a human DIRECTION decision on dual-copy precedence before any implementation), 187, 188, 189, 193, 195 (worktree isolation — the structural fix TASK-191 deferred), 196.\n\nPROCESS LESSONS EARNED THIS SESSION, worth carrying: (1) brief reviewers to ATTACK, not confirm — a review that verifies the reported defect is fixed passes a blocklist every time, and this is what found both TASK-186 escapes; (2) for multi-round reviews the base ref is the parent of the FIRST commit, not the last (a briefing error the TASK-191 reviewer caught); (3) relay the developer's five-item R3 checklist VERBATIM to the reviewer — omitting it cost a MEDIUM twice on TASK-186.",
+  "handoff_summary": "Session 2026-08-02 COMPLETE for the in-flight batch. Board drove 181 -> 184 done with ZERO open in_review or in_progress work. Closed: TASK-191 (APPROVE light), TASK-194 (APPROVE full, commit 7ca9cd4), TASK-186 (APPROVE full after THREE fix rounds, commits 1cf6fa6/3f42183/ae63934/9f942d9). Two knowledge drafts filed under knowledge/proposed/. Session began by reconstructing state from ticket files + git log after the previous driving chat was stopped mid-batch, leaving TASK-186 and TASK-191 in_review with empty comments and linked_commits — that evidence trail is now fully restored on both tickets.",
   "open_questions": [
-    "Are the subagents from the stopped chat actually dead? If they are, this session should resume DRIVING (spawning reviewers/developer) rather than orchestrating-only. If any are still live, confirm which ticket keys they own so this session stays off those surfaces — all spawns share one git index (the very hazard TASK-191 documents).",
     "TASK-182 item 3 (dual-copy precedence) still needs a human decision on DIRECTION before implementation — (a) reconciler skips/retires the project-scope copy when the plugin ships an equal-or-newer pin, (b) keep both channels and document the precedence TASK-181 created de facto, (c) plugin-root-only with a one-time migration. Any solution must not emit a bare REMOVE against already-installed consumers.",
+    "Promote or discard the two knowledge drafts in knowledge/proposed/ (Gate 5 batch decision).",
     "Carried and still unanswered: PROJECT.md design-profile spec approval (docs/design/design-profile-spec.md open Qs), Phase F resource pins/origins, and the on-disk pack discovery convention deferred by TASK-128.",
-    "Separate tree, not this repo: C:/Fun/agentic-framework has an untracked commands/report-bug.md in its agent-framework clone (dated Jun 23), and its framework-comparison.html documents v0.7.0 while that clone now sits at cf99bed = v0.9.0-12. Clean up / refresh, or leave dormant?"
+    "Separate tree, not this repo: C:/Fun/agentic-framework was audited and repaired this session (clones pristine, framework-comparison.html refreshed to v0.9.0+12, HANDOFF.md updated). Its implementation-engine side was NOT re-inventoried — that clone is unmoved at 1111c29 and upstream may have advanced. Re-check, or leave dormant?"
   ],
   "blockers": [],
   "decisions": [
@@ -67,6 +67,18 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-08-03T03:26:35.187Z",
+      "task": "TASK-186",
+      "summary": "TASK-186 round 3 APPROVE (FULL). 0 HIGH / 1 MEDIUM (relay artifact, discharged) / 3 LOW. 35 probes, 5 through the real mcp-server composition — ZERO surprises. Class closed STRUCTURALLY: rounds 1-2 were blocklists that trusted the complement, round 3 requires the body to parse IN FULL as <step-block>+ <overall-line> with every component anchored at both ends. Reviewer attacked the complement directly (duplicate/misplaced/decoy overall lines, boundary-shaped non-boundaries, CR/zero-width/full-width smuggling, multi-line overall, empty blocks, steps after the terminator) and found no unchecked region. Residual is now SEMANTIC (prose inside a component ending in a bare Verdict: PASS), not structural — accurate for the first time in the ticket. Orchestrator's two regex concerns resolved as non-defects: the overall line IS trimmed (:221) and whitespace-normalized (:319), split(/\\r?\\n/) strips \\r, and probe P7 proves CRLF bodies are ACCEPTED (no Windows fail-closed). Red run reproduced independently; corpus zero flips; dist byte-parity with zero remaining OVERALL_PASS_RE hits. CLOSED."
+    },
+    {
+      "agent": "developer",
+      "at": "2026-08-03T03:26:35.187Z",
+      "task": "TASK-186",
+      "summary": "TASK-186 round 3 DONE, commit 9f942d9. ADOPTED the allowlist-grammar framing rather than a third blocklist patch: parseUatBody now returns the overall line text and evaluateStructuredStepVerdicts tests it with STRICT_OVERALL_RE anchored at both ends, replacing the removed body-wide OVERALL_PASS_RE. E1/E2 red captured verbatim via git-stash of implementation files only. Corpus checked before AND after: 45 uat comments, zero flips both functions. Residual re-scoped accurately. Took both LOWs. dist rebuilt. Also correctly REMOVED two redundant draft specs pre-commit — the reviewer verified that cut was right (the period-trailing accept branch is covered at close-guard.spec.js:258, asserted resolving at :291-300 and :363-378)."
+    },
     {
       "agent": "reviewer",
       "at": "2026-08-03T02:34:44.826Z",
@@ -144,18 +156,6 @@
       "at": "2026-07-08T20:10:00.000Z",
       "summary": "TASK-123 APPROVE (full depth), ZERO findings. Schema adds exactly two optional resource fields (activate_when, install; type:string minLength:1); additionalProperties:false intact (AC3 non-vacuous); no evaluation logic added (deferred Phase D/F); src/pack-descriptor.js unchanged; dist-parity confirmed (not bundled). tdd two-commit + red-run (7 fail for right reason) reproduced.",
       "task": "TASK-123"
-    },
-    {
-      "agent": "researcher",
-      "at": "2026-07-08T20:05:00.000Z",
-      "summary": "Phase E design investigation (2 parallel lenses). Scoring lens wrote docs/design/design-profile-spec.md (DRAFT): beauty×functionality axes 0-3, tier rule fHigh&&bHigh->COMPLETO/fHigh||bHigh->MEDIO/else LIGERO, design_heavy gate + 10-Q conditional interview, pure scoreComplexity(answers), activation predicates, 8 open Qs (#4 no canvas-motion resource, #5 playwright/web-UI inferred). Repo-fit lens: 8-var contract {tier,framework,ui_outside_canvas,motion_required,motion_layer,needs_research,assets,web_ui}, step×tier matrix, flagged tier can't be a when-gate (needs post-scoring activation pass) + frontend_framework is web-saas-gated. AWAITING HUMAN APPROVAL before minting Phase E tickets.",
-      "task": "phase-e-investigation"
-    },
-    {
-      "agent": "reviewer",
-      "at": "2026-07-08T19:25:00.000Z",
-      "summary": "TASK-122 APPROVE (full depth), no HIGH. Verified in-code (not just tests): no-write-without-approve (AC3) and suspicious-blocks-without-override (AC4) invariants hold; non-vacuous byte-untouched sensors; no scan/reviewer leak into lock/provenance; tdd two-commit + red-run reproduced at impl parent. 1 LOW (truthiness) hardened post-approve with red-green regression test.",
-      "task": "TASK-122"
     }
   ],
   "pending_human_confirmation": null,
@@ -168,10 +168,10 @@
     "auto_version_bump_on_milestone": false
   },
   "loop_state": {
-    "current_ticket": "TASK-186",
-    "phase": "impl",
+    "current_ticket": null,
+    "phase": "idle",
     "iteration": 0,
-    "completed_this_run": 4,
+    "completed_this_run": 5,
     "run_started_at": "2026-08-02T13:00:00Z"
   }
 }

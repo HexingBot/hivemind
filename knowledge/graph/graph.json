@@ -1358,6 +1358,12 @@
       "label": "safeRef path guard is defeated by one leading space, and half its claimed forms are untested"
     },
     {
+      "id": "task-186",
+      "type": "task",
+      "ref": "tasks/TASK-186.json",
+      "label": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously"
+    },
+    {
       "id": "task-190",
       "type": "task",
       "ref": "tasks/TASK-190.json",
