@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02T21:07:58.607Z",
+  "generated_at": "2026-08-03T02:03:53.943Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1084,7 +1084,7 @@
     {
       "key": "TASK-186",
       "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
-      "status": "in_review",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -1114,7 +1114,7 @@
     {
       "key": "TASK-191",
       "title": "Parallel developer spawns share one git index, so explicit-path staging is not safe",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {

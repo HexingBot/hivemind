@@ -1364,6 +1364,12 @@
       "label": "deep-review silently ignores its args: docs pass a string, the script reads an object"
     },
     {
+      "id": "task-191",
+      "type": "task",
+      "ref": "tasks/TASK-191.json",
+      "label": "Parallel developer spawns share one git index, so explicit-path staging is not safe"
+    },
+    {
       "id": "task-192",
       "type": "task",
       "ref": "tasks/TASK-192.json",

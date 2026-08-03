@@ -2,19 +2,24 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
-  "updated_at": "2026-08-02T18:40:14.162Z",
-  "active_task": null,
-  "workflow_step": "idle",
-  "next_action": "WAIT FOR HUMAN COMMAND to run the general review across the batch. Human said: \"finish all task then we run review but wait on my command\" — all tasks are finished; do NOT launch any review until they say go. Scope when it comes: commits 66ee5d9 (TASK-181, packs/reconciler + dist) and 80edf15 (TASK-175, intake/kb-graph cleanup, 17 files). TWO KNOWN GAPS the general review must cover: (1) TASK-181 got light depth when the rubric computed FULL (609 lines, packaging/dist + core tdd-tier reconciler) — its dist bundle and reconciler changes never had a full-depth pass; (2) TASK-175 closed with NO independent reviewer at all, so its diff is entirely unvetted and its red-green planting claim for items 1/2/4/5/6/9/10/13 is self-reported and unreproduced. Also un-UAT-ed: TASK-175 items 2 (user-visible warning casing) and 16 (skill doc wording). Open board: TASK-182 only (todo).",
-  "handoff_summary": "Session 2026-08-02: resumed from a stale bundle (last written 2026-07-18; it did not reflect TASK-180/181 work at all — ticket files + git log were the accurate state). Pull: already up to date. Board drained from 3 open to 1. TASK-003 (Jira migration, blocked since inception on Atlassian creds that are not being provisioned) DELETED outright at human request — verified zero depends_on references and that every TASK-003 mention in the suite is a synthetic temp-dir fixture. TASK-181 and TASK-175 were driven IN PARALLEL (reviewer + developer, disjoint file surfaces) at human direction and both closed green. Human directed reduced per-ticket review depth with a single general review to follow on their explicit command — that review has NOT been run and is the pending next step.",
+  "updated_at": "2026-08-03T02:06:28.456Z",
+  "active_task": "TASK-194",
+  "workflow_step": "impl",
+  "next_action": "IN FLIGHT: TASK-194 developer (tests-after). Design given: extract the shared change-detection from scripts/test-since.mjs into one mechanism serving both entry points, refless mode = same three git commands minus the <ref>...HEAD one; emit the empty-diff marker from the CHEAP git check only and SKIP the 5.2s vitest-list pre-check (AC5 — test:changed is the fast inner-loop command); never fatal on zero selection (AC3); pass the real vitest exit code through (AC4, prove empirically); add a fast-tier sensor globbing node_modules/vitest/dist/chunks/git.*.js pinning the three git argument sequences; extend CLAUDE.md Empty-result contract (AC7). On return: review at the rubric-computed depth, then close.\n\nTHEN: TASK-186 fix round. Scope is narrow — harden splitIntoStepBlocks/evaluateStructuredStepVerdicts against the HIGH and replay R1/R2 as red specs; optionally take the hasRecordedUatVerdict MEDIUM in the same round. Everything under \"PROVEN GOOD\" in the TASK-186 subagent_results entry stands and needs no rework — do not re-verify AC1/AC4/AC5/AC7/AC8 from scratch.\n\nTHEN: TASK-196 (high, todo) should land promptly — the canonical UAT recording convention in SKILL.md + CLAUDE.md no longer produces a comment the now-mandatory gate accepts. Fail-CLOSED (blocks legitimate closes) rather than a hole, which is the only reason it was tolerable to defer.\n\nREMAINING TODO: TASK-182, 187, 188, 189, 193, 195, 196.",
+  "handoff_summary": "Session 2026-08-02. Both pending reviews ran and DIVERGED. TASK-191 APPROVED and CLOSED (commits ca21d2b + b62fe82 recorded; graph node created; knowledge draft written to knowledge/proposed/parallel-spawns-share-one-git-index.md per TASK-105, since it needed an RC round). TASK-186 REQUEST-CHANGES on a reproduced HIGH and is back in_progress for a fix round — its full review is now recorded as a ticket comment, repairing the evidence trail that died with the stopped chat. TASK-194 developer is RUNNING (tests-after, test:changed zero-selection marker + vitest-algorithm pin). Board: 182 done / 7 todo / 0 in_review / 2 in_progress.",
   "open_questions": [
-    "General review scope/depth: does the human want the full deep-review workflow (/deep-review base=<ref>) across both commits, or a standard fresh-context reviewer pass per commit? Deep-review needs explicit per-run human approval.",
-    "TASK-182 item 3 (dual-copy precedence) needs a human decision on DIRECTION before implementation — candidates (a) reconciler skips/retires the project-scope copy when the plugin ships an equal-or-newer pin, (b) keep both channels and document the precedence TASK-181 already created de facto, (c) plugin-root-only with a one-time migration. Any solution must not emit a bare REMOVE against already-installed consumers.",
-    "TASK-182 item 1: should bin/pack-ctl.js CODE conform to its documented output contract (code/message + non-zero exit) or should the HEADER document the new ok:false/exit-0/counts shape? Changing the exit code requires updating the TASK-181 AC6 spec in step.",
-    "Carried from the prior session, still unanswered: PROJECT.md design-profile spec approval (docs/design/design-profile-spec.md open Qs), Phase F resource pins/origins, and the on-disk pack discovery convention deferred by TASK-128."
+    "Are the subagents from the stopped chat actually dead? If they are, this session should resume DRIVING (spawning reviewers/developer) rather than orchestrating-only. If any are still live, confirm which ticket keys they own so this session stays off those surfaces — all spawns share one git index (the very hazard TASK-191 documents).",
+    "TASK-182 item 3 (dual-copy precedence) still needs a human decision on DIRECTION before implementation — (a) reconciler skips/retires the project-scope copy when the plugin ships an equal-or-newer pin, (b) keep both channels and document the precedence TASK-181 created de facto, (c) plugin-root-only with a one-time migration. Any solution must not emit a bare REMOVE against already-installed consumers.",
+    "Carried and still unanswered: PROJECT.md design-profile spec approval (docs/design/design-profile-spec.md open Qs), Phase F resource pins/origins, and the on-disk pack discovery convention deferred by TASK-128.",
+    "Separate tree, not this repo: C:/Fun/agentic-framework has an untracked commands/report-bug.md in its agent-framework clone (dated Jun 23), and its framework-comparison.html documents v0.7.0 while that clone now sits at cf99bed = v0.9.0-12. Clean up / refresh, or leave dormant?"
   ],
   "blockers": [],
   "decisions": [
+    {
+      "at": "2026-08-02T21:23:55.272Z",
+      "decision": "Reconstructed the orchestrator state from ticket files + git log after the driving chat was stopped mid-batch, and ruled that the TASK-186 and TASK-191 reviews must be REDONE from their committed diffs rather than treated as already-vetted. Also verified, on request, that a separate and much older chat (2026-06-17, C:/Fun/agentic-framework) completed its deliverable correctly.",
+      "rationale": "The bundle was stale by an entire batch — it still described a pre-TASK-183 world and named a general review as pending that had in fact already run and spawned TASK-183..196. Ticket files and git log were the accurate state, the same failure mode and the same resolution as this session's previous reconstruction. The review ruling is forced by evidence, not caution: both tickets carry comments:[] and linked_commits:[] while sitting in_review, and commit 406149a proves TASK-186 went through a fix round whose findings exist nowhere on disk. An unrecorded verdict is not a verdict. TASK-186 is tdd-tier on the close-guard write path, so accepting an unevidenced pass there would defeat the exact guard the ticket exists to harden. Separately, the agentic-framework audit was structural and evidence-based: the report is well-formed (564 lines) and genuinely offline (zero external refs), its capability matrix has exactly the 17 data rows claimed, and three spot-checked matrix claims all reproduce against the v0.7.0 tag it described (6 registerTool calls; console.md/console.cmd/console.sh present; loop.md + drive-loop.js present). Two drift items post-date it and are NOT that chat's fault: an untracked commands/report-bug.md from Jun 23, and the clone having been pulled forward 24 commits to v0.9.0-12 so the report no longer describes what is checked out."
+    },
     {
       "at": "2026-08-02T18:40:14.162Z",
       "decision": "Human directed a reduced-review, parallel-drive mode for the final two tickets: run TASK-181 (reviewer) and TASK-175 (developer) concurrently in one working tree with deliberately disjoint file surfaces, downgrade TASK-181 review depth from the rubric-computed FULL to light, and skip the per-ticket reviewer for TASK-175 entirely — deferring both to a single general review to be launched only on explicit human command. Also deleted TASK-003 outright rather than closing it to done. Both tickets closed green; TASK-182 minted to carry the three deferred items.",
@@ -62,6 +67,18 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-08-03T02:06:28.456Z",
+      "task": "TASK-186",
+      "summary": "TASK-186 REQUEST-CHANGES (FULL depth; ~989 lines, close-guard write path + 2 dist bundles, tdd). 1 HIGH / 3 MEDIUM / 2 LOW. HIGH: splitIntoStepBlocks (src/close-guard.js:127-146,160-170) discards text BEFORE the first step line and AFTER the \"Overall result:\" line, so a crash narrated in a preamble or postscript is invisible to the gate — reproduced live: R1 preamble and R2 postscript bodies both yield hasExplicitHumanVerdictMarker===true while stating an AC is broken. That is V1 by another route and contradicts the function contract at :187-190. Fix: require step-block count >= acceptance_criteria.length and/or reject non-whitespace text outside step blocks; replay R1/R2 as red specs. MEDIUM: hasRecordedUatVerdict (src/task-store.js:413-444) still fails open on a per-step \"Verdict: FAIL\" lacking the literal \"Overall result: FAIL\"; canonical SKILL.md/CLAUDE.md convention drift (already TASK-196, fail-CLOSED so tolerable); no hand-off checklist (lost chat). PROVEN GOOD, do not redo: red state REPRODUCED TWICE in a git-archive sandbox (9 failures vs base e107908, all right-reason assertion failures; exactly the 3 fix-round locks vs 1cf6fa6); AC4 verified against the REAL tasks/ (191 tasks, 45 uat comments, 1 marker flip = TASK-133 already done, ZERO open uat-only stranded); AC5 controls V0/V2 caught in both states; dist genuinely rebuilt (parity byte-matched all 8 bundles); test:all 175 files/2019 passed."
+    },
+    {
+      "agent": "reviewer",
+      "at": "2026-08-03T02:06:28.456Z",
+      "task": "TASK-191",
+      "summary": "TASK-191 APPROVE (LIGHT depth; ~303 lines, docs + parity mirrors + 2 specs, no src/dist). 0 HIGH / 2 MEDIUM / 1 LOW — both MEDIUMs were Orchestrator close-time conditions, discharged in the closing comment (AC2 mitigation+cost+non-protections; lost hand-off recorded; linked_commits set). Parity verified by direct SHA-256, not via the parity spec. AC1 took the honest fallback (live race impractical in CI, stated in the spec header) but still genuinely reproduces the hazard, not just the happy path. Doc-lock confirmed non-vacuous: hard-coded distinctive phrases, NOT fixture-derived, so the TASK-184 empty-checked-set class does not apply. Same-path limitation documented honestly including that git show --stat HEAD cannot detect it. LOW-1 was MY briefing error: base ref 7eaac22 postdates the first commit ca21d2b, so that range never covered round one — reviewer re-ran from 0718d02 (= ca21d2b^). STANDING CORRECTION: for multi-round reviews the base ref is the parent of the FIRST commit, not the last. test:all 175 files/2019 passed. CLOSED."
+    },
     {
       "agent": "reviewer",
       "at": "2026-08-02T18:40:14.162Z",
@@ -139,12 +156,6 @@
       "at": "2026-07-08T16:31:34.971Z",
       "summary": "TASK-116 APPROVE clean (data-loss regression real)",
       "task": "TASK-116"
-    },
-    {
-      "agent": "reviewer",
-      "at": "2026-07-08T16:31:34.971Z",
-      "summary": "TASK-117 PASS clean (false-permissive path proven closed)",
-      "task": "TASK-117"
     }
   ],
   "pending_human_confirmation": null,
@@ -157,8 +168,8 @@
     "auto_version_bump_on_milestone": false
   },
   "loop_state": {
-    "current_ticket": null,
-    "phase": "idle",
+    "current_ticket": "TASK-194",
+    "phase": "impl",
     "iteration": 0,
     "completed_this_run": 2,
     "run_started_at": "2026-08-02T13:00:00Z"

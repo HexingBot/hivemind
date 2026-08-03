@@ -10,7 +10,7 @@
     "Mandatory post-commit verification (git show --stat HEAD immediately after committing, asserting the file list matches intent) is added to the developer briefing contract regardless of which mitigation is chosen — it is what caught this incident and it is nearly free.",
     "npm run test:all is green; no existing spec regresses; if any bundled source changed, dist rebuilt and committed with dist-parity passing."
   ],
-  "status": "in_review",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "orchestration",
@@ -20,11 +20,20 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "ca21d2b",
+    "b62fe82"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-03T02:03:06.787Z",
+      "body": "APPROVED and closed on a green independent review.\n\n**Review depth: LIGHT.** Rubric inputs: ~303 changed lines across two rounds; no `src/`, `bin/`, or `dist/` change — surfaces are agent documentation, its plugin-root parity mirrors, and two spec files. The reviewer independently assessed the depth call and confirmed nothing warranted escalation to full.\n\n**Findings: 0 HIGH / 2 MEDIUM / 1 LOW.** Both MEDIUMs were close-time conditions on the Orchestrator, not code defects — they are discharged by this comment.\n\n## AC2 — chosen mitigation, its cost, and what it does NOT protect against\n\n**Chosen: pathspec-limited commit.** The developer commits with `git commit -m \"...\" -- <explicit paths>` rather than a plain `git commit` after `git add <paths>`, so the commit is scoped by pathspec at commit time instead of relying on the shared index being clean.\n\n**Why this over the alternatives.** Worktree isolation (the strongest option) was not taken because it changes how every developer spawn is provisioned and would have widened a `tests-after` docs ticket into infrastructure work — it is instead carried forward as TASK-195. Serialized commits were rejected because they discard the throughput that makes parallel spawns worth doing at all.\n\n**Cost.** It relies on agent compliance — nothing mechanically prevents a developer from running a plain `git commit`; the protocol is guidance in the briefing, not an enforced hook. Untracked files still need a prior `git add`, because a pathspec commit records working-tree content for paths git already knows about.\n\n**What it does NOT protect against.** Two agents touching the SAME path: a pathspec commit records the working-tree content of that path, so a sibling's concurrent edit to the same file is swept in silently. Critically, the mandatory `git show --stat HEAD` post-commit check **cannot detect this case**, because the file list still matches intent — only the content differs. This limitation is documented in `agents/developer.md` (both parity copies) rather than glossed. It also does not protect against a disobedient or malfunctioning agent.\n\n## Verification reproduced at review\n\n- `npm run test:since -- 0718d02` (the true parent of the first commit) — PASS, 21 files / 229 tests\n- `npm test` (fast tier, the load-bearing fs-read sensor run) — PASS, 80 files / 1079 passed, 2 skipped\n- `tests/e2e/git-pathspec-commit-isolation.spec.js` — PASS 2/2; `tests/git-commit-protocol-doc-locks.spec.js` — PASS 8/8\n- `npm run test:all` — PASS, 175 files / 2019 passed, 4 skipped (includes dist-parity)\n\n**Parity verified directly, not via the parity spec:** SHA-256 of `.claude/agents/developer.md` == `agents/developer.md` (`db65c5b9...`) and `.claude/skills/orchestrator-routing/SKILL.md` == `skills/orchestrator-routing/SKILL.md` (`d063f5c2...`); `diff` empty on both pairs.\n\n**AC1 took the documented fallback, honestly.** A live two-process race is impractical to reproduce deterministically in CI, and the spec says so at `tests/e2e/git-pathspec-commit-isolation.spec.js:5-23` rather than shipping an untested fix claim. It then does better than the AC's minimum: test 1 genuinely reproduces the hazard (a plain commit sweeping the sibling's staged `fileB.txt` despite Agent A's explicit-path `add`), and test 2 locks the mitigation. The sequenced interleaving exercises the identical git plumbing a real race would.\n\n**Doc-lock confirmed non-vacuous.** The checked set is a hard-coded list of long distinctive phrases, NOT derived from a fixture run — so the TASK-184 empty-checked-set failure class does not apply here. Predicates are affirmative multi-word matches, not bare substrings that unrelated words could satisfy. Deleting the protocol section from both parity copies fails 6-8 assertions naming the missing text.\n\n## Audit-trail gaps recorded honestly\n\n**MEDIUM-1 — no developer hand-off exists.** The driving chat was stopped and its context lost, so the five mandatory pre-hand-off checklist outcomes were never stated, and the red-green plant evidence the spec header points at is unrecoverable. The reviewer reconstructed every item independently: parity byte-identical, dist N/A (no source change), no calibration-marked files touched, doc-locks statically verified non-vacuous, all changed prose pinned by the new spec. Recording the gap here so the trail explains itself rather than appearing complete.\n\n**LOW-1 — Orchestrator briefing error.** The base ref supplied for re-verification (`7eaac22`) postdates the first commit `ca21d2b`, so that range never covered round one and the SKILL.md changes fell outside it entirely. The reviewer caught this and re-ran from `0718d02` (= `ca21d2b^`). Standing correction for future multi-round reviews: **the base ref is the parent of the FIRST commit in the range, not of the last.**\n\nCarried forward: TASK-195 (worktree isolation — remove the shared index rather than briefing around it)."
+    }
+  ],
   "created_at": "2026-08-02T19:45:29.175Z",
-  "updated_at": "2026-08-02T21:05:59.577Z",
+  "updated_at": "2026-08-03T02:03:06.787Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",
