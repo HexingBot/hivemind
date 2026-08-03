@@ -467,8 +467,10 @@ behavior.
      This is a floor, not per-AC coverage — see the note under step 4.
    - **A strict overall line, with nothing appended:** `Overall result: PASS`
      or `Overall result: FAIL` (the guard also tolerates the shorter
-     `Overall: PASS` / `Overall: FAIL`, but `Overall result:` is the
-     documented canonical form). `Overall result: PASS (deferred)` or
+     `Overall: PASS`, though `Overall result:` remains the documented
+     canonical form; the FAIL spellings are the recording convention for a
+     failed UAT — the marker never accepts any FAIL body, and the ticket
+     returns to the Developer). `Overall result: PASS (deferred)` or
      `Overall result: PASS — but see note below` are **rejected**, not
      accepted-with-caveat — mark that step's own verdict `FAIL` instead of
      qualifying the overall line.
@@ -820,8 +822,9 @@ compose the three deterministic mutation-seam guards below; a direct hand
   or the ticket's `uat` comment to carry an explicit human-verdict marker: it
   parses in full as `<step-block>+ <overall-line>` per the UAT-recording
   convention above — no preamble, every step ending with a literal
-  `Verdict: PASS`/`Verdict: FAIL` label, at least as many step blocks as the
-  ticket has acceptance criteria (a floor, not per-AC coverage), and a
+  `Verdict:` label whose value is PASS (`Verdict: FAIL` is rejected the
+  same as an unlabelled step), at least as many step blocks as the ticket
+  has acceptance criteria (a floor, not per-AC coverage), and a
   strict `Overall result: PASS`/`Overall: PASS` line with nothing appended —
   and is not qualified anywhere by "verified by Orchestrator at the human's
   request"; otherwise it's blocked with a typed `UatDelegationGuardError`

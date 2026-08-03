@@ -96,15 +96,24 @@ describe('TASK-196 AC1/AC3 — SKILL.md UAT worked example vs the live loop-mode
     ).toBe(true);
   });
 
-  // TASK-196 fix round (MEDIUM-2) — the docs also claim the guard tolerates
-  // the short "Overall: PASS" form (no "result") and an optional trailing
-  // period on the overall line. The canonical example above exercises
-  // neither (it reads "Overall result: PASS", no period), so without these
-  // two assertions a future narrowing of STRICT_OVERALL_RE could silently
-  // falsify the published tolerance claims while this file stayed green.
-  // Both transforms apply to the extracted example itself (never a
-  // spec-local re-encoding of the grammar), consistent with this file's
-  // derived-from-doc design.
+  // TASK-196 fix round (MEDIUM-2; comment reworded round 3 per LOW-1 — the
+  // original wording misattributed the trailing-period claim to the
+  // overall-line bullet) — the docs claim the guard tolerates the short
+  // "Overall: PASS" form (no "result") on the overall line (SKILL.md:468-469).
+  // The optional trailing period is documented only for the STEP LABEL
+  // (SKILL.md:463: "an optional trailing period is fine"); the overall-line
+  // bullet itself says "with nothing appended" (SKILL.md:468) and makes no
+  // period claim. STRICT_OVERALL_RE tolerates a trailing period on the
+  // overall line too (close-guard.js's evaluateStructuredStepVerdicts doc
+  // comment says so explicitly) — real guard behavior, not a SKILL.md claim
+  // about the overall line — so this second assertion locks that behavior
+  // rather than restating a doc sentence that doesn't exist for this region.
+  // The canonical example above exercises neither transform (it reads
+  // "Overall result: PASS", no period), so without both assertions a future
+  // narrowing of STRICT_OVERALL_RE could silently drop either tolerance
+  // while this file stayed green. Both transforms apply to the extracted
+  // example itself (never a spec-local re-encoding of the grammar),
+  // consistent with this file's derived-from-doc design.
   describe('AC3 documented tolerances — transforms of the doc example are still ACCEPTED', () => {
     it('the short "Overall:" form (result omitted) is ACCEPTED by hasExplicitHumanVerdictMarker', () => {
       const raw = extractWorkedExample();
