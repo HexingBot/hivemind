@@ -2,11 +2,11 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
-  "updated_at": "2026-08-03T03:26:35.187Z",
+  "updated_at": "2026-08-03T05:32:38.779Z",
   "active_task": null,
   "workflow_step": "idle",
-  "next_action": "NOTHING IS IN FLIGHT. Board is 184 done / 7 todo / 0 in_review / 0 in_progress. Tree clean.\n\nRECOMMENDED NEXT: **TASK-196 (high)** — it is now BLOCKING, not routine, and its scope addendum is recorded on the ticket. Two independent reviewers confirmed that 0 of 45 historical uat comments satisfy the marker, and that an orchestrator following the documented convention verbatim CANNOT produce a comment the gate accepts. The accepted grammar accumulated four undocumented requirements across the TASK-186 rounds (mandatory Verdict: label; no preamble at all; step count >= AC count; strict overall line anchored both ends). Fail-CLOSED, so nothing unsafe shipped — but the documented process is wrong. Its doc-lock must derive the FULL grammar from the guard, not just the label, or the next tightening re-opens the same gap.\n\nALSO PENDING: the two knowledge drafts in knowledge/proposed/ (parallel-spawns-share-one-git-index, blocklist-content-gates-lose-to-relocation) await batch promotion or discard under Gate 5 — they are excluded from lookupKnowledge until promoted.\n\nREMAINING TODO: TASK-182 (needs a human DIRECTION decision on dual-copy precedence before any implementation), 187, 188, 189, 193, 195 (worktree isolation — the structural fix TASK-191 deferred), 196.\n\nPROCESS LESSONS EARNED THIS SESSION, worth carrying: (1) brief reviewers to ATTACK, not confirm — a review that verifies the reported defect is fixed passes a blocklist every time, and this is what found both TASK-186 escapes; (2) for multi-round reviews the base ref is the parent of the FIRST commit, not the last (a briefing error the TASK-191 reviewer caught); (3) relay the developer's five-item R3 checklist VERBATIM to the reviewer — omitting it cost a MEDIUM twice on TASK-186.",
-  "handoff_summary": "Session 2026-08-02 COMPLETE for the in-flight batch. Board drove 181 -> 184 done with ZERO open in_review or in_progress work. Closed: TASK-191 (APPROVE light), TASK-194 (APPROVE full, commit 7ca9cd4), TASK-186 (APPROVE full after THREE fix rounds, commits 1cf6fa6/3f42183/ae63934/9f942d9). Two knowledge drafts filed under knowledge/proposed/. Session began by reconstructing state from ticket files + git log after the previous driving chat was stopped mid-batch, leaving TASK-186 and TASK-191 in_review with empty comments and linked_commits — that evidence trail is now fully restored on both tickets.",
+  "next_action": "NOTHING IN FLIGHT. Board 185 done / 6 todo / 0 in_review / 0 in_progress. Tree clean.\n\nREMAINING TODO: TASK-182 (BLOCKED on a human DIRECTION decision - dual-copy precedence, three options in open_questions), 187 (todo->done in one hop with no review), 188 (close guards live in the MCP wrapper, not the primitive), 189 (ACs accept vacuous/mis-tiered inputs), 193 (ref safety: reject % outright), 195 (worktree isolation - the structural fix TASK-191 deferred).\n\nSUGGESTED NEXT: TASK-195 or TASK-188. TASK-195 removes the shared git index rather than briefing around it, and this session repeatedly relied on the pathspec protocol that only mitigates it. TASK-188 is the close-guard architecture follow-on and this session accumulated deep context on that surface.\n\nTHREE knowledge drafts await Gate 5 batch promotion or discard in knowledge/proposed/: parallel-spawns-share-one-git-index, blocklist-content-gates-lose-to-relocation, pin-docs-by-executing-their-own-example. Excluded from lookupKnowledge until promoted.\n\nPROCESS LESSONS EARNED (carry these): (1) brief reviewers to ATTACK, not confirm - a review that verifies the reported defect is fixed passes a blocklist every time, and this found both TASK-186 escapes; (2) multi-round reviews take the parent of the FIRST commit as base ref, not the last; (3) relay the developer's five-item R3 checklist VERBATIM - omitting it cost a MEDIUM three times; (4) assertion inversion is NOT adequate plant evidence for a lock whose value is coupling to external behavior - prove the coupling; (5) doc prose must be written FROM SOURCE, not from intent - three errors in one ticket, all in prose outside the pinned example block.",
+  "handoff_summary": "Session 2026-08-02/03 COMPLETE. Board 181 -> 185 done, ZERO open in_review/in_progress. Closed: TASK-191 (light), TASK-194 (full), TASK-186 (full, 3 fix rounds), TASK-196 (3 rounds, 0 findings at close). THREE knowledge drafts filed. Session began by reconstructing state from ticket files + git log after the previous driving chat was stopped mid-batch, leaving two tickets in_review with empty comments and linked_commits - that evidence trail is fully restored.",
   "open_questions": [
     "TASK-182 item 3 (dual-copy precedence) still needs a human decision on DIRECTION before implementation — (a) reconciler skips/retires the project-scope copy when the plugin ships an equal-or-newer pin, (b) keep both channels and document the precedence TASK-181 created de facto, (c) plugin-root-only with a one-time migration. Any solution must not emit a bare REMOVE against already-installed consumers.",
     "Promote or discard the two knowledge drafts in knowledge/proposed/ (Gate 5 batch decision).",
@@ -67,6 +67,12 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-08-03T05:32:38.779Z",
+      "task": "TASK-196",
+      "summary": "TASK-196 APPROVE, 0 findings at any severity, after 2 RC rounds. Definitive answer to the ticket's premise: EVERY claim in the documented UAT convention now corresponds to what src/close-guard.js implements, in MECHANISM as well as outcome - verified claim-by-claim across SKILL.md:458-476/492-500/502-513/818-835 and CLAUDE.md. Three doc-vs-code errors were found and fixed over the rounds ((both modes) AC-count claim = HIGH; PASS/FAIL verdict-word overstatement; Overall: FAIL tolerance), ALL in prose written from intent rather than source. Durable deliverable: tests/uat-doc-example-lock.spec.js extracts the published example verbatim from SKILL.md and runs it through the LIVE guard, so a future tightening not mirrored in docs breaks the lock; CLAUDE.md duplicate replaced by a pointer leaving ZERO unlocked copies. CLOSED."
+    },
     {
       "agent": "reviewer",
       "at": "2026-08-03T03:26:35.187Z",
@@ -150,12 +156,6 @@
       "at": "2026-07-08T20:45:00.000Z",
       "summary": "TASK-124 APPROVE (full depth), no HIGH. perfil_proyecto/tier frontmatter wired symmetrically render/parse/restore via SPECIAL_FRONTMATTER_IDS (agent_models precedent); AC4 backward-compat non-vacuous (absent->no lines, no Stack leak); tier enum rejects out-of-enum; dist/init.cjs rebuild independently confirmed fresh via test:all dist-parity (only init.cjs changed). 1 MEDIUM = checklist-not-relayed (process, dev did state it); 1 LOW = comma-in-value parser edge (tracked to Phase E scoring ticket).",
       "task": "TASK-124"
-    },
-    {
-      "agent": "reviewer",
-      "at": "2026-07-08T20:10:00.000Z",
-      "summary": "TASK-123 APPROVE (full depth), ZERO findings. Schema adds exactly two optional resource fields (activate_when, install; type:string minLength:1); additionalProperties:false intact (AC3 non-vacuous); no evaluation logic added (deferred Phase D/F); src/pack-descriptor.js unchanged; dist-parity confirmed (not bundled). tdd two-commit + red-run (7 fail for right reason) reproduced.",
-      "task": "TASK-123"
     }
   ],
   "pending_human_confirmation": null,
@@ -171,7 +171,7 @@
     "current_ticket": null,
     "phase": "idle",
     "iteration": 0,
-    "completed_this_run": 5,
+    "completed_this_run": 6,
     "run_started_at": "2026-08-02T13:00:00Z"
   }
 }
