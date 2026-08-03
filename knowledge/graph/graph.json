@@ -1374,6 +1374,12 @@
       "type": "task",
       "ref": "tasks/TASK-192.json",
       "label": "Empty results must declare themselves empty: absence of evidence keeps rendering as evidence of absence"
+    },
+    {
+      "id": "task-194",
+      "type": "task",
+      "ref": "tasks/TASK-194.json",
+      "label": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned"
     }
   ],
   "edges": [

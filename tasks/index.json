@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-03T02:03:53.943Z",
+  "generated_at": "2026-08-03T02:33:03.167Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1132,7 +1132,7 @@
     {
       "key": "TASK-194",
       "title": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned",
-      "status": "in_progress",
+      "status": "done",
       "priority": "medium"
     },
     {
