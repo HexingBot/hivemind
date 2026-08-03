@@ -25830,7 +25830,8 @@ var UatGuardError = class extends Error {
   }
 };
 var UAT_VERDICT_WORD_RE = /\bpass\b/i;
-var OVERALL_FAIL_RE = /overall result:?\s*fail/i;
+var VERDICT_FAIL_RE = /verdict\s*:\s*fail/i;
+var OVERALL_FAIL_RE = /overall(?:\s+result)?\s*:?\s*fail/i;
 function hasRecordedUatVerdict(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
   const uatComments = comments.filter((c) => c && c.author === "uat");
@@ -25838,7 +25839,7 @@ function hasRecordedUatVerdict(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String(last && last.body || "").trim();
   if (body === "") return false;
-  if (OVERALL_FAIL_RE.test(body)) return false;
+  if (VERDICT_FAIL_RE.test(body) || OVERALL_FAIL_RE.test(body)) return false;
   return UAT_VERDICT_WORD_RE.test(body);
 }
 function checkUatGuard(task) {
@@ -26118,7 +26119,7 @@ var FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 var STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
 var OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 var STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
-function splitIntoStepBlocks(body) {
+function parseUatBody(body) {
   const lines = String(body).split(/\r?\n/);
   const boundaries = [];
   lines.forEach((line, idx) => {
@@ -26127,20 +26128,35 @@ function splitIntoStepBlocks(body) {
     else if (OVERALL_LINE_RE.test(trimmed)) boundaries.push({ idx, type: "overall" });
   });
   const stepBoundaries = boundaries.filter((b) => b.type === "step");
+  const overallBoundary = boundaries.find((b) => b.type === "overall");
   if (stepBoundaries.length === 0) {
-    const overall = boundaries.find((b) => b.type === "overall");
-    const end = overall ? overall.idx : lines.length;
-    return [lines.slice(0, end).join(" ")];
+    const end = overallBoundary ? overallBoundary.idx : lines.length;
+    const afterOverall = overallBoundary ? lines.slice(overallBoundary.idx + 1).join("\n") : "";
+    return {
+      blocks: [lines.slice(0, end).join(" ")],
+      recognizedStepCount: 0,
+      extraneousText: afterOverall.trim()
+    };
   }
-  return stepBoundaries.map((b) => {
+  const blocks = stepBoundaries.map((b) => {
     const next = boundaries.find((other) => other.idx > b.idx);
     const end = next ? next.idx : lines.length;
     return lines.slice(b.idx, end).join(" ");
   });
+  const preamble = lines.slice(0, stepBoundaries[0].idx).join("\n");
+  const postscript = overallBoundary ? lines.slice(overallBoundary.idx + 1).join("\n") : "";
+  return {
+    blocks,
+    recognizedStepCount: stepBoundaries.length,
+    extraneousText: [preamble, postscript].filter((s) => s.trim() !== "").join("\n")
+  };
 }
-function evaluateStructuredStepVerdicts(body) {
-  const blocks = splitIntoStepBlocks(body).map((b) => b.replace(/\s+/g, " ").trim());
-  if (blocks.length === 0) return false;
+function evaluateStructuredStepVerdicts(body, requiredStepCount) {
+  const { blocks: rawBlocks, extraneousText } = parseUatBody(body);
+  if (rawBlocks.length === 0) return false;
+  if (extraneousText !== "") return false;
+  if (typeof requiredStepCount === "number" && rawBlocks.length < requiredStepCount) return false;
+  const blocks = rawBlocks.map((b) => b.replace(/\s+/g, " ").trim());
   for (const block of blocks) {
     const m = STRICT_STEP_VERDICT_RE.exec(block);
     if (!m) return false;
@@ -26156,7 +26172,8 @@ function hasExplicitHumanVerdictMarker(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String(last && last.body || "");
   if (DELEGATED_MARKER_RE.test(body)) return false;
-  return evaluateStructuredStepVerdicts(body);
+  const requiredStepCount = Array.isArray(task && task.acceptance_criteria) ? task.acceptance_criteria.length : 0;
+  return evaluateStructuredStepVerdicts(body, requiredStepCount);
 }
 function readLoopAuth(repoRoot) {
   try {

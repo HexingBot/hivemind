@@ -107,24 +107,41 @@ const FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 // only ever run at close time, and a closed ticket is never re-gated, so
 // this is the sole documented, zero-effect exception to the "no retroactive
 // invalidation" backward-compat proof (see that spec's fix-round amendment
-// comment for the full reasoning).
+// comment for the full reasoning). The second fix round below (HIGH:
+// preamble/postscript evasion) is ALSO corpus-safe for a stronger reason:
+// hasExplicitHumanVerdictMarker already evaluates false for all 45 real
+// tickets under the first fix round's mandatory-"Verdict:"-label rule (their
+// bodies use conventions like "Verdict = PASS" or "STEP 1 (...)" that the
+// strict per-step regex already rejected), so tightening it further cannot
+// flip any of them from true to false — there is nothing left to flip.
 const STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
 const OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 const STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
 
 /**
- * Split a uat comment body into logical step blocks for the structured
- * per-step check. A line (after trim) matching STEP_START_RE ("1.", "2)",
- * "Step 3:", ...) starts a new block; every following line up to the next
+ * Parse a uat comment body into the pieces the structured per-step check
+ * needs. A line (after trim) matching STEP_START_RE ("1.", "2)", "Step 3:",
+ * ...) starts a new step block; every following line up to the next
  * step-start line, the "Overall result:" line, or the end of the body is a
- * continuation of that block (this is what lets a single step's verdict
- * line span several physical lines, e.g. a wrapped Observed: paragraph).
- * Text before the first recognized step-start line (a preamble like "UAT
- * script:") is dropped. If NO step-start line is found at all, the whole
- * body (minus any "Overall result:" line) is treated as a single block —
- * a reasonable fallback for a non-numbered single-verdict comment.
+ * continuation of that block (this is what lets a single step's verdict line
+ * span several physical lines, e.g. a wrapped Observed: paragraph). If NO
+ * step-start line is found at all, the whole body (minus any "Overall
+ * result:" line) is treated as a single block — a reasonable fallback for a
+ * non-numbered single-verdict comment.
+ *
+ * TASK-186 fix round (HIGH, second round) — text OUTSIDE those blocks (a
+ * preamble before the first recognized step, or a postscript after the
+ * "Overall result:" line) used to be silently dropped, which was the exact
+ * defect: a real failure disclosed only in that discarded text was invisible
+ * to the per-step check and satisfied the marker via the FAIL-token/
+ * OVERALL_PASS_RE backstop alone. `extraneousText` now surfaces that
+ * discarded text (trimmed, newline-joined) so evaluateStructuredStepVerdicts
+ * can reject it outright instead of dropping it. `recognizedStepCount` is
+ * the number of step-start lines actually recognized (0 in the
+ * no-step-lines fallback) — see evaluateStructuredStepVerdicts for how this
+ * pairs with `blocks.length` in the AC-count floor check.
  */
-function splitIntoStepBlocks(body) {
+function parseUatBody(body) {
   const lines = String(body).split(/\r?\n/);
   const boundaries = [];
   lines.forEach((line, idx) => {
@@ -133,16 +150,31 @@ function splitIntoStepBlocks(body) {
     else if (OVERALL_LINE_RE.test(trimmed)) boundaries.push({ idx, type: 'overall' });
   });
   const stepBoundaries = boundaries.filter((b) => b.type === 'step');
+  const overallBoundary = boundaries.find((b) => b.type === 'overall');
+
   if (stepBoundaries.length === 0) {
-    const overall = boundaries.find((b) => b.type === 'overall');
-    const end = overall ? overall.idx : lines.length;
-    return [lines.slice(0, end).join(' ')];
+    const end = overallBoundary ? overallBoundary.idx : lines.length;
+    const afterOverall = overallBoundary ? lines.slice(overallBoundary.idx + 1).join('\n') : '';
+    return {
+      blocks: [lines.slice(0, end).join(' ')],
+      recognizedStepCount: 0,
+      extraneousText: afterOverall.trim(),
+    };
   }
-  return stepBoundaries.map((b) => {
+
+  const blocks = stepBoundaries.map((b) => {
     const next = boundaries.find((other) => other.idx > b.idx);
     const end = next ? next.idx : lines.length;
     return lines.slice(b.idx, end).join(' ');
   });
+  const preamble = lines.slice(0, stepBoundaries[0].idx).join('\n');
+  const postscript = overallBoundary ? lines.slice(overallBoundary.idx + 1).join('\n') : '';
+
+  return {
+    blocks,
+    recognizedStepCount: stepBoundaries.length,
+    extraneousText: [preamble, postscript].filter((s) => s.trim() !== '').join('\n'),
+  };
 }
 
 /**
@@ -150,16 +182,40 @@ function splitIntoStepBlocks(body) {
  * unconditionally by hasExplicitHumanVerdictMarker — see that function's
  * doc comment for why the prior "only when a 'Verdict:' label is present"
  * gate was removed) — evaluates the structured per-step verdicts in a body.
- * Returns true only when EVERY recognized step block cleanly ends with
- * "Verdict: PASS" (no qualifier, no missing label, no FAIL) AND the overall
- * body still passes the FAIL/PASS checks as a defense-in-depth backstop. A
- * body with no step carrying a literal "Verdict:" label at all naturally
+ * Returns true only when:
+ *   - no non-whitespace text sits outside the recognized step blocks and the
+ *     overall-result line (TASK-186 fix round HIGH, second round — closes
+ *     the preamble/postscript evasion where a real failure was disclosed
+ *     only in text the old code discarded outright; see parseUatBody);
+ *   - the recognized block count is >= `requiredStepCount` (TASK-186 fix
+ *     round HIGH, second round — when the caller supplies the ticket's AC
+ *     count, this closes the sibling evasion of simply omitting the failing
+ *     AC's step rather than writing a qualified verdict for it; a step count
+ *     that happens to match the AC count is NOT sufficient on its own — see
+ *     the R3 regression lock in tests/e2e/close-guard.spec.js for why both
+ *     checks are needed together);
+ *   - EVERY recognized step block cleanly ends with "Verdict: PASS" (no
+ *     qualifier, no missing label, no FAIL); and
+ *   - the overall body still passes the FAIL/PASS checks as a
+ *     defense-in-depth backstop.
+ * A body with no step carrying a literal "Verdict:" label at all naturally
  * returns false here (STRICT_STEP_VERDICT_RE fails to match), which is what
  * makes the convention mandatory rather than opt-in.
+ *
+ * HONEST RESIDUAL (documented, not closed by this fix): this is a textual
+ * check, not a semantic one. Prose INSIDE a step that still ends cleanly
+ * with "Verdict: PASS" is not read for meaning — a step whose Observed: text
+ * itself narrates a failure but is followed by a bare "Verdict: PASS" label
+ * still satisfies this check. Closing that would require actually
+ * understanding the Observed: text, which is out of reach for a textual
+ * convention check.
  */
-function evaluateStructuredStepVerdicts(body) {
-  const blocks = splitIntoStepBlocks(body).map((b) => b.replace(/\s+/g, ' ').trim());
-  if (blocks.length === 0) return false;
+function evaluateStructuredStepVerdicts(body, requiredStepCount) {
+  const { blocks: rawBlocks, extraneousText } = parseUatBody(body);
+  if (rawBlocks.length === 0) return false;
+  if (extraneousText !== '') return false; // preamble/postscript evasion — reject outright
+  if (typeof requiredStepCount === 'number' && rawBlocks.length < requiredStepCount) return false;
+  const blocks = rawBlocks.map((b) => b.replace(/\s+/g, ' ').trim());
   for (const block of blocks) {
     const m = STRICT_STEP_VERDICT_RE.exec(block);
     if (!m) return false; // unparseable/qualified/ambiguous step — conservative reject
@@ -170,28 +226,38 @@ function evaluateStructuredStepVerdicts(body) {
 }
 
 /**
- * TASK-099 Gate 2 (TASK-186 restructure; TASK-186 fix round made the
- * structured convention MANDATORY) — a uat-only ticket's `uat` comment
- * carries an "explicit human verdict marker" when its most recent
- * `uat`-authored comment (a) has no orchestrator-delegation phrasing
- * anywhere in the body, and (b) every recognized step in the body cleanly
- * records "Verdict: PASS" (see evaluateStructuredStepVerdicts) — a body with
- * no literal "Verdict:" label on any step is REJECTED, not passed through to
- * a looser prose scan; see this file's STEP_START_RE-block doc comment for
- * why the legacy label-free path was removed. If the comment shows
- * delegated-verification phrasing anywhere, at least one step was recorded
- * as Orchestrator-verified, so the close still requires
+ * TASK-099 Gate 2 (TASK-186 restructure; TASK-186 fix rounds made the
+ * structured convention MANDATORY and closed the preamble/postscript/
+ * padded-step-count evasions) — a uat-only ticket's `uat` comment carries an
+ * "explicit human verdict marker" when its most recent `uat`-authored
+ * comment (a) has no orchestrator-delegation phrasing anywhere in the body,
+ * (b) carries no non-whitespace text outside its recognized step blocks and
+ * the overall-result line, (c) recognizes at least as many step blocks as
+ * the task has acceptance criteria, and (d) every recognized step in the
+ * body cleanly records "Verdict: PASS" (see evaluateStructuredStepVerdicts)
+ * — a body with no literal "Verdict:" label on any step is REJECTED, not
+ * passed through to a looser prose scan; see this file's STEP_START_RE-block
+ * doc comment for why the legacy label-free path was removed. If the
+ * comment shows delegated-verification phrasing anywhere, at least one step
+ * was recorded as Orchestrator-verified, so the close still requires
  * `uat_delegated_to_orchestrator` to be explicitly granted.
  *
  * This is a textual-convention check, not a cryptographic one: it cannot
- * prove a human actually authored the recorded verdict, only that the
- * comment does not itself claim delegated verification and does not itself
- * record a failure (structured or prose). It narrows — it does not
- * eliminate — the prior hole where ANY comment authored 'uat' satisfied the
- * done-guard regardless of content (see the TASK-099 hand-off for the
- * original residual-limitation note, and the TASK-186 hand-off for why a
- * token blacklist over prose could not be hardened further by extending the
- * token list alone, nor by making the structured check merely opt-in).
+ * prove a human actually authored the recorded verdict. TASK-186's second
+ * fix round closed the two evasions it was written to close — a failure
+ * disclosed only in a discarded preamble/postscript (R1/R2), and the same
+ * disclosure smuggled past an AC-count floor by padding the step count
+ * (R3) — but it does NOT eliminate every way prose can mislead: a step
+ * whose Observed: text itself narrates a failure yet still ends with a bare
+ * "Verdict: PASS" label is not read for meaning and still satisfies this
+ * check (see evaluateStructuredStepVerdicts's doc comment for the same
+ * residual, stated once there as the canonical location). It narrows — it
+ * does not eliminate — the prior hole where ANY comment authored 'uat'
+ * satisfied the done-guard regardless of content (see the TASK-099 hand-off
+ * for the original residual-limitation note, and the TASK-186 hand-offs for
+ * why a token blacklist over prose could not be hardened further by
+ * extending the token list alone, nor by making the structured check merely
+ * opt-in).
  */
 export function hasExplicitHumanVerdictMarker(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
@@ -200,7 +266,10 @@ export function hasExplicitHumanVerdictMarker(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String((last && last.body) || '');
   if (DELEGATED_MARKER_RE.test(body)) return false;
-  return evaluateStructuredStepVerdicts(body);
+  const requiredStepCount = Array.isArray(task && task.acceptance_criteria)
+    ? task.acceptance_criteria.length
+    : 0;
+  return evaluateStructuredStepVerdicts(body, requiredStepCount);
 }
 
 /**

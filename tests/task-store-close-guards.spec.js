@@ -472,6 +472,84 @@ describe('TASK-186 AC2/AC6 — harness-mode checkUatGuard requires a recognizabl
     ).toBeInstanceOf(UatGuardError);
   });
 
+  // TASK-186 fix round (MEDIUM, second round) — the first fix round's
+  // OVERALL_FAIL_RE only rejected the literal "Overall result: FAIL" line.
+  // Two realistic shapes still fail open: a body that records a step-level
+  // FAIL with no overall line at all, and a body that states the overall
+  // result without the word "result" ("Overall: FAIL."). Verified live
+  // against the real tasks/ corpus before tightening (see the fix-round
+  // hand-off): none of the 45 real uat bodies carries either pattern, so
+  // this tightening is corpus-safe.
+  it('a body with a step-level "Verdict: FAIL" and no overall-result line at all does NOT satisfy the harness-mode gate', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a1-fail-no-overall-line');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-906': makeTask({
+          key: 'TASK-906',
+          verification_tier: 'uat-only',
+          comments: [{
+            author: 'uat',
+            at: '2026-08-02T00:00:00Z',
+            body: 'Step 1: expected X, observed X. Verdict: PASS.\nStep 2: expected Y, observed crash. Verdict: FAIL.',
+          }],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-906',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(
+      caught,
+      'a recorded per-step "Verdict: FAIL" must not satisfy the harness-mode gate just because the '
+        + 'body has no separate "Overall result:" line for OVERALL_FAIL_RE to anchor on',
+    ).toBeInstanceOf(UatGuardError);
+  });
+
+  it('a body stating "Overall: FAIL." (no "result") does NOT satisfy the harness-mode gate', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a1-overall-no-result-word');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-907': makeTask({
+          key: 'TASK-907',
+          verification_tier: 'uat-only',
+          comments: [{
+            author: 'uat',
+            at: '2026-08-02T00:00:00Z',
+            body: 'Step 1: Verdict: PASS.\nOverall: FAIL.',
+          }],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-907',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(
+      caught,
+      'a body stating "Overall: FAIL." must not satisfy the harness-mode gate just because it omits '
+        + 'the word "result" from OVERALL_FAIL_RE\'s anchor',
+    ).toBeInstanceOf(UatGuardError);
+  });
+
   it('positive control — a bare "All steps PASS." body still satisfies the gate (unaffected legacy convention)', async () => {
     const { closeTask } = await import('../src/task-store.js');
 

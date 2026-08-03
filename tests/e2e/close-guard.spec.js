@@ -551,13 +551,6 @@ describe('TASK-108 — loopModeUatCommentGuard', () => {
 });
 
 // ===========================================================================
-// TASK-108 (scope addition, fix-round fold-in) — FAIL_VERDICT_RE widened from
-// /\bfail\b/i to also match FAILED/failing/fails, so a self-contradictory
-// "Step 2 FAILED ... Overall result: PASS" body no longer satisfies
-// hasExplicitHumanVerdictMarker (and thus no longer bypasses Gate 2's
-// loopModeCloseGuard).
-// ===========================================================================
-// ===========================================================================
 // TASK-186 — Gate 2's human-verdict marker was a pure TOKEN SCAN: a per-step
 // failure phrased "Verdict: PASS (deferred)" contains no FAIL-family token
 // and satisfies "Overall result: PASS", so it closed a uat-only ticket to
@@ -573,15 +566,20 @@ describe('TASK-108 — loopModeUatCommentGuard', () => {
 // positives — see the artifacts' round-3 vs round-3b note).
 //
 // AC3 design decision: the marker becomes ARITHMETIC over a per-step list
-// rather than pattern-matching prose. When a uat comment's body carries at
+// rather than pattern-matching prose. A uat comment's body must carry at
 // least one literal "Verdict:" label (already the real convention in use —
-// see e.g. TASK-109/112/155/170's actual bodies), each recognized step block
-// must end, once whitespace-normalized, with EXACTLY "Verdict: PASS" or
-// "Verdict: PASS." — nothing else. A qualified, missing, or FAIL verdict on
-// any one step fails the whole comment closed. Bodies with no literal
-// "Verdict:" label at all keep using the pre-existing token-scan path
-// unchanged (the documented legacy path — see AC4's backward-compat sensor,
-// tests/uat-verdict-marker-compat.spec.js).
+// see e.g. TASK-109/112/155/170's actual bodies) — this is now MANDATORY,
+// not opt-in: a body with no "Verdict:" label anywhere is REJECTED outright,
+// there is no more legacy token-scan fallback in loop mode (see the P0
+// describe block below, and src/close-guard.js's doc comments, for why that
+// fallback was removed). Each recognized step block must end, once
+// whitespace-normalized, with EXACTLY "Verdict: PASS" or "Verdict: PASS." —
+// nothing else. A qualified, missing, or FAIL verdict on any one step fails
+// the whole comment closed. TASK-186 fix round (HIGH, second round) further
+// requires (a) the recognized step-block count to be >=
+// task.acceptance_criteria.length, and (b) no non-whitespace text outside
+// the recognized step blocks and the overall-result line — see the R1/R2/R3
+// describe block below for why both are necessary.
 // ===========================================================================
 const R3B_DENY = {
   auto_close_on_green_review: false,
@@ -736,6 +734,141 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
   });
 });
 
+// ===========================================================================
+// TASK-186 fix round (HIGH, second round) — R1/R2/R3: splitIntoStepBlocks
+// discarded everything BEFORE the first recognized step-start line and
+// everything AFTER the "Overall result:" line outright. The only defense
+// over that discarded text was the FAIL-token backstop — the exact losing
+// arms race this ticket exists to end. R1 hides the real failure in a
+// preamble; R2 hides it in a postscript; R3 proves the step-count-floor half
+// of the fix (evaluateStructuredStepVerdicts now requires the recognized
+// step-block count to be >= task.acceptance_criteria.length) is NOT
+// sufficient on its own — it pads the step count to match the AC count with
+// two individually clean "Verdict: PASS" steps while disclosing the real
+// crash only in a preamble line, so only the companion fix (reject any
+// non-whitespace text outside the recognized step blocks and the overall
+// line) closes it. All three composed exactly as src/mcp-server.js composes
+// the guards, same round-3b discipline as V0/V1/V2 above. Reproduced live
+// against the pre-fix modules: hasExplicitHumanVerdictMarker === true for
+// all three (see the fix-round hand-off for the captured red-run output).
+//
+// A cleanly structured multi-step comment with no preamble/postscript is
+// already covered by the "positive control" test directly above this block
+// (same 2-step/2-AC shape) — not repeated here to keep the new-test budget
+// clean.
+// ===========================================================================
+describe('TASK-186 fix round (HIGH) — R1/R2/R3: preamble/postscript/padded-step-count evasion no longer bypasses Gate 2', () => {
+  it('R1 (preamble) — a crash disclosed only in text BEFORE the first recognized step is REJECTED (not closed)', async () => {
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { createTask } = await import(TASK_STORE_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'R1', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    const body = [
+      'UAT script (note: the xlsx export crashed with an unhandled TypeError, no file written — '
+        + 'deferring to a follow-up ticket, not a blocker for this scope):',
+      '1. Run `npm run export -- --format=csv`, expect a CSV. Observed: file created. Verdict: PASS',
+      '',
+      'Overall result: PASS',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+
+    // Flip to loop mode WITHOUT the delegation grant — Gate 1 satisfied, Gate 2 not delegated.
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a crash disclosed only in preamble text before the first recognized step must not '
+      + 'close the ticket').toBeInstanceOf(UatDelegationGuardError);
+    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+
+  it('R2 (postscript) — the same crash disclosure placed AFTER "Overall result: PASS" is REJECTED (not closed)', async () => {
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { createTask } = await import(TASK_STORE_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'R2', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    const body = [
+      '1. Run `npm run export -- --format=csv`, expect a CSV. Observed: file created. Verdict: PASS',
+      '',
+      'Overall result: PASS',
+      '',
+      '(note: the xlsx export crashed with an unhandled TypeError, no file written — deferring to a '
+        + 'follow-up ticket, not a blocker for this scope.)',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a crash disclosed only in postscript text after the overall-result line must not '
+      + 'close the ticket').toBeInstanceOf(UatDelegationGuardError);
+    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+
+  it('R3 (padded step count) — matching the AC count with clean per-step verdicts does not launder a crash disclosed only in the preamble', async () => {
+    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { createTask } = await import(TASK_STORE_URL);
+    const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
+    const t = await createTask({
+      repoRoot: root, title: 'R3', description: 'd', priority: 'medium',
+      acceptance_criteria: ['CSV export works.', 'XLSX export works.'],
+      verification_tier: 'uat-only',
+    });
+    const body = [
+      'NOTE: xlsx export actually crashed with a TypeError and produced no file; recording below '
+        + 'anyway per template.',
+      '1. Run `npm run export -- --format=csv`, expect a CSV. Observed: file created. Verdict: PASS',
+      '2. Run with --format=xlsx, expect an XLSX file. Observed: file created. Verdict: PASS',
+      '',
+      'Overall result: PASS',
+    ].join('\n');
+    await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+
+    rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
+
+    let caught;
+    try {
+      await mcpCloseTask({
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a step count matching the AC count must not exempt a preamble that discloses a '
+      + 'real failure — the step-count floor alone is not sufficient, the extraneous-text rejection is '
+      + 'what closes this one').toBeInstanceOf(UatDelegationGuardError);
+    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+});
+
+// ===========================================================================
+// TASK-108 (scope addition, fix-round fold-in) — FAIL_VERDICT_RE widened from
+// /\bfail\b/i to also match FAILED/failing/fails, so a self-contradictory
+// "Step 2 FAILED ... Overall result: PASS" body no longer satisfies
+// hasExplicitHumanVerdictMarker (and thus no longer bypasses Gate 2's
+// loopModeCloseGuard).
+// ===========================================================================
 describe('TASK-108 — FAIL_VERDICT_RE widened to FAILED/failing/fails', () => {
   it('a body with "Step 2 FAILED" (past tense) does NOT satisfy the marker, even though the overall line says PASS', async () => {
     const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);

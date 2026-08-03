@@ -421,16 +421,29 @@ const UAT_VERDICT_WORD_RE = /\bpass\b/i;
 // carry an "Overall result: FAIL" line (verified against live tasks/, see
 // tests/uat-verdict-marker-compat.spec.js), so this costs nothing against
 // real data.
-const OVERALL_FAIL_RE = /overall result:?\s*fail/i;
+//
+// TASK-186 fix round (MEDIUM, second round) — the literal "overall result"
+// anchor above still failed open on two realistic shapes: a body recording
+// a per-step "Verdict: FAIL" with no separate overall-result line at all,
+// and a body stating the overall result without the word "result"
+// ("Overall: FAIL."). VERDICT_FAIL_RE below rejects a step-level FAIL
+// verdict anywhere in the body; OVERALL_FAIL_RE is widened to make "result"
+// optional. Corpus-safety re-verified against live tasks/ before tightening
+// (see tests/uat-verdict-marker-compat.spec.js): none of the 45 real bodies
+// carries either pattern, so this tightening is additive-only against real
+// data, same as the first fix round.
+const VERDICT_FAIL_RE = /verdict\s*:\s*fail/i;
+const OVERALL_FAIL_RE = /overall(?:\s+result)?\s*:?\s*fail/i;
 
 /**
  * TASK-186 — true when task's most recent 'uat'-authored comment has a
  * non-empty body naming a recognizable verdict (the word PASS) and does not
- * itself record an explicit overall FAIL. False when there is no 'uat'
- * comment at all, the body is empty/whitespace-only, the body names no
- * verdict word, or the body states "Overall result: FAIL" — see the doc
- * comment above for why this is a lighter check than close-guard.js's
- * loop-mode Gate 2 marker.
+ * itself record an explicit FAIL — a step-level "Verdict: FAIL" anywhere, or
+ * an overall FAIL line (with or without the word "result"). False when
+ * there is no 'uat' comment at all, the body is empty/whitespace-only, the
+ * body names no verdict word, or the body records either FAIL shape — see
+ * the doc comment above for why this is a lighter check than
+ * close-guard.js's loop-mode Gate 2 marker.
  */
 export function hasRecordedUatVerdict(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
@@ -439,7 +452,7 @@ export function hasRecordedUatVerdict(task) {
   const last = uatComments[uatComments.length - 1];
   const body = String((last && last.body) || '').trim();
   if (body === '') return false;
-  if (OVERALL_FAIL_RE.test(body)) return false;
+  if (VERDICT_FAIL_RE.test(body) || OVERALL_FAIL_RE.test(body)) return false;
   return UAT_VERDICT_WORD_RE.test(body);
 }
 
