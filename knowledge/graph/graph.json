@@ -1386,6 +1386,12 @@
       "type": "task",
       "ref": "tasks/TASK-194.json",
       "label": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned"
+    },
+    {
+      "id": "task-196",
+      "type": "task",
+      "ref": "tasks/TASK-196.json",
+      "label": "The documented UAT recording convention no longer produces a comment the loop-mode gate accepts"
     }
   ],
   "edges": [
