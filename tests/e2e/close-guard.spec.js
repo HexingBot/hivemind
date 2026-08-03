@@ -242,6 +242,21 @@ function makeUatTask(key, comments = []) {
   return { ...makeTask(key), verification_tier: 'uat-only', comments };
 }
 
+// TASK-196 (AC6) — DELEGATED_UAT_COMMENT below (and OVERALL_FAIL_UAT_COMMENT /
+// FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT further down) intentionally keep the
+// bare "verdict PASS" (no colon) prose the docs no longer teach — a
+// deliberate choice, not an oversight. Every test that uses them asserts a
+// REJECTION that is decided by a check that runs BEFORE (and independently
+// of) the strict per-step "Verdict:" grammar: DELEGATED_UAT_COMMENT's own
+// assertions turn on the delegation-phrasing short-circuit
+// (DELEGATED_MARKER_RE in src/close-guard.js), and
+// OVERALL_FAIL_UAT_COMMENT/FAIL_BUT_PASS_ON_RETRY_UAT_COMMENT's turn on the
+// FAIL-token backstop (FAIL_VERDICT_RE). Relabelling these fixtures to the
+// documented "Verdict:" convention would not change any assertion's outcome
+// and would blur the fixture's actual point (proving delegation phrasing /
+// FAIL tokens reject regardless of label formatting) — see the positive
+// control at "positive control — a cleanly structured multi-step..." below
+// for the fixture that DOES model, and is held to, the documented convention.
 const DELEGATED_UAT_COMMENT = {
   author: 'uat',
   at: '2026-07-06T00:00:00Z',

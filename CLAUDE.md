@@ -49,7 +49,14 @@ The Orchestrator must follow this loop for every unit of work:
    **UAT step** (mandatory for `uat-only`; mandatory for `tests-after` when ACs are human-observable):
    - Derive a short numbered script from the acceptance criteria — one or more "run/do X, expect Y" steps per AC so every AC is covered. Keep it terse: one line per step, no walls of evidence — show supporting evidence only when the human asks.
    - Present the script to the human. Collect a PASS or FAIL verdict per step, plus optional notes. The human may delegate any step's verification back to the Orchestrator; record such steps as PASS with a "verified by Orchestrator at the human's request" note instead of a bare PASS.
-   - Record the outcome as a ticket comment: author `uat`, body listing each step with its expected result, observed result, and per-step verdict, plus an overall result.
+   - Record the outcome as a ticket comment: author `uat`. The loop-mode gate (`src/close-guard.js`'s `hasExplicitHumanVerdictMarker`) accepts only this exact convention, and it is also the convention to use in harness mode (see the orchestrator-routing skill's UAT procedure for the full harness-vs-loop-mode distinction): no preamble at all (the body starts directly at step 1, not even a "UAT script:" header); every step ends with a literal `Verdict: PASS` or `Verdict: FAIL` label (`verdict PASS` and `Verdict = PASS` do NOT satisfy it); at least as many step blocks as the ticket has acceptance criteria (a floor, not per-AC coverage — duplicate step numbering technically satisfies the count); and a strict overall line with nothing appended — `Overall result: PASS` (the guard also tolerates the shorter `Overall: PASS`), never `Overall result: PASS (deferred)` or similar. Worked example for a 2-AC ticket:
+
+     ```
+     1. Run the CSV export, expect a CSV file. Observed: file created. Verdict: PASS
+     2. Run the XLSX export, expect an XLSX file. Observed: file created. Verdict: PASS
+
+     Overall result: PASS
+     ```
    - A `uat-only` ticket **cannot** transition to `done` without a `uat` comment whose steps cover every AC with all steps PASS. A failed step sends the ticket back to the Developer.
 5. **Implement.** The `developer` subagent writes code until the acceptance criteria are satisfied and existing tests still pass.
 6. **Review.** Spawn the `reviewer` subagent in a fresh context, stating the computed `review_depth` (`light` or `full`) and the rubric inputs (changed-line count, touched surfaces) that produced it — see the orchestrator-routing skill's "Review depth rubric" section. It must use only read-only tools and verification scripts. Block the workflow on any HIGH-severity finding.

@@ -450,12 +450,65 @@ behavior.
    steps as PASS with a "verified by Orchestrator at the human's request" note
    instead of a bare PASS.
 3. **Record the outcome.** Append a comment to the ticket via the existing
-   comment mechanism (author `uat`). The body must list each step with its
-   expected result, observed result, and per-step verdict, then state the
-   overall result (PASS or FAIL).
+   comment mechanism (author `uat`). **This exact convention is mandatory in
+   loop mode** (Gate 2 below, `src/close-guard.js`'s
+   `hasExplicitHumanVerdictMarker`) and is also the convention to use in
+   harness mode, since it satisfies both gates (see step 4 for how the two
+   modes differ):
+   - **No preamble at all** — the body starts directly at step 1, not even a
+     one-line "UAT script:" header. A header line is exactly the channel a
+     failure disclosure was found hiding behind in a prior fix round, so a
+     "one leading header line" exemption was deliberately rejected.
+   - **Every step ends with a literal `Verdict: PASS` or `Verdict: FAIL`**
+     label (an optional trailing period is fine). `verdict PASS` (no colon)
+     and `Verdict = PASS` do **not** satisfy this — the label must read
+     exactly `Verdict:`.
+   - **At least as many step blocks as the ticket has acceptance criteria.**
+     This is a floor, not per-AC coverage — see the note under step 4.
+   - **A strict overall line, with nothing appended:** `Overall result: PASS`
+     or `Overall result: FAIL` (the guard also tolerates the shorter
+     `Overall: PASS` / `Overall: FAIL`, but `Overall result:` is the
+     documented canonical form). `Overall result: PASS (deferred)` or
+     `Overall result: PASS — but see note below` are **rejected**, not
+     accepted-with-caveat — mark that step's own verdict `FAIL` instead of
+     qualifying the overall line.
+
+   Worked example, verified against the live guard by
+   `tests/uat-doc-example-lock.spec.js` (a 2-AC ticket):
+
+   <!-- UAT-WORKED-EXAMPLE:START -->
+   1. Run the CSV export, expect a CSV file. Observed: file created. Verdict: PASS
+   2. Run the XLSX export, expect an XLSX file. Observed: file created. Verdict: PASS
+
+   Overall result: PASS
+   <!-- UAT-WORKED-EXAMPLE:END -->
+
 4. **Gate the done-transition.** A `uat-only` ticket cannot move to `done`
    without a `uat` comment that covers every AC with all steps PASS. A failed
    step sends the ticket back to implementation.
+
+   **Harness mode vs loop mode.** In harness mode (a human is present — the
+   default), `src/task-store.js`'s uat-only done-guard (`hasRecordedUatVerdict`)
+   runs a deliberately LIGHT content check: the body must be non-empty and
+   name a recognizable PASS/FAIL verdict word — the strict per-step
+   `Verdict:` label and overall-line grammar above are NOT required. In loop
+   mode (no human present by definition), Gate 2 below
+   (`hasExplicitHumanVerdictMarker`) enforces the full strict grammar, or
+   requires `loop_auth.uat_delegated_to_orchestrator`. Recording the strict
+   format above satisfies both checks, so use it regardless of mode.
+
+   Two documented tradeoffs, worth knowing wherever a `uat` comment is
+   recorded:
+   - The AC-count check (both modes) is a **floor, not per-AC coverage**:
+     nothing ties a given step block to a specific AC, so duplicate step
+     numbering (two blocks both labelled "1.") still satisfies a 2-AC floor
+     with only one AC actually addressed.
+   - Harness mode's `hasRecordedUatVerdict` FAIL check can match bare prose
+     that merely mentions "overall" and "fail" with no verdict-line
+     structure at all — e.g. "no overall failures were observed" — which
+     would false-deny a genuinely passing UAT. This is a deliberate
+     fail-closed tradeoff: a false-deny costs the human one re-edit, never an
+     autonomous wrong close.
 
 ## Autonomous loop
 
@@ -760,18 +813,23 @@ compose the three deterministic mutation-seam guards below; a direct hand
   `loop_auth.auto_close_on_green_review === true`; otherwise it's blocked
   with a typed `LoopCloseGuardError` (`code: 'LOOP_CLOSE_GUARD_DENIED'`).
   In `harness` mode (the default) this guard is a no-op.
-- **The loop-mode uat-delegation guard (Gate 2, TASK-099)** — while the
-  session's operating mode is `loop`, closing a `verification_tier:
-  "uat-only"` ticket additionally requires
-  `loop_auth.uat_delegated_to_orchestrator === true`, or the ticket's `uat`
-  comment to carry an explicit human-verdict marker: it states an "Overall
-  result: PASS" line per the UAT-recording convention above, has no FAIL
-  verdict anywhere in the body (the token match was widened, TASK-108, to
-  also catch FAILED/failing/fails — not just a bare "fail" — so a
-  self-contradictory "Step 2 FAILED ... Overall result: PASS" body no longer
-  slips past the marker), and is not qualified anywhere by "verified by
-  Orchestrator at the human's request"; otherwise it's blocked with a typed
-  `UatDelegationGuardError` (`code: 'LOOP_UAT_DELEGATION_REQUIRED'`).
+- **The loop-mode uat-delegation guard (Gate 2, TASK-099; hardened to a
+  strict allowlist grammar by TASK-186)** — while the session's operating
+  mode is `loop`, closing a `verification_tier: "uat-only"` ticket
+  additionally requires `loop_auth.uat_delegated_to_orchestrator === true`,
+  or the ticket's `uat` comment to carry an explicit human-verdict marker: it
+  parses in full as `<step-block>+ <overall-line>` per the UAT-recording
+  convention above — no preamble, every step ending with a literal
+  `Verdict: PASS`/`Verdict: FAIL` label, at least as many step blocks as the
+  ticket has acceptance criteria (a floor, not per-AC coverage), and a
+  strict `Overall result: PASS`/`Overall: PASS` line with nothing appended —
+  and is not qualified anywhere by "verified by Orchestrator at the human's
+  request"; otherwise it's blocked with a typed `UatDelegationGuardError`
+  (`code: 'LOOP_UAT_DELEGATION_REQUIRED'`). A body that follows only the
+  older bare convention (a per-step "PASS" with no `Verdict:` label) is
+  REJECTED outright, not passed through to a looser prose scan — see
+  `src/close-guard.js`'s `STRICT_OVERALL_RE` comment block for the full
+  grammar statement and its fix-round history.
 - **The loop-mode uat-comment write guard (Gate 2's write-side companion,
   TASK-108 + TASK-163)** — Gate 2 above is a *read-time* check: it inspects
   the content of an already-written `uat` comment at close time. Until
