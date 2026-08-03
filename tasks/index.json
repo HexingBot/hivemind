@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-03T02:33:03.167Z",
+  "generated_at": "2026-08-03T02:48:44.389Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1084,7 +1084,7 @@
     {
       "key": "TASK-186",
       "title": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     },
     {

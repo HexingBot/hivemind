@@ -2,11 +2,11 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
-  "updated_at": "2026-08-03T02:06:28.456Z",
-  "active_task": "TASK-194",
+  "updated_at": "2026-08-03T02:34:44.826Z",
+  "active_task": "TASK-186",
   "workflow_step": "impl",
-  "next_action": "IN FLIGHT: TASK-194 developer (tests-after). Design given: extract the shared change-detection from scripts/test-since.mjs into one mechanism serving both entry points, refless mode = same three git commands minus the <ref>...HEAD one; emit the empty-diff marker from the CHEAP git check only and SKIP the 5.2s vitest-list pre-check (AC5 — test:changed is the fast inner-loop command); never fatal on zero selection (AC3); pass the real vitest exit code through (AC4, prove empirically); add a fast-tier sensor globbing node_modules/vitest/dist/chunks/git.*.js pinning the three git argument sequences; extend CLAUDE.md Empty-result contract (AC7). On return: review at the rubric-computed depth, then close.\n\nTHEN: TASK-186 fix round. Scope is narrow — harden splitIntoStepBlocks/evaluateStructuredStepVerdicts against the HIGH and replay R1/R2 as red specs; optionally take the hasRecordedUatVerdict MEDIUM in the same round. Everything under \"PROVEN GOOD\" in the TASK-186 subagent_results entry stands and needs no rework — do not re-verify AC1/AC4/AC5/AC7/AC8 from scratch.\n\nTHEN: TASK-196 (high, todo) should land promptly — the canonical UAT recording convention in SKILL.md + CLAUDE.md no longer produces a comment the now-mandatory gate accepts. Fail-CLOSED (blocks legitimate closes) rather than a hole, which is the only reason it was tolerable to defer.\n\nREMAINING TODO: TASK-182, 187, 188, 189, 193, 195, 196.",
-  "handoff_summary": "Session 2026-08-02. Both pending reviews ran and DIVERGED. TASK-191 APPROVED and CLOSED (commits ca21d2b + b62fe82 recorded; graph node created; knowledge draft written to knowledge/proposed/parallel-spawns-share-one-git-index.md per TASK-105, since it needed an RC round). TASK-186 REQUEST-CHANGES on a reproduced HIGH and is back in_progress for a fix round — its full review is now recorded as a ticket comment, repairing the evidence trail that died with the stopped chat. TASK-194 developer is RUNNING (tests-after, test:changed zero-selection marker + vitest-algorithm pin). Board: 182 done / 7 todo / 0 in_review / 2 in_progress.",
+  "next_action": "IN FLIGHT: TASK-186 fix-round developer (tdd tier). Scope is deliberately narrow — harden splitIntoStepBlocks / evaluateStructuredStepVerdicts so failure text in a PREAMBLE or POSTSCRIPT can no longer satisfy the gate (reproduced bodies R1/R2 are in the ticket comment), replay R1/R2 as permanent red specs, fix the now-false contract comment at src/close-guard.js:187-190, optionally take the hasRecordedUatVerdict MEDIUM (src/task-store.js:413-444) but ONLY after re-running the real-corpus check, and clean up the two stale spec banners. dist rebuild REQUIRED (both files are bundled). Explicitly OUT of scope: the SKILL.md/CLAUDE.md convention drift, which is TASK-196.\n\nDO NOT let the fix round redo what is already verified — AC1/AC2/AC4/AC5/AC7/AC8 all stand per the recorded review, including the real-corpus AC4 sweep (191 tasks, 45 uat comments, 1 flip on the already-done TASK-133, zero open uat-only stranded) and the twice-reproduced red state.\n\nON RETURN: review at rubric depth (expect FULL again — close-guard write path + 2 dist bundles + tdd), then close. TASK-186 will owe a knowledge draft at close (TASK-105 trigger: the gating review recorded a HIGH).\n\nTHEN: TASK-196 (high) should land promptly — the documented UAT recording convention no longer produces a comment the mandatory gate accepts. Fail-CLOSED, which is the only reason deferring it was tolerable.\n\nREMAINING TODO: TASK-182, 187, 188, 189, 193, 195, 196.",
+  "handoff_summary": "Session 2026-08-02. Board drove from 181 -> 183 done. TASK-191 CLOSED (APPROVE, light depth). TASK-194 CLOSED (APPROVE, FULL depth, commit 7ca9cd4) - test:changed is now a self-describing wrapper and the vitest --changed algorithm is pinned by a non-vacuous glob sensor. TASK-186 is the ONLY open work item: a fix-round developer is RUNNING against a reproduced HIGH. All ticket bookkeeping is committed and the tree was clean at spawn time.",
   "open_questions": [
     "Are the subagents from the stopped chat actually dead? If they are, this session should resume DRIVING (spawning reviewers/developer) rather than orchestrating-only. If any are still live, confirm which ticket keys they own so this session stays off those surfaces — all spawns share one git index (the very hazard TASK-191 documents).",
     "TASK-182 item 3 (dual-copy precedence) still needs a human decision on DIRECTION before implementation — (a) reconciler skips/retires the project-scope copy when the plugin ships an equal-or-newer pin, (b) keep both channels and document the precedence TASK-181 created de facto, (c) plugin-root-only with a one-time migration. Any solution must not emit a bare REMOVE against already-installed consumers.",
@@ -67,6 +67,18 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "at": "2026-08-03T02:34:44.826Z",
+      "task": "TASK-194",
+      "summary": "TASK-194 APPROVE (FULL depth; ~403 lines, the verification gate itself). 0 HIGH / 1 MEDIUM / 2 LOW. Reviewer proved the two dangerous ACs INDEPENDENTLY against disposable fixtures rather than trusting the specs: AC4 exit-code passthrough (real failing test -> exit 1 through the wrapper) and AC3 non-fatality (clean tree -> exit 0 + empty-diff marker). Confirmed line-by-line that ALL TASK-192 behavior survived the developer's disclosed git-checkout mishap (resolveSafeRef, loud unresolvable-ref exit, BOTH markers, vitest list pre-check, exit passthrough). Verified the refless extraction against vitest's OWN source (git.B5SDxu-n.js:19-38 branches on typeof changedSince === \"string\"), not the code comment. Pin sensor NON-VACUOUS by negative simulation (--name-only -> --name-status fails both regexes; checked set is hard-coded, never fixture-derived, so the TASK-184 empty-set mode is structurally impossible; absent node_modules is a loud red via glob count .toBe(1)). AC5 cost independently measured at 88.0ms vs the developer's 94.1ms. MEDIUM was a cold-seat hand-off artifact - DISCHARGED in the close comment (red-run capture and all five R3 checklist items do exist). CLOSED."
+    },
+    {
+      "agent": "developer",
+      "at": "2026-08-03T02:34:44.826Z",
+      "task": "TASK-194",
+      "summary": "TASK-194 DONE, commit 7ca9cd4, 7 files 387+/16-. New scripts/test-changed.mjs wraps the bare vitest invocation; shared anyGitCommandReportsChange extracted in test-since.mjs so hasAnyUncommittedChanges is hasAnyChangedFiles minus the committed-since-ref source. Marker TEST_CHANGED_ZERO_SELECTION (same <COMMAND>_ZERO_SELECTION shape, command-correct prefix). vitest list pre-check deliberately NOT ported (5.2s vs 94ms measured). Zero selection never fatal. 3 new spec files, all red-green planted via Edit round-trips. DISCLOSED a git mishap: a `git checkout -- scripts/test-since.mjs` reverted to the pre-ticket baseline instead of restoring an in-memory edit; caught, reapplied via Edit, reverified - and the reviewer independently confirmed nothing was lost. Honest disclosure is what made it verifiable."
+    },
     {
       "agent": "reviewer",
       "at": "2026-08-03T02:06:28.456Z",
@@ -144,18 +156,6 @@
       "at": "2026-07-08T19:25:00.000Z",
       "summary": "TASK-122 APPROVE (full depth), no HIGH. Verified in-code (not just tests): no-write-without-approve (AC3) and suspicious-blocks-without-override (AC4) invariants hold; non-vacuous byte-untouched sensors; no scan/reviewer leak into lock/provenance; tdd two-commit + red-run reproduced at impl parent. 1 LOW (truthiness) hardened post-approve with red-green regression test.",
       "task": "TASK-122"
-    },
-    {
-      "agent": "reviewer",
-      "at": "2026-07-08T16:31:34.971Z",
-      "summary": "TASK-115 APPROVE after 1 RC loop (self-fallback+id-uniqueness fixed)",
-      "task": "TASK-115"
-    },
-    {
-      "agent": "reviewer",
-      "at": "2026-07-08T16:31:34.971Z",
-      "summary": "TASK-116 APPROVE clean (data-loss regression real)",
-      "task": "TASK-116"
     }
   ],
   "pending_human_confirmation": null,
@@ -168,10 +168,10 @@
     "auto_version_bump_on_milestone": false
   },
   "loop_state": {
-    "current_ticket": "TASK-194",
+    "current_ticket": "TASK-186",
     "phase": "impl",
     "iteration": 0,
-    "completed_this_run": 2,
+    "completed_this_run": 4,
     "run_started_at": "2026-08-02T13:00:00Z"
   }
 }
