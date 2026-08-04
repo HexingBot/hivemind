@@ -8181,6 +8181,7 @@ var CloseEvidenceError = class extends Error {
 var DONE_PREDECESSOR_STATES = ["in_review"];
 var EVIDENCE_REQUIRED_TIERS = ["tdd", "tests-after"];
 var CLOSE_EXCEPTION_MARKER = "[CLOSE-EXCEPTION]";
+var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
 function resolveCloseException(exception) {
   if (exception === void 0) return null;
   if (exception === null || typeof exception !== "object") {
@@ -8194,9 +8195,9 @@ function resolveCloseException(exception) {
       "exception.reason must be a non-empty string \u2014 the escape hatch requires an explicit, auditable justification (e.g. a won't-do closure or a documented recovery path)"
     );
   }
-  if (!COMMENT_AUTHORS.includes(author)) {
+  if (!EXCEPTION_AUTHORS.includes(author)) {
     throw new Error(
-      `invalid exception.author ${JSON.stringify(author)} \u2014 must be one of ${COMMENT_AUTHORS.join(", ")}`
+      `invalid exception.author ${JSON.stringify(author)} \u2014 must be one of ${EXCEPTION_AUTHORS.join(", ")} ('reviewer'/'uat' are excluded: the exception marker is never a substitute for an actual review or UAT verdict)`
     );
   }
   return { reason: reason.trim(), author };
@@ -8206,7 +8207,7 @@ function checkDonePredecessorState(task, resolvedException) {
   if (task.status === "done") return;
   if (!DONE_PREDECESSOR_STATES.includes(task.status)) {
     throw new InvalidPredecessorStateError(
-      `task ${task.key} cannot transition to "done" from status "${task.status}" \u2014 done is reachable only from ${DONE_PREDECESSOR_STATES.join("/")}, which CLAUDE.md's documented todo -> in_progress -> in_review -> done convention uses to imply a review occurred. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception (e.g. a won't-do closure or a documented recovery path).`
+      `task ${task.key} cannot transition to "done" from status "${task.status}" \u2014 done is reachable only from ${DONE_PREDECESSOR_STATES.join("/")}, which CLAUDE.md's documented todo -> in_progress -> in_review -> done convention uses to imply a review occurred. Transition the ticket to \`in_review\` (CLAUDE.md Workflow step 6 / the orchestrator-routing skill's "Ticket-update protocol" section) before closing \u2014 this is the compliant path, not the exception. Only for a genuine exception (e.g. a won't-do closure or a documented recovery path) \u2014 never as a routine substitute for the above \u2014 pass \`exception: { reason }\` to use the documented escape hatch.`
     );
   }
 }
@@ -8219,7 +8220,7 @@ function checkCloseEvidence(task, linkedCommits, resolvedException) {
   const hasCommits = Array.isArray(linkedCommits) && linkedCommits.length > 0;
   if (!hasReviewer || !hasCommits) {
     throw new CloseEvidenceError(
-      `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: ${hasCommits}) \u2014 see CLAUDE.md's evidence-proportional-to-tier close rule. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception.`
+      `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: ${hasCommits}) \u2014 see CLAUDE.md's evidence-proportional-to-tier close rule. Record the reviewer verdict via \`append_comment({ author: "reviewer", ... })\` BEFORE closing, and pass the commit sha(s) to \`close_task\`'s \`linked_commits\` \u2014 this is the compliant path, not the exception. Only for a genuine exception (never as a routine substitute for the above) \u2014 pass \`exception: { reason }\` to use the documented escape hatch.`
     );
   }
 }
@@ -8316,10 +8317,11 @@ async function transitionStatus({
     checkDonePredecessorState(task, resolvedException);
     checkCloseEvidence(task, task.linked_commits, resolvedException);
   }
+  const previousStatus = task.status;
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;
-  if (resolvedException) {
+  if (resolvedException && previousStatus !== status) {
     const marker = {
       author: resolvedException.author,
       at: stamp,

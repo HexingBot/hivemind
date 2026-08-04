@@ -559,16 +559,29 @@ const EVIDENCE_REQUIRED_TIERS = ['tdd', 'tests-after'];
 // bypass. `git grep '\[CLOSE-EXCEPTION\]' tasks/` finds every use.
 const CLOSE_EXCEPTION_MARKER = '[CLOSE-EXCEPTION]';
 
+// TASK-187 fix round LOW-2 — exception.author may NOT claim a privileged
+// role whose whole meaning is "an actual review/verification event
+// happened" ('reviewer', 'uat'). Both laundering paths this would open are
+// already dead by construction elsewhere (the '[CLOSE-EXCEPTION]' prefix
+// defeats hasCommentFromAuthor's/hasRecordedUatVerdict's content checks, and
+// checkUatGuard runs BEFORE the exception is even considered — see
+// MEDIUM-1), so this costs nothing behaviourally; it closes the surface
+// anyway rather than relying on those two accidents of ordering to keep
+// doing so forever.
+const EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== 'reviewer' && a !== 'uat');
+
 /**
  * TASK-187 AC6 — validate the optional `exception` escape-hatch param shared
  * by transitionStatus/closeTask. `undefined` (the common case — no bypass
  * requested) returns null, a no-op. When provided, `exception.reason` MUST be
  * a non-empty string (the explicit, auditable justification this AC
  * requires) and `exception.author` (defaulting to 'orchestrator') must be a
- * known COMMENT_AUTHORS entry, since it is used to author the marker comment
- * (see CLOSE_EXCEPTION_MARKER). Throws synchronously (a caller bug — a bad
- * shape here is never "legitimate exception", it is a malformed call) BEFORE
- * any disk I/O, mirroring every other pre-write validation in this module.
+ * known, non-privileged EXCEPTION_AUTHORS entry (TASK-187 fix round LOW-2 —
+ * excludes 'reviewer'/'uat' from the otherwise-identical COMMENT_AUTHORS
+ * enum), since it is used to author the marker comment (see
+ * CLOSE_EXCEPTION_MARKER). Throws synchronously (a caller bug — a bad shape
+ * here is never "legitimate exception", it is a malformed call) BEFORE any
+ * disk I/O, mirroring every other pre-write validation in this module.
  */
 function resolveCloseException(exception) {
   if (exception === undefined) return null;
@@ -585,9 +598,11 @@ function resolveCloseException(exception) {
       + 'justification (e.g. a won\'t-do closure or a documented recovery path)',
     );
   }
-  if (!COMMENT_AUTHORS.includes(author)) {
+  if (!EXCEPTION_AUTHORS.includes(author)) {
     throw new Error(
-      `invalid exception.author ${JSON.stringify(author)} — must be one of ${COMMENT_AUTHORS.join(', ')}`,
+      `invalid exception.author ${JSON.stringify(author)} — must be one of ${EXCEPTION_AUTHORS.join(', ')} `
+      + "('reviewer'/'uat' are excluded: the exception marker is never a substitute for an actual review "
+      + 'or UAT verdict)',
     );
   }
   return { reason: reason.trim(), author };
@@ -621,9 +636,11 @@ function checkDonePredecessorState(task, resolvedException) {
     throw new InvalidPredecessorStateError(
       `task ${task.key} cannot transition to "done" from status "${task.status}" — done is reachable only `
       + `from ${DONE_PREDECESSOR_STATES.join('/')}, which CLAUDE.md's documented todo -> in_progress -> `
-      + 'in_review -> done convention uses to imply a review occurred. Pass `exception: { reason }` to use '
-      + 'the documented escape hatch for a legitimate exception (e.g. a won\'t-do closure or a documented '
-      + 'recovery path).',
+      + 'in_review -> done convention uses to imply a review occurred. Transition the ticket to `in_review` '
+      + '(CLAUDE.md Workflow step 6 / the orchestrator-routing skill\'s "Ticket-update protocol" section) '
+      + 'before closing — this is the compliant path, not the exception. Only for a genuine exception '
+      + '(e.g. a won\'t-do closure or a documented recovery path) — never as a routine substitute for the '
+      + 'above — pass `exception: { reason }` to use the documented escape hatch.',
     );
   }
 }
@@ -654,8 +671,11 @@ function checkCloseEvidence(task, linkedCommits, resolvedException) {
     throw new CloseEvidenceError(
       `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing `
       + `reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: `
-      + `${hasCommits}) — see CLAUDE.md's evidence-proportional-to-tier close rule. Pass `
-      + '`exception: { reason }` to use the documented escape hatch for a legitimate exception.',
+      + `${hasCommits}) — see CLAUDE.md's evidence-proportional-to-tier close rule. Record the reviewer `
+      + 'verdict via `append_comment({ author: "reviewer", ... })` BEFORE closing, and pass the commit '
+      + 'sha(s) to `close_task`\'s `linked_commits` — this is the compliant path, not the exception. Only '
+      + 'for a genuine exception (never as a routine substitute for the above) — pass '
+      + '`exception: { reason }` to use the documented escape hatch.',
     );
   }
 }
@@ -994,10 +1014,21 @@ export async function transitionStatus({
     checkCloseEvidence(task, task.linked_commits, resolvedException);
   }
 
+  // TASK-187 fix round LOW-1 — capture BEFORE the mutation below so the
+  // marker-append guard immediately following can tell an actual status
+  // change apart from an idempotent re-affirmation (task.status already ===
+  // 'done', reached this point only because checkDonePredecessorState/
+  // checkCloseEvidence both no-op on an already-'done' task).
+  const previousStatus = task.status;
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;
-  if (resolvedException) {
+  // Only append the exception marker when this call actually MOVED the
+  // status — an idempotent re-close (previousStatus already === status,
+  // i.e. already 'done') is not a new closure event, so recording a fresh
+  // '[CLOSE-EXCEPTION]' comment on it would be audit noise for a bypass
+  // that did not actually bypass anything this time.
+  if (resolvedException && previousStatus !== status) {
     const marker = {
       author: resolvedException.author,
       at: stamp,
@@ -1154,11 +1185,18 @@ export async function closeTask({
     }
   }
 
+  // TASK-187 fix round LOW-1 — same idempotent-re-close guard as
+  // transitionStatus: capture BEFORE the mutation below.
+  const previousStatus = task.status;
   const stamp = now();
   const newComment = { author: comment.author, at: stamp, body: comment.body };
   task.status = 'done';
   task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
-  if (resolvedException) {
+  // Only append the exception marker when this call actually MOVED the
+  // status (previousStatus !== 'done') — an idempotent re-close is not a
+  // new closure event, so it would be audit noise for a bypass that did not
+  // actually bypass anything this time.
+  if (resolvedException && previousStatus !== 'done') {
     const marker = {
       author: resolvedException.author,
       at: stamp,

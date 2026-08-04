@@ -191,11 +191,21 @@ same workflow applies; only the I/O surface changes.
      regression locks land, exactly as for `uat-only`.
    - `uat-only` — Spawn the Developer for implementation only; no new specs. After
      implementation, run the UAT step below.
-5. **Spawn the Reviewer.** Give it the diff range, the original acceptance criteria,
-   and the computed `review_depth` (see "Review depth rubric" below) together with
-   the rubric inputs (changed-line count, touched surfaces) that produced it. Block
-   on any HIGH-severity finding — loop back to the Developer with the findings.
-6. **Update ticket.** On a clean review, call the `close_task` MCP tool once —
+5. **Spawn the Reviewer.** First call `transition_status` to move the ticket to
+   `in_review` (TASK-187) — `done` is reachable only from this state, the one
+   step in the documented `todo → in_progress → in_review → done` convention
+   that implies a review occurred. Then give the Reviewer the diff range, the
+   original acceptance criteria, and the computed `review_depth` (see "Review
+   depth rubric" below) together with the rubric inputs (changed-line count,
+   touched surfaces) that produced it. Block on any HIGH-severity finding —
+   loop back to the Developer with the findings; the ticket stays `in_review`
+   (no transition back to `in_progress` is required — the Developer's next
+   hand-off re-enters this step).
+6. **Update ticket.** On a clean (PASS) review, first call `append_comment`
+   with `author: 'reviewer'` to record the verdict as a SEPARATE, pre-existing
+   comment (TASK-187/TASK-188) — `close_task`'s own closing comment can never
+   itself claim `author: 'reviewer'` (`ClosingCommentAuthorError`). Then call
+   the `close_task` MCP tool once —
    it atomically transitions the ticket to `status: done`, appends a summary
    comment naming the review depth and its rubric inputs, records commit SHAs in
    `linked_commits` and any PR URL in `linked_prs`, refreshes `updated_at`, and
@@ -1058,22 +1068,44 @@ compose the three deterministic mutation-seam guards below; a direct hand
   timestamped, durably-recorded writes and gives a human a real audit trail
   to sanity-check, not a cryptographic guarantee.
 
-**On a clean review (closing a ticket)**, call the `close_task` tool once —
-it performs the transition, the closing comment, the `linked_commits`/
-`linked_prs` append, and the `tasks/index.json` regen as a single
-validate-then-atomic pass (all-or-nothing: a guard failure, a malformed
-commit sha, an unknown comment author, or a closing comment authored
-`reviewer` leaves the ticket file and the index byte-unchanged), and
-(TASK-163) runs the loop-mode uat-comment write guard against its own
-`comment.author` before that atomic write — the same rule `append_comment`
-enforces. `linked_commits` is validated for SHAPE only
-(`/^[0-9a-f]{7,40}$/i`) — `closeTask` does not verify a sha resolves to a
-real commit (task-store.js is a pure state-store function with no git
-dependency, TASK-188 AC6); the tool's response instead carries a best-effort,
-advisory-only `linked_commits_verification` (never blocking the close) that
-distinguishes verified-present/verified-missing from could-not-verify (no
-git binary, or the repo has no `.git`) — see `tasks/schema.json`'s
-`linked_commits` description for the full contract:
+**On a clean review (closing a ticket)**, `close_task` alone is NOT the whole
+procedure (TASK-187/TASK-188) — `done` is reachable only from `in_review`
+and, for `tdd`/`tests-after` tiers, requires a pre-existing `reviewer`-
+authored comment plus a non-empty `linked_commits`. This is the documented
+sequence (also see Workflow steps 5-6 above, which this expands on) — a
+permanent lock (`tests/e2e/close-procedure-doc-lock.spec.js`) extracts these
+three steps from this exact block and drives the real guards with them, so if
+the preconditions below ever move without this doc moving too, the lock
+fails:
+
+<!-- CLOSE-PROCEDURE:START -->
+1. `transition_status({ key, status: "in_review" })` — call when spawning the
+   Reviewer (Workflow step 5). `done` is reachable only from `in_review`
+   (`InvalidPredecessorStateError`, `code: 'E_INVALID_DONE_PREDECESSOR'`,
+   otherwise).
+2. On a PASS verdict, `append_comment({ key, author: "reviewer", body: "<verdict>" })`
+   — records the review as a SEPARATE, pre-existing comment BEFORE the close
+   call. `close_task`'s own `comment` param can never itself claim
+   `author: "reviewer"` (`ClosingCommentAuthorError`).
+3. `close_task({ key, comment: { author: "orchestrator", body: "<summary>" }, linked_commits: [...] })`
+   — call once; it performs the transition, the closing comment, the
+   `linked_commits`/`linked_prs` append, and the `tasks/index.json` regen as
+   a single validate-then-atomic pass.
+<!-- CLOSE-PROCEDURE:END -->
+
+Step 3's atomic pass is all-or-nothing: a guard failure, a malformed commit
+sha, an unknown comment author, or a closing comment authored `reviewer`
+leaves the ticket file and the index byte-unchanged, and (TASK-163) runs the
+loop-mode uat-comment write guard against its own `comment.author` before
+that atomic write — the same rule `append_comment` enforces. `linked_commits`
+is validated for SHAPE only (`/^[0-9a-f]{7,40}$/i`) — `closeTask` does not
+verify a sha resolves to a real commit (task-store.js is a pure state-store
+function with no git dependency, TASK-188 AC6); the tool's response instead
+carries a best-effort, advisory-only `linked_commits_verification` (never
+blocking the close) that distinguishes verified-present/verified-missing from
+could-not-verify (no git binary, or the repo has no `.git`) — see
+`tasks/schema.json`'s `linked_commits` description for the full contract.
+Worked example of step 3:
 
 ```
 mcp__plugin_hivemind_hivemind-tasks__close_task({
@@ -1083,6 +1115,18 @@ mcp__plugin_hivemind_hivemind-tasks__close_task({
   linked_prs: [...],
 })
 ```
+
+**Escape hatch, and its scope (TASK-187 AC6; TASK-187 fix-round MEDIUM-1).**
+An explicit, auditable `exception: { reason, author? }` on `transition_status`/
+`close_task` bypasses steps 1-2 above for a legitimate exception (e.g. a
+won't-do closure, or a documented recovery path) — a non-empty `reason` is
+required and is recorded as a separate `[CLOSE-EXCEPTION]`-prefixed comment
+rather than a silent skip. **It does NOT work for `uat-only` tickets**: the
+uat-only done-guard (`checkUatGuard`) runs BEFORE the exception is even
+considered and is never bypassed by it — this ordering is deliberate, not a
+bug (the escape hatch is not a skeleton key). A won't-do `uat-only` closure
+still needs its own recognizable `uat`-authored verdict comment; there is
+currently no exception-based path around that requirement.
 
 **For intermediate status transitions** (`todo → in_progress → in_review`, or
 `→ blocked`), use `transition_status`; for standalone comments, use

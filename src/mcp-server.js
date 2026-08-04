@@ -398,16 +398,24 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         + "(TASK-187) status:'done' now requires a valid predecessor state "
         + "that implies a review occurred ('in_review') and, for tdd/"
         + 'tests-after tiers, a pre-existing reviewer comment plus a '
-        + 'non-empty linked_commits. `exception: { reason, author? }` is '
-        + 'the documented, auditable escape hatch for a legitimate '
-        + "exception (e.g. a won't-do closure) — it records a separate "
-        + "'[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently.",
+        + 'non-empty linked_commits — the compliant path is transitioning '
+        + "to 'in_review' when spawning the Reviewer, then append_comment "
+        + "({ author: 'reviewer' }) recording the verdict, THEN close_task. "
+        + '`exception: { reason, author? }` is the documented, auditable '
+        + 'escape hatch for a genuine exception (e.g. a won\'t-do closure) '
+        + '— never a routine substitute for the compliant path — it '
+        + "records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather "
+        + 'than bypassing silently. (TASK-187 fix round MEDIUM-1) the '
+        + "exception does NOT work for verification_tier 'uat-only': the "
+        + 'uat-only done-guard runs BEFORE the exception is considered and '
+        + 'is never bypassed by it — a won\'t-do uat-only closure still '
+        + "needs its own recognizable 'uat'-authored verdict comment.",
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
         status: STATUS,
         exception: z.object({
           reason: z.string().describe('Non-empty, auditable justification for bypassing the close preconditions.'),
-          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator')."),
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator'). 'reviewer'/'uat' are rejected — the exception marker is never a substitute for an actual review or UAT verdict."),
         }).optional(),
       },
     },
@@ -462,13 +470,21 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         + 'loop-mode uat-comment write guard on comment.author, '
         + "(TASK-188) rejects comment.author 'reviewer', and (TASK-187) "
         + "requires status 'in_review' plus, for tdd/tests-after tiers, a "
-        + 'pre-existing reviewer comment and a non-empty linked_commits. '
-        + '`exception: { reason, author? }` is the documented, auditable '
-        + "escape hatch for a legitimate exception (e.g. a won't-do "
-        + "closure) — it records a separate '[CLOSE-EXCEPTION]'-prefixed "
-        + 'comment rather than bypassing silently. Reports a best-effort, '
-        + 'advisory-only linked_commits_verification (never blocks the '
-        + 'close) — see the TASK-188 hand-off / tasks/schema.json.',
+        + 'pre-existing reviewer comment and a non-empty linked_commits — '
+        + "the compliant path is transitioning to 'in_review' when "
+        + "spawning the Reviewer, then append_comment({ author: 'reviewer' }) "
+        + 'recording the verdict, THEN close_task. `exception: { reason, '
+        + 'author? }` is the documented, auditable escape hatch for a '
+        + "genuine exception (e.g. a won't-do closure) — never a routine "
+        + "substitute for the compliant path — it records a separate "
+        + "'[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing "
+        + 'silently. (TASK-187 fix round MEDIUM-1) the exception does NOT '
+        + "work for verification_tier 'uat-only': the uat-only done-guard "
+        + 'runs BEFORE the exception is considered and is never bypassed '
+        + "by it — a won't-do uat-only closure still needs its own "
+        + "recognizable 'uat'-authored verdict comment. Reports a "
+        + 'best-effort, advisory-only linked_commits_verification (never '
+        + 'blocks the close) — see the TASK-188 hand-off / tasks/schema.json.',
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
         comment: z.object({ author: COMMENT_AUTHOR, body: z.string() }),
@@ -476,7 +492,7 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         linked_prs: z.array(z.string()).optional(),
         exception: z.object({
           reason: z.string().describe('Non-empty, auditable justification for bypassing the close preconditions.'),
-          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator')."),
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator'). 'reviewer'/'uat' are rejected — the exception marker is never a substitute for an actual review or UAT verdict."),
         }).optional(),
       },
     },

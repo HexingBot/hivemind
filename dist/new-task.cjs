@@ -7958,6 +7958,7 @@ var import_ajv_formats = __toESM(require_dist(), 1);
 
 // src/task-store.js
 var PRIORITIES = ["low", "medium", "high", "critical"];
+var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
 var __ajv = new import__.default({ allErrors: true, strict: false });
 (0, import_ajv_formats2.default)(__ajv);
@@ -8025,6 +8026,7 @@ var KeyCollisionError = class extends Error {
     this.code = "E_KEY_COLLISION";
   }
 };
+var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
 var AcceptanceCriteriaError = class extends Error {
   constructor(message) {
     super(message);

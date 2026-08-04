@@ -26049,6 +26049,7 @@ var CloseEvidenceError = class extends Error {
 var DONE_PREDECESSOR_STATES = ["in_review"];
 var EVIDENCE_REQUIRED_TIERS = ["tdd", "tests-after"];
 var CLOSE_EXCEPTION_MARKER = "[CLOSE-EXCEPTION]";
+var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
 function resolveCloseException(exception) {
   if (exception === void 0) return null;
   if (exception === null || typeof exception !== "object") {
@@ -26062,9 +26063,9 @@ function resolveCloseException(exception) {
       "exception.reason must be a non-empty string \u2014 the escape hatch requires an explicit, auditable justification (e.g. a won't-do closure or a documented recovery path)"
     );
   }
-  if (!COMMENT_AUTHORS.includes(author)) {
+  if (!EXCEPTION_AUTHORS.includes(author)) {
     throw new Error(
-      `invalid exception.author ${JSON.stringify(author)} \u2014 must be one of ${COMMENT_AUTHORS.join(", ")}`
+      `invalid exception.author ${JSON.stringify(author)} \u2014 must be one of ${EXCEPTION_AUTHORS.join(", ")} ('reviewer'/'uat' are excluded: the exception marker is never a substitute for an actual review or UAT verdict)`
     );
   }
   return { reason: reason.trim(), author };
@@ -26074,7 +26075,7 @@ function checkDonePredecessorState(task, resolvedException) {
   if (task.status === "done") return;
   if (!DONE_PREDECESSOR_STATES.includes(task.status)) {
     throw new InvalidPredecessorStateError(
-      `task ${task.key} cannot transition to "done" from status "${task.status}" \u2014 done is reachable only from ${DONE_PREDECESSOR_STATES.join("/")}, which CLAUDE.md's documented todo -> in_progress -> in_review -> done convention uses to imply a review occurred. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception (e.g. a won't-do closure or a documented recovery path).`
+      `task ${task.key} cannot transition to "done" from status "${task.status}" \u2014 done is reachable only from ${DONE_PREDECESSOR_STATES.join("/")}, which CLAUDE.md's documented todo -> in_progress -> in_review -> done convention uses to imply a review occurred. Transition the ticket to \`in_review\` (CLAUDE.md Workflow step 6 / the orchestrator-routing skill's "Ticket-update protocol" section) before closing \u2014 this is the compliant path, not the exception. Only for a genuine exception (e.g. a won't-do closure or a documented recovery path) \u2014 never as a routine substitute for the above \u2014 pass \`exception: { reason }\` to use the documented escape hatch.`
     );
   }
 }
@@ -26087,7 +26088,7 @@ function checkCloseEvidence(task, linkedCommits, resolvedException) {
   const hasCommits = Array.isArray(linkedCommits) && linkedCommits.length > 0;
   if (!hasReviewer || !hasCommits) {
     throw new CloseEvidenceError(
-      `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: ${hasCommits}) \u2014 see CLAUDE.md's evidence-proportional-to-tier close rule. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception.`
+      `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: ${hasCommits}) \u2014 see CLAUDE.md's evidence-proportional-to-tier close rule. Record the reviewer verdict via \`append_comment({ author: "reviewer", ... })\` BEFORE closing, and pass the commit sha(s) to \`close_task\`'s \`linked_commits\` \u2014 this is the compliant path, not the exception. Only for a genuine exception (never as a routine substitute for the above) \u2014 pass \`exception: { reason }\` to use the documented escape hatch.`
     );
   }
 }
@@ -26184,10 +26185,11 @@ async function transitionStatus({
     checkDonePredecessorState(task, resolvedException);
     checkCloseEvidence(task, task.linked_commits, resolvedException);
   }
+  const previousStatus = task.status;
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;
-  if (resolvedException) {
+  if (resolvedException && previousStatus !== status) {
     const marker = {
       author: resolvedException.author,
       at: stamp,
@@ -26263,11 +26265,12 @@ async function closeTask({
       );
     }
   }
+  const previousStatus = task.status;
   const stamp = now();
   const newComment = { author: comment.author, at: stamp, body: comment.body };
   task.status = "done";
   task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
-  if (resolvedException) {
+  if (resolvedException && previousStatus !== "done") {
     const marker = {
       author: resolvedException.author,
       at: stamp,
@@ -26930,13 +26933,13 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
   server.registerTool(
     "transition_status",
     {
-      description: "Set a task status (todo|in_progress|in_review|blocked|done). (TASK-187) status:'done' now requires a valid predecessor state that implies a review occurred ('in_review') and, for tdd/tests-after tiers, a pre-existing reviewer comment plus a non-empty linked_commits. `exception: { reason, author? }` is the documented, auditable escape hatch for a legitimate exception (e.g. a won't-do closure) \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently.",
+      description: "Set a task status (todo|in_progress|in_review|blocked|done). (TASK-187) status:'done' now requires a valid predecessor state that implies a review occurred ('in_review') and, for tdd/tests-after tiers, a pre-existing reviewer comment plus a non-empty linked_commits \u2014 the compliant path is transitioning to 'in_review' when spawning the Reviewer, then append_comment ({ author: 'reviewer' }) recording the verdict, THEN close_task. `exception: { reason, author? }` is the documented, auditable escape hatch for a genuine exception (e.g. a won't-do closure) \u2014 never a routine substitute for the compliant path \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. (TASK-187 fix round MEDIUM-1) the exception does NOT work for verification_tier 'uat-only': the uat-only done-guard runs BEFORE the exception is considered and is never bypassed by it \u2014 a won't-do uat-only closure still needs its own recognizable 'uat'-authored verdict comment.",
       inputSchema: {
         key: external_exports.string().describe("Task key, e.g. TASK-026"),
         status: STATUS,
         exception: external_exports.object({
           reason: external_exports.string().describe("Non-empty, auditable justification for bypassing the close preconditions."),
-          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator').")
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator'). 'reviewer'/'uat' are rejected \u2014 the exception marker is never a substitute for an actual review or UAT verdict.")
         }).optional()
       }
     },
@@ -26974,7 +26977,7 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
   server.registerTool(
     "close_task",
     {
-      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard, the loop-mode close guard, (TASK-163) the loop-mode uat-comment write guard on comment.author, (TASK-188) rejects comment.author 'reviewer', and (TASK-187) requires status 'in_review' plus, for tdd/tests-after tiers, a pre-existing reviewer comment and a non-empty linked_commits. `exception: { reason, author? }` is the documented, auditable escape hatch for a legitimate exception (e.g. a won't-do closure) \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. Reports a best-effort, advisory-only linked_commits_verification (never blocks the close) \u2014 see the TASK-188 hand-off / tasks/schema.json.",
+      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard, the loop-mode close guard, (TASK-163) the loop-mode uat-comment write guard on comment.author, (TASK-188) rejects comment.author 'reviewer', and (TASK-187) requires status 'in_review' plus, for tdd/tests-after tiers, a pre-existing reviewer comment and a non-empty linked_commits \u2014 the compliant path is transitioning to 'in_review' when spawning the Reviewer, then append_comment({ author: 'reviewer' }) recording the verdict, THEN close_task. `exception: { reason, author? }` is the documented, auditable escape hatch for a genuine exception (e.g. a won't-do closure) \u2014 never a routine substitute for the compliant path \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. (TASK-187 fix round MEDIUM-1) the exception does NOT work for verification_tier 'uat-only': the uat-only done-guard runs BEFORE the exception is considered and is never bypassed by it \u2014 a won't-do uat-only closure still needs its own recognizable 'uat'-authored verdict comment. Reports a best-effort, advisory-only linked_commits_verification (never blocks the close) \u2014 see the TASK-188 hand-off / tasks/schema.json.",
       inputSchema: {
         key: external_exports.string().describe("Task key, e.g. TASK-026"),
         comment: external_exports.object({ author: COMMENT_AUTHOR, body: external_exports.string() }),
@@ -26982,7 +26985,7 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
         linked_prs: external_exports.array(external_exports.string()).optional(),
         exception: external_exports.object({
           reason: external_exports.string().describe("Non-empty, auditable justification for bypassing the close preconditions."),
-          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator').")
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator'). 'reviewer'/'uat' are rejected \u2014 the exception marker is never a substitute for an actual review or UAT verdict.")
         }).optional()
       }
     },

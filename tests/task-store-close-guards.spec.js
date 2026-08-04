@@ -895,3 +895,183 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
     expect(readTaskFileBytes(repoDir, 'TASK-954')).toBe(before);
   });
 });
+
+// ===========================================================================
+// TASK-187 fix round LOW-1 — the [CLOSE-EXCEPTION] marker must only be
+// appended when the transition ACTUALLY moved the status. Before this fix,
+// transitionStatus/closeTask appended a fresh marker comment on every call
+// carrying `exception`, even against an already-'done' task where both
+// checkDonePredecessorState/checkCloseEvidence had already no-op'd — audit
+// noise on an idempotent re-close that bypassed nothing this time.
+// ===========================================================================
+describe('TASK-187 fix round LOW-1 — exception marker is only appended on an ACTUAL status change', () => {
+  it('transitionStatus: re-closing an already-done task with `exception` appends NO new marker comment', async () => {
+    const { transitionStatus } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-low1-transitionstatus-idempotent');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-960': makeTask({
+          key: 'TASK-960',
+          verification_tier: 'tdd',
+          status: 'done', // already done — both checks no-op here regardless of exception
+          comments: [{ author: 'reviewer', at: '2026-08-01T00:00:00Z', body: 'APPROVE.' }],
+          linked_commits: ['abc1234'],
+        }),
+      },
+    });
+
+    await transitionStatus({
+      repoRoot: repoDir,
+      key: 'TASK-960',
+      status: 'done',
+      exception: { reason: 'idempotent re-close, no bypass actually needed' },
+    });
+
+    const after = readTaskFile(repoDir, 'TASK-960');
+    expect(
+      after.comments.some((c) => c.body.startsWith('[CLOSE-EXCEPTION]')),
+      'an idempotent re-close must not fabricate a fresh [CLOSE-EXCEPTION] audit entry for a bypass that '
+        + 'did not actually bypass anything this call',
+    ).toBe(false);
+    expect(after.comments).toHaveLength(1); // unchanged from the fixture
+  });
+
+  it('transitionStatus: a REAL bypass (todo -> done via exception) still appends exactly one marker comment', async () => {
+    const { transitionStatus } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-low1-transitionstatus-real-bypass');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-961': makeTask({
+          key: 'TASK-961', verification_tier: 'tdd', status: 'todo', comments: [],
+        }),
+      },
+    });
+
+    await transitionStatus({
+      repoRoot: repoDir,
+      key: 'TASK-961',
+      status: 'done',
+      exception: { reason: "won't-do closure" },
+    });
+
+    const after = readTaskFile(repoDir, 'TASK-961');
+    const markers = after.comments.filter((c) => c.body.startsWith('[CLOSE-EXCEPTION]'));
+    expect(markers).toHaveLength(1);
+  });
+
+  it('closeTask: re-closing an already-done task with `exception` appends NO new marker comment', async () => {
+    const { closeTask } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-low1-closetask-idempotent');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-962': makeTask({
+          key: 'TASK-962',
+          verification_tier: 'tdd',
+          status: 'done',
+          comments: [{ author: 'reviewer', at: '2026-08-01T00:00:00Z', body: 'APPROVE.' }],
+          linked_commits: ['abc1234'],
+        }),
+      },
+    });
+
+    await closeTask({
+      repoRoot: repoDir,
+      key: 'TASK-962',
+      comment: { author: 'orchestrator', body: 'Re-closing, no-op.' },
+      exception: { reason: 'idempotent re-close, no bypass actually needed' },
+    });
+
+    const after = readTaskFile(repoDir, 'TASK-962');
+    expect(
+      after.comments.some((c) => c.body.startsWith('[CLOSE-EXCEPTION]')),
+      'an idempotent re-close via closeTask must not fabricate a fresh [CLOSE-EXCEPTION] audit entry either',
+    ).toBe(false);
+  });
+});
+
+// ===========================================================================
+// TASK-187 fix round LOW-2 — exception.author must not be able to claim a
+// privileged role ('reviewer'/'uat') whose whole meaning is "an actual
+// review/verification event happened". Both laundering paths this would open
+// were already dead by construction (the [CLOSE-EXCEPTION] prefix defeats
+// the content checks; checkUatGuard precedes the exception entirely), but
+// restricting resolveCloseException's accepted authors costs nothing and
+// closes the surface directly rather than relying on those two accidents of
+// ordering forever.
+// ===========================================================================
+describe('TASK-187 fix round LOW-2 — exception.author rejects privileged roles', () => {
+  it('exception.author: "reviewer" is rejected before any disk write', async () => {
+    const { closeTask } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-low2-exception-author-reviewer');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-963': makeTask({
+          key: 'TASK-963', verification_tier: 'tdd', status: 'todo', comments: [],
+        }),
+      },
+    });
+    const before = readTaskFileBytes(repoDir, 'TASK-963');
+
+    await expect(
+      closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-963',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+        exception: { reason: "won't-do closure", author: 'reviewer' },
+      }),
+    ).rejects.toThrow(/exception\.author/i);
+    expect(readTaskFileBytes(repoDir, 'TASK-963')).toBe(before);
+  });
+
+  it('exception.author: "uat" is rejected before any disk write', async () => {
+    const { closeTask } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-low2-exception-author-uat');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-964': makeTask({
+          key: 'TASK-964', verification_tier: 'tdd', status: 'todo', comments: [],
+        }),
+      },
+    });
+    const before = readTaskFileBytes(repoDir, 'TASK-964');
+
+    await expect(
+      closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-964',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+        exception: { reason: "won't-do closure", author: 'uat' },
+      }),
+    ).rejects.toThrow(/exception\.author/i);
+    expect(readTaskFileBytes(repoDir, 'TASK-964')).toBe(before);
+  });
+
+  it('exception.author: "developer" (non-privileged) is still accepted', async () => {
+    const { closeTask } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-low2-exception-author-developer-ok');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-965': makeTask({
+          key: 'TASK-965', verification_tier: 'tdd', status: 'todo', comments: [],
+        }),
+      },
+    });
+
+    await closeTask({
+      repoRoot: repoDir,
+      key: 'TASK-965',
+      comment: { author: 'orchestrator', body: 'Closing.' },
+      exception: { reason: "won't-do closure", author: 'developer' },
+    });
+
+    const after = readTaskFile(repoDir, 'TASK-965');
+    expect(after.comments[0].author).toBe('developer');
+    expect(after.comments[0].body).toMatch(/^\[CLOSE-EXCEPTION\]/);
+  });
+});

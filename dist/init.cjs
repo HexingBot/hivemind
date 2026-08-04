@@ -10361,6 +10361,7 @@ var KeyCollisionError = class extends Error {
     this.code = "E_KEY_COLLISION";
   }
 };
+var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
 var AcceptanceCriteriaError = class extends Error {
   constructor(message) {
     super(message);

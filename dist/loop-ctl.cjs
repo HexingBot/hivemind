@@ -12265,10 +12265,12 @@ var schema_default = {
 };
 
 // src/task-store.js
+var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
 var __ajv = new import__2.default({ allErrors: true, strict: false });
 (0, import_ajv_formats2.default)(__ajv);
 var __validateTask = __ajv.compile(schema_default);
+var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
 
 // src/knowledge.js
 var import_node_fs6 = require("node:fs");
