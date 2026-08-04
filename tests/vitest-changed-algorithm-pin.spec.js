@@ -22,15 +22,29 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 
-import { REPO_ROOT } from './helpers/repoRoot.js';
+// TASK-198 defect 2 fix: the previous version hardcoded a REPO_ROOT-relative
+// fs path (`<repoRoot>/node_modules/vitest/dist/chunks`), which breaks
+// inside an isolated worktree — a worktree's own `node_modules` is an EMPTY
+// directory (see src/worktree-provision.js), so that literal path resolves
+// to nothing there even though real module resolution (this file's approach
+// now) would still find vitest via Node's own ancestor walk up into the
+// primary checkout. Locating vitest via `require.resolve` instead means this
+// spec is correct regardless of whether the worktree's node_modules has been
+// junction-provisioned yet — it asks Node the same question Node itself asks
+// when `import 'vitest'` runs anywhere in this codebase.
+function findVitestPackageRoot() {
+  const require = createRequire(import.meta.url);
+  return dirname(require.resolve('vitest/package.json'));
+}
 
 /** node:fs has no stable, engine-compatible glob (>=20) — a directory listing
  * plus a prefix/suffix filter is the "native feature" rung of the minimalism
  * ladder for a single-directory, single-pattern match like this one. */
 function findVitestGitChunk() {
-  const chunksDir = join(REPO_ROOT, 'node_modules', 'vitest', 'dist', 'chunks');
+  const chunksDir = join(findVitestPackageRoot(), 'dist', 'chunks');
   const matches = readdirSync(chunksDir).filter((name) => name.startsWith('git.') && name.endsWith('.js'));
   expect(
     matches.length,

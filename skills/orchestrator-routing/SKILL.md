@@ -295,6 +295,84 @@ second); a hook can enforce the pathspec form but cannot see a sibling's
 working-tree content (fails the second). Neither is implemented for this
 purpose; the pathspec protocol remains the backstop instead.
 
+### Provisioning requirements — a worktree must be a usable environment (TASK-198)
+
+TASK-195's first real use (2026-08-03) surfaced two provisioning defects that
+four review rounds on `src/worktree-handback.js` could not have caught,
+because neither is a defect in that module — both are properties of how the
+worktree itself is created and populated, before any handback logic runs.
+
+**1. Base ref.** Worktree isolation branches a new worktree from
+`origin/<default-branch>` by default. This repo is worked local-first —
+`origin/main` has been observed 63 commits and 5 days behind local `main` —
+so an agent spawned into a worktree with no override can land on a checkout
+that predates the very ticket it was asked to follow up on (files it was told
+to edit do not exist yet; cited file:line references resolve to unrelated
+code). **The fix is `.claude/settings.json`'s `"worktree": { "baseRef":
+"head" }`** — a settings-file edit reserved for a human (or an
+explicitly-authorized path); the Orchestrator/Developer is structurally
+blocked from making it by the settings-file guard, and that guard is
+correct. **Sensor:** `tests/worktree-baseref-setting.spec.js` (fast tier)
+reads the repo's own committed `.claude/settings.json` and fails, naming the
+exact edit, whenever `worktree.baseRef !== 'head'` — this is what catches a
+regression (someone removing or overwriting the setting), not a test of the
+harness's own config-driven behavior (that boundary is outside this repo's
+testable surface).
+
+**2. `node_modules`.** An isolated worktree's own `node_modules` directory
+has been observed EMPTY. Node's parent-directory module-resolution fallback
+still satisfies ordinary `import`s (the ancestor walk reaches the primary
+checkout's real `node_modules`, since a worktree under `.claude/worktrees/`
+is nested inside the primary repo tree) — which is what makes the empty
+directory dangerous rather than obviously broken: most things appear to
+work. Two things do not: (a) code that does a literal `fs` path lookup
+against `<root>/node_modules/...` instead of real module resolution (fixed
+in `tests/vitest-changed-algorithm-pin.spec.js` by switching to
+`require.resolve`, which finds vitest via Node's own ancestor walk
+regardless of provisioning state), and (b) `npm run build:plugin` — esbuild's
+own dependency resolution does not necessarily replicate Node's ancestor
+walk, so a build run with cwd inside a worktree can emit different bytes
+than the same build run in the primary checkout, producing `dist-parity`
+false-positive drift.
+
+**Decision: link, don't reinstall.** The worktree's `node_modules` is linked
+to the primary checkout's own — a directory junction on Windows, a symlink
+on POSIX — via `src/worktree-provision.js`'s `provisionWorktreeNodeModules`
+(`node scripts/provision-worktree.mjs <worktreePath>`). Rationale: near-instant,
+no extra disk cost, and every build is byte-identical because it is
+literally the same dependency tree, not a re-resolved copy of it. **Accepted
+risk (stated, not implicit):** a worktree checked out at a commit with a
+divergent `package.json`/`package-lock.json` would still use the primary
+checkout's installed deps, which could be wrong for that commit — accepted
+because agent worktrees created via `isolation: 'worktree'` are short-lived
+branches off current HEAD, not long-running divergent checkouts, so the
+dependency tree at HEAD and at the worktree's branch point are, by
+construction, the same tree.
+
+**Provisioning seam (stated plainly, not invented):** no code in this
+repository runs automatically between `git worktree add` and a spawned
+subagent's first tool call — that boundary is entirely inside the `Agent`
+tool's own implementation (the harness, not this repo). `hooks/hooks.json`
+wires no PostToolUse/worktree-creation hook, and none is added here — a hook
+that never fires would look like coverage while providing none. Run
+`node scripts/provision-worktree.mjs <worktreePath>` as the FIRST action
+once a worktree-isolated spawn is known to exist, before relying on anything
+built or resolved inside it.
+
+**Sensor:** `tests/e2e/worktree-node-modules-provisioning.spec.js` exercises
+the real junction/symlink side effects (creation, idempotent re-run, refusal
+to clobber a real non-empty directory) and locks the regression that matters
+— that after provisioning, both a literal fs path lookup and real module
+resolution from inside the worktree find the SAME package the primary
+checkout has, not an empty shadow. The build-byte-parity symptom is covered
+by the existing `tests/e2e/dist-parity.spec.js`, which is `REPO_ROOT`-relative
+and therefore runs its own comparison correctly wherever it is invoked,
+including from inside a provisioned worktree.
+
+**Verification:** `npm run test:all` must be green from both the primary
+checkout and a provisioned worktree — this is the acceptance test for
+provisioning as a whole, not any single sensor above.
+
 ### Handback protocol — how a worktree commit reaches the main line
 
 A commit made inside a worktree is already in the repo — git worktrees share
