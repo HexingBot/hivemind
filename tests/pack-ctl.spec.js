@@ -43,11 +43,141 @@ import { describe, it, expect } from 'vitest';
 
 import {
   parseFlags, run, profileResultFromFrontmatter, aggregateDesired, parseAssimilateArgs,
+  computeApplyOutcome,
 } from '../bin/pack-ctl.js';
 import { scoreComplexity, resourceActivations } from '../src/design-profile.js';
 import { deriveProfileFields } from '../src/design-profile.js';
 import { resolveDesired } from '../src/pack-resources.js';
 import { DESIGN_POWER_DESCRIPTOR } from '../src/builtin-packs.js';
+
+// ---------------------------------------------------------------------------
+// computeApplyOutcome — TASK-199. bin/pack-ctl.js:461-471 (pre-TASK-199) drove
+// reconcile-apply's run-level ok/failureKind predicate from `plan.install`
+// ONLY, so a planned replace (TASK-182 made the bucket actually executable)
+// that soft-failed was invisible to it: `ok: true`, exit 0, with the truth
+// sitting only in a nested `packs[].report` entry. Pure — no I/O — so these
+// exercise the predicate directly, independent of the real built-in pack
+// descriptors (whose git-sha pins make the replace bucket production-inert
+// today — see the ticket hand-off's reachability note).
+//
+// AC map: AC1 (red demonstrated below by the concrete-gap test), AC2 (a
+// soft-failing replace is distinguishable from "nothing planned"), AC3 (a
+// successful replace is visible via replacedCount even with zero installs),
+// AC4 (the extend-vs-report-only decision + reasoning is recorded on
+// computeApplyOutcome's own doc comment in bin/pack-ctl.js).
+// ---------------------------------------------------------------------------
+describe('computeApplyOutcome — TASK-199: the run-level ok/failureKind predicate sees the replace bucket', () => {
+  it('AC1/AC2 — a soft-failing replace the precedence gate WOULD attempt (shipped-newer, decidable) is no longer an unqualified success', () => {
+    // Mirrors the ticket's concrete scenario: a consumer's lockfile owns
+    // skill:watch at 1.0.0, the plugin ships 2.0.0 (decidable, shipped-newer
+    // -- the gate WILL attempt this), and the materialize soft-fails (no
+    // pack landed it) -- reproduced here via the outcome's inputs rather
+    // than a real fixture, since no real built-in pack descriptor ships a
+    // semver pin today (see the module header on computeApplyOutcome).
+    const computedPlan = {
+      install: [],
+      replace: [{ id: 'skill:watch', resource: { id: 'watch' }, from: '1.0.0', to: '2.0.0' }],
+    };
+    const packs = [{ id: 'watch', aborted: false, installed: [], replaced: [] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.plannedReplaceCount).toBe(1);
+    expect(outcome.replacedCount).toBe(0);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failureKind).toBe('total');
+  });
+
+  it('AC2 — distinguishes "no replaces were planned" from "replaces were planned and did not land"', () => {
+    const nothingPlanned = computeApplyOutcome({
+      computedPlan: { install: [], replace: [] },
+      packs: [{ id: 'watch', aborted: false, installed: [], replaced: [] }],
+    });
+    expect(nothingPlanned.plannedReplaceCount).toBe(0);
+    expect(nothingPlanned.replacedCount).toBe(0);
+    expect(nothingPlanned.ok).toBe(true);
+
+    const plannedButNotLanded = computeApplyOutcome({
+      computedPlan: { install: [], replace: [{ id: 'skill:watch', resource: {}, from: '1.0.0', to: '2.0.0' }] },
+      packs: [{ id: 'watch', aborted: false, installed: [], replaced: [] }],
+    });
+    expect(plannedButNotLanded.plannedReplaceCount).toBe(1);
+    expect(plannedButNotLanded.replacedCount).toBe(0);
+    expect(plannedButNotLanded.ok).toBe(false);
+
+    // A caller can tell the two apart from the counts alone, without ever
+    // reading packs[].report.
+    expect(nothingPlanned.plannedReplaceCount).not.toBe(plannedButNotLanded.plannedReplaceCount);
+  });
+
+  it('a deliberately deferred/kept-as-is replace (installed-newer or undecidable precedence) is NOT counted as "planned" and stays ok:true — never a false alarm on a working-as-designed keep-as-is', () => {
+    // Two real git-sha-shaped pins: comparePinPrecedence returns 'undecidable'
+    // for both sides failing the semver regex, so shippedPinWins is false —
+    // the apply-time gate DEFERS this op (TASK-182's documented residual),
+    // it never attempts to execute it at all.
+    const computedPlan = {
+      install: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch' },
+        from: '83da59fa78c3eee9e20f515fe75c438bb5166efd',
+        to: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+      }],
+    };
+    // Deferred ops never appear in `replaced` (they were never attempted).
+    const packs = [{ id: 'watch', aborted: false, installed: [], replaced: [] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.plannedReplaceCount).toBe(0);
+    expect(outcome.replacedCount).toBe(0);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.failureKind).toBeNull();
+  });
+
+  it('AC3 — a successful attempted replace is counted and visible even when installed_count is zero', () => {
+    const computedPlan = {
+      install: [],
+      replace: [{ id: 'skill:watch', resource: { id: 'watch' }, from: '1.0.0', to: '2.0.0' }],
+    };
+    const packs = [{ id: 'watch', aborted: false, installed: [], replaced: ['skill:watch'] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.plannedReplaceCount).toBe(1);
+    expect(outcome.replacedCount).toBe(1);
+    expect(outcome.installedCount).toBe(0);
+    expect(outcome.ok).toBe(true);
+  });
+
+  it('a partial failure can come from EITHER bucket — install fully lands, replace does not', () => {
+    const computedPlan = {
+      install: [{ id: 'skill:ui-ux-pro-max', resource: { id: 'ui-ux-pro-max' } }],
+      replace: [{ id: 'skill:watch', resource: { id: 'watch' }, from: '1.0.0', to: '2.0.0' }],
+    };
+    const packs = [{
+      id: 'design-power', aborted: false, installed: ['skill:ui-ux-pro-max'], replaced: [],
+    }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failureKind).toBe('partial');
+  });
+
+  it('an aborted pack still takes precedence over the replace counts, exactly like the pre-existing install-only rule', () => {
+    const computedPlan = {
+      install: [],
+      replace: [{ id: 'skill:watch', resource: { id: 'watch' }, from: '1.0.0', to: '2.0.0' }],
+    };
+    const packs = [{ id: 'watch', aborted: true, installed: [], replaced: ['skill:watch'] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failureKind).toBe('aborted');
+  });
+});
 
 // ---------------------------------------------------------------------------
 // profileResultFromFrontmatter — reverse of deriveProfileFields.

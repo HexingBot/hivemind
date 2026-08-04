@@ -52,18 +52,27 @@ const DEFAULT_LOCK_FILENAME = 'integrations.lock.json';
  * @returns {Promise<{
  *   aborted: boolean,
  *   installed: Array<{id: string, resource: object}>,
+ *   replaced: Array<{id: string, resource: object, from: string, to: string}>,
  *   report: Array<object>,
  *   error?: HardResourceFailureError,
  * }>}
  *   `installed` is the subset of the plan's install ops that are actually
  *   live on disk after the run (re-derived via a post-run probeSkills, never
  *   assumed from the plan alone — a soft-failed or never-attempted install
- *   is excluded). `report` merges plan()'s own Wave-2 (non-skill) entries
- *   with applyPlan's apply-time report (soft failures, deferred replaces).
- *   On a hard-required resource's failure, `aborted` is true and `error` is
- *   the HardResourceFailureError applyPlan threw — never re-thrown to the
- *   caller — while whatever ops already succeeded are still committed to the
- *   lock (applyPlan's own leave-and-report guarantee).
+ *   is excluded). `replaced` (TASK-199) is the subset of the plan's replace
+ *   ops applyPlan actually MATERIALIZED — derived from applyPlan's own report
+ *   entries (`executed: true`), never from a post-run probe (a soft-failed
+ *   replace leaves the live dir's PRIOR content in place, so presence alone
+ *   can't distinguish success from failure the way it can for a fresh
+ *   install); a deliberately deferred/kept-as-is replace (TASK-182's
+ *   installed-newer/undecidable branches, `executed: false`) is correctly
+ *   excluded too — it is a designed no-op, not a failure. `report` merges
+ *   plan()'s own Wave-2 (non-skill) entries with applyPlan's apply-time
+ *   report (soft failures, deferred replaces). On a hard-required resource's
+ *   failure, `aborted` is true and `error` is the HardResourceFailureError
+ *   applyPlan threw — never re-thrown to the caller — while whatever ops
+ *   already succeeded are still committed to the lock (applyPlan's own
+ *   leave-and-report guarantee).
  */
 export async function reconcilePack(opts = {}) {
   const { repoRoot, descriptor, profileResult, sourceRoot, sourceRoots } = opts;
@@ -112,9 +121,25 @@ export async function reconcilePack(opts = {}) {
   const actualAfter = probeSkills(repoRoot);
   const installed = reconcilePlan.install.filter((op) => Boolean(actualAfter[op.id]));
 
+  // TASK-199 — the replace-bucket analogue of `installed` above, but derived
+  // from applyPlan's REPORT rather than a post-run probe: a replace op's live
+  // dir already existed before the run (that's what makes it a replace, not
+  // an install), so a soft-failed materialize leaves the OLD content in
+  // place and a bare existsSync check would read it as "landed" either way.
+  // applyPlan's own report entry is the only reliable signal — `executed:
+  // true` means the copy actually happened; `executed: false` (deferred,
+  // TASK-182 keep-as-is) and a soft-failure entry (no `executed` field at
+  // all, see applyPlan's replace-loop catch) both correctly stay excluded.
+  const replaceReportById = new Map();
+  for (const entry of applyReport) {
+    if (entry && entry.id) replaceReportById.set(entry.id, entry);
+  }
+  const replaced = reconcilePlan.replace.filter((op) => replaceReportById.get(op.id)?.executed === true);
+
   const result = {
     aborted,
     installed,
+    replaced,
     report: [...reconcilePlan.report, ...applyReport],
   };
   if (error) result.error = error;

@@ -7714,6 +7714,7 @@ var require_dist = __commonJS({
 var pack_ctl_exports = {};
 __export(pack_ctl_exports, {
   aggregateDesired: () => aggregateDesired,
+  computeApplyOutcome: () => computeApplyOutcome,
   parseAssimilateArgs: () => parseAssimilateArgs,
   parseFlags: () => parseFlags,
   profileResultFromFrontmatter: () => profileResultFromFrontmatter,
@@ -9245,9 +9246,15 @@ async function reconcilePack(opts = {}) {
   }
   const actualAfter = probeSkills(repoRoot);
   const installed = reconcilePlan.install.filter((op) => Boolean(actualAfter[op.id]));
+  const replaceReportById = /* @__PURE__ */ new Map();
+  for (const entry of applyReport) {
+    if (entry && entry.id) replaceReportById.set(entry.id, entry);
+  }
+  const replaced = reconcilePlan.replace.filter((op) => replaceReportById.get(op.id)?.executed === true);
   const result = {
     aborted,
     installed,
+    replaced,
     report: [...reconcilePlan.report, ...applyReport]
   };
   if (error) result.error = error;
@@ -10196,6 +10203,25 @@ async function runAssimilate(flags) {
       throw new Error(`unknown assimilate action: ${flags.action}`);
   }
 }
+function computeApplyOutcome({ computedPlan, packs }) {
+  const plannedInstallCount = computedPlan.install.length;
+  const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
+  const plannedReplaceCount = computedPlan.replace.filter((op) => shippedPinWins(comparePinPrecedence(op.from, op.to))).length;
+  const replacedCount = packs.reduce((n, p) => n + p.replaced.length, 0);
+  const anyAborted = packs.some((p) => p.aborted);
+  const plannedTotal = plannedInstallCount + plannedReplaceCount;
+  const landedTotal = installedCount + replacedCount;
+  const failureKind = anyAborted ? "aborted" : plannedTotal > 0 && landedTotal === 0 ? "total" : landedTotal < plannedTotal ? "partial" : null;
+  return {
+    ok: failureKind === null,
+    failureKind,
+    plannedInstallCount,
+    installedCount,
+    plannedReplaceCount,
+    replacedCount,
+    anyAborted
+  };
+}
 async function run(subcommand, flags) {
   if (subcommand === "assimilate") return runAssimilate(flags);
   if (!flags.repoRoot) throw new Error("--repo-root is required");
@@ -10230,14 +10256,23 @@ async function run(subcommand, flags) {
           owner,
           aborted: result.aborted,
           installed: result.installed.map((op) => op.id),
+          // TASK-199 — the replace-bucket analogue of `installed`, from
+          // reconcilePack's own `replaced` (executed:true report entries
+          // only — see that function's header for why a post-probe can't be
+          // used here the way it is for `installed`).
+          replaced: result.replaced.map((op) => op.id),
           report: result.report
         });
       }
-      const plannedInstallCount = computedPlan.install.length;
-      const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
-      const anyAborted = packs.some((p) => p.aborted);
-      const failureKind = anyAborted ? "aborted" : plannedInstallCount > 0 && installedCount === 0 ? "total" : installedCount < plannedInstallCount ? "partial" : null;
-      const ok = failureKind === null;
+      const {
+        ok,
+        failureKind,
+        plannedInstallCount,
+        installedCount,
+        plannedReplaceCount,
+        replacedCount,
+        anyAborted
+      } = computeApplyOutcome({ computedPlan, packs });
       return {
         ok,
         // TASK-183 AC6 — the CLI's documented output contract (this module's
@@ -10247,10 +10282,16 @@ async function run(subcommand, flags) {
         // message on stderr.
         ...ok ? {} : {
           code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
-          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs${anyAborted ? " (a hard-required resource aborted the run)" : ""}`
+          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs, replaced ${replacedCount} of ${plannedReplaceCount} planned replaces${anyAborted ? " (a hard-required resource aborted the run)" : ""}`
         },
         planned_install_count: plannedInstallCount,
         installed_count: installedCount,
+        // TASK-199 — always present (like the install counts above), never
+        // conditional on plannedReplaceCount > 0: a caller must be able to
+        // tell "no replaces were planned" (0/0) from "replaces were planned
+        // and did not land" (planned > landed) without reading packs[].report.
+        planned_replace_count: plannedReplaceCount,
+        replaced_count: replacedCount,
         source_root: sourceRoot ?? null,
         plan: computedPlan,
         packs
@@ -10294,6 +10335,7 @@ if (__isEntry) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   aggregateDesired,
+  computeApplyOutcome,
   parseAssimilateArgs,
   parseFlags,
   profileResultFromFrontmatter,

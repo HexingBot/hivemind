@@ -235,6 +235,15 @@ describe('AC3 — reconcile-apply materializes skills and writes integrations.lo
     expect(watchPack.aborted).toBe(false);
     expect(watchPack.installed).toContain('skill:watch');
 
+    // TASK-199 — replace-bucket counts/fields are wired through end to end,
+    // even though this fixture's plan carries no replace ops at all (both
+    // built-in packs' pins are git-shas -- production-inert, see the ticket
+    // hand-off). A true no-op reads as planned=0/replaced=0, `ok: true`.
+    expect(first.json.planned_replace_count).toBe(0);
+    expect(first.json.replaced_count).toBe(0);
+    expect(designPowerPack.replaced).toEqual([]);
+    expect(watchPack.replaced).toEqual([]);
+
     // --- second run: idempotent, empty plan (steady-state no-op) ---
     const second = runCli(['reconcile-apply', '--repo-root', root]);
     expect(second.status).toBe(0);
@@ -268,6 +277,11 @@ describe('AC3 — reconcile-apply materializes skills and writes integrations.lo
     // And the run must no longer read as an unqualified success (TASK-181).
     expect(result.json.ok).toBe(false);
     expect(result.json.installed_count).toBe(0);
+    // TASK-199 — the replace counts are present (and legitimately zero: this
+    // fixture's plan has no replace ops) on the failure path too, not just
+    // the success path.
+    expect(result.json.planned_replace_count).toBe(0);
+    expect(result.json.replaced_count).toBe(0);
     // TASK-183 AC6 — a soft-only failure still degrades via leave-and-report
     // (never aborts), but ok:false now ALSO means a non-zero exit, matching
     // this module's own documented output contract (bin/pack-ctl.js:90-94)

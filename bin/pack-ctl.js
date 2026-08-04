@@ -36,7 +36,24 @@
 //                     lock read/write atomicity and the leave-and-report hard/
 //                     soft failure handling; this CLI does not reimplement any
 //                     of that). Prints `packs: [{id, owner, aborted, installed,
-//                     report}, ...]` alongside the pre-apply `plan`.
+//                     replaced, report}, ...]` alongside the pre-apply `plan`.
+//                     TASK-181/183/199 — the run-level `ok` is NOT a bare
+//                     pass-through of any single pack's success: it also
+//                     prints `planned_install_count`/`installed_count` and
+//                     (TASK-199) `planned_replace_count`/`replaced_count`,
+//                     and `ok` requires EVERY planned install AND every
+//                     planned replace (the ones the apply-time precedence
+//                     gate actually attempts -- see src/pack-apply.js's
+//                     `shippedPinWins`; a deliberately deferred/kept-as-is
+//                     replace is not "planned" in this count, since it is a
+//                     designed no-op, not a failure) to have landed, AND no
+//                     pack to have hard-aborted. A materialize failure in
+//                     EITHER bucket sets `ok:false` with `code`/`message`
+//                     naming the shortfall (`E_PACK_APPLY_<KIND>_FAILURE`,
+//                     KIND one of aborted|total|partial) -- never a silent
+//                     `ok:true` while a nested `packs[].report` entry
+//                     records the truth (the Empty-result contract this
+//                     ticket closes).
 //   assimilate scan --path <skill>
 //                     TASK-135. Prints the risky-pattern scan report
 //                     ({findings, summary}) for the skill directory at --path,
@@ -108,6 +125,7 @@ import { reconcilePack } from '../src/pack-orchestrator.js';
 import { assimilateSkill, computeSkillScan } from '../src/assimilate.js';
 import { detectLicense, classifyLicense } from '../src/license-detect.js';
 import { resolveOwnedSourceRoot } from '../src/plugin-root.js';
+import { comparePinPrecedence, shippedPinWins } from '../src/pack-apply.js';
 
 const LOCK_FILENAME = 'integrations.lock.json';
 const SKILL_FILENAME = 'SKILL.md';
@@ -389,6 +407,87 @@ async function runAssimilate(flags) {
   }
 }
 
+/**
+ * TASK-199 — the run-level `ok`/`failureKind` predicate for `reconcile-apply`,
+ * extended to see the replace bucket TASK-182 made executable (previously
+ * blind to it: bin/pack-ctl.js:461-471 pre-TASK-199 computed
+ * `planned_install_count`/`installed_count` from `plan.install` only, so a
+ * soft-failing replace op — e.g. a consumer's lockfile owns `skill:watch` at
+ * 1.0.0, the plugin ships 2.0.0, and the plugin's owned source copy is
+ * missing/corrupt — reported `ok: true`, exit 0, with the truth sitting only
+ * in a nested `packs[].report` entry nobody was told to read; the shape
+ * CLAUDE.md's Empty-result contract already closed once for installs
+ * (TASK-181/183) and TASK-182 silently re-opened for replaces).
+ *
+ * DECISION (recorded here, not merely asserted): the predicate is EXTENDED,
+ * not left report-only — mirroring TASK-181/183's own resolution of the same
+ * defect class on the install bucket, so both buckets share one convention
+ * on this output object rather than two divergent ones on the same shape.
+ * `ok` now requires every planned install AND every planned replace to have
+ * landed, plus no pack to have hard-aborted.
+ *
+ * "Planned" replaces are deliberately narrower than `computedPlan.replace`
+ * (every op the PLANNER flagged for replace consideration): a replace op the
+ * apply-time precedence gate (src/pack-apply.js#shippedPinWins) DEFERS —
+ * installed-newer (a deliberate project override) or undecidable (a
+ * non-semver pin divergence, e.g. real git-sha pins, which is what EVERY
+ * built-in pack ships today — see this ticket's hand-off for the
+ * production-inert note) — is a designed keep-as-is, already announced in
+ * `packs[].report`, not a failure. Counting a deferred op as "planned" would
+ * make `ok:false` fire on every run that correctly preserves a deliberate
+ * override, which is exactly the false-alarm the Empty-result contract's
+ * "no-spec-matched" case warns against (CLAUDE.md, Testing section). This
+ * recomputes the SAME equal-or-newer decision applyPlan itself makes, via
+ * the same exported `comparePinPrecedence`/`shippedPinWins` — never a second,
+ * divergent copy of the rule — using `computedPlan.replace`'s own
+ * `{from, to}`, which is known before any pack executes.
+ *
+ * "Landed" replaces come from each pack's own `reconcilePack()` result
+ * (`replaced`, TASK-199) — a post-run signal, since only the apply-time
+ * report can distinguish a materialized replace from a soft-failed one (a
+ * replace target's live dir already existed before the run, so a bare
+ * post-probe existence check — the technique `installed` uses — cannot tell
+ * "the new content landed" from "the old content is still there").
+ *
+ * Pure — no I/O — so it is unit-testable independently of the real built-in
+ * pack descriptors (whose git-sha pins are exactly what makes the replace
+ * bucket production-inert today; see the module-header comment above the
+ * `reconcile-apply` subcommand for the printed-shape summary).
+ *
+ * @param {{ computedPlan: {install: object[], replace: object[]}, packs: Array<{aborted: boolean, installed: string[], replaced: string[]}> }} args
+ * @returns {{ ok: boolean, failureKind: string|null, plannedInstallCount: number, installedCount: number, plannedReplaceCount: number, replacedCount: number, anyAborted: boolean }}
+ */
+export function computeApplyOutcome({ computedPlan, packs }) {
+  const plannedInstallCount = computedPlan.install.length;
+  const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
+
+  const plannedReplaceCount = computedPlan.replace
+    .filter((op) => shippedPinWins(comparePinPrecedence(op.from, op.to)))
+    .length;
+  const replacedCount = packs.reduce((n, p) => n + p.replaced.length, 0);
+
+  const anyAborted = packs.some((p) => p.aborted);
+  const plannedTotal = plannedInstallCount + plannedReplaceCount;
+  const landedTotal = installedCount + replacedCount;
+  const failureKind = anyAborted
+    ? 'aborted'
+    : plannedTotal > 0 && landedTotal === 0
+      ? 'total'
+      : landedTotal < plannedTotal
+        ? 'partial'
+        : null;
+
+  return {
+    ok: failureKind === null,
+    failureKind,
+    plannedInstallCount,
+    installedCount,
+    plannedReplaceCount,
+    replacedCount,
+    anyAborted,
+  };
+}
+
 async function run(subcommand, flags) {
   if (subcommand === 'assimilate') return runAssimilate(flags);
 
@@ -439,36 +538,25 @@ async function run(subcommand, flags) {
           owner,
           aborted: result.aborted,
           installed: result.installed.map((op) => op.id),
+          // TASK-199 — the replace-bucket analogue of `installed`, from
+          // reconcilePack's own `replaced` (executed:true report entries
+          // only — see that function's header for why a post-probe can't be
+          // used here the way it is for `installed`).
+          replaced: result.replaced.map((op) => op.id),
           report: result.report,
         });
       }
 
-      // TASK-181 — a materialize failure is `required: "soft"`, so it degrades
-      // into `report` and the run still exits 0. Reporting a bare ok:true made
-      // "nothing needed installing" indistinguishable from "everything failed",
-      // which is how the sourceRoot defect survived multiple releases.
-      //
-      // TASK-183 — the TASK-181 guard (`installedCount === 0`) only ever caught
-      // a TOTAL failure: with two built-in packs shipping today, one
-      // soft-failing while the other lands still read as `ok:true` (mutation-
-      // confirmed — rewriting the guard to `installedCount < plannedInstallCount`
-      // left all 30 pack-ctl specs green, meaning the partial branch was
-      // untested). A hard-abort also read as `ok:true` even though `aborted`
-      // was already computed per pack below and simply never consulted here.
-      // `ok` now requires BOTH every planned install to have actually landed
-      // AND no pack to have hard-aborted — full success is the only path to
-      // `ok:true`.
-      const plannedInstallCount = computedPlan.install.length;
-      const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
-      const anyAborted = packs.some((p) => p.aborted);
-      const failureKind = anyAborted
-        ? 'aborted'
-        : plannedInstallCount > 0 && installedCount === 0
-          ? 'total'
-          : installedCount < plannedInstallCount
-            ? 'partial'
-            : null;
-      const ok = failureKind === null;
+      // TASK-181/183/199 — see computeApplyOutcome's own header for the full
+      // decision record (install-bucket precedent, why "planned" replaces
+      // exclude the deliberately-deferred TASK-182 keep-as-is branch, and why
+      // "landed" replaces can't reuse the post-probe technique `installed`
+      // uses). `ok` is full success only: every planned install AND every
+      // planned (attempted) replace landed, and no pack hard-aborted.
+      const {
+        ok, failureKind, plannedInstallCount, installedCount,
+        plannedReplaceCount, replacedCount, anyAborted,
+      } = computeApplyOutcome({ computedPlan, packs });
 
       return {
         ok,
@@ -479,10 +567,16 @@ async function run(subcommand, flags) {
         // message on stderr.
         ...(ok ? {} : {
           code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
-          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs${anyAborted ? ' (a hard-required resource aborted the run)' : ''}`,
+          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs, replaced ${replacedCount} of ${plannedReplaceCount} planned replaces${anyAborted ? ' (a hard-required resource aborted the run)' : ''}`,
         }),
         planned_install_count: plannedInstallCount,
         installed_count: installedCount,
+        // TASK-199 — always present (like the install counts above), never
+        // conditional on plannedReplaceCount > 0: a caller must be able to
+        // tell "no replaces were planned" (0/0) from "replaces were planned
+        // and did not land" (planned > landed) without reading packs[].report.
+        planned_replace_count: plannedReplaceCount,
+        replaced_count: replacedCount,
         source_root: sourceRoot ?? null,
         plan: computedPlan,
         packs,

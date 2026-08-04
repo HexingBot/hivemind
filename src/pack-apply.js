@@ -173,8 +173,12 @@ export function comparePinPrecedence(installedPin, shippedPin) {
 
 /** True iff `precedence` means the PLUGIN's shipped pin should win (equal-or-
  * newer, per the chosen rule above) -- the single predicate every call site
- * below shares, so "equal-or-newer" is defined in exactly one place. */
-function shippedPinWins(precedence) {
+ * below shares, so "equal-or-newer" is defined in exactly one place.
+ * TASK-199 — exported so bin/pack-ctl.js's run-level ok/failureKind predicate
+ * can ask "will this replace op actually be ATTEMPTED" using the exact same
+ * rule this module applies at execution time, instead of a second, divergent
+ * copy of the equal-or-newer decision. */
+export function shippedPinWins(precedence) {
   return precedence === 'equal' || precedence === 'shipped-newer';
 }
 

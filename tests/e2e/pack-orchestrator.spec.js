@@ -192,6 +192,78 @@ describe('AC3 — hard failure aborts (leave-and-report); soft failure degrades 
   });
 });
 
+describe('TASK-199 — reconcilePack surfaces which replace ops actually landed (result.replaced)', () => {
+  it('a decidable equal-or-newer replace materialized from a fallback root appears in `replaced`; a soft-failed one (no reachable owned copy) does not', async () => {
+    const { reconcilePack } = await import(PROD.packOrchestrator);
+    const profileResult = await makeProfileResult();
+    // A minimal descriptor with a SEMVER shipped pin -- the real built-in
+    // packs (packs/watch, packs/design-power) only ever ship git-sha pins
+    // (undecidable, see src/pack-apply.js's TASK-182 header), which is why
+    // this scenario is constructed with a synthetic descriptor rather than
+    // BUILTIN_PACK_DESCRIPTORS, exactly like every other test in this file.
+    const descriptor = makeDescriptor({
+      resources: [
+        { id: 'ui-ux-pro-max', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+      ],
+    });
+
+    function seedInstalledAtOlderPin(root) {
+      const liveDir = join(root, '.claude', 'skills', 'ui-ux-pro-max');
+      mkdirSync(liveDir, { recursive: true });
+      writeFileSync(join(liveDir, 'SKILL.md'), '# UI/UX Pro Max v1\nSTALE project-pinned copy.\n');
+      writeFileSync(join(root, 'integrations.lock.json'), JSON.stringify({
+        schema_version: 1,
+        resources: {
+          'skill:ui-ux-pro-max': {
+            kind: 'skill', origin: 'x', pin: '1.0.0', integrity: `sha256:${'a'.repeat(64)}`,
+            scope: 'project', owners: [OWNER], required: 'soft',
+            installed_at: '2026-07-08T12:00:00Z', install_method: 'assimilated', verified: 'unsigned',
+          },
+        },
+      }, null, 2), 'utf8');
+      return liveDir;
+    }
+
+    // --- scenario A: success. The project's own default source root is
+    // excluded from the search once retiring (TASK-182 rule), so only a
+    // fallback (plugin-style) root -- passed via `sourceRoots` -- can supply
+    // the new content, mirroring the AC6 fixture in tests/e2e/pack-apply.spec.js.
+    const rootOk = makeTmpDir('po-199-replace-ok');
+    const liveDirOk = seedInstalledAtOlderPin(rootOk);
+    const pluginSourceRoot = join(rootOk, 'plugin-owned');
+    stageOwnedSkill(pluginSourceRoot, 'ui-ux-pro-max', '# UI/UX Pro Max v2\nNew plugin copy -- must win.\n');
+    // stageOwnedSkill always writes under <root>/assimilated-skills/<id>, so
+    // reuse it against pluginSourceRoot as if it were its own project root.
+
+    const resultOk = await reconcilePack({
+      repoRoot: rootOk, descriptor, profileResult, owner: 'design-power@0.2.0',
+      sourceRoots: [join(pluginSourceRoot, 'assimilated-skills')],
+    });
+
+    expect(resultOk.aborted).toBe(false);
+    expect(resultOk.replaced.map((op) => op.id)).toEqual(['skill:ui-ux-pro-max']);
+    expect(readFileSync(join(liveDirOk, 'SKILL.md'), 'utf8')).toBe('# UI/UX Pro Max v2\nNew plugin copy -- must win.\n');
+
+    // --- scenario B: soft failure. No fallback root is supplied at all, and
+    // the project's own default <repoRoot>/assimilated-skills is never
+    // staged either -- executeInstall finds no reachable owned copy anywhere.
+    const rootFail = makeTmpDir('po-199-replace-softfail');
+    const liveDirFail = seedInstalledAtOlderPin(rootFail);
+
+    const resultFail = await reconcilePack({
+      repoRoot: rootFail, descriptor, profileResult, owner: 'design-power@0.2.0',
+    });
+
+    expect(resultFail.aborted).toBe(false); // soft-required -> leave-and-report, never aborts
+    expect(resultFail.replaced).toEqual([]);
+    const failureEntry = resultFail.report.find((r) => r.id === 'skill:ui-ux-pro-max');
+    expect(failureEntry).toBeDefined();
+    expect(failureEntry.executed).not.toBe(true);
+    // Leave-and-report: the OLD content survives a soft-failed retire.
+    expect(readFileSync(join(liveDirFail, 'SKILL.md'), 'utf8')).toBe('# UI/UX Pro Max v1\nSTALE project-pinned copy.\n');
+  });
+});
+
 describe('lock precondition — reconcilePack tolerates a not-yet-existing lockfile', () => {
   it('creates_an_empty_lock_before_delegating_so_applyPlan_never_sees_ENOENT', async () => {
     const { reconcilePack } = await import(PROD.packOrchestrator);
