@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T13:36:23.967Z",
+  "generated_at": "2026-08-04T13:49:18.130Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1060,7 +1060,7 @@
     {
       "key": "TASK-182",
       "title": "pack-ctl output-contract drift + dual-copy precedence (TASK-181 carry-forward)",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -1158,6 +1158,18 @@
       "title": "Isolated worktrees are not usable working environments: stale base ref and a shadowing empty node_modules",
       "status": "todo",
       "priority": "high"
+    },
+    {
+      "key": "TASK-199",
+      "title": "pack-ctl's ok predicate is blind to the replace bucket TASK-182 made executable",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-200",
+      "title": "Owner-edge clobber in executeInstall is now reachable on the routine replace path",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }

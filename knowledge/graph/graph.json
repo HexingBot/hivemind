@@ -1340,6 +1340,12 @@
       "label": "Built-in pack skills never install for consumers — pack-ctl passes no sourceRoot"
     },
     {
+      "id": "task-182",
+      "type": "task",
+      "ref": "tasks/TASK-182.json",
+      "label": "pack-ctl output-contract drift + dual-copy precedence (TASK-181 carry-forward)"
+    },
+    {
       "id": "task-183",
       "type": "task",
       "ref": "tasks/TASK-183.json",

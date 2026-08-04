@@ -1,0 +1,30 @@
+{
+  "key": "TASK-199",
+  "title": "pack-ctl's ok predicate is blind to the replace bucket TASK-182 made executable",
+  "description": "From TASK-182's gating review (MEDIUM-2). This is the **same defect class TASK-181 and TASK-183 already closed for installs**, re-opened on a bucket that was inert until TASK-182 made it execute.\n\n**The defect.** `bin/pack-ctl.js:461-471` computes `planned_install_count` and `installed_count` from `plan.install` only. TASK-182 made `plan.replace` actually execute (retiring a project-scope copy when the plugin wins), but the run-level `ok`/`failureKind` predicate never learned about it.\n\n**Concrete failure scenario**, from the review: a consumer's lockfile owns `skill:watch` at 1.0.0, the plugin ships 2.0.0, and the plugin's owned source copy is missing or corrupt. A replace op fires, `executeInstall` throws soft, the entry lands in `packs[].report` — and the run reports **`ok: true`, exit 0**. The triage numbers say everything is fine while the truth sits in a nested report nobody is instructed to read.\n\nThis is precisely the shape CLAUDE.md's Empty-result contract records as instance 2 (`reconcile-apply` returning `installed: []` with `ok: true`, which shipped through at least two releases before being caught).\n\n**Also invisible:** a *successful* replace is not counted either, so `commands/design-pack.md` Step 4 — which tells the operator to read the counts FIRST — reports zero activity for a run that retired a skill and rewrote a lock entry.\n\n**Decide, do not assume.** Either extend the predicate (e.g. `planned_replace_count` / `replaced_count` alongside the install counts, with `ok` requiring every planned replace to have landed) or record a deliberate decision that replace failures are report-only — and if the latter, say so where the operator reads the counts, because silence there currently reads as success.",
+  "acceptance_criteria": [
+    "A failing spec first demonstrates the gap: a planned replace that soft-fails yields ok:true and exit 0 today. Capture the red-run output verbatim.",
+    "A soft-failing replace is no longer reported as unqualified success. Whichever design is chosen, a caller can distinguish 'no replaces were planned' from 'replaces were planned and did not land' without reading the nested report.",
+    "A successful replace is visible in the run-level output, so an operator following commands/design-pack.md Step 4's read-the-counts-first instruction sees that work occurred.",
+    "The decision (extend the predicate vs. deliberately report-only) is recorded in the closing comment with its reasoning, per the Empty-result contract's requirement that the ambiguous case never render as unqualified success.",
+    "bin/pack-ctl.js's module header documents the emitted shape accurately after the change - TASK-183 conformed the code to that header and it must not drift again.",
+    "Regression locks cover both branches, red-green planted; npm run test:all is green; dist/pack-ctl.cjs rebuilt and committed with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "silent-failure",
+    "packs",
+    "review-followup",
+    "empty-result-contract"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T13:48:58.058Z",
+  "updated_at": "2026-08-04T13:48:58.058Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

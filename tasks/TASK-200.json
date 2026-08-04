@@ -1,0 +1,29 @@
+{
+  "key": "TASK-200",
+  "title": "Owner-edge clobber in executeInstall is now reachable on the routine replace path",
+  "description": "From TASK-182's gating review (MEDIUM-3), disclosed by the developer and confirmed by the reviewer. **Latent today, not live — but newly reachable, which is why it needs a ticket rather than silence.**\n\n**The defect.** `src/pack-apply.js:437-456`'s `executeInstall` writes `lock.resources[id] = { …, owners: [] }` and then calls `addOwner` for the current run's pack. Any owner edge belonging to a *different* pack is dropped in the process.\n\n**Why it matters now.** Before TASK-182 this was only reachable on the unusual staged-but-not-live install path. TASK-182 made `plan.replace` execute through the same `executeInstall`, putting it on the **routine live-resource path** — every future plugin-wins retire runs through it.\n\n**Verified not live today**, and the ticket should not overstate it: no multi-owner entries exist in any lockfile, the two built-in packs (`design-power`, `watch`) declare disjoint resources, and `reconcilePack` re-plans per pack against a freshly-read lock. So no consumer can currently lose an edge.\n\n**Why it is still worth closing.** A dropped owner edge transitively breaks a guarantee the reconciler documents elsewhere: `executeRemove` promises a still-owned resource is never deleted. If pack A's edge is silently dropped while pack B replaces a shared resource, a later orphan check sees a resource that looks unowned and becomes eligible for removal — the failure surfaces far from the cause, in a different pack's run, as a deleted working skill.\n\nThe condition that makes it live is simply two packs declaring the same resource id, which is a supported shape the descriptor schema does not forbid.\n\n**Fix direction (decide, do not assume):** preserve existing owners across a re-materialize and union the current run's owner in, rather than resetting; or, if resetting is deliberate for some reason, make the reset explicit and prove no sibling edge can exist at that point. Whichever is chosen, add a sensor that fails if a multi-owner resource loses an edge through a replace.",
+  "acceptance_criteria": [
+    "A failing spec first demonstrates the clobber with a multi-owner fixture: a resource owned by two packs, replaced via the TASK-182 plugin-wins path, loses the sibling pack's owner edge. Capture the red-run output verbatim.",
+    "Owner edges belonging to other packs survive a re-materialize through executeInstall, on both the install and the replace paths.",
+    "The interaction with executeRemove's 'a still-owned resource is never deleted' guarantee is proven by a spec: after a replace by pack B, a resource still owned by pack A is not removable as an orphan.",
+    "The chosen approach (preserve-and-union vs. explicit reset with a proof no sibling edge can exist) is recorded in the closing comment with reasoning.",
+    "npm run test:all is green; no existing pack/reconcile/apply spec regresses; dist/pack-ctl.cjs rebuilt and committed if bundled source changes, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "packs",
+    "review-followup",
+    "data-loss",
+    "lockfile"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T13:49:18.130Z",
+  "updated_at": "2026-08-04T13:49:18.130Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
