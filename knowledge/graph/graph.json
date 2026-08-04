@@ -1388,6 +1388,12 @@
       "label": "test:changed has the same zero-selection ambiguity, flagged twice and never actioned"
     },
     {
+      "id": "task-195",
+      "type": "task",
+      "ref": "tasks/TASK-195.json",
+      "label": "Worktree isolation for parallel agents: remove the shared index instead of briefing around it"
+    },
+    {
       "id": "task-196",
       "type": "task",
       "ref": "tasks/TASK-196.json",
