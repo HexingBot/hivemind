@@ -92,26 +92,36 @@ export const COMMENT_AUTHORS = ['orchestrator', 'developer', 'reviewer', 'resear
 //
 // STRIP, not reject, on the SAME reasoning TASK-159's stripInvisibleChars
 // already recorded for this exact character class (see that module's doc
-// comment): no legitimate caller ever intentionally types a Tag-block or
-// zero-width character, so there is no real "caller intent" being silently
-// altered by removing it — the invisible bytes were never part of the
-// message a human or agent meant to record, only noise (a copy-paste
-// artifact) or an injected payload riding along inside it. Rejecting the
-// write would turn every such accidental paste into a hard failure the
-// caller has no way to even SEE the cause of (the offending character is,
-// by definition, invisible in their own editor/terminal) — a worse
-// developer-experience failure mode than TASK-159's single-line
-// rejectControlChars, which rejects \r/\n specifically because THAT class of
-// character has a visible, structural consequence (escaping its line to
-// forge new markdown) that stripping alone cannot neutralize. The Tag-block
-// class has no such structural consequence: stripping it fully closes the
-// invisible-instruction channel with no residual risk, so there is nothing
-// rejection would additionally buy here. The audit-record concern (a task
-// comment is an audit record; silently rewriting it is itself an audit
-// question) is answered the same way: the VISIBLE content of the comment —
-// the only part a human ever reviewed or a caller ever meant to say — is
-// preserved byte-for-byte; only bytes that were never visible to anyone are
-// removed, so nothing a human could have verified is altered.
+// comment). Rejecting the write would turn every such accidental paste into
+// a hard failure the caller has no way to even SEE the cause of (the
+// offending character is, by definition, invisible or near-invisible in
+// their own editor/terminal) — a worse developer-experience failure mode
+// than TASK-159's single-line rejectControlChars, which rejects \r/\n
+// specifically because THAT class of character has a visible, structural
+// consequence (escaping its line to forge new markdown) that stripping
+// alone cannot neutralize. The Tag-block class has no such structural
+// consequence: stripping it fully closes the invisible-instruction channel
+// with no residual risk, so there is nothing rejection would additionally
+// buy here.
+//
+// TASK-201 RC-loop (MEDIUM, review round): what stripInvisibleChars removes
+// is NOT limited to bytes no legitimate caller ever intentionally typed —
+// two narrow classes of human-meaningful, intentionally-typed characters are
+// caught by the same \p{Cf} sweep and DO change what a reader sees: zero-
+// width joiners (U+200D) inside emoji sequences (e.g. a family emoji
+// decomposing into its separate component people, or a role emoji losing
+// its ZWJ-joined modifier), and LRM/RLM bidi directional marks (visible
+// reordering of mixed-direction text). Both are accepted as a bounded
+// trade-off, not denied: the alteration is graceful degradation only — it
+// never injects or rewrites words, verdicts, or SHAs — comments here are
+// agent-authored via the COMMENT_AUTHORS enum, and this repo's own
+// conventions already exclude emoji. What IS preserved byte-for-byte:
+// variation selectors, keycaps, skin-tone modifiers, combining accents,
+// plain Arabic/Hebrew, CJK, and whitespace (tabs/newlines). One property in
+// strip's favor that this comment previously omitted: after stripping, what
+// the verdict grammar reads and what a human sees rendered now AGREE — pre-
+// fix, invisible bytes could make the two diverge, which is exactly the
+// injection channel this ticket closes.
 //
 // Applied at every point a comment `body` is composed and pushed onto
 // task.comments in THIS module (appendComment's own `body`, closeTask's own
