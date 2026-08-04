@@ -26028,6 +26028,69 @@ var ClosingCommentAuthorError = class extends Error {
     this.code = "E_INVALID_CLOSING_COMMENT_AUTHOR";
   }
 };
+function hasCommentFromAuthor(task, author) {
+  const comments = Array.isArray(task && task.comments) ? task.comments : [];
+  return comments.some((c) => c && c.author === author);
+}
+var InvalidPredecessorStateError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "InvalidPredecessorStateError";
+    this.code = "E_INVALID_DONE_PREDECESSOR";
+  }
+};
+var CloseEvidenceError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "CloseEvidenceError";
+    this.code = "E_CLOSE_EVIDENCE_REQUIRED";
+  }
+};
+var DONE_PREDECESSOR_STATES = ["in_review"];
+var EVIDENCE_REQUIRED_TIERS = ["tdd", "tests-after"];
+var CLOSE_EXCEPTION_MARKER = "[CLOSE-EXCEPTION]";
+function resolveCloseException(exception) {
+  if (exception === void 0) return null;
+  if (exception === null || typeof exception !== "object") {
+    throw new TypeError(
+      "exception must be an object ({ reason, author? }) when provided \u2014 omit it entirely to skip the TASK-187 escape hatch"
+    );
+  }
+  const { reason, author = "orchestrator" } = exception;
+  if (typeof reason !== "string" || reason.trim().length === 0) {
+    throw new TypeError(
+      "exception.reason must be a non-empty string \u2014 the escape hatch requires an explicit, auditable justification (e.g. a won't-do closure or a documented recovery path)"
+    );
+  }
+  if (!COMMENT_AUTHORS.includes(author)) {
+    throw new Error(
+      `invalid exception.author ${JSON.stringify(author)} \u2014 must be one of ${COMMENT_AUTHORS.join(", ")}`
+    );
+  }
+  return { reason: reason.trim(), author };
+}
+function checkDonePredecessorState(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  if (!DONE_PREDECESSOR_STATES.includes(task.status)) {
+    throw new InvalidPredecessorStateError(
+      `task ${task.key} cannot transition to "done" from status "${task.status}" \u2014 done is reachable only from ${DONE_PREDECESSOR_STATES.join("/")}, which CLAUDE.md's documented todo -> in_progress -> in_review -> done convention uses to imply a review occurred. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception (e.g. a won't-do closure or a documented recovery path).`
+    );
+  }
+}
+function checkCloseEvidence(task, linkedCommits, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  const tier = task.verification_tier === void 0 ? "tdd" : task.verification_tier;
+  if (!EVIDENCE_REQUIRED_TIERS.includes(tier)) return;
+  const hasReviewer = hasCommentFromAuthor(task, "reviewer");
+  const hasCommits = Array.isArray(linkedCommits) && linkedCommits.length > 0;
+  if (!hasReviewer || !hasCommits) {
+    throw new CloseEvidenceError(
+      `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: ${hasCommits}) \u2014 see CLAUDE.md's evidence-proportional-to-tier close rule. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception.`
+    );
+  }
+}
 var AcceptanceCriteriaError = class extends Error {
   constructor(message) {
     super(message);
@@ -26103,23 +26166,35 @@ async function transitionStatus({
   key,
   status,
   now = () => (/* @__PURE__ */ new Date()).toISOString(),
-  closeGuard
+  closeGuard,
+  exception
 }) {
   if (!STATUSES.includes(status)) {
     throw new Error(
       `invalid status "${status}" \u2014 must be one of ${STATUSES.join(", ")}`
     );
   }
+  const resolvedException = status === "done" ? resolveCloseException(exception) : null;
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
   if (status === "done") {
     checkUatGuard(task);
     await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+    checkDonePredecessorState(task, resolvedException);
+    checkCloseEvidence(task, task.linked_commits, resolvedException);
   }
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;
+  if (resolvedException) {
+    const marker = {
+      author: resolvedException.author,
+      at: stamp,
+      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`
+    };
+    task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
+  }
   validateTaskOrThrow(task);
   await atomicWriteFiles([
     { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
@@ -26159,7 +26234,8 @@ async function closeTask({
   linked_commits = [],
   linked_prs = [],
   now = () => (/* @__PURE__ */ new Date()).toISOString(),
-  closeGuard
+  closeGuard,
+  exception
 }) {
   if (!COMMENT_AUTHORS.includes(comment && comment.author)) {
     throw new Error(
@@ -26171,11 +26247,15 @@ async function closeTask({
       `closeTask's own comment.author cannot be "reviewer" \u2014 a review verdict must already exist as a separate, pre-existing comment (see hasCommentFromAuthor(task, 'reviewer')) before the ticket is closed; fabricating the review AS the closing remark in the same call is exactly the audit-trail gap TASK-188 closes (replays probe A6). Record the reviewer verdict via append_comment during the Review step, then close with a comment authored e.g. 'orchestrator' or 'developer' summarizing the close.`
     );
   }
+  const resolvedException = resolveCloseException(exception);
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
   checkUatGuard(task);
   await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+  checkDonePredecessorState(task, resolvedException);
+  const existingLinkedCommits = Array.isArray(task.linked_commits) ? task.linked_commits : [];
+  checkCloseEvidence(task, [...existingLinkedCommits, ...linked_commits], resolvedException);
   for (const sha of linked_commits) {
     if (typeof sha !== "string" || !COMMIT_SHA_RE.test(sha)) {
       throw new Error(
@@ -26187,6 +26267,14 @@ async function closeTask({
   const newComment = { author: comment.author, at: stamp, body: comment.body };
   task.status = "done";
   task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
+  if (resolvedException) {
+    const marker = {
+      author: resolvedException.author,
+      at: stamp,
+      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`
+    };
+    task.comments.splice(task.comments.length - 1, 0, marker);
+  }
   task.linked_commits = Array.isArray(task.linked_commits) ? [...task.linked_commits, ...linked_commits] : [...linked_commits];
   task.linked_prs = Array.isArray(task.linked_prs) ? [...task.linked_prs, ...linked_prs] : [...linked_prs];
   task.updated_at = stamp;
@@ -26842,14 +26930,28 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
   server.registerTool(
     "transition_status",
     {
-      description: "Set a task status (todo|in_progress|in_review|blocked|done).",
+      description: "Set a task status (todo|in_progress|in_review|blocked|done). (TASK-187) status:'done' now requires a valid predecessor state that implies a review occurred ('in_review') and, for tdd/tests-after tiers, a pre-existing reviewer comment plus a non-empty linked_commits. `exception: { reason, author? }` is the documented, auditable escape hatch for a legitimate exception (e.g. a won't-do closure) \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently.",
       inputSchema: {
         key: external_exports.string().describe("Task key, e.g. TASK-026"),
-        status: STATUS
+        status: STATUS,
+        exception: external_exports.object({
+          reason: external_exports.string().describe("Non-empty, auditable justification for bypassing the close preconditions."),
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator').")
+        }).optional()
       }
     },
-    async ({ key, status }) => {
-      await transitionStatus({ repoRoot, key, status, closeGuard: loopModeCloseGuard });
+    async ({
+      key,
+      status,
+      exception
+    }) => {
+      await transitionStatus({
+        repoRoot,
+        key,
+        status,
+        closeGuard: loopModeCloseGuard,
+        exception
+      });
       return ok({ ok: true });
     }
   );
@@ -26872,19 +26974,24 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
   server.registerTool(
     "close_task",
     {
-      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard, the loop-mode close guard, (TASK-163) the loop-mode uat-comment write guard on comment.author, and (TASK-188) rejects comment.author 'reviewer'. Reports a best-effort, advisory-only linked_commits_verification (never blocks the close) \u2014 see the TASK-188 hand-off / tasks/schema.json.",
+      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard, the loop-mode close guard, (TASK-163) the loop-mode uat-comment write guard on comment.author, (TASK-188) rejects comment.author 'reviewer', and (TASK-187) requires status 'in_review' plus, for tdd/tests-after tiers, a pre-existing reviewer comment and a non-empty linked_commits. `exception: { reason, author? }` is the documented, auditable escape hatch for a legitimate exception (e.g. a won't-do closure) \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. Reports a best-effort, advisory-only linked_commits_verification (never blocks the close) \u2014 see the TASK-188 hand-off / tasks/schema.json.",
       inputSchema: {
         key: external_exports.string().describe("Task key, e.g. TASK-026"),
         comment: external_exports.object({ author: COMMENT_AUTHOR, body: external_exports.string() }),
         linked_commits: external_exports.array(external_exports.string()).optional(),
-        linked_prs: external_exports.array(external_exports.string()).optional()
+        linked_prs: external_exports.array(external_exports.string()).optional(),
+        exception: external_exports.object({
+          reason: external_exports.string().describe("Non-empty, auditable justification for bypassing the close preconditions."),
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator').")
+        }).optional()
       }
     },
     async ({
       key,
       comment,
       linked_commits,
-      linked_prs
+      linked_prs,
+      exception
     }) => {
       await loopModeUatCommentGuard({ repoRoot, author: comment.author });
       await closeTask({
@@ -26893,7 +27000,8 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
         comment,
         linked_commits: linked_commits ?? [],
         linked_prs: linked_prs ?? [],
-        closeGuard: loopModeCloseGuard
+        closeGuard: loopModeCloseGuard,
+        exception
       });
       const linked_commits_verification = verifyLinkedCommits(repoRoot, linked_commits ?? []);
       const graph_node = await recordTaskGraphNode({

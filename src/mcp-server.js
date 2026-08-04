@@ -394,19 +394,34 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
     'transition_status',
     {
       description:
-        'Set a task status (todo|in_progress|in_review|blocked|done).',
+        'Set a task status (todo|in_progress|in_review|blocked|done). '
+        + "(TASK-187) status:'done' now requires a valid predecessor state "
+        + "that implies a review occurred ('in_review') and, for tdd/"
+        + 'tests-after tiers, a pre-existing reviewer comment plus a '
+        + 'non-empty linked_commits. `exception: { reason, author? }` is '
+        + 'the documented, auditable escape hatch for a legitimate '
+        + "exception (e.g. a won't-do closure) — it records a separate "
+        + "'[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently.",
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
         status: STATUS,
+        exception: z.object({
+          reason: z.string().describe('Non-empty, auditable justification for bypassing the close preconditions.'),
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator')."),
+        }).optional(),
       },
     },
-    async ({ key, status }) => {
+    async ({
+      key, status, exception,
+    }) => {
       // TASK-082 — loopModeCloseGuard is composed unconditionally on every
       // call: it decides for itself whether loop mode is even active
       // (getMode defaults to 'harness', a no-op), so this is safe in
       // harness mode / with no active session and only bites when status
       // === 'done' AND loop mode is active AND unauthorized.
-      await transitionStatus({ repoRoot, key, status, closeGuard: loopModeCloseGuard });
+      await transitionStatus({
+        repoRoot, key, status, closeGuard: loopModeCloseGuard, exception,
+      });
       return ok({ ok: true });
     },
   );
@@ -444,19 +459,29 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         + 'comment, and record linked_commits/linked_prs in a single '
         + 'validate-then-write pass (TASK-082). Enforces the uat-only '
         + 'done-guard, the loop-mode close guard, (TASK-163) the '
-        + 'loop-mode uat-comment write guard on comment.author, and '
-        + "(TASK-188) rejects comment.author 'reviewer'. Reports a "
-        + 'best-effort, advisory-only linked_commits_verification (never '
-        + 'blocks the close) — see the TASK-188 hand-off / tasks/schema.json.',
+        + 'loop-mode uat-comment write guard on comment.author, '
+        + "(TASK-188) rejects comment.author 'reviewer', and (TASK-187) "
+        + "requires status 'in_review' plus, for tdd/tests-after tiers, a "
+        + 'pre-existing reviewer comment and a non-empty linked_commits. '
+        + '`exception: { reason, author? }` is the documented, auditable '
+        + "escape hatch for a legitimate exception (e.g. a won't-do "
+        + "closure) — it records a separate '[CLOSE-EXCEPTION]'-prefixed "
+        + 'comment rather than bypassing silently. Reports a best-effort, '
+        + 'advisory-only linked_commits_verification (never blocks the '
+        + 'close) — see the TASK-188 hand-off / tasks/schema.json.',
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
         comment: z.object({ author: COMMENT_AUTHOR, body: z.string() }),
         linked_commits: z.array(z.string()).optional(),
         linked_prs: z.array(z.string()).optional(),
+        exception: z.object({
+          reason: z.string().describe('Non-empty, auditable justification for bypassing the close preconditions.'),
+          author: COMMENT_AUTHOR.optional().describe("Author of the recorded [CLOSE-EXCEPTION] comment (default 'orchestrator')."),
+        }).optional(),
       },
     },
     async ({
-      key, comment, linked_commits, linked_prs,
+      key, comment, linked_commits, linked_prs, exception,
     }) => {
       // TASK-163 — defense-in-depth follow-up from TASK-108: close_task's own
       // `comment` param reached appendComment via closeTask WITHOUT passing
@@ -475,6 +500,7 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         linked_commits: linked_commits ?? [],
         linked_prs: linked_prs ?? [],
         closeGuard: loopModeCloseGuard,
+        exception,
       });
       // TASK-188 AC6 — best-effort-AFTER, same ordering rationale as
       // graph_node below: closeTask() has already committed atomically, so a

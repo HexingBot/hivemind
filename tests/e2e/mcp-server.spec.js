@@ -41,7 +41,9 @@
 import {
   describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -139,6 +141,21 @@ describe('TASK-026 — MCP task-store server (in-memory round-trip)', () => {
     const todos = parse(await client.callTool({ name: 'list_todos', arguments: {} }));
     expect(Array.isArray(todos)).toBe(true);
     expect(todos.map((t) => t.key)).toContain(key);
+
+    // TASK-187 AC2/AC3 — done now requires a predecessor state implying
+    // review (in_review) plus, for the default 'tdd' tier, a pre-existing
+    // reviewer comment AND a non-empty linked_commits. This test's subject
+    // is the round-trip mechanics, not review evidence, so the fixture is
+    // advanced through the real state machine (transition_status has no
+    // linked_commits param, so that one field is seeded directly on disk).
+    await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+    await client.callTool({
+      name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+    });
+    const taskPath = join(repoRoot, 'tasks', `${key}.json`);
+    const seeded = JSON.parse(readFileSync(taskPath, 'utf8'));
+    seeded.linked_commits = ['abc1234'];
+    writeFileSync(taskPath, JSON.stringify(seeded, null, 2) + '\n', 'utf8');
 
     // transition_status -> done returns { ok: true }.
     const transitioned = parse(await client.callTool({

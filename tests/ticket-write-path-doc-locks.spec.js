@@ -44,6 +44,19 @@ function load(path) {
   return readFileSync(path, 'utf8');
 }
 
+// TASK-188 review MEDIUM-1 (folded into TASK-187) — the three site-checks
+// above (and CLAUDE.md's own step 7 check below) only assert that SOME
+// "fallback" word appears, which is satisfied equally by the OLD permissive
+// prose ("acceptable… manually verify") and TASK-188's NEW narrowed prose
+// ("never… acceptable for status:\"done\"… stop and tell the human"). Since
+// this prose is the ONLY control over the direct-Edit path (no code can
+// guard a raw file edit), a silent regression back to the permissive form
+// would be invisible to every assertion above. This anchor pins the
+// NARROWED scope specifically — proven non-vacuous by the mutation test at
+// the bottom of this file (revert the prose to a permissive form and confirm
+// the anchor stops matching).
+const NARROWED_SCOPE_RE = /never (?:set|acceptable).*status:? ?"done"/i;
+
 /**
  * Slice the text from the first line starting with `headingText` to the next
  * same-level heading (exclusive), or end-of-string. Mirrors the sectioning
@@ -88,6 +101,10 @@ describe('AC1 (TASK-099) — SKILL.md: Ticket source / Tools / Workflow step 6 n
       /degraded fallback|documented.*fallback/i.test(normalize(section)),
       'Ticket source section must demote a direct Edit to an explicitly-labeled fallback',
     ).toBe(true);
+    expect(
+      NARROWED_SCOPE_RE.test(normalize(section)),
+      'Ticket source section must pin the TASK-188 NARROWED scope (never … status:"done"), not just any "fallback" word',
+    ).toBe(true);
   });
 
   it('tools_section_lists_mcp_task_store_tools_as_the_write_path', () => {
@@ -106,6 +123,10 @@ describe('AC1 (TASK-099) — SKILL.md: Ticket source / Tools / Workflow step 6 n
       /fallback/i.test(section),
       'Tools section must demote the direct Edit-on-tasks/ path to a fallback',
     ).toBe(true);
+    expect(
+      NARROWED_SCOPE_RE.test(normalize(section)),
+      'Tools section must pin the TASK-188 NARROWED scope (never … status:"done"), not just any "fallback" word',
+    ).toBe(true);
   });
 
   it('workflow_step_6_calls_close_task_not_a_bare_edit_to_done', () => {
@@ -121,6 +142,10 @@ describe('AC1 (TASK-099) — SKILL.md: Ticket source / Tools / Workflow step 6 n
     expect(
       /degraded fallback|documented.*fallback/i.test(step6),
       'Workflow step 6 must demote a direct Edit to an explicitly-labeled degraded fallback',
+    ).toBe(true);
+    expect(
+      NARROWED_SCOPE_RE.test(step6),
+      'Workflow step 6 must pin the TASK-188 NARROWED scope (never … status:"done"), not just any "fallback" word',
     ).toBe(true);
   });
 
@@ -156,5 +181,40 @@ describe('AC1 (TASK-099) — CLAUDE.md Workflow step 7 names the MCP write path'
       /degraded fallback|documented.*fallback/i.test(step7),
       'Workflow step 7 must demote a direct Edit to an explicitly-labeled degraded fallback',
     ).toBe(true);
+    expect(
+      NARROWED_SCOPE_RE.test(step7),
+      'Workflow step 7 must pin the TASK-188 NARROWED scope (never … status:"done"), not just any "fallback" word',
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-188 review MEDIUM-1 (folded into TASK-187) — mutation proof that
+// NARROWED_SCOPE_RE is non-vacuous: it must REJECT the old, pre-TASK-188
+// permissive prose ("acceptable... manually verify") that the four checks
+// above would otherwise be blind to (that prose also contains the word
+// "fallback", so the pre-existing checks alone cannot distinguish it from
+// the narrowed form). If this regression fires, NARROWED_SCOPE_RE has
+// drifted back to being satisfied by permissive prose too, defeating its
+// purpose above.
+// ---------------------------------------------------------------------------
+describe('TASK-188 review MEDIUM-1 — NARROWED_SCOPE_RE mutation proof (non-vacuity)', () => {
+  it('matches the current TASK-188 narrowed prose shape', () => {
+    expect(NARROWED_SCOPE_RE.test(
+      'it must never set `status: "done"`, append a `comments` entry, or write `linked_commits`',
+    )).toBe(true);
+    expect(NARROWED_SCOPE_RE.test(
+      'never acceptable for setting `status: "done"`, appending a `comments` entry',
+    )).toBe(true);
+  });
+
+  it('does NOT match the old pre-TASK-188 permissive prose shape (the regression this anchor exists to catch)', () => {
+    expect(NARROWED_SCOPE_RE.test(
+      'a direct Edit against tasks/<KEY>.json is acceptable in a pinch — manually verify the guards '
+      + 'would have passed before setting status to "done".',
+    )).toBe(false);
+    expect(NARROWED_SCOPE_RE.test(
+      'this is a documented fallback used when the MCP server is unavailable.',
+    )).toBe(false);
   });
 });

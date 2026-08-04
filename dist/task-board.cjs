@@ -8085,6 +8085,7 @@ async function loopModeCloseGuard({ repoRoot, task }) {
 // src/task-store.js
 var STATUSES = ["todo", "in_progress", "in_review", "blocked", "done"];
 var PRIORITIES = ["low", "medium", "high", "critical"];
+var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
 var __ajv = new import__.default({ allErrors: true, strict: false });
 (0, import_ajv_formats2.default)(__ajv);
@@ -8159,6 +8160,69 @@ var UatGuardError = class extends Error {
     this.code = "UAT_GUARD_REQUIRED";
   }
 };
+function hasCommentFromAuthor(task, author) {
+  const comments = Array.isArray(task && task.comments) ? task.comments : [];
+  return comments.some((c) => c && c.author === author);
+}
+var InvalidPredecessorStateError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "InvalidPredecessorStateError";
+    this.code = "E_INVALID_DONE_PREDECESSOR";
+  }
+};
+var CloseEvidenceError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "CloseEvidenceError";
+    this.code = "E_CLOSE_EVIDENCE_REQUIRED";
+  }
+};
+var DONE_PREDECESSOR_STATES = ["in_review"];
+var EVIDENCE_REQUIRED_TIERS = ["tdd", "tests-after"];
+var CLOSE_EXCEPTION_MARKER = "[CLOSE-EXCEPTION]";
+function resolveCloseException(exception) {
+  if (exception === void 0) return null;
+  if (exception === null || typeof exception !== "object") {
+    throw new TypeError(
+      "exception must be an object ({ reason, author? }) when provided \u2014 omit it entirely to skip the TASK-187 escape hatch"
+    );
+  }
+  const { reason, author = "orchestrator" } = exception;
+  if (typeof reason !== "string" || reason.trim().length === 0) {
+    throw new TypeError(
+      "exception.reason must be a non-empty string \u2014 the escape hatch requires an explicit, auditable justification (e.g. a won't-do closure or a documented recovery path)"
+    );
+  }
+  if (!COMMENT_AUTHORS.includes(author)) {
+    throw new Error(
+      `invalid exception.author ${JSON.stringify(author)} \u2014 must be one of ${COMMENT_AUTHORS.join(", ")}`
+    );
+  }
+  return { reason: reason.trim(), author };
+}
+function checkDonePredecessorState(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  if (!DONE_PREDECESSOR_STATES.includes(task.status)) {
+    throw new InvalidPredecessorStateError(
+      `task ${task.key} cannot transition to "done" from status "${task.status}" \u2014 done is reachable only from ${DONE_PREDECESSOR_STATES.join("/")}, which CLAUDE.md's documented todo -> in_progress -> in_review -> done convention uses to imply a review occurred. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception (e.g. a won't-do closure or a documented recovery path).`
+    );
+  }
+}
+function checkCloseEvidence(task, linkedCommits, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  const tier = task.verification_tier === void 0 ? "tdd" : task.verification_tier;
+  if (!EVIDENCE_REQUIRED_TIERS.includes(tier)) return;
+  const hasReviewer = hasCommentFromAuthor(task, "reviewer");
+  const hasCommits = Array.isArray(linkedCommits) && linkedCommits.length > 0;
+  if (!hasReviewer || !hasCommits) {
+    throw new CloseEvidenceError(
+      `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: ${hasCommits}) \u2014 see CLAUDE.md's evidence-proportional-to-tier close rule. Pass \`exception: { reason }\` to use the documented escape hatch for a legitimate exception.`
+    );
+  }
+}
 var AcceptanceCriteriaError = class extends Error {
   constructor(message) {
     super(message);
@@ -8234,23 +8298,35 @@ async function transitionStatus({
   key,
   status,
   now = () => (/* @__PURE__ */ new Date()).toISOString(),
-  closeGuard
+  closeGuard,
+  exception
 }) {
   if (!STATUSES.includes(status)) {
     throw new Error(
       `invalid status "${status}" \u2014 must be one of ${STATUSES.join(", ")}`
     );
   }
+  const resolvedException = status === "done" ? resolveCloseException(exception) : null;
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
   if (status === "done") {
     checkUatGuard(task);
     await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+    checkDonePredecessorState(task, resolvedException);
+    checkCloseEvidence(task, task.linked_commits, resolvedException);
   }
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;
+  if (resolvedException) {
+    const marker = {
+      author: resolvedException.author,
+      at: stamp,
+      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`
+    };
+    task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
+  }
   validateTaskOrThrow(task);
   await atomicWriteFiles([
     { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
@@ -9574,7 +9650,7 @@ function createBoardServer({ repoRoot } = {}) {
           }
           return;
         }
-        const { status } = body;
+        const { status, exception } = body;
         if (!status || typeof status !== "string") {
           sendJson(res, 400, { error: "body must include a `status` string" });
           return;
@@ -9584,13 +9660,14 @@ function createBoardServer({ repoRoot } = {}) {
             repoRoot,
             key: rawKey,
             status,
-            closeGuard: loopModeCloseGuard
+            closeGuard: loopModeCloseGuard,
+            exception
           });
           sendJson(res, 200, { ok: true, key: rawKey, status });
         } catch (err) {
           const code = err && err.code;
           const msg = err && err.message || "transition failed";
-          if (code === "UAT_GUARD_REQUIRED" || code === "LOOP_CLOSE_GUARD_DENIED" || code === "LOOP_UAT_DELEGATION_REQUIRED") {
+          if (code === "UAT_GUARD_REQUIRED" || code === "LOOP_CLOSE_GUARD_DENIED" || code === "LOOP_UAT_DELEGATION_REQUIRED" || code === "E_INVALID_DONE_PREDECESSOR" || code === "E_CLOSE_EVIDENCE_REQUIRED") {
             sendJson(res, 403, { error: msg });
           } else if (/invalid status/.test(msg)) {
             sendJson(res, 400, { error: msg });

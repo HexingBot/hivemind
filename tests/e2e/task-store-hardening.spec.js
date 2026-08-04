@@ -333,11 +333,15 @@ describe('AC4 — listReady honors depends_on', () => {
     let ready = await listReady({ repoRoot: repoDir });
     expect(ready.map((t) => t.key)).toEqual(['TASK-201']);
 
+    // TASK-187 AC6 — this test's subject is listReady's dependency-unblock
+    // logic, not the AC2/AC3 close preconditions; the escape hatch keeps the
+    // fixture minimal instead of fabricating an unrelated review trail.
     await transitionStatus({
       repoRoot: repoDir,
       key: 'TASK-201',
       status: 'done',
       now: () => '2026-06-01T00:00:00Z',
+      exception: { reason: 'AC4 listReady dependency-unblock fixture — unrelated to review evidence.' },
     });
 
     ready = await listReady({ repoRoot: repoDir });

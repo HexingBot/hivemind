@@ -1370,7 +1370,7 @@ export function createBoardServer({ repoRoot } = {}) {
           return;
         }
 
-        const { status } = body;
+        const { status, exception } = body;
         if (!status || typeof status !== 'string') {
           sendJson(res, 400, { error: 'body must include a `status` string' });
           return;
@@ -1382,9 +1382,12 @@ export function createBoardServer({ repoRoot } = {}) {
           // it decides for itself whether loop mode is even active (getMode
           // defaults to 'harness', a no-op), so this is safe in harness mode
           // / with no active session and only bites when status === 'done'
-          // AND loop mode is active AND unauthorized.
+          // AND loop mode is active AND unauthorized. TASK-187 — `exception`
+          // (optional `{ reason, author? }` in the request body) is forwarded
+          // straight through to transitionStatus's own escape-hatch param;
+          // this endpoint adds no board-specific handling of it.
           await transitionStatus({
-            repoRoot, key: rawKey, status, closeGuard: loopModeCloseGuard,
+            repoRoot, key: rawKey, status, closeGuard: loopModeCloseGuard, exception,
           });
           sendJson(res, 200, { ok: true, key: rawKey, status });
         } catch (err) {
@@ -1394,11 +1397,15 @@ export function createBoardServer({ repoRoot } = {}) {
           //   "invalid status ..."  → 400
           //   "unknown task key: ..." → 404
           //   UAT_GUARD_REQUIRED / LOOP_CLOSE_GUARD_DENIED /
-          //     LOOP_UAT_DELEGATION_REQUIRED (TASK-082 / TASK-099 guards) → 403
+          //     LOOP_UAT_DELEGATION_REQUIRED (TASK-082 / TASK-099 guards) /
+          //     E_INVALID_DONE_PREDECESSOR / E_CLOSE_EVIDENCE_REQUIRED
+          //     (TASK-187 guards) → 403
           if (
             code === 'UAT_GUARD_REQUIRED'
             || code === 'LOOP_CLOSE_GUARD_DENIED'
             || code === 'LOOP_UAT_DELEGATION_REQUIRED'
+            || code === 'E_INVALID_DONE_PREDECESSOR'
+            || code === 'E_CLOSE_EVIDENCE_REQUIRED'
           ) {
             sendJson(res, 403, { error: msg });
           } else if (/invalid status/.test(msg)) {

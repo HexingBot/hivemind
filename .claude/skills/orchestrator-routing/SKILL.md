@@ -1026,6 +1026,37 @@ compose the three deterministic mutation-seam guards below; a direct hand
   check) as the seam a future close precondition — e.g. "a reviewer comment
   must exist before close" — builds on, so it does not need to invent its own
   presence check.
+- **The done state-machine + evidence-proportional-to-tier check (TASK-187,
+  replaying probes A5/P9)** — `status: "done"` is now reachable only from
+  `in_review` (the one state in the documented `todo -> in_progress ->
+  in_review -> done` convention that implies a review step was reached; a
+  `todo -> done` hop in one call is rejected with a typed
+  `InvalidPredecessorStateError`, `code: 'E_INVALID_DONE_PREDECESSOR'`). A
+  `tdd` or `tests-after` ticket additionally cannot close without BOTH a
+  pre-existing reviewer-authored comment (`hasCommentFromAuthor`, evaluated
+  against the ON-DISK task before the incoming closing comment is appended —
+  same unfabricatable-within-one-call ordering as the uat-only guard) AND a
+  non-empty `linked_commits` (`CloseEvidenceError`, `code:
+  'E_CLOSE_EVIDENCE_REQUIRED'`); `uat-only` is excluded — its own
+  content-checked verdict requirement is already stronger than presence.
+  Both checks are a NO-OP once a ticket has already reached `done` (an
+  idempotent re-close re-affirms a state already reached, not a new closure
+  event) and apply ONLY to a fresh transition into `done` — an already-`done`
+  ticket from before this ticket shipped is never retroactively re-validated
+  (verified against this repo's own ~189-ticket corpus: only 20 of 160
+  `tdd`/`tests-after` `done` tickets would satisfy the new evidence rule
+  today, confirming the rule could only ever be scoped to new transitions).
+  An explicit, auditable escape hatch exists for legitimate exceptions (a
+  won't-do closure, a documented recovery path): pass `exception: { reason,
+  author? }` to `transition_status`/`close_task` — a non-empty `reason` is
+  required, and it is recorded as a SEPARATE `[CLOSE-EXCEPTION]`-prefixed
+  comment (never silently spliced into the caller's own closing remark), so
+  the bypass is visible in the ticket's own comment history rather than a
+  silent skip. HONEST RESIDUAL: like the comment-author enum above, none of
+  this proves WHO issued the in_review transition or the reviewer comment —
+  it raises the cost of fabrication from one call to several distinct,
+  timestamped, durably-recorded writes and gives a human a real audit trail
+  to sanity-check, not a cryptographic guarantee.
 
 **On a clean review (closing a ticket)**, call the `close_task` tool once —
 it performs the transition, the closing comment, the `linked_commits`/

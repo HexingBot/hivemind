@@ -435,6 +435,11 @@ describe('TASK-034 — createBoardServer HTTP surface', () => {
 // tools already reject it (deep-review R4: this was the third write path
 // that half-enforced TASK-082's guards — a board POST bypassed both).
 // ===========================================================================
+// TASK-187 AC3 — a 'tdd' tier now also requires a pre-existing
+// reviewer-authored comment AND a non-empty linked_commits before close;
+// this fixture seeds both so these board-endpoint specs keep isolating the
+// LOOP-MODE close guard (their actual subject) rather than tripping the new
+// AC3 evidence check.
 const FIXTURE_TASK_IN_REVIEW = {
   key: 'TASK-090',
   title: 'Ticket ready to close',
@@ -445,9 +450,9 @@ const FIXTURE_TASK_IN_REVIEW = {
   labels: [],
   assignee: null,
   depends_on: [],
-  linked_commits: [],
+  linked_commits: ['abc1234'],
   linked_prs: [],
-  comments: [],
+  comments: [{ author: 'reviewer', at: '2026-07-01T00:30:00Z', body: 'APPROVE.' }],
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
   jira_key: null,

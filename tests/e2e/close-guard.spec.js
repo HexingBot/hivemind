@@ -100,20 +100,28 @@ function readTaskFileBytes(repoDir, key) {
   return readFileSync(join(repoDir, 'tasks', `${key}.json`), 'utf8');
 }
 
+// TASK-187 (AC2/AC3) — this file's tests exercise the LOOP-MODE guards
+// (Gate 1/Gate 2, the write-side uat-comment guard), not the AC2 predecessor-
+// state check or the AC3 evidence check added by TASK-187. Defaulting the
+// fixture to a state that already satisfies both (status 'in_review', a
+// pre-existing reviewer comment, a non-empty linked_commits) isolates every
+// test below to the ONE guard it actually means to exercise, instead of
+// requiring 40+ individual per-test edits — none of these tests assert
+// anything about the fixture's starting status or its evidence fields.
 function makeTask(key) {
   return {
     key,
     title: `Fixture ${key}`,
     description: 'Fixture task for TASK-082 close-guard e2e specs.',
     acceptance_criteria: ['covered by TASK-082 specs'],
-    status: 'todo',
+    status: 'in_review',
     priority: 'medium',
     labels: [],
     assignee: null,
     depends_on: [],
-    linked_commits: [],
+    linked_commits: ['abc1234'],
     linked_prs: [],
-    comments: [],
+    comments: [{ author: 'reviewer', at: '2026-07-01T00:30:00Z', body: 'APPROVE.' }],
     created_at: '2026-07-01T00:00:00Z',
     updated_at: '2026-07-01T00:00:00Z',
     jira_key: null,
@@ -793,7 +801,7 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
   });
 
   it('positive control — a cleanly structured multi-step "Verdict: PASS" comment (no delegation phrasing) still satisfies Gate 2', async () => {
-    const { createTask } = await import(TASK_STORE_URL);
+    const { createTask, transitionStatus } = await import(TASK_STORE_URL);
     const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
     const t = await createTask({
       repoRoot: root, title: 'V1-positive', description: 'd', priority: 'medium',
@@ -806,6 +814,10 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
       '', 'Overall result: PASS',
     ].join('\n');
     await mcpAppendComment({ repoRoot: root, key: t.key, author: 'uat', body });
+    // TASK-187 AC2 — done now requires a predecessor state implying review
+    // occurred; this is the one test in this describe block whose close is
+    // expected to actually SUCCEED, so it needs the real predecessor hop.
+    await transitionStatus({ repoRoot: root, key: t.key, status: 'in_review' });
     rewriteBundleMode(root, sessionId, 'loop', R3B_GRANT_CLOSE);
 
     await expect(

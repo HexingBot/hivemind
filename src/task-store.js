@@ -456,6 +456,211 @@ export function hasCommentFromAuthor(task, author) {
 }
 
 /**
+ * TASK-187 (A5) — thrown when a transition to 'done' is attempted from a
+ * status other than one of DONE_PREDECESSOR_STATES, and no `exception`
+ * escape hatch (see resolveCloseException below) was supplied. Replays probe
+ * A5: a ticket closed straight from 'todo' with no in_progress/in_review hop
+ * at all — nothing previously enforced that ANY review-implying state was
+ * ever visited before 'done'. `.code` lets callers (and tests) distinguish
+ * this from any other transitionStatus/closeTask failure programmatically,
+ * same convention as UatGuardError/ClosingCommentAuthorError.
+ */
+export class InvalidPredecessorStateError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InvalidPredecessorStateError';
+    this.code = 'E_INVALID_DONE_PREDECESSOR';
+  }
+}
+
+/**
+ * TASK-187 (P9) — thrown when a 'tdd' or 'tests-after' ticket is closed
+ * without BOTH a pre-existing reviewer-authored comment (hasCommentFromAuthor,
+ * evaluated against the ON-DISK task, i.e. before the incoming closing
+ * comment is appended — same ordering discipline as checkUatGuard) AND a
+ * non-empty linked_commits, and no `exception` escape hatch was supplied.
+ * Replays probe P9: a tdd ticket whose ACs demanded captured red-run
+ * evidence closed with the 4-word comment "Done." and no linked_commits —
+ * nothing mechanically related the AC's evidence promise to a receipt.
+ * `.code` lets callers (and tests) distinguish this programmatically.
+ */
+export class CloseEvidenceError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'CloseEvidenceError';
+    this.code = 'E_CLOSE_EVIDENCE_REQUIRED';
+  }
+}
+
+// TASK-187 AC2 — the only status 'done' is reachable FROM without the
+// `exception` escape hatch. 'in_review' is the one state in CLAUDE.md's
+// documented `todo -> in_progress -> in_review -> done` convention that
+// implies a review step was reached (CLAUDE.md Workflow step 6 spawns the
+// Reviewer subagent unconditionally, for every verification_tier — so this
+// is NOT scoped to tdd/tests-after the way the evidence check below is).
+const DONE_PREDECESSOR_STATES = ['in_review'];
+
+// TASK-187 AC3 — tiers that require BOTH a reviewer comment and a non-empty
+// linked_commits before close. Mirrors CLAUDE.md's "at minimum, a tdd or
+// tests-after ticket should not close without a reviewer-authored comment
+// and a non-empty linked_commits" decision. 'uat-only' is deliberately
+// excluded — checkUatGuard already imposes a CONTENT requirement (a
+// recognizable verdict) that is stronger than mere presence, so layering
+// this presence-only evidence check on top would be redundant, not stricter.
+const EVIDENCE_REQUIRED_TIERS = ['tdd', 'tests-after'];
+
+// TASK-187 — TASK-188's review asked whether hasCommentFromAuthor's presence
+// check (consumed by checkCloseEvidence above) should be PAIRED with a
+// loop-mode write-gate on author:'reviewer', mirroring
+// loopModeUatCommentGuard (src/close-guard.js) — i.e. gate appendComment's
+// author:'reviewer' behind a loop_auth delegation flag the way author:'uat'
+// is gated behind uat_delegated_to_orchestrator. DECISION: no such gate is
+// added, and this is a deliberate departure, not an oversight:
+//   - loopModeUatCommentGuard exists because loop mode has NO human by
+//     definition, and UAT verification is fundamentally a human-verdict
+//     capture — uat_delegated_to_orchestrator is the human's one-time,
+//     out-of-band STANDING GRANT that lets the orchestrator record a verdict
+//     on the human's behalf while loop mode runs unattended. There is no
+//     equivalent "the reviewer step doesn't apply here, substitute me"
+//     concept for author:'reviewer': CLAUDE.md's Workflow step 6 spawns the
+//     Reviewer subagent UNCONDITIONALLY, in every mode, for every tier — it
+//     is never legitimately skipped the way human UAT verification can be.
+//     A loop-mode-only gate keyed on a new delegation flag would therefore
+//     have no real distinguishing signal to gate on: the flag would just be
+//     another self-set boolean the orchestrator (the same actor writing
+//     every comment regardless of claimed author, per the module header's
+//     honesty note) could set as freely as it can already claim
+//     author:'reviewer' — friction, not a control.
+//   - What actually raises the cost here, mechanically, is the COMBINATION
+//     already shipped: checkCloseEvidence requires a reviewer comment to
+//     exist BEFORE the close call reads the on-disk task (unfabricatable
+//     within a single call, same ordering as checkUatGuard), AND
+//     checkDonePredecessorState (AC2) requires the ticket to have separately
+//     reached 'in_review' before 'done' is reachable at all. Together, a
+//     fabricated tdd/tests-after close now requires at least THREE distinct,
+//     timestamped, durably-recorded writes (transition to in_review, a
+//     reviewer comment, the close itself with linked_commits) instead of
+//     ONE (the A5/A6/P9 vulnerability this ticket and TASK-188 close) — a
+//     real increase in the audit trail a human can sanity-check, not a
+//     cryptographic guarantee of identity. HONEST RESIDUAL: nothing here
+//     proves WHO issued those three writes — same "impossible at this
+//     primitive" limit closeTask's own ClosingCommentAuthorError doc comment
+//     already states for the reviewer-authored-closing-comment case: every
+//     write flows through the same MCP surface regardless of claimed
+//     author. This is a speed-bump-plus-audit-trail improvement, described
+//     as exactly that — not "enforcement" of a reviewer having actually run.
+
+
+// TASK-187 AC6 — the escape-hatch marker. Prefixed onto a NEW, SEPARATE
+// comment (never spliced into the caller's own closing-comment body, so the
+// exception reason cannot be silently absorbed into unrelated prose) so a
+// human reading task.comments sees the bypass and its justification as a
+// distinct, timestamped, greppable entry — auditable rather than a silent
+// bypass. `git grep '\[CLOSE-EXCEPTION\]' tasks/` finds every use.
+const CLOSE_EXCEPTION_MARKER = '[CLOSE-EXCEPTION]';
+
+/**
+ * TASK-187 AC6 — validate the optional `exception` escape-hatch param shared
+ * by transitionStatus/closeTask. `undefined` (the common case — no bypass
+ * requested) returns null, a no-op. When provided, `exception.reason` MUST be
+ * a non-empty string (the explicit, auditable justification this AC
+ * requires) and `exception.author` (defaulting to 'orchestrator') must be a
+ * known COMMENT_AUTHORS entry, since it is used to author the marker comment
+ * (see CLOSE_EXCEPTION_MARKER). Throws synchronously (a caller bug — a bad
+ * shape here is never "legitimate exception", it is a malformed call) BEFORE
+ * any disk I/O, mirroring every other pre-write validation in this module.
+ */
+function resolveCloseException(exception) {
+  if (exception === undefined) return null;
+  if (exception === null || typeof exception !== 'object') {
+    throw new TypeError(
+      'exception must be an object ({ reason, author? }) when provided — omit it entirely to skip the '
+      + 'TASK-187 escape hatch',
+    );
+  }
+  const { reason, author = 'orchestrator' } = exception;
+  if (typeof reason !== 'string' || reason.trim().length === 0) {
+    throw new TypeError(
+      'exception.reason must be a non-empty string — the escape hatch requires an explicit, auditable '
+      + 'justification (e.g. a won\'t-do closure or a documented recovery path)',
+    );
+  }
+  if (!COMMENT_AUTHORS.includes(author)) {
+    throw new Error(
+      `invalid exception.author ${JSON.stringify(author)} — must be one of ${COMMENT_AUTHORS.join(', ')}`,
+    );
+  }
+  return { reason: reason.trim(), author };
+}
+
+/**
+ * TASK-187 AC2 — throws InvalidPredecessorStateError unless task.status is
+ * one of DONE_PREDECESSOR_STATES, UNLESS `resolvedException` (see
+ * resolveCloseException) is truthy, in which case this is a no-op — the
+ * escape hatch bypasses the state-machine requirement entirely (a won't-do
+ * closure, for instance, may never have reached in_review at all).
+ *
+ * IDEMPOTENT RE-CLOSE: task.status === 'done' is also a no-op here (not just
+ * the states in DONE_PREDECESSOR_STATES) — a ticket already at 'done'
+ * re-entering closeTask/transitionStatus(status:'done') is a no-op
+ * re-affirmation of a state it already reached, not a NEW closure event; the
+ * review-implying transition (or the exception escape hatch) already had to
+ * be satisfied whenever it FIRST reached 'done'. This is what keeps
+ * src/mcp-server.js's close_task idempotent (TASK-171/KB-GRAPH-4's repeated-
+ * call graph-node semantics) without re-litigating evidence for an event
+ * that already happened. Not a loophole: reaching this branch with
+ * task.status still 'done' requires having reached 'done' previously through
+ * this same guarded path (or the documented exception) — moving a task OFF
+ * 'done' first (transitionStatus to any other status) clears it, so a fresh
+ * close attempt is fully re-checked.
+ */
+function checkDonePredecessorState(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === 'done') return;
+  if (!DONE_PREDECESSOR_STATES.includes(task.status)) {
+    throw new InvalidPredecessorStateError(
+      `task ${task.key} cannot transition to "done" from status "${task.status}" — done is reachable only `
+      + `from ${DONE_PREDECESSOR_STATES.join('/')}, which CLAUDE.md's documented todo -> in_progress -> `
+      + 'in_review -> done convention uses to imply a review occurred. Pass `exception: { reason }` to use '
+      + 'the documented escape hatch for a legitimate exception (e.g. a won\'t-do closure or a documented '
+      + 'recovery path).',
+    );
+  }
+}
+
+/**
+ * TASK-187 AC3 — throws CloseEvidenceError when task.verification_tier is in
+ * EVIDENCE_REQUIRED_TIERS (defaulting to 'tdd' per CLAUDE.md's documented
+ * backward-compatible fallback) and EITHER no reviewer comment is on record
+ * OR `linkedCommits` is empty, UNLESS `resolvedException` is truthy (the
+ * escape hatch). `linkedCommits` is the caller's own choice of "final"
+ * linked_commits to evaluate — transitionStatus passes the task's existing
+ * on-disk array (it never adds new commits itself); closeTask passes the
+ * MERGED existing+incoming array (closeTask's whole point is adding new
+ * commits atomically in the same call).
+ *
+ * IDEMPOTENT RE-CLOSE — same task.status === 'done' no-op as
+ * checkDonePredecessorState, for the same reason (see that function's doc
+ * comment): a re-close is a no-op re-affirmation, not a new closure event.
+ */
+function checkCloseEvidence(task, linkedCommits, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === 'done') return;
+  const tier = task.verification_tier === undefined ? 'tdd' : task.verification_tier;
+  if (!EVIDENCE_REQUIRED_TIERS.includes(tier)) return;
+  const hasReviewer = hasCommentFromAuthor(task, 'reviewer');
+  const hasCommits = Array.isArray(linkedCommits) && linkedCommits.length > 0;
+  if (!hasReviewer || !hasCommits) {
+    throw new CloseEvidenceError(
+      `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing `
+      + `reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: `
+      + `${hasCommits}) — see CLAUDE.md's evidence-proportional-to-tier close rule. Pass `
+      + '`exception: { reason }` to use the documented escape hatch for a legitimate exception.',
+    );
+  }
+}
+
+/**
  * TASK-189 (P1/P2/P3, AC1/AC3) — thrown by createTask when acceptance_criteria
  * carries a mechanically-detectable defect: an empty or whitespace-only
  * criterion, or a total content length that would silently exceed the
@@ -739,6 +944,23 @@ function resolveCloseGuard(closeGuard) {
  * session/bundle internals" goal (loopModeCloseGuard itself still decides
  * whether loop mode is even active — this module still never inspects
  * bundle/session state itself).
+ *
+ * TASK-187 (AC2/AC3/AC5) — also when status === 'done', AFTER the uat-only
+ * guard and the loop-mode authorization gate (resolveCloseGuard — a
+ * meta-permission check, "is an autonomous close even allowed", runs before
+ * a completeness check on the same action): `checkDonePredecessorState`
+ * (task.status must be 'in_review', replaying probe A5) and
+ * `checkCloseEvidence` (a
+ * reviewer comment + non-empty linked_commits for tdd/tests-after tiers,
+ * replaying probe P9, evaluated against the task's EXISTING on-disk
+ * linked_commits — transitionStatus never adds new ones itself). An optional
+ * `exception: { reason, author? }` (AC6) bypasses both — see
+ * resolveCloseException's doc comment — and, when supplied, a separate
+ * `[CLOSE-EXCEPTION]`-prefixed comment recording the reason is appended
+ * atomically alongside the status write, so the bypass is auditable rather
+ * than silent. Because these checks live in this shared primitive (not just
+ * the MCP wrapper), every caller gets them — src/task-board.js's status
+ * endpoint and any direct import of task-store.js are covered identically.
  */
 export async function transitionStatus({
   repoRoot,
@@ -746,12 +968,15 @@ export async function transitionStatus({
   status,
   now = () => new Date().toISOString(),
   closeGuard,
+  exception,
 }) {
   if (!STATUSES.includes(status)) {
     throw new Error(
       `invalid status "${status}" — must be one of ${STATUSES.join(', ')}`,
     );
   }
+  const resolvedException = status === 'done' ? resolveCloseException(exception) : null;
+
   // SINGLE-WRITER: readAllTasks -> mutate -> atomicWriteFiles is NOT race-safe
   // against a concurrent writer. See the module header for the full rationale.
   const allTasks = await readAllTasks(repoRoot);
@@ -760,12 +985,26 @@ export async function transitionStatus({
 
   if (status === 'done') {
     checkUatGuard(task);
+    // TASK-187 — the loop-mode authorization gate (is an autonomous close
+    // permitted at all?) runs BEFORE the new predecessor-state/evidence
+    // checks (is THIS close well-formed?) — a meta-permission check is
+    // logically prior to a completeness check on the same action.
     await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+    checkDonePredecessorState(task, resolvedException);
+    checkCloseEvidence(task, task.linked_commits, resolvedException);
   }
 
   const stamp = now();
   task.status = status;
   task.updated_at = stamp;
+  if (resolvedException) {
+    const marker = {
+      author: resolvedException.author,
+      at: stamp,
+      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`,
+    };
+    task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
+  }
 
   // AC5 — validate before any disk I/O.
   validateTaskOrThrow(task);
@@ -854,6 +1093,19 @@ const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/i;
  * checkUatGuard above already prevents a uat-only ticket from self-satisfying
  * its own precondition via this same comment param (it inspects on-disk
  * comments BEFORE the new one is appended).
+ *
+ * TASK-187 (AC2/AC3/AC6) — after checkUatGuard AND resolveCloseGuard (same
+ * meta-permission-before-completeness ordering as transitionStatus):
+ * checkDonePredecessorState (task.status must be 'in_review', replaying
+ * probe A5) and checkCloseEvidence (a reviewer comment + non-empty
+ * linked_commits for tdd/tests-after tiers, replaying probe P9). Unlike
+ * transitionStatus, checkCloseEvidence here is evaluated against the MERGED
+ * existing+incoming linked_commits — closeTask's whole point is adding new
+ * commits atomically in this same call, so a caller supplying `linked_commits`
+ * here (the normal case) satisfies the evidence check without needing them
+ * pre-recorded. An optional `exception: { reason, author? }` (AC6) bypasses
+ * both — see resolveCloseException — and appends an auditable
+ * `[CLOSE-EXCEPTION]`-prefixed comment BEFORE the normal closing comment.
  */
 export async function closeTask({
   repoRoot,
@@ -863,6 +1115,7 @@ export async function closeTask({
   linked_prs = [],
   now = () => new Date().toISOString(),
   closeGuard,
+  exception,
 }) {
   if (!COMMENT_AUTHORS.includes(comment && comment.author)) {
     throw new Error(
@@ -878,6 +1131,7 @@ export async function closeTask({
       + "Review step, then close with a comment authored e.g. 'orchestrator' or 'developer' summarizing the close.",
     );
   }
+  const resolvedException = resolveCloseException(exception);
 
   // SINGLE-WRITER: see module header.
   const allTasks = await readAllTasks(repoRoot);
@@ -885,7 +1139,12 @@ export async function closeTask({
   if (!task) throw new Error(`unknown task key: ${key}`);
 
   checkUatGuard(task);
+  // TASK-187 — same ordering rationale as transitionStatus: the loop-mode
+  // authorization gate runs BEFORE the predecessor-state/evidence checks.
   await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+  checkDonePredecessorState(task, resolvedException);
+  const existingLinkedCommits = Array.isArray(task.linked_commits) ? task.linked_commits : [];
+  checkCloseEvidence(task, [...existingLinkedCommits, ...linked_commits], resolvedException);
 
   for (const sha of linked_commits) {
     if (typeof sha !== 'string' || !COMMIT_SHA_RE.test(sha)) {
@@ -899,6 +1158,18 @@ export async function closeTask({
   const newComment = { author: comment.author, at: stamp, body: comment.body };
   task.status = 'done';
   task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
+  if (resolvedException) {
+    const marker = {
+      author: resolvedException.author,
+      at: stamp,
+      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`,
+    };
+    // Inserted BEFORE the normal closing comment (splice at the position it
+    // occupied prior to the push above) so the audit trail reads
+    // exception-then-close, matching the order the two events actually
+    // happened in this call.
+    task.comments.splice(task.comments.length - 1, 0, marker);
+  }
   task.linked_commits = Array.isArray(task.linked_commits)
     ? [...task.linked_commits, ...linked_commits]
     : [...linked_commits];

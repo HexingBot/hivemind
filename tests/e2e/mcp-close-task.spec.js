@@ -185,6 +185,13 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
       name: 'append_comment',
       arguments: { key, author: 'uat', body: 'All steps PASS.' },
     });
+    // TASK-187 AC2 — done now requires a predecessor state implying review
+    // occurred; uat-only is excluded from the AC3 evidence check (uat-only's
+    // own content check, checkUatGuard, is already stronger than presence).
+    await client.callTool({
+      name: 'transition_status',
+      arguments: { key, status: 'in_review' },
+    });
 
     const transitioned = await client.callTool({
       name: 'transition_status',
@@ -245,6 +252,21 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     }));
     const key = created.key;
 
+    // TASK-187 AC2/AC3 — done now requires a predecessor state implying
+    // review occurred (in_review) plus, for a tdd tier, a pre-existing
+    // reviewer comment AND a non-empty linked_commits. transition_status has
+    // no linked_commits param (unlike close_task), so it is seeded directly
+    // on the task file — this test's actual subject is the loop-mode close
+    // guard, not the AC2/AC3 preconditions.
+    await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+    await client.callTool({
+      name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+    });
+    const taskPath = join(repoRoot, 'tasks', `${key}.json`);
+    const seeded = JSON.parse(readFileSync(taskPath, 'utf8'));
+    seeded.linked_commits = ['abc1234'];
+    writeFileSync(taskPath, JSON.stringify(seeded, null, 2) + '\n', 'utf8');
+
     const transitioned = await client.callTool({
       name: 'transition_status',
       arguments: { key, status: 'done' },
@@ -270,6 +292,15 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
       },
     }));
     const key = created.key;
+
+    // TASK-187 AC2/AC3 — done requires a predecessor state implying review
+    // (in_review) plus, for a tdd tier, a pre-existing reviewer comment
+    // (linked_commits is supplied directly to close_task below, satisfying
+    // that half of the evidence check).
+    await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+    await client.callTool({
+      name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+    });
 
     const result = await client.callTool({
       name: 'close_task',
@@ -506,7 +537,23 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
           verification_tier: 'tdd',
         },
       }));
-      return created.key;
+      const key = created.key;
+      // TASK-187 AC2/AC3 — done now requires a predecessor state implying
+      // review (in_review) plus, for a tdd tier, a pre-existing reviewer
+      // comment AND a non-empty linked_commits. This describe block's actual
+      // subject is the loop-mode uat-comment write-channel guard, so the
+      // fixture is pre-seeded to satisfy AC2/AC3 up front (linked_commits has
+      // no MCP setter short of close_task itself, so it is seeded directly
+      // on the task file).
+      await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+      await client.callTool({
+        name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+      });
+      const taskPath = join(repoRoot, 'tasks', `${key}.json`);
+      const seeded = JSON.parse(readFileSync(taskPath, 'utf8'));
+      seeded.linked_commits = ['abc1234'];
+      writeFileSync(taskPath, JSON.stringify(seeded, null, 2) + '\n', 'utf8');
+      return key;
     }
 
     // AC1 — blocked at the same guard seam as append_comment, before the
@@ -533,7 +580,10 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
       expect(surfaced, 'close_task must not accept an unauthorized author:"uat" closing comment in loop mode').toBe(true);
 
       const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
-      expect(task.status).toBe('todo');
+      // TASK-187 — createTddTicket() itself advances the fixture to
+      // 'in_review' (to satisfy the AC2 predecessor-state precondition), so
+      // the blocked state is 'in_review', not the original 'todo'.
+      expect(task.status).toBe('in_review');
       expect(task.comments.some((c) => c.author === 'uat')).toBe(false);
       expect(readFileSync(taskPath, 'utf8')).toBe(beforeTask);
       expect(readFileSync(indexPath, 'utf8')).toBe(beforeIndex);
@@ -646,6 +696,18 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
     return JSON.parse(readFileSync(path, 'utf8'));
   }
 
+  // TASK-187 AC2/AC3 — this describe block's tests are about the GRAPH NODE
+  // write, not the close preconditions; advance the fixture to 'in_review'
+  // and record a reviewer comment so close_task calls below satisfy AC2/AC3
+  // (linked_commits is supplied directly to each close_task call, satisfying
+  // that half of the evidence check).
+  async function seedInReviewWithEvidence(key) {
+    await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+    await client.callTool({
+      name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+    });
+  }
+
   // -------------------------------------------------------------------------
   // AC1 — node created on close, brain-absent (default: zero infra).
   // -------------------------------------------------------------------------
@@ -663,10 +725,11 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
       },
     }));
     const key = created.key;
+    await seedInReviewWithEvidence(key);
 
     const result = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
     });
     expect(result.isError).toBeFalsy();
     const parsed = parse(result);
@@ -699,13 +762,19 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
       },
     }));
     const key = created.key;
+    await seedInReviewWithEvidence(key);
 
     const first = parse(await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
     }));
     expect(first.graph_node).toBe('created');
 
+    // TASK-187 — the second call is an idempotent RE-close (task.status is
+    // already 'done' after the first call above), which checkDonePredecessorState/
+    // checkCloseEvidence treat as a no-op re-affirmation rather than a new
+    // closure event (see those functions' doc comments in src/task-store.js)
+    // — no further in_review/evidence seeding needed here.
     const second = await client.callTool({
       name: 'close_task',
       arguments: { key, comment: { author: 'developer', body: 'Re-closed.' } },
@@ -746,10 +815,11 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
         id: nodeId, type: 'task', ref: `tasks/${key}.json`, label: 'pre-existing label',
       },
     });
+    await seedInReviewWithEvidence(key);
 
     const result = parse(await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
     }));
     expect(result.ok).toBe(true);
     expect(result.graph_node).toBe('exists');
@@ -785,10 +855,11 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
       },
     }));
     const key = created.key;
+    await seedInReviewWithEvidence(key);
 
     const result = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
     });
     expect(result.isError).toBeFalsy();
     const parsed = parse(result);
@@ -825,10 +896,11 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
       },
     }));
     const key = created.key;
+    await seedInReviewWithEvidence(key);
 
     const result = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
     });
     expect(result.isError).toBeFalsy();
     const parsed = parse(result);
@@ -988,6 +1060,13 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
       },
     }));
     const key = created.key;
+    // TASK-187 AC2/AC3 — done requires in_review + a pre-existing reviewer
+    // comment for a tests-after tier (linked_commits is supplied directly to
+    // close_task below, satisfying that half of the evidence check).
+    await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+    await client.callTool({
+      name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+    });
 
     const result = await client.callTool({
       name: 'close_task',
@@ -1024,6 +1103,10 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
       },
     }));
     const key = created.key;
+    await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+    await client.callTool({
+      name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+    });
 
     const result = await client.callTool({
       name: 'close_task',
@@ -1049,6 +1132,21 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
       },
     }));
     const key = created.key;
+    // TASK-187 AC2/AC3 — this test's subject is verifyLinkedCommits's
+    // "none-linked" advisory reason, which reads the close_task CALL's own
+    // (absent) linked_commits argument — NOT the task's on-disk field. So
+    // evidence is seeded directly on the task file (a non-empty on-disk
+    // linked_commits satisfies checkCloseEvidence's merged existing+incoming
+    // check) rather than by passing linked_commits to close_task itself,
+    // which would change what this test is actually proving.
+    await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
+    await client.callTool({
+      name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
+    });
+    const taskPath = join(repoRoot, 'tasks', `${key}.json`);
+    const seeded = JSON.parse(readFileSync(taskPath, 'utf8'));
+    seeded.linked_commits = ['abc1234'];
+    writeFileSync(taskPath, JSON.stringify(seeded, null, 2) + '\n', 'utf8');
 
     const result = await client.callTool({
       name: 'close_task',
