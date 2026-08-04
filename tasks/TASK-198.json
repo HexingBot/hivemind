@@ -1,0 +1,30 @@
+{
+  "key": "TASK-198",
+  "title": "Isolated worktrees are not usable working environments: stale base ref and a shadowing empty node_modules",
+  "description": "**Two provisioning defects found on the FIRST real use of worktree isolation (TASK-195), 2026-08-03.** Both agents spawned into worktrees hit them; one refused to work, the other misdiagnosed one of them and committed a wrong fix. Neither is a defect in `src/worktree-handback.js` — both are properties of how the worktree is created and provisioned, which is why four review rounds on that module could not have found them.\n\n**Defect 1 — the worktree is branched from a stale ref.** Worktree isolation branches from `origin/<default-branch>` by default (the `worktree.baseRef: fresh` behaviour). This repo is worked local-first: at the time of the incident `origin/main` was at `bc585e3` (2026-07-29) while local `main` was at `d3c80c1` (2026-08-03) — **63 commits and 5 days behind.**\n\nConsequence: an agent spawned for TASK-193 landed on a checkout that predated TASK-185, the very ticket TASK-193 follows up on. `tasks/TASK-193.json` did not exist there, and the `UNSAFE_REF_RE` guard the brief cited at `src/mcp-server.js:105` was absent — the file:line references resolved to unrelated code. That agent correctly refused to work and reported rather than improvising; the TASK-189 agent instead fast-forwarded itself to `main` (a zero-conflict catch-up, disclosed in its hand-off).\n\nCandidate fix: set `worktree.baseRef` to `head` in `.claude/settings.json` so worktrees branch from local HEAD. Note the Orchestrator was blocked from making this edit by the settings-file guard, so it needs a human or an explicitly-authorised path.\n\n**Defect 2 — the worktree's empty `node_modules` shadows module resolution, and silently changes build output.** The worktree contains an empty `node_modules` directory. Node's parent-directory resolution fallback still satisfies ordinary `import`s, so most things appear to work — which is what makes this dangerous. Two things do NOT work:\n\n1. `tests/vitest-changed-algorithm-pin.spec.js` (the TASK-194 sensor) does a literal `readdirSync` on `node_modules/vitest/dist/chunks` and fails ENOENT. Reproduced by the TASK-189 agent by stashing all its own changes — byte-identical failure, so genuinely environmental.\n2. **`npm run build:plugin` emits different bytes inside the worktree.** `dist-parity` therefore reports drift that does not exist on main. The TASK-189 agent reasonably concluded the committed bundles were pre-existing stale, and committed six \"refreshed\" bundles built in the broken environment. The Orchestrator later verified `dist-parity` was GREEN on main all along — all 8 bundles byte-matched a fresh build — so the diagnosis was wrong and the six bundles were wrong.\n\n**Why this matters beyond the incident:** an environment that is *almost* correct is worse than one that is obviously broken. Imports resolving via fallback is exactly what let the agent believe it was in a working tree, and the failure surfaced as a plausible-looking \"pre-existing drift\" story rather than an error.\n\n**Both defects are pure provisioning.** Fixing them is likely configuration and setup, not logic — but the fix must be verifiable, because the failure mode is silence.",
+  "acceptance_criteria": [
+    "Defect 1 is fixed so a newly-created worktree is based on the current local HEAD, not a stale remote ref. Demonstrate by creating a worktree and asserting its merge-base equals local HEAD.",
+    "Defect 2 is fixed so that inside a worktree, npm run build:plugin produces bytes identical to a build in the primary checkout. Demonstrate by building in both and byte-comparing all 8 bundles.",
+    "tests/vitest-changed-algorithm-pin.spec.js passes inside a worktree, or is made explicitly and loudly skipped there with the reason stated — a silently-passing skip is not acceptable, per the Empty-result contract.",
+    "A sensor exists that would fail if either defect regressed, rather than relying on an agent noticing. State plainly if a sensor is impractical for one of them and why.",
+    "The worktree-isolation guidance in skills/orchestrator-routing/SKILL.md records the provisioning requirements and how to verify them, in both parity copies byte-identical.",
+    "npm run test:all is green from BOTH the primary checkout and a worktree; report both results separately."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "worktree-isolation",
+    "tooling",
+    "silent-failure",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T03:54:55.129Z",
+  "updated_at": "2026-08-04T03:54:55.129Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

@@ -1,0 +1,30 @@
+{
+  "key": "TASK-197",
+  "title": "Worktree handback textually merges generated artifacts, producing silently-wrong bundles",
+  "description": "**Found on the FIRST real use of worktree isolation (TASK-195), during the TASK-189 handback on 2026-08-03.** No spec could have caught this: it is a property of how handback interacts with generated files, not of any function's logic.\n\n**What happened.** TASK-193 (main tree) and TASK-189 (isolated worktree) both branched from `d3c80c1` and both regenerated `dist/*.cjs`. At handback, `mergeWorktreeBranch` reported `{merged: true}` with **no conflict** — git merged the two independently-generated bundles **textually**, splicing hunks from two different builds into one file.\n\n`dist-parity` (TASK-049) then went RED on main, naming six drifted bundles: `init.cjs`, `loop-ctl.cjs`, `mcp-server.cjs`, `new-task.cjs`, `pack-ctl.cjs`, `task-board.cjs`. Resolution was a plain `npm run build:plugin` + commit, which restored byte-parity across all 8.\n\n**Why this is worse than a conflict.** A conflict is the SAFE outcome here — it refuses, reports, and hands the decision to a human. A successful textual merge of a generated artifact is silent and produces a shipped bundle that matches neither source tree. The only thing that caught it was an unrelated sensor from a different ticket. Had `dist-parity` not existed, a spliced bundle would have shipped in v0.20.0.\n\n**The general shape:** `mergeWorktreeBranch` treats every file as mergeable text. For generated artifacts the correct semantics are not \"merge\" but \"take neither side, rebuild from merged source.\"\n\n**Evidence is reproducible:** the merge commit is `a199d39`; the corrective rebuild is the commit immediately following it, showing 1384 insertions / 1384 deletions across exactly six bundles — a pure regeneration, not a content change.\n\n**Design options to weigh (do not assume one):**\n1. Exclude a configured set of generated paths from handback merges entirely (take target side, then rebuild).\n2. Detect that the merge touched a generated path and force a post-merge rebuild + parity check as part of handback.\n3. Have handback refuse when both sides modified a generated path, converting the silent case into the conflict it should have been.\n\nOption 2 is the most self-healing; option 3 is the most conservative. Whichever is chosen, the residual must be stated: handback cannot know a path is generated unless something tells it.",
+  "acceptance_criteria": [
+    "A failing spec first reproduces the defect: two branches off one base each regenerate the same bundled artifact, handback merges them textually with no conflict, and the resulting artifact matches neither build. Capture the red-run output verbatim.",
+    "A mitigation is chosen from the three options in the description (or a better one) and the reasoning recorded in the closing comment, including what it costs and what it does NOT protect against.",
+    "The chosen mitigation is implemented in src/worktree-handback.js and covered by specs that fail if the mechanism is removed, following the precedent of tests/e2e/git-worktree-handback.spec.js.",
+    "The set of generated paths is not hardcoded in a second place: derive it from scripts/build-plugin.mjs's entrypoint list, or state explicitly why duplication is acceptable and add a drift sensor.",
+    "Handback's contract in skills/orchestrator-routing/SKILL.md documents the generated-artifact behaviour, in both parity copies byte-identical.",
+    "npm run test:all is green; dist rebuilt and committed if bundled source changed, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "worktree-isolation",
+    "silent-failure",
+    "review-followup",
+    "concurrency"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T03:54:28.854Z",
+  "updated_at": "2026-08-04T03:54:28.854Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

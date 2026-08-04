@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T03:48:51.390Z",
+  "generated_at": "2026-08-04T03:54:55.129Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1145,6 +1145,18 @@
       "key": "TASK-196",
       "title": "The documented UAT recording convention no longer produces a comment the loop-mode gate accepts",
       "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-197",
+      "title": "Worktree handback textually merges generated artifacts, producing silently-wrong bundles",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-198",
+      "title": "Isolated worktrees are not usable working environments: stale base ref and a shadowing empty node_modules",
+      "status": "todo",
       "priority": "high"
     }
   ]
