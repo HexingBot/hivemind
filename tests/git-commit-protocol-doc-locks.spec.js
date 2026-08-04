@@ -101,3 +101,55 @@ describe('TASK-191 — shared-git-index delegation guidance is pinned in both SK
     ).toBe(true);
   });
 });
+
+describe('TASK-195 — worktree isolation primary/backstop framing is pinned in both SKILL.md copies', () => {
+  it.each(SKILL_PATHS)('%s states worktree isolation is PRIMARY and the pathspec protocol is the BACKSTOP', (path) => {
+    const text = normalize(load(path));
+    expect(
+      text.includes('Worktree isolation is the **PRIMARY** control'),
+      `${path} must state worktree isolation is the PRIMARY control for concurrent writers`,
+    ).toBe(true);
+    expect(
+      text.includes('RETAINED as the BACKSTOP'),
+      `${path} must state the pathspec protocol is RETAINED as the BACKSTOP`,
+    ).toBe(true);
+  });
+
+  it.each(SKILL_PATHS)('%s states the never-auto-resolve conflict rule', (path) => {
+    const text = normalize(load(path));
+    expect(
+      text.includes('surface, never auto-resolve'),
+      `${path} must carry the "surface, never auto-resolve" conflict-handling rule`,
+    ).toBe(true);
+    expect(
+      text.includes('aborts the merge'),
+      `${path} must state that a conflicted merge is aborted rather than left in progress`,
+    ).toBe(true);
+  });
+
+  it.each(SKILL_PATHS)('%s states when to isolate and when not to', (path) => {
+    const text = normalize(load(path));
+    expect(
+      text.includes('Concurrent writers → isolate.'),
+      `${path} must state concurrent writers should be isolated`,
+    ).toBe(true);
+    expect(
+      text.includes('Single agent → do not isolate.'),
+      `${path} must state a single agent should not be isolated`,
+    ).toBe(true);
+    expect(
+      text.includes('Read-only reviewers → do not isolate.'),
+      `${path} must state read-only reviewers should not be isolated`,
+    ).toBe(true);
+  });
+});
+
+describe('TASK-195 — worktree-isolation pointer is pinned in both developer.md copies', () => {
+  it.each(DEVELOPER_PATHS)('%s points to the primary/backstop policy and disclaims handback', (path) => {
+    const text = load(path);
+    expect(
+      text.includes("Handback is not your job."),
+      `${path} must state that handback (merge/conflict-resolution) is the Orchestrator's job, not the Developer's`,
+    ).toBe(true);
+  });
+});

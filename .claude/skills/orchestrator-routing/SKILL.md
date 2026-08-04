@@ -221,6 +221,106 @@ same workflow applies; only the I/O surface changes.
   It must use only read-only tools and verification scripts. Never share intermediate
   implementation context with it — isolation is the point.
 
+## Worktree isolation for concurrent developer spawns (TASK-195)
+
+TASK-191's pathspec-limited commit protocol (above, and `agents/developer.md`'s
+"Git commit protocol" section) is a convention that removes the disjoint-file
+sweep hazard but is compliance-dependent and structurally blind to same-path
+collisions — see `knowledge/proposed/parallel-spawns-share-one-git-index.md`.
+TASK-195 closes both gaps structurally, for the case where they matter most
+(concurrent writers), by giving each concurrent spawn its own `git worktree`
+via the `Agent` tool's `isolation: 'worktree'` option, instead of coordinating
+access to one shared index.
+
+**Primary vs backstop.** Worktree isolation is the **PRIMARY** control
+whenever more than one `developer` subagent is spawned concurrently against
+the same repo (concurrent WRITERS). TASK-191's pathspec protocol and mandatory
+post-commit `git show --stat HEAD` check are **RETAINED as the BACKSTOP** —
+always in force, every commit, regardless of isolation — for every other
+case: single-agent runs, and any situation where isolation is unavailable, was
+not used, or a spawn reverts to a shared tree for any reason. Do not remove
+the pathspec protocol; it is still the only control in force when isolation
+is not active.
+
+**When to isolate:**
+- **Concurrent writers → isolate.** Spawn each concurrent `developer` with
+  `isolation: 'worktree'`. This is the whole point: it removes the shared
+  index rather than coordinating access to it.
+- **Single agent → do not isolate.** No contention exists; worktree setup
+  (checkout time, disk) is pure cost with no corresponding benefit.
+- **Read-only reviewers → do not isolate.** Reviewers never write, so they
+  share the tree harmlessly — confirmed empirically: concurrent `reviewer`
+  spawns ran against a shared tree with zero incident during the same drive
+  that surfaced this ticket. Isolating a reviewer only adds setup cost.
+
+**Assessment against TASK-191's three residual gaps** (compliance-dependence,
+same-path invisibility, unverified verification — recorded here so it is not
+relitigated per spawn):
+
+| Gap | Worktree isolation |
+|---|---|
+| Compliance-dependence | CLOSED structurally — there is no shared index to corrupt, so even a plain `git add -A` inside one worktree cannot touch another's staged work |
+| Same-path invisibility | CLOSED — a same-path collision surfaces as a visible merge conflict at handback (below), not a silent overwrite |
+| Unverified verification | N/A — a structural mechanism needs no compliance check |
+
+Serialization (`src/session-lock.js`) and a pre-commit hook were both
+considered and rejected as the *primary* control: serialization is itself an
+advisory, compliance-dependent lock (fails the first gap) and does nothing
+about concurrent edits within one already-serialized commit window (fails the
+second); a hook can enforce the pathspec form but cannot see a sibling's
+working-tree content (fails the second). Neither is implemented for this
+purpose; the pathspec protocol remains the backstop instead.
+
+### Handback protocol — how a worktree commit reaches the main line
+
+A commit made inside a worktree is already in the repo — git worktrees share
+ONE object database — sitting on that worktree's own branch. "Handback" is
+therefore a `git merge`, performed by the **Orchestrator** after the spawned
+agent returns, never by the spawned agent itself (it has no visibility into
+siblings or the main line's current state). Merge, not rebase or
+cherry-pick: a rebase would rewrite the branch's commit SHAs, invalidating any
+hand-off report that already names them; cherry-pick risks silently dropping
+commits if the wrong range is named. Use `src/worktree-handback.js`'s
+`mergeWorktreeBranch({ repoRoot, branch, message })` (or the equivalent
+`git merge --no-ff <branch>` by hand) — it merges the named branch into
+whatever is currently checked out at `repoRoot`.
+
+**On conflict: surface, never auto-resolve.** `mergeWorktreeBranch` aborts the
+merge (`git merge --abort`) the instant git reports a conflict and returns
+`{ merged: false, conflict: true, conflictedFiles }` instead of resolving
+anything. This is the load-bearing case: it is precisely the same-path
+collision that used to be silent under the pathspec protocol alone, now made
+**visible** instead of decided automatically. A silent auto-merge here would
+reintroduce the exact defect this ticket closes. On a conflict result, STOP
+and report to the Orchestrator (or the human) for adjudication — re-spawn the
+losing agent against the now-merged tree, or resolve by hand. The main line is
+left clean either way; the abort guarantees no half-merged state blocks
+subsequent commits.
+
+**Orphaned worktrees (agent died mid-work).** The `Agent` tool auto-removes a
+worktree that is unchanged when its spawn ends normally. An orphan — a
+worktree left behind with commits not yet merged, or uncommitted dirty state,
+typically because the spawn crashed or was killed mid-work — needs explicit
+handling: nothing sweeps it automatically. Use `src/worktree-handback.js`'s
+`detectOrphanedWorktrees({ repoRoot, targetBranch })` to list every worktree
+(other than the primary checkout) carrying unmerged commits or a dirty
+working tree. Disposition is always a deliberate Orchestrator/human decision,
+never automatic: merge the recoverable work via `mergeWorktreeBranch` and then
+remove the worktree once merged, or discard it explicitly if the work is not
+wanted. `removeMergedWorktree({ repoRoot, worktreePath, branch, targetBranch })`
+is the one safe-disposal helper offered — it refuses (throws
+`E_WORKTREE_UNMERGED` / `E_WORKTREE_DIRTY`) unless it can prove the branch is
+fully merged into `targetBranch` and the working tree is clean, so it can
+never discard unique work.
+
+### Residual: same-path collisions are made visible, not resolved
+
+Worktree isolation converts what TASK-191 left as a silent overwrite into a
+visible merge conflict at handback. It does not decide the conflict — a
+genuine same-path edit by two concurrent agents still requires human or
+Orchestrator adjudication once it surfaces. This is an honest, accepted
+residual, not a claim that same-path collisions are eliminated.
+
 ## Briefing template — data-fencing ticket-derived text (TASK-086)
 
 The per-ticket loop interpolates ticket-derived text (title, description, acceptance

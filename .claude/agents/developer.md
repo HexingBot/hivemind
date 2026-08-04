@@ -67,6 +67,12 @@ Wrinkle: a pathspec-limited commit cannot introduce a brand-new (untracked) file
 
 This protocol applies to every commit you make, whether or not you know a sibling spawn is active — you cannot see a sibling's state from inside your own context window.
 
+## Worktree isolation, when you're spawned inside one (TASK-195)
+
+The Orchestrator may spawn you with `isolation: 'worktree'` when it is running more than one `developer` concurrently — see `skills/orchestrator-routing/SKILL.md`'s "Worktree isolation for concurrent developer spawns" section for the full policy (worktree isolation is the PRIMARY control for concurrent writers; the pathspec protocol above is the BACKSTOP, always in force regardless). If you are running inside an isolated worktree, you have your own checkout and your own `.git/index` for this spawn — but the Git commit protocol above still applies unchanged: keep committing with pathspec-limited commits and the mandatory post-commit `git show --stat HEAD` check, since you cannot see from inside your own context whether isolation is actually in effect for you, or whether a future spawn mode changes that.
+
+**Handback is not your job.** A commit you make inside your worktree already exists in the repo, on your worktree's own branch — merging it into the main line (or resolving any conflict that surfaces) is the Orchestrator's job after you return, never something you do yourself. Do not attempt to merge, rebase, or otherwise reach outside your own worktree.
+
 ## Observability & minimalism (Spine)
 
 Both standards live in `.claude/shared/` and are non-negotiable for code you write:
