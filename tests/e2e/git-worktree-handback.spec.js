@@ -12,7 +12,10 @@
 // conflict, orphan detection/disposal) against real git.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { writeFileSync, appendFileSync, existsSync, realpathSync, readFileSync, unlinkSync } from 'node:fs';
+import {
+  writeFileSync, appendFileSync, existsSync, realpathSync, readFileSync, unlinkSync, mkdirSync, symlinkSync,
+  readdirSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -719,5 +722,100 @@ describe('LOW-1 (fix round 2) — normalizeForCompare only rewrites backslashes 
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-198 fix round — HIGH: removeMergedWorktree must not destroy the
+// primary's real node_modules through a provisioned junction/symlink.
+//
+// Reproduces the reviewer's sandbox finding against real git: a clean,
+// merged, non-dirty worktree whose (gitignored) node_modules is a
+// junction/symlink pointing at the primary's real node_modules used to have
+// that real node_modules recursively emptied by a plain, NON-force
+// `git worktree remove` — every guard above (merged-ness, branch match,
+// dirty check) passes on this exact happy path, because the junction is
+// invisible to `git status --porcelain`.
+// ---------------------------------------------------------------------------
+
+describe('HIGH (TASK-198 fix round) — removeMergedWorktree severs a node_modules junction before disposal instead of destroying the primary\'s real node_modules through it', () => {
+  it('disposing_of_a_provisioned_worktree_leaves_the_primary_checkouts_real_node_modules_intact', () => {
+    const dir = makeTmpDir('wt-nm-junction-disposal');
+    initRepo(dir);
+
+    // node_modules is gitignored — the exact condition that makes the
+    // junction invisible to `git status --porcelain` and lets every existing
+    // guard pass on the happy path (per the reviewer's reproduction).
+    writeFileSync(join(dir, '.gitignore'), 'node_modules/\n');
+    git(dir, ['add', '.gitignore']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    // The primary checkout's own REAL node_modules, populated with content
+    // that must survive worktree disposal untouched.
+    const primaryNodeModules = join(dir, 'node_modules');
+    mkdirSync(join(primaryNodeModules, 'real-package'), { recursive: true });
+    writeFileSync(join(primaryNodeModules, 'real-package', 'index.js'), 'module.exports = "primary";\n');
+    writeFileSync(join(primaryNodeModules, 'real-package', 'package.json'), '{"name":"real-package"}');
+
+    const wt = join(makeTmpDir('wt-nm-junction-disposal-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-nm', wt]);
+    // Computed BEFORE removal — realpath fails once the worktree directory
+    // is gone (same lesson as the MEDIUM-2 fix-round-1 test above).
+    const wtPosix = toPosix(wt);
+
+    // Provision the worktree's node_modules as a junction/symlink to the
+    // primary's — the exact shape src/worktree-provision.js produces.
+    const worktreeNodeModules = join(wt, 'node_modules');
+    symlinkSync(primaryNodeModules, worktreeNodeModules, process.platform === 'win32' ? 'junction' : 'dir');
+
+    // No commits, no edits — a clean, trivially-merged worktree, isolating
+    // this test from every other guard (unmerged/dirty/branch-mismatch).
+    removeMergedWorktree({
+      repoRoot: dir, worktreePath: wt, branch: 'agent-nm', targetBranch: 'HEAD',
+    });
+
+    // The worktree really was disposed of (the fix must not simply skip
+    // disposal to dodge the hazard).
+    const listAfter = git(dir, ['worktree', 'list']);
+    expect(listAfter).not.toContain(wtPosix);
+
+    // The load-bearing assertion: the PRIMARY's real node_modules — reached
+    // THROUGH the now-removed junction — is untouched.
+    expect(existsSync(primaryNodeModules)).toBe(true);
+    expect(readdirSync(primaryNodeModules)).toContain('real-package');
+    expect(existsSync(join(primaryNodeModules, 'real-package', 'index.js'))).toBe(true);
+    expect(readFileSync(join(primaryNodeModules, 'real-package', 'index.js'), 'utf8')).toBe('module.exports = "primary";\n');
+  });
+
+  it('a_dangling_or_wrong_target_node_modules_junction_is_still_severed_before_disposal_without_throwing', () => {
+    // Defense in depth: even a junction pointing at something OTHER than the
+    // primary's node_modules (a stale/incorrect link a caller never fixed)
+    // must be severed non-recursively before disposal, not left for git to
+    // recurse through. Uses a foreign target, distinct from the primary's
+    // own node_modules, to prove the guard isn't keyed off matching the
+    // primary path.
+    const dir = makeTmpDir('wt-nm-junction-wrong-target');
+    initRepo(dir);
+    writeFileSync(join(dir, '.gitignore'), 'node_modules/\n');
+    git(dir, ['add', '.gitignore']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const foreignRoot = makeTmpDir('wt-nm-junction-wrong-target-foreign');
+    const foreignNodeModules = join(foreignRoot, 'node_modules');
+    mkdirSync(join(foreignNodeModules, 'unrelated-package'), { recursive: true });
+    writeFileSync(join(foreignNodeModules, 'unrelated-package', 'marker.txt'), 'do not delete me\n');
+
+    const wt = join(makeTmpDir('wt-nm-junction-wrong-target-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-nm-wrong', wt]);
+    const worktreeNodeModules = join(wt, 'node_modules');
+    symlinkSync(foreignNodeModules, worktreeNodeModules, process.platform === 'win32' ? 'junction' : 'dir');
+
+    expect(() => removeMergedWorktree({
+      repoRoot: dir, worktreePath: wt, branch: 'agent-nm-wrong', targetBranch: 'HEAD',
+    })).not.toThrow();
+
+    // The unrelated foreign target this junction happened to point at is
+    // also untouched — the guard is unconditional, not primary-path-specific.
+    expect(existsSync(join(foreignNodeModules, 'unrelated-package', 'marker.txt'))).toBe(true);
   });
 });

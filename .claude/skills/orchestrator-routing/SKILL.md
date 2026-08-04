@@ -360,14 +360,54 @@ once a worktree-isolated spawn is known to exist, before relying on anything
 built or resolved inside it.
 
 **Sensor:** `tests/e2e/worktree-node-modules-provisioning.spec.js` exercises
-the real junction/symlink side effects (creation, idempotent re-run, refusal
-to clobber a real non-empty directory) and locks the regression that matters
-— that after provisioning, both a literal fs path lookup and real module
-resolution from inside the worktree find the SAME package the primary
-checkout has, not an empty shadow. The build-byte-parity symptom is covered
-by the existing `tests/e2e/dist-parity.spec.js`, which is `REPO_ROOT`-relative
-and therefore runs its own comparison correctly wherever it is invoked,
-including from inside a provisioned worktree.
+the real junction/symlink side effects (creation, idempotent re-run, relink
+over a stale or dangling link, refusal to clobber a real non-empty
+directory) and locks the regression that matters — that after provisioning,
+both a literal fs path lookup and real module resolution from inside the
+worktree find the SAME package the primary checkout has, not an empty
+shadow. The build-byte-parity symptom is covered by the existing
+`tests/e2e/dist-parity.spec.js`, which is `REPO_ROOT`-relative and therefore
+runs its own comparison correctly wherever it is invoked, including from
+inside a provisioned worktree.
+
+**Cache-only shadow directories are replaced, not refused (TASK-198 fix
+round, MEDIUM-1).** A vitest run inside an unprovisioned worktree writes its
+own cache (`.vite/`, `.vite-temp/`) into the empty shadow `node_modules`
+before provisioning ever runs — observed live. Left unhandled, that turns a
+realistic spawn ordering (one test run before the documented FIRST-action
+provisioning step) into a permanent `E_NODE_MODULES_NONEMPTY` refusal
+requiring a human to investigate and clear it by hand.
+`provisionWorktreeNodeModules` recognizes a directory whose entries are
+**entirely** drawn from a known cache-dir set (`.vite`, `.vite-temp`,
+`.cache`) as safely replaceable (`replace-cache-only-dir`) and links over
+it automatically; a directory containing anything else — even alongside a
+known cache dir — still refuses, naming the cache-dir case in the error so
+the reader knows what would have been handled automatically.
+
+**Removal ordering — sever the link before disposal (TASK-198 fix round,
+HIGH).** A provisioned worktree's `node_modules` is a junction/symlink
+pointing at the PRIMARY checkout's real `node_modules`. That junction is
+gitignored, so it is invisible to `git status --porcelain` — which means it
+also passes every guard in `removeMergedWorktree` (merged-ness, branch
+match, dirty check) on the ordinary happy path. Reproduced against real git:
+a clean, merged, non-dirty worktree with such a junction still has the
+PRIMARY's real `node_modules` **recursively emptied** by a plain, non-force
+`git worktree remove` — git treats the whole worktree directory as
+disposable and recurses THROUGH the junction into whatever it points at.
+`removeMergedWorktree` now `lstat`s the worktree's `node_modules` immediately
+before invoking `git worktree remove` and, if it is a symlink/junction,
+unlinks it non-recursively first (`rmSync(recursive: false)` — the same
+shape `provisionWorktreeNodeModules`'s `relink` action already uses).
+Unconditional, not opt-in: removing a symlink/junction itself never touches
+what it points at, so there is no data-loss risk to gate behind a manual
+step. A real (non-link) `node_modules` — the worktree's own, e.g.
+unprovisioned — is left alone; it belongs to the worktree being disposed of,
+so `git worktree remove` deleting it along with the rest of the tree is
+correct. **Sensor:** `tests/e2e/git-worktree-handback.spec.js`'s
+"HIGH (TASK-198 fix round)" block disposes of a provisioned worktree via
+`removeMergedWorktree` and asserts the primary's real `node_modules`
+content survives, plus a companion case for a junction pointing at a
+non-primary (stale/wrong) target.
 
 **Verification:** `npm run test:all` must be green from both the primary
 checkout and a provisioned worktree — this is the acceptance test for

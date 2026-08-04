@@ -26,7 +26,7 @@
 
 import { describe, it, expect, afterAll } from 'vitest';
 import {
-  writeFileSync, mkdirSync, existsSync, readdirSync, lstatSync, realpathSync, rmSync,
+  writeFileSync, mkdirSync, existsSync, readdirSync, lstatSync, realpathSync, rmSync, symlinkSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -105,6 +105,102 @@ describe('provisionWorktreeNodeModules — real fs side effects', () => {
     const second = provisionWorktreeNodeModules({ worktreePath, primaryRoot });
     expect(first.action).toBe('create-link');
     expect(second.action).toBe('already-linked');
+  });
+
+  // TASK-198 fix round, MEDIUM-1 — real-fs proof that a vitest-cache-only
+  // shadow directory (observed live: .claude/worktrees/.../node_modules
+  // containing only .vite/ and .vite-temp/) is replaced, not refused.
+  it('a_node_modules_directory_containing_only_known_vitest_cache_dirs_is_replaced_with_a_link', () => {
+    const primaryRoot = makeTmpDir('wt-prov-primary-cache');
+    const worktreePath = makeTmpDir('wt-prov-wt-cache');
+    seedPrimaryNodeModules(primaryRoot);
+
+    const worktreeNodeModules = join(worktreePath, 'node_modules');
+    mkdirSync(join(worktreeNodeModules, '.vite'), { recursive: true });
+    mkdirSync(join(worktreeNodeModules, '.vite-temp'), { recursive: true });
+    writeFileSync(join(worktreeNodeModules, '.vite-temp', 'cache-entry.json'), '{}');
+
+    const result = provisionWorktreeNodeModules({ worktreePath, primaryRoot });
+    expect(result.action).toBe('replace-cache-only-dir');
+    expect(lstatSync(worktreeNodeModules).isSymbolicLink()).toBe(true);
+    expect(toPosix(worktreeNodeModules)).toBe(toPosix(join(primaryRoot, 'node_modules')));
+  });
+
+  it('a_node_modules_directory_with_cache_dirs_PLUS_unknown_content_still_refuses', () => {
+    const primaryRoot = makeTmpDir('wt-prov-primary-cache-mixed');
+    const worktreePath = makeTmpDir('wt-prov-wt-cache-mixed');
+    seedPrimaryNodeModules(primaryRoot);
+
+    const worktreeNodeModules = join(worktreePath, 'node_modules');
+    mkdirSync(join(worktreeNodeModules, '.vite'), { recursive: true });
+    mkdirSync(join(worktreeNodeModules, 'some-real-package'), { recursive: true });
+
+    expect(() => provisionWorktreeNodeModules({ worktreePath, primaryRoot }))
+      .toThrow(/refusing to touch/);
+    expect(existsSync(join(worktreeNodeModules, 'some-real-package'))).toBe(true);
+  });
+
+  // TASK-198 fix round, LOW-2 — the `relink` action had no real-fs coverage.
+  // That `rmSync(recursive: false)` removes the LINK without deleting
+  // through it is the Windows-critical behaviour; asserting the foreign
+  // target survives is the same class of check as the HIGH-severity
+  // disposal-time guard in git-worktree-handback.spec.js.
+  it('a_symlink_junction_pointing_at_the_WRONG_target_is_relinked_and_the_foreign_target_survives', () => {
+    const primaryRoot = makeTmpDir('wt-prov-primary-relink');
+    const worktreePath = makeTmpDir('wt-prov-wt-relink');
+    const foreignRoot = makeTmpDir('wt-prov-foreign-relink');
+    seedPrimaryNodeModules(primaryRoot);
+
+    // A foreign target that looks like it too has real content — the
+    // population this test protects: some OTHER directory a stale/incorrect
+    // link points at, which must survive the relink untouched.
+    const foreignNodeModules = join(foreignRoot, 'node_modules');
+    mkdirSync(join(foreignNodeModules, 'foreign-package'), { recursive: true });
+    writeFileSync(join(foreignNodeModules, 'foreign-package', 'marker.txt'), 'do not delete me\n');
+
+    const worktreeNodeModules = join(worktreePath, 'node_modules');
+    // worktreePath itself doesn't exist yet as a directory — symlinkSync
+    // needs its parent to exist, which makeTmpDir already created.
+    symlinkSync(
+      foreignNodeModules,
+      worktreeNodeModules,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    const result = provisionWorktreeNodeModules({ worktreePath, primaryRoot });
+    expect(result.action).toBe('relink');
+    expect(lstatSync(worktreeNodeModules).isSymbolicLink()).toBe(true);
+    expect(toPosix(worktreeNodeModules)).toBe(toPosix(join(primaryRoot, 'node_modules')));
+
+    // The foreign target the stale link used to point at is untouched —
+    // this is the exact class of check the HIGH finding's reproduction used.
+    expect(existsSync(join(foreignNodeModules, 'foreign-package', 'marker.txt'))).toBe(true);
+    expect(readdirSync(foreignNodeModules)).toContain('foreign-package');
+  });
+
+  // TASK-198 fix round, LOW-2 — a dangling link (primary since removed/moved)
+  // must also relink cleanly rather than throwing EEXIST on symlinkSync.
+  it('a_dangling_symlink_junction_left_over_from_a_removed_primary_is_relinked', () => {
+    const primaryRoot = makeTmpDir('wt-prov-primary-dangling');
+    const worktreePath = makeTmpDir('wt-prov-wt-dangling');
+    const goneRoot = makeTmpDir('wt-prov-gone-dangling');
+    seedPrimaryNodeModules(primaryRoot);
+
+    const worktreeNodeModules = join(worktreePath, 'node_modules');
+    const goneNodeModules = join(goneRoot, 'node_modules');
+    mkdirSync(goneNodeModules, { recursive: true });
+    symlinkSync(
+      goneNodeModules,
+      worktreeNodeModules,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    // Remove the target itself (not the link) — the link is now dangling.
+    rmSync(goneNodeModules, { recursive: true, force: true });
+
+    const result = provisionWorktreeNodeModules({ worktreePath, primaryRoot });
+    expect(result.action).toBe('relink');
+    expect(lstatSync(worktreeNodeModules).isSymbolicLink()).toBe(true);
+    expect(toPosix(worktreeNodeModules)).toBe(toPosix(join(primaryRoot, 'node_modules')));
   });
 
   it('a_real_non_empty_node_modules_directory_is_never_touched', () => {

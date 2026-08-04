@@ -38,4 +38,21 @@ describe('decideNodeModulesAction — the full state matrix', () => {
       exists: true, isSymlinkOrJunction: false, linksToPrimary: false, isEmptyDir: false,
     })).toBe('refuse-nonempty-dir');
   });
+
+  // TASK-198 fix round, MEDIUM-1: a directory whose only entries are known
+  // build/test cache dirs (the shape a vitest run inside an unprovisioned
+  // worktree writes into the empty shadow before provisioning ever runs) is
+  // safely replaceable, not a refusal — otherwise a realistic spawn ordering
+  // permanently defeats provisioning until a human intervenes.
+  it('a real, NON-empty directory containing ONLY known cache dirs -> replace-cache-only-dir', () => {
+    expect(decideNodeModulesAction({
+      exists: true, isSymlinkOrJunction: false, linksToPrimary: false, isEmptyDir: false, isCacheOnlyDir: true,
+    })).toBe('replace-cache-only-dir');
+  });
+
+  it('isCacheOnlyDir defaults to false when omitted, so pre-existing callers still refuse a non-empty directory', () => {
+    expect(decideNodeModulesAction({
+      exists: true, isSymlinkOrJunction: false, linksToPrimary: false, isEmptyDir: false,
+    })).toBe('refuse-nonempty-dir');
+  });
 });

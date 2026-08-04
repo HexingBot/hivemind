@@ -54,6 +54,32 @@
 //      see it either. "Never discards unique work" therefore excludes
 //      gitignored content; see the SKILL prose for the same caveat.
 //
+//      DISPOSAL-TIME node_modules GUARD (TASK-198 fix round, HIGH): a
+//      provisioned worktree's `node_modules` is a junction/symlink pointing
+//      at the PRIMARY checkout's real `node_modules`
+//      (src/worktree-provision.js). That junction is gitignored, so it is
+//      invisible to every guard above — including `git status --porcelain`,
+//      which is what makes this the worst kind of hazard: it passes on the
+//      ordinary happy path. Reproduced against real git (2.53.0.windows.2):
+//      a clean, merged, non-dirty worktree with such a junction still has
+//      the PRIMARY's real `node_modules` **recursively emptied** by a
+//      plain, non-force `git worktree remove` — `git` treats the whole
+//      worktree directory as disposable and recurses THROUGH the junction
+//      into whatever it points at. Immediately before invoking `git
+//      worktree remove`, this function `lstat`s the worktree's
+//      `node_modules` and, if it is a symlink/junction, unlinks it
+//      NON-recursively first (`rmSync(recursive: false)` — the exact same
+//      shape `worktree-provision.js`'s `relink` action already uses, and
+//      confirmed there that the foreign target survives it). This is done
+//      unconditionally rather than refusing: removing a symlink/junction
+//      itself never touches what it points at, so there is no data-loss
+//      risk to gate behind a manual step, and refusing would only force
+//      every caller to duplicate this exact unlink by hand before calling
+//      this function. A directory that is NOT a symlink/junction (the
+//      worktree's own real `node_modules`, e.g. unprovisioned) is left
+//      alone — it belongs to the worktree being disposed of, not the
+//      primary, and `git worktree remove` deleting it is correct.
+//
 // MODULE INVARIANT (TASK-195 fix round 3): no raw `git()` result may be read
 // as a state assertion — i.e. no call site may collapse a `status` field to
 // a bare "did the checked-for state hold" boolean. Four consecutive review
@@ -80,7 +106,8 @@
 // outcome has re-introduced this bug. Do not add one.
 
 import { spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { realpathSync, lstatSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 function git(cwd, args) {
   return spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -384,6 +411,12 @@ export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}
  * silently discarded on removal. This function cannot see it either — "it
  * never discards unique work" does not cover gitignored content.
  *
+ * Disposal ordering (TASK-198 fix round, HIGH): if the worktree's
+ * `node_modules` is a symlink/junction (the shape `worktree-provision.js`
+ * creates), it is unlinked non-recursively BEFORE `git worktree remove`
+ * runs — see the module doc comment's "DISPOSAL-TIME node_modules GUARD"
+ * for why this must happen unconditionally, not as an opt-in.
+ *
  * @param {{ repoRoot: string, worktreePath: string, branch: string, targetBranch: string }} opts
  * @returns {void}
  */
@@ -437,6 +470,38 @@ export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBra
       'E_WORKTREE_DIRTY',
       `removeMergedWorktree: refusing to remove ${worktreePath} — working tree is dirty or unreadable`,
     );
+  }
+
+  // Sever a node_modules junction/symlink BEFORE disposal (TASK-198 fix
+  // round, HIGH) — see the module doc comment for the full reproduction and
+  // rationale. `lstat` (never `stat`/`existsSync`, which FOLLOW the link and
+  // would report on the primary's real node_modules instead of the link
+  // itself) the worktree's node_modules; a non-existent path is fine (never
+  // provisioned — nothing to sever) and a real, non-symlink directory is
+  // left untouched (it belongs to the worktree, not the primary).
+  const worktreeNodeModules = join(worktreePath, 'node_modules');
+  let nodeModulesLstat;
+  try {
+    nodeModulesLstat = lstatSync(worktreeNodeModules);
+  } catch {
+    nodeModulesLstat = null;
+  }
+  if (nodeModulesLstat && nodeModulesLstat.isSymbolicLink()) {
+    try {
+      // recursive: false — the same shape worktree-provision.js's 'relink'
+      // action uses. Removing a symlink/junction itself never deletes
+      // through it; recursive: true here would be the exact bug this fix
+      // closes.
+      rmSync(worktreeNodeModules, { recursive: false, force: true });
+    } catch (e) {
+      throw makeErr(
+        'E_NODE_MODULES_UNLINK_FAILED',
+        `removeMergedWorktree: refusing to remove ${worktreePath} — failed to unlink its node_modules ` +
+        `junction/symlink at ${worktreeNodeModules} before disposal (leaving it in place would let ` +
+        `\`git worktree remove\` recurse THROUGH it and destroy the primary checkout's real node_modules): ` +
+        `${e.message}`,
+      );
+    }
   }
 
   runGitOrThrow(repoRoot, ['worktree', 'remove', worktreePath], 'removeMergedWorktree');

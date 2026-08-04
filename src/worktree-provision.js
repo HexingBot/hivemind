@@ -54,27 +54,39 @@ function makeErr(code, message) {
   return e;
 }
 
+/** Directory names a vitest run inside an UNPROVISIONED worktree is known to
+ * write into the empty shadow `node_modules` before provisioning ever runs
+ * (TASK-198 fix round, MEDIUM-1) — observed live: `.claude/worktrees/
+ * agent-a83ac659b232c8f2d/node_modules` contained only `.vite/` and
+ * `.vite-temp/` at review time. A directory whose entries are ALL drawn from
+ * this set carries no content a human would need to investigate, so it is
+ * treated as replace-equivalent to an empty directory rather than refused. */
+const KNOWN_CACHE_DIR_NAMES = new Set(['.vite', '.vite-temp', '.cache']);
+
 /**
  * Pure decision function — no fs access. Given a description of what
  * currently sits at the worktree's `node_modules` path, decide what
  * `provisionWorktreeNodeModules` should do about it. Extracted so the
  * decision matrix is unit-testable without real disk I/O (fast tier).
  *
- * @param {{ exists: boolean, isSymlinkOrJunction: boolean, linksToPrimary: boolean, isEmptyDir: boolean }} state
- * @returns {'create-link' | 'already-linked' | 'relink' | 'replace-empty-dir' | 'refuse-nonempty-dir'}
+ * @param {{ exists: boolean, isSymlinkOrJunction: boolean, linksToPrimary: boolean, isEmptyDir: boolean, isCacheOnlyDir?: boolean }} state
+ * @returns {'create-link' | 'already-linked' | 'relink' | 'replace-empty-dir' | 'replace-cache-only-dir' | 'refuse-nonempty-dir'}
  */
 export function decideNodeModulesAction(state) {
   const {
-    exists, isSymlinkOrJunction, linksToPrimary, isEmptyDir,
+    exists, isSymlinkOrJunction, linksToPrimary, isEmptyDir, isCacheOnlyDir = false,
   } = state;
 
   if (!exists) return 'create-link';
   if (isSymlinkOrJunction) return linksToPrimary ? 'already-linked' : 'relink';
-  // A real directory (not a link). Only ever touch it if it is EMPTY — a
-  // non-empty real directory might carry content nothing else knows about
-  // (e.g. a manual `npm install` someone ran directly inside the worktree);
-  // never silently discard it.
-  return isEmptyDir ? 'replace-empty-dir' : 'refuse-nonempty-dir';
+  // A real directory (not a link). Only ever touch it if it is EMPTY, or
+  // its entire contents are known, predictable build/test cache dirs — a
+  // non-empty real directory carrying anything else might hold content
+  // nothing here knows about (e.g. a manual `npm install` someone ran
+  // directly inside the worktree); never silently discard THAT.
+  if (isEmptyDir) return 'replace-empty-dir';
+  if (isCacheOnlyDir) return 'replace-cache-only-dir';
+  return 'refuse-nonempty-dir';
 }
 
 /**
@@ -114,6 +126,7 @@ export function provisionWorktreeNodeModules({ worktreePath, primaryRoot } = {})
   let isSymlinkOrJunction = false;
   let linksToPrimary = false;
   let isEmptyDir = false;
+  let isCacheOnlyDir = false;
 
   if (exists) {
     const st = lstatSync(worktreeNodeModules);
@@ -121,12 +134,28 @@ export function provisionWorktreeNodeModules({ worktreePath, primaryRoot } = {})
     if (isSymlinkOrJunction) {
       linksToPrimary = realpathAttempt(worktreeNodeModules) === realpathAttempt(primaryNodeModules);
     } else {
-      isEmptyDir = readdirSync(worktreeNodeModules).length === 0;
+      // A real (non-link) entry at the path — must be a directory for a
+      // `node_modules` shape to make sense at all. (TASK-198 fix round,
+      // LOW-3): a path-that-is-a-file would otherwise throw a raw ENOTDIR
+      // straight out of readdirSync; wrap it into a typed refusal naming the
+      // provisioning decision instead of leaking an fs internal.
+      let entries;
+      try {
+        entries = readdirSync(worktreeNodeModules);
+      } catch (e) {
+        throw makeErr(
+          'E_NODE_MODULES_UNEXPECTED_TYPE',
+          `provisionWorktreeNodeModules: ${worktreeNodeModules} exists but is not a readable directory or ` +
+          `symlink/junction (${e.code || e.message}) — investigate before proceeding.`,
+        );
+      }
+      isEmptyDir = entries.length === 0;
+      isCacheOnlyDir = !isEmptyDir && entries.every((name) => KNOWN_CACHE_DIR_NAMES.has(name));
     }
   }
 
   const action = decideNodeModulesAction({
-    exists, isSymlinkOrJunction, linksToPrimary, isEmptyDir,
+    exists, isSymlinkOrJunction, linksToPrimary, isEmptyDir, isCacheOnlyDir,
   });
 
   switch (action) {
@@ -136,20 +165,34 @@ export function provisionWorktreeNodeModules({ worktreePath, primaryRoot } = {})
       throw makeErr(
         'E_NODE_MODULES_NONEMPTY',
         `provisionWorktreeNodeModules: refusing to touch ${worktreeNodeModules} — it is a real, non-empty ` +
-        'directory, not the empty shadow this defect produces. Investigate before removing it by hand.',
+        'directory, not the empty shadow this defect produces, and it contains more than known build/test ' +
+        `cache dirs (${[...KNOWN_CACHE_DIR_NAMES].join(', ')}), which provisioning would otherwise replace ` +
+        'automatically. Investigate before removing it by hand.',
       );
     case 'relink':
       // A symlink/junction itself is removed non-recursively (recursive:true
       // on a symlink to a directory would, on some platforms, delete through
-      // it) — never the case for 'replace-empty-dir' below, which removes a
-      // REAL (if empty) directory and needs recursive:true to succeed at all
-      // (rmSync EISDIRs on a real directory with recursive:false).
+      // it) — never the case for 'replace-empty-dir'/'replace-cache-only-dir'
+      // below, which remove a REAL directory and need recursive:true to
+      // succeed at all (rmSync EISDIRs on a real directory with
+      // recursive:false).
       rmSync(worktreeNodeModules, { recursive: false, force: true });
       createLink(primaryNodeModules, worktreeNodeModules);
       break;
     case 'replace-empty-dir':
       // Safe: decideNodeModulesAction only reaches this branch when the
       // directory was already confirmed empty above.
+      rmSync(worktreeNodeModules, { recursive: true, force: true });
+      createLink(primaryNodeModules, worktreeNodeModules);
+      break;
+    case 'replace-cache-only-dir':
+      // Safe (TASK-198 fix round, MEDIUM-1): decideNodeModulesAction only
+      // reaches this branch when every entry in the directory is a known
+      // build/test cache dir — the exact shape a vitest run inside an
+      // unprovisioned worktree writes into the empty shadow before
+      // provisioning ever runs. Content this predictable carries nothing a
+      // human needs to investigate; refuse-nonempty-dir still covers
+      // anything else.
       rmSync(worktreeNodeModules, { recursive: true, force: true });
       createLink(primaryNodeModules, worktreeNodeModules);
       break;
