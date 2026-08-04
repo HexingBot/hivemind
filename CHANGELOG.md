@@ -8,6 +8,59 @@ The single source of version truth is `.claude-plugin/plugin.json`. Because the
 plugin installs from this repository's `main` branch via the marketplace, a
 release is the `main` HEAD at the tagged version.
 
+## [0.20.0] — 2026-08-04
+
+Worktree isolation and ticket-integrity hardening release. The headline is
+structural: concurrent `developer` spawns each get their own `git worktree`
+instead of sharing one working tree and one `.git/index`, removing the
+shared-git-index hazard at the source rather than relying solely on
+convention to avoid it.
+
+### Added
+- **Worktree isolation for concurrent developer spawns** (TASK-195) — the
+  Orchestrator can now spawn `isolation: 'worktree'` for concurrent
+  `developer` work; each spawn gets its own checkout and its own
+  `.git/index`. The pathspec-limited commit protocol (TASK-191) is retained
+  as the backstop, in force regardless of isolation mode. Handback out of a
+  worktree lands via `src/worktree-handback.js`; provisioning (`node_modules`
+  linked, not reinstalled) via `src/worktree-provision.js`.
+- **AC-fidelity validation** (TASK-189) — vacuous and invisible acceptance
+  criteria are now rejected at intake, closing a calibration-laundering gap
+  where a ticket could carry ACs that looked like coverage but asserted
+  nothing.
+- **Empty-result contract closures** (TASK-192, 194, 199) — `test:since` and
+  `test:changed` now print a self-describing marker on zero-spec selection
+  instead of reporting an unqualified green, and `reconcile-apply`'s `ok`
+  predicate now correctly sees the replace bucket instead of reporting
+  success while silently no-op'ing replacements.
+
+### Fixed
+- **Worktree `node_modules`-junction data loss** (TASK-198) — `git worktree
+  remove` recursing through a `node_modules` junction could recursively
+  empty the *primary* checkout's dependency tree, not just the worktree's.
+  The handback path now severs the junction before disposal, verified in
+  both directions (destruction reproduced without the fix; primary
+  `node_modules` left fully intact with it). Three residual findings from
+  that review (nested junctions, an over-broad `catch` on the sever's
+  `lstat`, and a stale comment) are deliberately deferred — tracked on
+  TASK-198, unreachable while worktree-isolated spawns stay paused.
+- **Ticket-integrity / close-guard hardening** (TASK-186, 187, 188, 201) — a
+  strict allowlist grammar for UAT verdict comments (closing preamble/
+  postscript/padded-step evasion of the UAT gate); `done` is now reachable
+  only from `in_review`; evidence requirements now scale with
+  `verification_tier`; a comment-author enum blocks a `reviewer`-authored
+  comment from self-certifying its own closing comment; invisible Unicode
+  Tag-block/format characters are stripped from task comments.
+- **Pack-layer correctness** (TASK-181, 182, 183, 184, 200) — owned skill
+  copies now source from the plugin rather than the consumer repo (the
+  previous default silently installed nothing in a real consumer project
+  while still reporting `ok:true`); dual-copy precedence prefers the plugin
+  copy on an equal-or-newer pin; sibling-pack owner edges now survive a
+  re-materialize pass.
+- **Path-safety hardening** (TASK-185, 193) — `safeRef` now rejects
+  whitespace, newlines, percent-encoding, and unanchored `..` segments that
+  previously could bypass the ref guard.
+
 ## [0.19.0] — 2026-07-28
 
 Delivery fix: the `watch` video skill now works out of the box on any machine

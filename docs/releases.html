@@ -28,9 +28,21 @@
 
 <script>
 // The canonical human record is CHANGELOG.md at the repo root. This array is the
-// site-rendered mirror. When you cut a release: bump SITE_VERSION here + in
-// index.html, prepend the new entry below, and update CHANGELOG.md to match.
+// site-rendered mirror. When you cut a release: prepend the new entry below to
+// this RELEASES array, bump `const VERSION` in index.html to match, and update
+// CHANGELOG.md to match.
 const RELEASES = [
+  {
+    v: "0.20.0", date: "2026-08-04", tag: "Worktree isolation & ticket-integrity hardening",
+    highlights: [
+      "Concurrent developer spawns now get their own git worktree, structurally removing the shared-git-index hazard the pathspec-limited commit protocol previously had to guard against by convention alone.",
+      "Worktree handback machinery (node_modules linked, not reinstalled) fixes a real data-loss hazard: git worktree remove recursing through a node_modules junction and emptying the primary checkout's dependency tree.",
+      "Ticket-integrity hardening: strict allowlist grammar for UAT verdicts, done reachable only from in_review, evidence proportional to tier, a comment-author enum, and invisible Unicode Tag-block stripping from comments.",
+      "Empty-result contract: test:since and test:changed now self-describe zero-selection instead of reporting a silent green, and reconcile-apply's ok predicate now sees the replace bucket.",
+      "Pack layer: owned skill copies now source from the plugin rather than the consumer repo, with dual-copy precedence and sibling-pack owner edges preserved through re-materialize.",
+      "Path-safety: safeRef now rejects whitespace, newlines, percent-encoding, and unanchored '..'; acceptance-criteria validation rejects vacuous/invisible ACs, closing a calibration-laundering gap.",
+    ],
+  },
   {
     v: "0.19.0", date: "2026-07-28", tag: "Watch skill ships out of the box",
     highlights: [
