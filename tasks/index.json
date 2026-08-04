@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T14:58:20.259Z",
+  "generated_at": "2026-08-04T15:13:56.924Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1188,6 +1188,12 @@
       "title": "assimilateSkill clobbers sibling-pack owner edges — the same defect TASK-200 fixed, in the data-loss direction",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-204",
+      "title": "A guard shipped to the primitive is inert until the MCP server restarts, and nothing signals it",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

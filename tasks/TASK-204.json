@@ -1,0 +1,30 @@
+{
+  "key": "TASK-204",
+  "title": "A guard shipped to the primitive is inert until the MCP server restarts, and nothing signals it",
+  "description": "Discovered 2026-08-04 while closing the ticket batch that added the guards, and confirmed by two independent observations. This is an operational hazard rather than a code bug, which is why nothing caught it.\n\n**The shape.** `src/mcp-server.js` is bundled into `dist/mcp-server.cjs` and run as a long-lived stdio process. A guard added to `src/task-store.js` or `src/close-guard.js`, rebuilt into the bundle and committed, is **not executing** in any MCP server process that started before the rebuild. The code is correct, the bundle is fresh, `dist-parity` is green, every spec passes — and the running process is stale. Nothing anywhere signals the gap.\n\n**Confirmed twice, empirically:**\n\n1. **TASK-200 closed at 2026-08-04 09:58 with no pre-existing reviewer-authored comment**, 9.5 hours after TASK-187's evidence rule landed (`d97838b`, 00:29). Replaying `hasCommentFromAuthor` against its pre-close comment set returns `false`, so `checkCloseEvidence` would block that close today. It succeeded. (TASK-193 and TASK-189 also closed without one, but both predate the rule and are legitimate — TASK-200 is the decisive case.)\n2. **TASK-201's sanitizer did not run** on a comment appended after `ffb1a53` rebuilt the bundle: three U+200D characters persisted into `tasks/TASK-201.json`. TASK-201's own AC6 corpus sensor correctly flagged them. The shipped bundle contains `sanitizeCommentBody`; the running server does not.\n\n**Why it matters.** Every guard this session added at the primitive — TASK-186's UAT grammar, TASK-187's close preconditions, TASK-188's default-on loop guards and author enum, TASK-189's AC validation, TASK-201's sanitizer — is inert in the session that shipped it. Worse, the failure is silent and inverted: an operator sees green tests and a successful close and concludes the control works, when the control was simply absent. That is the same \"looks active, is not\" shape those tickets exist to eliminate, one layer down.\n\nIt also quietly invalidates a class of evidence. TASK-187's closing comment claimed its own close was \"the feature's first live exercise\" — corrected there — and any future ticket that verifies a guard by exercising it through the MCP tools during the same session it shipped will draw the same false conclusion.\n\n**Not necessarily a code change.** The honest fix might be procedural (a documented restart step after any rebuild touching bundled guard code) or mechanical (a version/build stamp the server reports and something compares against the committed bundle). Decide deliberately. A mechanical signal is preferable because the procedural one has already failed once here.\n\n**Do not over-engineer this.** Hot-reloading an MCP server is not in scope and would introduce more risk than it removes. The goal is that the discrepancy becomes *visible*, not that it becomes impossible.\n\n**Note the scope boundary:** direct `src/` importers — the test suite, `bin/` CLIs, the wargame harness — always get the current code. Only the long-lived MCP server process is affected. Say so precisely in whatever gets documented, because overstating this would make people distrust green test runs that are genuinely trustworthy.",
+  "acceptance_criteria": [
+    "The discrepancy between a running MCP server's loaded bundle and the committed dist/ bundle is detectable rather than silent. State plainly what the detection is and where it surfaces.",
+    "A decision is recorded on mechanical-vs-procedural: if a build stamp or version handshake is added, say what compares it and when; if the fix is documentation only, justify why a mechanical signal was rejected given the procedural approach already failed once.",
+    "The scope boundary is documented accurately: direct src/ importers (tests, bin/ CLIs, harnesses) always execute current code; only the long-lived MCP server process can be stale. Do not imply green test runs are untrustworthy.",
+    "The orchestrator-routing SKILL.md records what to do after a rebuild that touches bundled guard code, in both parity copies byte-identical.",
+    "A spec or sensor covers whatever mechanism is chosen, and fails if the mechanism is removed. If the fix is purely procedural and no sensor is possible, state that explicitly rather than shipping a decorative test.",
+    "npm run test:all is green; dist rebuilt and committed if bundled source changes, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "silent-failure",
+    "tooling",
+    "mcp-server",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T15:13:56.924Z",
+  "updated_at": "2026-08-04T15:13:56.924Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}
