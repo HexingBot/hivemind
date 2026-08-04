@@ -1382,6 +1382,12 @@
       "label": "Empty results must declare themselves empty: absence of evidence keeps rendering as evidence of absence"
     },
     {
+      "id": "task-193",
+      "type": "task",
+      "ref": "tasks/TASK-193.json",
+      "label": "Ref safety follow-up: reject % outright, and decide the write-side question"
+    },
+    {
       "id": "task-194",
       "type": "task",
       "ref": "tasks/TASK-194.json",

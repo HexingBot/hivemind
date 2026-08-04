@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T03:54:55.129Z",
+  "generated_at": "2026-08-04T03:56:39.909Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1102,7 +1102,7 @@
     {
       "key": "TASK-189",
       "title": "Acceptance criteria accept vacuous, invisible, and mis-tiered inputs with no validation",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "medium"
     },
     {
@@ -1126,7 +1126,7 @@
     {
       "key": "TASK-193",
       "title": "Ref safety follow-up: reject % outright, and decide the write-side question",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
