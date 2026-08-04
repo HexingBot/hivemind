@@ -1,0 +1,31 @@
+{
+  "key": "TASK-205",
+  "title": "reconcile-apply's ok predicate compares id-blind sums, so a surplus can mask a shortfall",
+  "description": "From TASK-199's gating review (MEDIUM). **Pre-existing — not introduced by TASK-199**, which correctly scoped itself to replace-bucket visibility. The same masking existed with installs alone from the TASK-181/183 era.\n\n**The defect.** `bin/pack-ctl.js:470-478` compares **combined totals**: `plannedInstallCount + plannedReplaceCount` against `installedCount + replacedCount`. Because the comparison is id-blind, a surplus landing in one place numerically offsets a genuine shortfall elsewhere, and the run reports `ok: true`.\n\n**Surpluses are real, not hypothetical.** Per-pack `reconcilePack` re-plans against only *that pack's* desired set, so a per-pack plan can diverge from the aggregate `computedPlan` the predicate was built from.\n\n**Concrete scenario, reachable with today's built-ins** (the reviewer's): the lock holds `skill:watch` with `owners: []` (orphaned) while the watch pack still desires it and it is live on disk. Design-power's per-pack plan — which does not desire `watch` — removes it; the watch pack then reinstalls it. That is a **landed install that was never in the aggregate plan**. If design-power's planned `ui-ux-pro-max` install soft-fails in the same run: planned = 1, landed = 1, `ok: true` — and the failure is invisible except in the nested `packs[].report`.\n\n**Why this matters more than the arithmetic.** `commands/design-pack.md` Step 4 and the module header both state the stronger **per-bucket** semantics — `installed_count === planned_install_count` AND `replaced_count === planned_replace_count`. The sum comparison only implements that when per-pack plans partition the aggregate exactly. So the documented contract is not the implemented one: a doc-vs-code gap on the very predicate that exists to make failures visible.\n\nThis is the Empty-result contract's own subject matter — an operation reporting unqualified success for an ambiguous case — appearing in the mechanism built to prevent it.\n\n**Suggested fix (the reviewer's).** Make the comparison identity-aware: track planned op ids per bucket and compare against landed op ids per bucket, rather than counting. That closes the offset class and makes the documented semantics literally true. Keep the existing `failureKind` precedence (`aborted` > `total` > `partial`) and the `E_PACK_APPLY_<KIND>_FAILURE` code namespace — one convention, extended, not a second one.\n\n**Do not regress what TASK-199 established:** deferred replaces (installed-newer, or undecidable non-semver divergence) must stay excluded from \"planned\", or a correct keep-as-is run starts reporting `ok: false`. TASK-199's mutation plants pin that behaviour; re-run them.",
+  "acceptance_criteria": [
+    "A failing spec first reproduces the masking: a run where a landed-but-unplanned op offsets a genuinely soft-failed planned op reports ok:true today. Capture the red-run output verbatim.",
+    "The comparison is identity-aware per bucket - planned op ids versus landed op ids - so a surplus in one bucket can no longer offset a shortfall in another.",
+    "The documented semantics in commands/design-pack.md Step 4 and bin/pack-ctl.js's module header are literally true of the implementation after the change; if any gap remains, it is stated rather than implied.",
+    "Deferred replaces stay excluded from planned: re-run TASK-199's mutation plants (totals blinded to replace terms; shippedPinWins filter dropped; replacedCount hardcoded) and confirm all three still fail.",
+    "failureKind precedence and the E_PACK_APPLY_<KIND>_FAILURE code namespace are unchanged - one convention extended, not a second introduced.",
+    "The design-pack doc-lock still derives its checked set from real success AND failure runs, and still fails if a documented field is removed from the doc.",
+    "npm run test:all is green; dist/pack-ctl.cjs rebuilt and committed, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "packs",
+    "silent-failure",
+    "empty-result-contract",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T16:51:54.529Z",
+  "updated_at": "2026-08-04T16:51:54.529Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

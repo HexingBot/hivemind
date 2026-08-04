@@ -1430,6 +1430,12 @@
       "label": "The documented UAT recording convention no longer produces a comment the loop-mode gate accepts"
     },
     {
+      "id": "task-199",
+      "type": "task",
+      "ref": "tasks/TASK-199.json",
+      "label": "pack-ctl's ok predicate is blind to the replace bucket TASK-182 made executable"
+    },
+    {
       "id": "task-200",
       "type": "task",
       "ref": "tasks/TASK-200.json",

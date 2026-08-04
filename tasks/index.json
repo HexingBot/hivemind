@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T15:54:30.927Z",
+  "generated_at": "2026-08-04T16:51:54.529Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1162,7 +1162,7 @@
     {
       "key": "TASK-199",
       "title": "pack-ctl's ok predicate is blind to the replace bucket TASK-182 made executable",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -1194,6 +1194,12 @@
       "title": "A guard shipped to the primitive is inert until the MCP server restarts, and nothing signals it",
       "status": "todo",
       "priority": "high"
+    },
+    {
+      "key": "TASK-205",
+      "title": "reconcile-apply's ok predicate compares id-blind sums, so a surplus can mask a shortfall",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }
