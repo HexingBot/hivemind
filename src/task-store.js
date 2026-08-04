@@ -478,6 +478,10 @@ function validateAcceptanceCriteria(acceptance_criteria) {
     }
     totalLength += item.length;
   }
+  // NOTE (TASK-189 follow-up, accepted as marginal): this sums raw criterion
+  // characters, but the briefing renders them with joiners/numbering, so a
+  // set just under the cap can still render past it. Boundary is approximate
+  // by design, not a bug to chase.
   if (totalLength > AC_BRIEFING_CAP_CHARS) {
     throw new AcceptanceCriteriaError(
       `acceptance_criteria total length (${totalLength} chars across `

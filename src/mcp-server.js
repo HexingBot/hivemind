@@ -292,7 +292,9 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
     'create_task',
     {
       description:
-        'Create a new task (status "todo"). Returns the minted { key, path }.',
+        'Create a new task (status "todo"). Returns { key, path }, plus an ' +
+        'optional advisory `warnings` array (e.g. a tier-vs-content mismatch ' +
+        'signal) when present — never blocking, but worth surfacing to the human.',
       inputSchema: {
         title: z.string(),
         description: z.string(),

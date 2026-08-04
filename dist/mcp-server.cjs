@@ -26736,7 +26736,7 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
   server.registerTool(
     "create_task",
     {
-      description: 'Create a new task (status "todo"). Returns the minted { key, path }.',
+      description: 'Create a new task (status "todo"). Returns { key, path }, plus an optional advisory `warnings` array (e.g. a tier-vs-content mismatch signal) when present \u2014 never blocking, but worth surfacing to the human.',
       inputSchema: {
         title: external_exports.string(),
         description: external_exports.string(),

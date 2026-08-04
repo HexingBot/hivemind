@@ -8464,8 +8464,13 @@ if (__isEntryScript) {
     prompter,
     repoRoot: resolveRepoRoot(process.env, process.cwd()),
     now: () => (/* @__PURE__ */ new Date()).toISOString()
-  }).then(({ key, path }) => {
+  }).then(({ key, path, warnings }) => {
     console.log(`${key} written to ${path}`);
+    if (Array.isArray(warnings)) {
+      for (const warning of warnings) {
+        console.error(warning);
+      }
+    }
     process.exit(0);
   }).catch((err) => {
     console.error(err.message);

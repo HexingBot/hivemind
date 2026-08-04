@@ -209,9 +209,19 @@ if (__isEntryScript) {
     repoRoot: resolveRepoRoot(process.env, process.cwd()),
     now: () => new Date().toISOString(),
   })
-    .then(({ key, path }) => {
+    .then(({ key, path, warnings }) => {
       // eslint-disable-next-line no-console
       console.log(`${key} written to ${path}`);
+      // TASK-189 follow-up (MEDIUM) — warnings are advisory and MUST NOT
+      // affect the exit code; print each to stderr so the human-facing CLI
+      // surfaces them the same way the MCP path already does (ok() returns
+      // the whole result object, warnings included).
+      if (Array.isArray(warnings)) {
+        for (const warning of warnings) {
+          // eslint-disable-next-line no-console
+          console.error(warning);
+        }
+      }
       process.exit(0);
     })
     .catch((err) => {

@@ -204,4 +204,26 @@ describe('TASK-189 — AC-fidelity probes replayed as permanent regression specs
     });
     expect(result.key).toMatch(/^TASK-\d{3,}$/);
   });
+
+  // Locks the `required: ["marker", "source_tier"]` half of the `if` clause
+  // (review round-3 LOW). Without this control, dropping that clause from
+  // the schema still lets every existing C2 spec pass, because the `then`
+  // keyword passes VACUOUSLY on a ticket with no `marker` at all — so a
+  // no-marker + T3/T4 ticket would start being wrongly REJECTED with no
+  // spec catching it. A no-marker ticket must never be constrained by the
+  // marker-ceiling rule, regardless of source_tier.
+  it('control — NO marker at all with source_tier:"T4" is still ACCEPTED (the `if` must not fire without a marker)', async () => {
+    const { createTask } = await loadStore();
+    const repoDir = makeTmpDir('acfid-c2-control3');
+    makeRepoSkeleton(repoDir, {});
+
+    const result = await createTask({
+      ...base,
+      repoRoot: repoDir,
+      title: 'C2 control 3 — no marker, weak tier',
+      acceptance_criteria: ['The claim holds.'],
+      source_tier: 'T4',
+    });
+    expect(result.key).toMatch(/^TASK-\d{3,}$/);
+  });
 });

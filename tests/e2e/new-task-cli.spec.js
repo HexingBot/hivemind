@@ -1,24 +1,46 @@
 // tests/new-task-cli.spec.js
 // TASK-002 — CLI wrapper at bin/new-task.js. Exports a runCli({argv, prompter,
-// repoRoot, now}) so tests can drive the loop without a TTY. The file's
-// top-level just calls runCli({argv: process.argv.slice(2), prompter:
-// realReadlinePrompter, ...}) — that wiring is exercised by humans and
-// reviewer's smoke test, not here.
+// repoRoot, now}) so tests can drive the loop without a TTY. Most of this
+// suite drives runCli() directly, in-process.
 //
 // AC1 coverage: "Running the script with no arguments prompts for required
 // fields and produces a valid task JSON conformant to tasks/schema.json."
 // The schema-conformance assertion lives in tests/new-task.spec.js (the core
 // is what produces the on-disk JSON); this suite asserts the CLI plumbing.
+//
+// TASK-189 follow-up round (MEDIUM) — the top-level entry-script wiring
+// (`.then(({ key, path }) => ...)` -> process.exit(0)) is the one piece of
+// this file runCli() cannot exercise from in-process: it discarded
+// `result.warnings` silently, which is exactly the silent-acceptance defect
+// TASK-189 exists to close, reproduced on the human-facing intake surface.
+// The block below spawns the real bin/new-task.js as a child process (ESM,
+// package.json "type": "module" makes `node bin/new-task.js` runnable
+// directly) so the entry-script wiring itself is under test, not just runCli().
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 import { PROD, makeRepoSkeleton } from '../helpers/fixtures.js';
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
+import { REPO_ROOT } from '../helpers/repoRoot.js';
 
 afterAll(cleanupAll);
+
+const CLI = join(REPO_ROOT, 'bin', 'new-task.js');
+
+function runCliProcess(args, { cwd }) {
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.CLAUDE_PROJECT_DIR; // force cwd-based repoRoot resolution
+  const r = spawnSync(process.execPath, [CLI, ...args], {
+    cwd,
+    env: cleanEnv,
+    encoding: 'utf8',
+  });
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
 
 const FIXED_NOW = '2026-09-10T12:00:00Z';
 
@@ -281,5 +303,46 @@ describe('AC1 — flag + prompt mix', () => {
       (p) => p.toLowerCase().includes('title'),
     );
     expect(titlePrompts).toEqual([]);
+  });
+});
+
+// ===========================================================================
+// TASK-189 follow-up — MEDIUM: the entry-script wiring must print any
+// createTask() warnings to stderr (advisory, non-blocking) rather than
+// silently discarding them, and MUST still exit 0 — warnings never become
+// a failure.
+// ===========================================================================
+describe('TASK-189 follow-up — entry-script prints warnings, still exits 0', () => {
+  it('a schema-change ticket declared uat-only prints the warning to stderr and exits 0', () => {
+    const repoDir = makeTmpDir('af-ntcli-warn');
+    makeRepoSkeleton(repoDir, {});
+
+    const { status, stdout, stderr } = runCliProcess([
+      '--title', 'Schema change at uat-only tier',
+      '--description', 'Change tasks/schema.json to add a new required field.',
+      '--ac', 'Schema updated and all task files migrated.',
+      '--priority', 'medium',
+      '--tier', 'uat-only',
+    ], { cwd: repoDir });
+
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/TASK-\d{3,} written to/);
+    expect(stderr).toMatch(/schema/i);
+  });
+
+  it('a ticket with no warnings prints nothing extra to stderr and exits 0', () => {
+    const repoDir = makeTmpDir('af-ntcli-nowarn');
+    makeRepoSkeleton(repoDir, {});
+
+    const { status, stdout, stderr } = runCliProcess([
+      '--title', 'Ordinary ticket',
+      '--description', 'A normal change with no schema mention.',
+      '--ac', 'Something observable happens.',
+      '--priority', 'medium',
+    ], { cwd: repoDir });
+
+    expect(status).toBe(0);
+    expect(stdout).toMatch(/TASK-\d{3,} written to/);
+    expect(stderr).toBe('');
   });
 });
