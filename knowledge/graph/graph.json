@@ -1434,6 +1434,12 @@
       "type": "task",
       "ref": "tasks/TASK-200.json",
       "label": "Owner-edge clobber in executeInstall is now reachable on the routine replace path"
+    },
+    {
+      "id": "task-201",
+      "type": "task",
+      "ref": "tasks/TASK-201.json",
+      "label": "Invisible Unicode-tag characters persist into ticket comments, unlike intake values"
     }
   ],
   "edges": [

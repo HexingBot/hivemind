@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T15:13:56.924Z",
+  "generated_at": "2026-08-04T15:44:52.676Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1162,7 +1162,7 @@
     {
       "key": "TASK-199",
       "title": "pack-ctl's ok predicate is blind to the replace bucket TASK-182 made executable",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
@@ -1174,7 +1174,7 @@
     {
       "key": "TASK-201",
       "title": "Invisible Unicode-tag characters persist into ticket comments, unlike intake values",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
