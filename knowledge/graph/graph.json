@@ -1364,6 +1364,12 @@
       "label": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously"
     },
     {
+      "id": "task-188",
+      "type": "task",
+      "ref": "tasks/TASK-188.json",
+      "label": "Close guards live in the MCP wrapper, not the primitive, and any caller can sign the reviewer's name"
+    },
+    {
       "id": "task-189",
       "type": "task",
       "ref": "tasks/TASK-189.json",

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T04:46:46.796Z",
+  "generated_at": "2026-08-04T04:58:53.029Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1096,7 +1096,7 @@
     {
       "key": "TASK-188",
       "title": "Close guards live in the MCP wrapper, not the primitive, and any caller can sign the reviewer's name",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
