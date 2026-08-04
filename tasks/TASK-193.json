@@ -11,7 +11,7 @@
     "No regression in false-negative behaviour: every ref in the live graph must still pass through unchanged after the fix. Show the count.",
     "npm run test:all is green; dist/mcp-server.cjs rebuilt via npm run build:plugin and committed, with tests/e2e/dist-parity.spec.js passing."
   ],
-  "status": "todo",
+  "status": "in_review",
   "priority": "medium",
   "labels": [
     "kb-graph",
@@ -27,7 +27,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T20:24:31.568Z",
-  "updated_at": "2026-08-02T20:24:31.568Z",
+  "updated_at": "2026-08-04T03:48:51.390Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",

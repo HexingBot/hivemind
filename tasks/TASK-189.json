@@ -11,7 +11,7 @@
     "The probe scripts are ported into the repo as permanent regression specs, each asserting the previously-MISSED input is now CAUGHT (or, where the decision was deliberately not to block, asserting the advisory signal fires), per the hive-adversarial-improve protocol's replayable-fixture rule.",
     "npm run test:all is green; no existing task-store, schema, mcp-server, or intake spec regresses; dist bundles rebuilt and committed if bundled source changed, with dist-parity passing."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "medium",
   "labels": [
     "adversarial-followup",
@@ -24,7 +24,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-02T19:39:16.596Z",
-  "updated_at": "2026-08-02T19:39:16.596Z",
+  "updated_at": "2026-08-04T03:33:24.608Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
