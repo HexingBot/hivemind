@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T02:55:12.194Z",
+  "generated_at": "2026-08-04T03:02:47.299Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1138,7 +1138,7 @@
     {
       "key": "TASK-195",
       "title": "Worktree isolation for parallel agents: remove the shared index instead of briefing around it",
-      "status": "in_review",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
