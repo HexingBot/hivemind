@@ -871,3 +871,173 @@ describe('TASK-182 — dual-copy precedence: plugin wins on a DECIDABLE equal-or
     expect(result.report[0]).toMatchObject({ id: 'skill:watch', executed: true, retired: true });
   });
 });
+
+// TASK-200 — from TASK-182's gating review (MEDIUM-3): executeInstall wrote
+// `lock.resources[id] = { ..., owners: [] }` and then called addOwner for
+// ONLY the current run's pack, dropping any owner edge belonging to a
+// DIFFERENT pack in the process. Latent before TASK-182 (only reachable on
+// the unusual staged-but-not-live install path); TASK-182 put plan.replace
+// through the very same executeInstall, so it now sits on the routine
+// plugin-wins retire path. Fix: preserve prior owners across a re-materialize
+// and union the current run's owner in, on BOTH the install and replace
+// paths (never a hard reset) -- see executeInstall's own TASK-200 comment for
+// the full reasoning, including why nothing downstream relies on the reset.
+describe('TASK-200 — owner-edge clobber: a re-materialize through executeInstall must preserve a sibling pack\'s owner edge, never reset it', () => {
+  it('RED-LOCK (AC1): a resource owned by two packs, replaced via the TASK-182 plugin-wins path, loses the sibling pack\'s owner edge without the fix', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-200-replace-multi-owner');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch v1\nStale project-pinned copy.\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch v2\nCurrent plugin copy.\n');
+
+    const liveDir = join(root, '.claude', 'skills', 'watch');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Watch v1\nStale project-pinned copy.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    // The multi-owner fixture the ticket calls for: TWO DIFFERENT packs
+    // already own this resource id (a supported shape the descriptor schema
+    // does not forbid). The `watch` pack's OWN owner identity ("watch@1.0.0")
+    // stays constant across this run -- only the SKILL's pin bumps (1.0.0 ->
+    // 2.0.0), which is orthogonal to the owning pack's own version (owner =
+    // "<descriptor.id>@<descriptor.version>", src/pack-orchestrator.js) --
+    // so the fixture isolates the cross-pack clobber this ticket is about
+    // from same-pack version-edge bookkeeping, which is a separate concern.
+    seedLock(lockPath, {
+      'skill:watch': makeEntry({ pin: '1.0.0', owners: ['design-power@0.1.0', 'watch@1.0.0'], required: 'soft' }),
+    });
+
+    const plan = {
+      install: [],
+      remove: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+        from: '1.0.0',
+        to: '2.0.0',
+      }],
+      report: [],
+    };
+
+    await applyPlan({
+      plan, lockPath, root, owner: 'watch@1.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:watch'];
+    expect(entry).toBeDefined();
+    // design-power's edge is a SIBLING pack's ownership, unrelated to this
+    // run's replace -- it must survive the re-materialize.
+    expect(entry.owners).toEqual(['design-power@0.1.0', 'watch@1.0.0']);
+  });
+
+  it('AC2 (install path): owner edges belonging to other packs survive a re-materialize on the plain install path too', async () => {
+    // Distinct from the replace-path fixture above: this is the
+    // staged-but-not-live shape (a prior assimilate/reconcile already
+    // recorded a lock entry -- and another pack's ownership on it -- but the
+    // resource was never live on disk when this run's plan() proposed an
+    // install, per TASK-121's staged-vs-live rule). This is the path that was
+    // reachable BEFORE TASK-182 too.
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-200-install-multi-owner');
+    const sourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(sourceRoot, 'shared', '# Shared\nOwned copy.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {
+      'skill:shared': makeEntry({ pin: 'v1', owners: ['design-power@0.1.0'], required: 'soft' }),
+    });
+
+    const plan = {
+      install: [{
+        id: 'skill:shared',
+        resource: { id: 'shared', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    await applyPlan({ plan, lockPath, root, owner: 'watch@1.0.0', sourceRoot });
+
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:shared'];
+    expect(entry).toBeDefined();
+    expect(entry.owners).toContain('design-power@0.1.0');
+    expect(entry.owners).toContain('watch@1.0.0');
+  });
+
+  it('AC3: after a replace by pack B, a resource still owned by pack A is NOT removable as an orphan by executeRemove', async () => {
+    // Proves the DOWNSTREAM CONSEQUENCE the field exists to produce, not just
+    // the array contents: executeRemove promises "a still-owned resource is
+    // never deleted" (re-derived from the CURRENT on-disk lock via
+    // dropOwner/isOrphaned). If the replace silently dropped pack A's edge,
+    // this step would see an apparently-unowned resource and delete it --
+    // the failure this ticket's description says surfaces far from its
+    // cause, in a DIFFERENT pack's run, as a deleted working skill.
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-200-replace-then-remove-still-owned');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch v1\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch v2\n');
+
+    const liveDir = join(root, '.claude', 'skills', 'watch');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Watch v1\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    // As in the RED-LOCK fixture above, pack B's (watch) own owner identity
+    // stays constant ("watch@1.0.0") across the replace -- only the skill's
+    // pin bumps -- isolating the cross-pack guarantee AC3 exists to prove
+    // from same-pack version-edge bookkeeping, which is a separate concern.
+    seedLock(lockPath, {
+      'skill:watch': makeEntry({ pin: '1.0.0', owners: ['design-power@0.1.0', 'watch@1.0.0'], required: 'soft' }),
+    });
+
+    // Step 1: pack B (watch) replaces the resource at an equal-or-newer pin
+    // (TASK-182 plugin-wins path). Pack A's edge must survive this.
+    const replacePlan = {
+      install: [],
+      remove: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+        from: '1.0.0',
+        to: '2.0.0',
+      }],
+      report: [],
+    };
+    await applyPlan({
+      plan: replacePlan, lockPath, root, owner: 'watch@1.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    const afterReplace = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entryAfterReplace = afterReplace.resources['skill:watch'];
+    expect(entryAfterReplace.owners).toContain('design-power@0.1.0');
+
+    // Step 2: pack B (watch) itself later drops this resource -- a real
+    // executeRemove op, re-deriving orphan status from the CURRENT on-disk
+    // lock (never a stale plan snapshot). This is the exact guarantee AC3
+    // exists to prove.
+    const removePlan = {
+      install: [],
+      remove: [{ id: 'skill:watch', entry: entryAfterReplace }],
+      replace: [],
+      report: [],
+    };
+    await applyPlan({ plan: removePlan, lockPath, root, owner: 'watch@1.0.0' });
+
+    // Still owned by design-power -> must NOT have been deleted.
+    expect(existsSync(liveDir)).toBe(true);
+    const afterRemove = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entryAfterRemove = afterRemove.resources['skill:watch'];
+    expect(entryAfterRemove).toBeDefined();
+    expect(entryAfterRemove.owners).toEqual(['design-power@0.1.0']);
+  });
+});

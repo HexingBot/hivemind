@@ -9009,6 +9009,7 @@ function executeInstall(lock, op, {
   (0, import_node_fs4.mkdirSync)((0, import_node_path4.dirname)(liveDir), { recursive: true });
   (0, import_node_fs4.rmSync)(liveDir, { recursive: true, force: true });
   (0, import_node_fs4.cpSync)(sourceDir, liveDir, { recursive: true });
+  const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
   lock.resources[id] = {
     kind: "skill",
     origin: resource.origin,
@@ -9020,7 +9021,7 @@ function executeInstall(lock, op, {
     // pre-TASK-142 behavior of hashing what was just copied.
     ...hasStageTimeBaseline ? { source_integrity: priorEntry.source_integrity, content_integrity: priorEntry.content_integrity } : { integrity: `sha256:${hashDir(liveDir)}` },
     scope: resource.scope,
-    owners: [],
+    owners: priorOwners,
     required: resource.required,
     installed_at: (/* @__PURE__ */ new Date()).toISOString(),
     install_method: "assimilated",

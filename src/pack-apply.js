@@ -434,6 +434,33 @@ function executeInstall(lock, op, {
   rmSync(liveDir, { recursive: true, force: true });
   cpSync(sourceDir, liveDir, { recursive: true });
 
+  // TASK-200 (from TASK-182's gating review, MEDIUM-3) — a re-materialize
+  // used to hard-reset owners to [] here, relying on the addOwner call below
+  // to re-add ONLY the current run's pack. Any owner edge belonging to a
+  // DIFFERENT pack was silently dropped in the process. Latent before
+  // TASK-182 (only reachable on the unusual staged-but-not-live install
+  // path); TASK-182 routed plan.replace through this SAME function, putting
+  // it on the routine plugin-wins retire path -- every future retire runs
+  // through here.
+  //
+  // Fix: PRESERVE prior owners across the reset and union the current run's
+  // owner in via addOwner below, rather than resetting. Checked before
+  // choosing this over an explicit reset-with-proof:
+  //   - dropOwner/isOrphaned (src/integrations-lock.js) are the only other
+  //     readers of owners[]; both operate on whatever the array holds at
+  //     call time with exact-string membership/emptiness checks -- neither
+  //     assumes or requires a fresh reset here.
+  //   - executeRemove's "still-owned resource is never deleted" guarantee
+  //     (isOrphaned, re-derived from the CURRENT on-disk lock) is exactly
+  //     the guarantee a reset BREAKS: a dropped sibling edge would make
+  //     that pack's resource look orphaned and eligible for removal in a
+  //     LATER, unrelated run -- preserving is required BY that guarantee,
+  //     not merely compatible with it.
+  //   - no reset-with-proof is available: the condition that makes the drop
+  //     live is simply two packs declaring the same resource id, which nothing
+  //     in src/pack-descriptor.js's schema forbids -- so "no sibling edge can
+  //     exist at this point" cannot be proven in general.
+  const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
   lock.resources[id] = {
     kind: 'skill',
     origin: resource.origin,
@@ -447,7 +474,7 @@ function executeInstall(lock, op, {
       ? { source_integrity: priorEntry.source_integrity, content_integrity: priorEntry.content_integrity }
       : { integrity: `sha256:${hashDir(liveDir)}` }),
     scope: resource.scope,
-    owners: [],
+    owners: priorOwners,
     required: resource.required,
     installed_at: new Date().toISOString(),
     install_method: 'assimilated',
