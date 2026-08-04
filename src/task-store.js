@@ -399,6 +399,141 @@ export class UatGuardError extends Error {
   }
 }
 
+/**
+ * TASK-189 (P1/P2/P3, AC1/AC3) — thrown by createTask when acceptance_criteria
+ * carries a mechanically-detectable defect: an empty or whitespace-only
+ * criterion, or a total content length that would silently exceed the
+ * orchestrator briefing template's documented per-field cap (see
+ * AC_BRIEFING_CAP_CHARS below). `.code` lets callers (and tests) distinguish
+ * this from any other createTask failure programmatically, same convention
+ * as KeyCollisionError/UatGuardError/DanglingDependencyError above.
+ *
+ * Deliberately NOT thrown for unfalsifiable-but-well-formed prose (e.g. "It
+ * works correctly.") — see validateAcceptanceCriteria's doc comment for the
+ * recorded reasoning (TASK-189 AC5).
+ */
+export class AcceptanceCriteriaError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'AcceptanceCriteriaError';
+    this.code = 'E_INVALID_ACCEPTANCE_CRITERIA';
+  }
+}
+
+// TASK-189 AC3 — mirrors .claude/skills/orchestrator-routing/SKILL.md's
+// briefing-template cap table (`acceptance_criteria | 4000 chars`). A
+// criterion placed past this cap is truncated in the briefing an agent
+// actually reads, so it is binding on the ticket while invisible to whoever
+// verifies it (P4). Decision (recorded per AC3): reject at create_task time
+// rather than warn-only at spawn time — spawn-time warning would require
+// instrumenting the orchestrator's manual, conversational prompt-construction
+// step, which has no corresponding code module (verified: no fenceData/
+// capField implementation exists under src/ — the SKILL.md table is a
+// documented convention the orchestrator follows by hand, not a function this
+// ticket's scoped create/validate path can hook). Rejecting at the source is
+// the stronger guarantee: a criterion that would be invisible to a reviewer
+// can never be created in the first place, at the one deterministic
+// enforcement point (createTask) this ticket owns.
+const AC_BRIEFING_CAP_CHARS = 4000;
+
+/**
+ * TASK-189 (P1/P2/P3/P4, AC1+AC3) — validate acceptance_criteria BEFORE any
+ * disk I/O. Throws AcceptanceCriteriaError (not the generic ajv message) for:
+ *   1. An item with no non-whitespace content (empty string or
+ *      whitespace-only) — P2/P3, "" and "   \t  ". Mirrors tasks/schema.json's
+ *      new `pattern: "\\S"` item constraint (defense-in-depth: this check
+ *      fires first with a clearer, indexed message; the schema-level ajv
+ *      pass below still enforces it independently for any other write path).
+ *   2. The combined length of every criterion exceeding the documented
+ *      4000-char briefing cap — P4, the "invisible-but-binding" criterion.
+ *
+ * Deliberately does NOT reject unfalsifiable-but-well-formed criteria like
+ * "It works correctly." (P1) — TASK-189 AC5's recorded decision. Emptiness
+ * and length are objectively, mechanically checkable; "is this falsifiable"
+ * is not — the Challenger's own realistic phrasing ("Data export works
+ * correctly for all supported formats.", "No existing functionality is
+ * broken.") reads as completely normal spec prose, and a rule strict enough
+ * to catch "It works correctly." risks rejecting terse-but-legitimate
+ * criteria like "Exit code is 0." That judgement call belongs to the
+ * Reviewer's AC-compliance step (a human/agent reading the ticket in
+ * context), not a schema or a regex run at create time — an autonomous
+ * false-positive block on legitimate spec language is a worse failure mode
+ * than letting vacuous prose through to review.
+ */
+function validateAcceptanceCriteria(acceptance_criteria) {
+  if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
+    throw new AcceptanceCriteriaError(
+      'acceptance_criteria must be a non-empty array (schema minItems: 1)',
+    );
+  }
+  let totalLength = 0;
+  for (let i = 0; i < acceptance_criteria.length; i++) {
+    const item = acceptance_criteria[i];
+    if (typeof item !== 'string' || item.trim().length === 0) {
+      throw new AcceptanceCriteriaError(
+        `acceptance_criteria[${i}] is empty or whitespace-only — every criterion `
+          + 'must contain at least one non-whitespace character (it gives the '
+          + "reviewer's AC-compliance step no falsifiable target otherwise)",
+      );
+    }
+    totalLength += item.length;
+  }
+  if (totalLength > AC_BRIEFING_CAP_CHARS) {
+    throw new AcceptanceCriteriaError(
+      `acceptance_criteria total length (${totalLength} chars across `
+        + `${acceptance_criteria.length} criteria) exceeds the ${AC_BRIEFING_CAP_CHARS}-char `
+        + 'briefing cap documented in .claude/skills/orchestrator-routing/SKILL.md — a '
+        + 'criterion beyond that cap is silently truncated in the briefing an agent '
+        + 'actually reads, so it would be binding on the ticket while invisible to '
+        + 'whoever verifies it. Split the ticket or shorten the criteria.',
+    );
+  }
+}
+
+// TASK-189 AC4 — mechanically-detectable subset of CLAUDE.md's verification-tier
+// rubric ("tdd is RESERVED for ... schema/state-schema changes"). Deliberately
+// narrow: it matches only explicit mentions of an actual schema FILE/change,
+// not the broader "security-sensitive logic, parsing, ... state mutation with
+// real edge-risk" categories in the rubric, which have no comparably precise
+// keyword signal and would carry a much higher false-positive rate. Verified
+// against this repo's real tasks/ corpus (191 tickets): 2 flagged, both
+// confirmed-by-inspection false positives on manual review (TASK-130 explicitly
+// reasons its uat-only tier for authoring pack DATA that merely *conforms to*
+// an existing schema, not a schema change; TASK-179's description contains the
+// literal negated phrase "NO schema change", which this simple keyword match
+// cannot distinguish from an affirmative one) — the known blind spot this rule
+// does NOT try to catch: negation ("no schema change", "not a schema change"),
+// or any schema-risk category outside "schema" keyword hits. This is
+// acceptable ONLY because the signal is advisory (see checkTierContentMismatch
+// below) and 2/191 is well within a tolerable noise floor for a WARNING that
+// never blocks.
+const SCHEMA_CHANGE_RE = /\bschema\.json\b|\bstate[- ]schema\b|\bschema\s+(?:change|changes|migration|mutation)\b/i;
+
+/**
+ * TASK-189 AC4 — advisory-only heuristic: a ticket whose title/description
+ * mentions an explicit schema-file change while declaring a verification_tier
+ * lighter than 'tdd' (the rubric's reserved tier for schema/state-schema
+ * changes) produces a WARNING string. NEVER throws — the check is not
+ * decidable (see the module comment above for the false-positive rate this
+ * accepts), so this must stay advisory per TASK-189 AC4's explicit mandate.
+ * Absent verification_tier defaults to 'tdd' (CLAUDE.md's documented
+ * backward-compatible fallback), so an omitted tier never triggers this.
+ * Returns an array (empty when nothing fires) so createTask can splice it
+ * straight into a `warnings` field on its return value.
+ */
+function checkTierContentMismatch({ title, description, verification_tier }) {
+  if (verification_tier === undefined || verification_tier === 'tdd') return [];
+  const text = `${title || ''}\n${description || ''}`;
+  if (!SCHEMA_CHANGE_RE.test(text)) return [];
+  return [
+    `verification_tier "${verification_tier}" may be too light — the title/description mentions `
+      + 'a schema change, and CLAUDE.md reserves "tdd" for schema/state-schema changes. This is '
+      + 'an advisory signal only (not a block): re-check the tier assignment, or ignore if the '
+      + 'match is a false positive (e.g. negated, or describing data that merely conforms to an '
+      + 'existing schema rather than changing one).',
+  ];
+}
+
 // TASK-186 AC2/AC6 — harness mode's design assumption is that a human is
 // genuinely present, so this stays a LIGHT content check, not the full
 // structured per-step machinery loop mode's Gate 2 enforces in
@@ -698,11 +833,9 @@ export async function createTask({
   now = () => new Date().toISOString(),
 }) {
   // Validate enums + required-array shape before touching disk.
-  if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
-    throw new Error(
-      'acceptance_criteria must be a non-empty array (schema minItems: 1)',
-    );
-  }
+  // TASK-189 AC1/AC3 — supersedes the old bare non-empty-array check: also
+  // rejects empty/whitespace-only criteria and an over-cap total length.
+  validateAcceptanceCriteria(acceptance_criteria);
   if (!PRIORITIES.includes(priority)) {
     throw new Error(
       `invalid priority "${priority}" — must be one of ${PRIORITIES.join(', ')}`,
@@ -825,5 +958,12 @@ export async function createTask({
     { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
   ]);
 
-  return { key, path: target };
+  // TASK-189 AC4 — advisory, non-blocking; computed AFTER the write succeeds
+  // so a false-positive match never costs the caller their ticket. Only
+  // included in the return value (never persisted into the task file — it is
+  // not a schema field) so it stays visible to whoever reads createTask's/
+  // create_task's result without touching on-disk shape.
+  const warnings = checkTierContentMismatch({ title, description, verification_tier });
+
+  return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
 }
