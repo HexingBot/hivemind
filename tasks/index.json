@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T13:51:36.163Z",
+  "generated_at": "2026-08-04T14:14:23.685Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1156,7 +1156,7 @@
     {
       "key": "TASK-198",
       "title": "Isolated worktrees are not usable working environments: stale base ref and a shadowing empty node_modules",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -1168,6 +1168,12 @@
     {
       "key": "TASK-200",
       "title": "Owner-edge clobber in executeInstall is now reachable on the routine replace path",
+      "status": "in_review",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-201",
+      "title": "Invisible Unicode-tag characters persist into ticket comments, unlike intake values",
       "status": "todo",
       "priority": "medium"
     }

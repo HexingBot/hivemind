@@ -9,7 +9,7 @@
     "The chosen approach (preserve-and-union vs. explicit reset with a proof no sibling edge can exist) is recorded in the closing comment with reasoning.",
     "npm run test:all is green; no existing pack/reconcile/apply spec regresses; dist/pack-ctl.cjs rebuilt and committed if bundled source changes, with dist-parity passing."
   ],
-  "status": "todo",
+  "status": "in_review",
   "priority": "medium",
   "labels": [
     "packs",
@@ -23,7 +23,7 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-04T13:49:18.130Z",
-  "updated_at": "2026-08-04T13:49:18.130Z",
+  "updated_at": "2026-08-04T14:14:23.685Z",
   "jira_key": null,
   "verification_tier": "tdd"
 }
