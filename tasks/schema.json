@@ -25,7 +25,11 @@
     "acceptance_criteria": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "string" },
+      "items": {
+        "type": "string",
+        "pattern": "\\S",
+        "description": "TASK-189 — must contain at least one non-whitespace character. Rejects empty strings and whitespace-only strings (mechanically detectable vacuity). Deliberately does NOT attempt to detect unfalsifiable-but-well-formed prose (e.g. 'It works correctly.') — see TASK-189's hand-off for why that judgement is left to review, not the schema."
+      },
       "description": "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: tests for tdd, regression locks for tests-after, recorded UAT for uat-only."
     },
     "verification_tier": {
@@ -110,5 +114,17 @@
       "default": null,
       "description": "Populated when the task has been mirrored to Jira. Until then, null."
     }
-  }
+  },
+  "allOf": [
+    {
+      "$comment": "TASK-189 AC2 — calibration-laundering guard, expressed as a real cross-field rule rather than prose: marker '[EXPLICIT]' requires source_tier 'T1' or 'T2' (mirrors .knowledge/meta/SOURCE_TIERS.md's marker-ceiling table). Only fires when BOTH fields are present — a ticket carrying marker:'[EXPLICIT]' with no source_tier at all is unaffected (backward-compatible; source_tier stays optional). Deliberately narrower than the full T1-T4 ceiling table (e.g. does not enforce [INFERRED:strong] requiring T2+, or T4's 'orientation only' constraint on weaker markers) — see TASK-189's hand-off for the scoping rationale.",
+      "if": {
+        "required": ["marker", "source_tier"],
+        "properties": { "marker": { "const": "[EXPLICIT]" } }
+      },
+      "then": {
+        "properties": { "source_tier": { "enum": ["T1", "T2"] } }
+      }
+    }
+  ]
 }
