@@ -1364,6 +1364,12 @@
       "label": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously"
     },
     {
+      "id": "task-189",
+      "type": "task",
+      "ref": "tasks/TASK-189.json",
+      "label": "Acceptance criteria accept vacuous, invisible, and mis-tiered inputs with no validation"
+    },
+    {
       "id": "task-190",
       "type": "task",
       "ref": "tasks/TASK-190.json",
