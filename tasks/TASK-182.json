@@ -12,7 +12,7 @@
     "Item 3: /hivemind:design-pack and any reconcile-facing docs state what a consumer should expect when both copies are present, and how to tell which is active and at what pin.",
     "npm run test:all is green; no existing pack/reconcile/assimilate/apply spec regresses; dist/pack-ctl.cjs rebuilt via npm run build:plugin and committed if bundled source changes, with tests/e2e/dist-parity.spec.js passing."
   ],
-  "status": "in_progress",
+  "status": "in_review",
   "priority": "medium",
   "labels": [
     "addon-packs",
@@ -45,7 +45,7 @@
     }
   ],
   "created_at": "2026-08-02T18:37:52.484Z",
-  "updated_at": "2026-08-04T13:13:44.544Z",
+  "updated_at": "2026-08-04T13:36:23.967Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
