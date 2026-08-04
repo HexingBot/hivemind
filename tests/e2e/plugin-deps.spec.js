@@ -406,6 +406,19 @@ describe('DOC — runtime facts that motivate bundling over NODE_PATH', () => {
     mkdirSync(tasksDir, { recursive: true });
     copyFileSync(join(REPO_ROOT, 'src', 'task-store.js'), join(srcDir, 'task-store.js'));
     copyFileSync(join(REPO_ROOT, 'src', 'atomic-write.js'), join(srcDir, 'atomic-write.js'));
+    // TASK-188 AC3 — task-store.js now imports close-guard.js directly
+    // (loopModeCloseGuard as resolveCloseGuard's default), which pulls in its
+    // own real dependency closure (pointer.js, bundle.js, operating-mode.js,
+    // and bundle.js's own host.js/schemas.js). This isolated copy must mirror
+    // that closure or the import legitimately 404s on close-guard.js — same
+    // "only an adjacent node_modules resolves ESM" class of runtime fact this
+    // describe block exists to pin, not a defect in the guard being proven.
+    copyFileSync(join(REPO_ROOT, 'src', 'close-guard.js'), join(srcDir, 'close-guard.js'));
+    copyFileSync(join(REPO_ROOT, 'src', 'pointer.js'), join(srcDir, 'pointer.js'));
+    copyFileSync(join(REPO_ROOT, 'src', 'bundle.js'), join(srcDir, 'bundle.js'));
+    copyFileSync(join(REPO_ROOT, 'src', 'operating-mode.js'), join(srcDir, 'operating-mode.js'));
+    copyFileSync(join(REPO_ROOT, 'src', 'host.js'), join(srcDir, 'host.js'));
+    copyFileSync(join(REPO_ROOT, 'src', 'schemas.js'), join(srcDir, 'schemas.js'));
     copyFileSync(join(REPO_ROOT, 'tasks', 'schema.json'), join(tasksDir, 'schema.json'));
     return { root, srcDir };
   }

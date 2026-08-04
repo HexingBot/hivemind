@@ -44,11 +44,33 @@ import addFormats from 'ajv-formats';
 import __schema from '../tasks/schema.json' with { type: 'json' };
 
 import { atomicWriteFiles } from './atomic-write.js';
+// TASK-188 AC3 — task-store.js now depends on close-guard.js directly so the
+// loop-mode close guard can be the DEFAULT for transitionStatus/closeTask
+// (see resolveCloseGuard below), matching how the uat-only guard
+// (checkUatGuard) has always been unconditional. Before TASK-188 this module
+// deliberately imported nothing from close-guard.js/operating-mode.js/
+// bundle.js/pointer.js so a caller composed the guard itself — but that made
+// the protection OPT-IN: any caller (a test script, a future direct call, or
+// the documented direct-Edit-of-tasks/ fallback) that omitted `closeGuard`
+// silently lost every loop-mode protection. No import cycle: close-guard.js
+// (and its own pointer.js/bundle.js/operating-mode.js dependencies) import
+// nothing from task-store.js — verified by grep, see the TASK-188 hand-off.
+import { loopModeCloseGuard } from './close-guard.js';
 
 // Mirror of tasks/schema.json#/properties/status/enum. Hard-coded to avoid file
 // I/O on every call; keep in sync with tasks/schema.json (the source of truth).
 const STATUSES = ['todo', 'in_progress', 'in_review', 'blocked', 'done'];
 const PRIORITIES = ['low', 'medium', 'high', 'critical'];
+
+// TASK-188 AC4 — Mirror of tasks/schema.json#/properties/comments/items/properties/author/enum.
+// Derived from the real tasks/ corpus (389 live comments, 5 distinct authors:
+// orchestrator/developer/reviewer/researcher/uat) PLUS 'backlog-seeder'
+// (src/backlog-seeder.js), a 6th author string used by every fresh-project
+// `bin/init.js` run that has ZERO live occurrences in this repo's own
+// tasks/ today (its comments get superseded/edited over each ticket's
+// lifetime) but would break on the very next `init` run if omitted — see
+// the TASK-188 hand-off for the corpus grep that surfaced it.
+export const COMMENT_AUTHORS = ['orchestrator', 'developer', 'reviewer', 'researcher', 'uat', 'backlog-seeder'];
 
 // TASK-NNN.json — at least 3 digits, matches the schema's key pattern.
 export const TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
@@ -400,6 +422,40 @@ export class UatGuardError extends Error {
 }
 
 /**
+ * TASK-188 — thrown by closeTask when its own directly-supplied
+ * `comment.author` is a role whose legitimacy is defined by being recorded
+ * as a SEPARATE, pre-existing comment (currently just 'reviewer' — see
+ * closeTask's own comment for why 'uat' is deliberately NOT included here).
+ * `.code` lets callers (and tests) distinguish this from any other closeTask
+ * failure programmatically, same convention as UatGuardError/KeyCollisionError.
+ */
+export class ClosingCommentAuthorError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ClosingCommentAuthorError';
+    this.code = 'E_INVALID_CLOSING_COMMENT_AUTHOR';
+  }
+}
+
+/**
+ * TASK-188 — the seam TASK-187 (and any future close precondition keyed off
+ * "did author X ever comment on this task") builds on: true iff at least one
+ * entry in task.comments carries the given author string, false otherwise
+ * (including when task/task.comments is missing or malformed). Deliberately
+ * presence-only, mirroring hasRecordedUatVerdict's shape but with no content
+ * requirement — a caller wanting a content requirement (a verdict, an
+ * APPROVE/REQUEST-CHANGES outcome) layers its own check on top, the same way
+ * checkUatGuard layers hasRecordedUatVerdict's verdict check on top of mere
+ * presence. Self-contained (task object only, no bundle/session access), so
+ * TASK-187 (or any other caller) can ask "has a comment by author X been
+ * recorded on this task?" without reaching into task-store.js internals.
+ */
+export function hasCommentFromAuthor(task, author) {
+  const comments = Array.isArray(task && task.comments) ? task.comments : [];
+  return comments.some((c) => c && c.author === author);
+}
+
+/**
  * TASK-189 (P1/P2/P3, AC1/AC3) — thrown by createTask when acceptance_criteria
  * carries a mechanically-detectable defect: an empty or whitespace-only
  * criterion, or a total content length that would silently exceed the
@@ -629,6 +685,42 @@ function checkUatGuard(task) {
 }
 
 /**
+ * TASK-188 AC3 — resolve the closeGuard to actually run for a status='done'
+ * transition. Before this ticket, closeGuard was OPTIONAL and silently
+ * skipped when omitted (`if (typeof closeGuard === 'function')`), so any
+ * caller — a test script, a future direct call, or the documented
+ * direct-Edit-of-tasks/ fallback in orchestrator-routing/SKILL.md — silently
+ * lost every loop-mode protection just by not composing it (see the TASK-188
+ * hand-off for the captured red-run proof). This flips the default: an
+ * OMITTED closeGuard (the `undefined` case below) now resolves to
+ * loopModeCloseGuard itself, matching how checkUatGuard has always been
+ * unconditional — "a caller that passes nothing gets the protection". A
+ * caller that explicitly wants a DIFFERENT guard still may (any function
+ * value is honored as-is, e.g. task-board.js/mcp-server.js's own explicit
+ * `closeGuard: loopModeCloseGuard` composition — redundant with the new
+ * default, kept for explicitness, harmless). A caller that passes a
+ * non-function, non-undefined value (null, false, a typo) is a bug, not a
+ * bypass, and now throws instead of silently no-op'ing.
+ *
+ * Deliberately NO opt-out flag: harness mode's own no-op (getMode defaults
+ * to 'harness' on any missing/corrupt pointer or bundle — see
+ * src/operating-mode.js) already covers every legitimate case that needs to
+ * skip the guard (a tmp test repo with no state/session.json), so a second,
+ * explicit bypass mechanism would be an unnecessary escape hatch — see the
+ * TASK-188 hand-off for the grep confirming no test needed one.
+ */
+function resolveCloseGuard(closeGuard) {
+  if (closeGuard === undefined) return loopModeCloseGuard;
+  if (typeof closeGuard !== 'function') {
+    throw new TypeError(
+      `closeGuard must be a function when provided — omit it entirely to use the default `
+      + `loop-mode guard (loopModeCloseGuard); received ${JSON.stringify(closeGuard)}`,
+    );
+  }
+  return closeGuard;
+}
+
+/**
  * AC2 (single-writer) — set a task's status, bump updated_at, regenerate the
  * index. Validates the status enum before touching disk; throws on unknown
  * key with the key string in the message. The constructed payload is run
@@ -636,13 +728,17 @@ function checkUatGuard(task) {
  * timestamp (or any other schema violation) leaves on-disk bytes unchanged.
  *
  * TASK-082 — when status === 'done': the uat-only done-guard runs
- * unconditionally first, then (if provided) `closeGuard({ repoRoot, task,
- * key })` runs and may throw to block the transition. Both checks run BEFORE
- * any disk I/O. Transitions to any other status never run either guard.
- * task-store.js imports NOTHING from bundle/operating-mode/loop-auth/
- * close-guard — `closeGuard` is an injected seam so this module stays
- * decoupled from session/bundle internals (the MCP layer supplies
- * loopModeCloseGuard).
+ * unconditionally first, then `resolveCloseGuard(closeGuard)({ repoRoot,
+ * task, key })` runs and may throw to block the transition. Both checks run
+ * BEFORE any disk I/O. Transitions to any other status never run either
+ * guard. TASK-188 (AC3) — `closeGuard` is still an injected seam (a caller
+ * may supply its own), but an OMITTED `closeGuard` now defaults to
+ * loopModeCloseGuard rather than no-op'ing; see resolveCloseGuard's doc
+ * comment for the full reasoning and why task-store.js importing
+ * close-guard.js directly no longer breaks the "stay decoupled from
+ * session/bundle internals" goal (loopModeCloseGuard itself still decides
+ * whether loop mode is even active — this module still never inspects
+ * bundle/session state itself).
  */
 export async function transitionStatus({
   repoRoot,
@@ -664,9 +760,7 @@ export async function transitionStatus({
 
   if (status === 'done') {
     checkUatGuard(task);
-    if (typeof closeGuard === 'function') {
-      await closeGuard({ repoRoot, task, key });
-    }
+    await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
   }
 
   const stamp = now();
@@ -687,6 +781,14 @@ export async function transitionStatus({
  * updated_at, regenerate the index. Existing comments are preserved verbatim
  * and in order; the new comment is pushed at the end. Same ajv validate-before-
  * write guarantee as transitionStatus.
+ *
+ * TASK-188 AC4 — `author` is checked against COMMENT_AUTHORS BEFORE any disk
+ * read (fail-fast, same style as transitionStatus's STATUSES check); ajv
+ * would also reject it via tasks/schema.json's mirrored enum, but the
+ * pre-check gives a clearer message and avoids the read for a trivially bad
+ * call. This does not by itself prove WHO is calling — see
+ * ClosingCommentAuthorError/closeTask for the one place a claimed author is
+ * actually constrained beyond "is this a known role".
  */
 export async function appendComment({
   repoRoot,
@@ -695,6 +797,11 @@ export async function appendComment({
   body,
   now = () => new Date().toISOString(),
 }) {
+  if (!COMMENT_AUTHORS.includes(author)) {
+    throw new Error(
+      `invalid comment author ${JSON.stringify(author)} — must be one of ${COMMENT_AUTHORS.join(', ')}`,
+    );
+  }
   // SINGLE-WRITER: see module header.
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
@@ -722,12 +829,31 @@ const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/i;
  * TASK-082 (AC3) — close out a task in a single validate-then-atomic pass:
  * status -> 'done', append the closing comment, append linked_commits/
  * linked_prs, bump updated_at, regenerate index.json. ALL validation (unknown
- * key, the uat-only done-guard, the optional closeGuard, and the commit-sha
- * shape check on every linked_commits entry) happens BEFORE any disk I/O, so
- * any failure leaves both the task file and index.json byte-unchanged — this
- * is deliberately NOT a sequence of transitionStatus/appendComment calls
- * (each of which would be its own atomic write and could leave a partial
- * close on a mid-sequence failure).
+ * key, the uat-only done-guard, the closeGuard, the closing-comment author
+ * check, and the commit-sha shape check on every linked_commits entry)
+ * happens BEFORE any disk I/O, so any failure leaves both the task file and
+ * index.json byte-unchanged — this is deliberately NOT a sequence of
+ * transitionStatus/appendComment calls (each of which would be its own
+ * atomic write and could leave a partial close on a mid-sequence failure).
+ *
+ * TASK-188 AC3 — `closeGuard` now defaults to loopModeCloseGuard when
+ * omitted (see resolveCloseGuard's doc comment on transitionStatus above).
+ *
+ * TASK-188 AC4 (replays probe A6) — `comment.author` is checked against
+ * COMMENT_AUTHORS (same as appendComment) and, additionally, may NOT be
+ * 'reviewer': a review's legitimacy is defined by being recorded as a
+ * SEPARATE, pre-existing comment (see hasCommentFromAuthor, the seam
+ * TASK-187 builds its close precondition on — append_comment, not
+ * close_task, is the normal way a reviewer verdict lands on a ticket).
+ * Allowing close_task's OWN comment param to itself claim 'reviewer' let any
+ * caller fabricate the review AS the closing remark in one call, with no
+ * prior review ever having happened — exactly probe A6. 'uat' is
+ * deliberately NOT restricted here: unlike 'reviewer', author:'uat' as
+ * close_task's own comment is an established, tested convention (TASK-108/
+ * TASK-163's loop-mode delegation tests close specifically this way), and
+ * checkUatGuard above already prevents a uat-only ticket from self-satisfying
+ * its own precondition via this same comment param (it inspects on-disk
+ * comments BEFORE the new one is appended).
  */
 export async function closeTask({
   repoRoot,
@@ -738,15 +864,28 @@ export async function closeTask({
   now = () => new Date().toISOString(),
   closeGuard,
 }) {
+  if (!COMMENT_AUTHORS.includes(comment && comment.author)) {
+    throw new Error(
+      `invalid comment author ${JSON.stringify(comment && comment.author)} — must be one of ${COMMENT_AUTHORS.join(', ')}`,
+    );
+  }
+  if (comment.author === 'reviewer') {
+    throw new ClosingCommentAuthorError(
+      "closeTask's own comment.author cannot be \"reviewer\" — a review verdict must already exist as a "
+      + "separate, pre-existing comment (see hasCommentFromAuthor(task, 'reviewer')) before the ticket is "
+      + 'closed; fabricating the review AS the closing remark in the same call is exactly the audit-trail '
+      + 'gap TASK-188 closes (replays probe A6). Record the reviewer verdict via append_comment during the '
+      + "Review step, then close with a comment authored e.g. 'orchestrator' or 'developer' summarizing the close.",
+    );
+  }
+
   // SINGLE-WRITER: see module header.
   const allTasks = await readAllTasks(repoRoot);
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
 
   checkUatGuard(task);
-  if (typeof closeGuard === 'function') {
-    await closeGuard({ repoRoot, task, key });
-  }
+  await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
 
   for (const sha of linked_commits) {
     if (typeof sha !== 'string' || !COMMIT_SHA_RE.test(sha)) {

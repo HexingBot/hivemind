@@ -39,6 +39,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { execFileSync } from 'node:child_process';
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -921,5 +923,140 @@ describe('TASK-175 item 9 — recordTaskGraphNode direct unit coverage', () => {
     } finally {
       rmSync(repoRoot, { recursive: true, force: true });
     }
+  });
+});
+
+// ===========================================================================
+// TASK-188 AC6/AC7 — replays adversarial probe P8 (state/sessions/
+// 20260708T154259Z-29a27eda/artifacts/ac-fidelity-probes.mjs) as a permanent
+// regression lock. P8: close_task accepted linked_commits pointing at
+// commits that do not exist, with nothing distinguishing "verified real"
+// from "unverified" in the recorded audit trail. AC6 decision (recorded
+// here and in tasks/schema.json's linked_commits description): src/task-
+// store.js stays git-free (a pure state-store function per the ticket's own
+// steer); src/mcp-server.js's close_task tool instead runs a best-effort,
+// ADVISORY-ONLY existence check (verifyLinkedCommits, git cat-file) that
+// never blocks the close but reports linked_commits_verification in the
+// result, applying the Empty-result contract (TASK-192) to distinguish
+// "verified present/missing" from "could not verify at all" (no git binary,
+// or repoRoot is not a git work tree). This is P8 "CAUGHT" in the sense the
+// AC6 decision defines: the audit trail is no longer silently trustworthy-
+// by-implication — a bogus sha is now OBSERVABLE in the response — without
+// the false-negative risk a hard block would carry in degraded git
+// environments (shallow clones, rebased history, sandboxes with no git).
+// ===========================================================================
+describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advisory-verified, not silently trusted', () => {
+  let repoRoot;
+  let client;
+  let server;
+
+  beforeEach(async () => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'mcp-close-task-p8-'));
+    makeRepoSkeleton(repoRoot);
+
+    server = createServer({ repoRoot });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: 'task-188-p8-test', version: '0.0.0' });
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+  });
+
+  afterEach(async () => {
+    if (client) await client.close();
+    if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('P8 — a bogus sha is flagged missing, a real sha is flagged present, and the close still succeeds (advisory-only, never blocking)', async () => {
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'seed.txt'), 'seed', 'utf8');
+    execFileSync('git', ['add', 'seed.txt'], { cwd: repoRoot });
+    execFileSync('git', ['commit', '-q', '-m', 'seed'], { cwd: repoRoot });
+    const realSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot }).toString().trim();
+
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'P8 bogus linked commits',
+        description: 'Fix landed.',
+        acceptance_criteria: ['Fix landed.'],
+        priority: 'medium',
+        verification_tier: 'tests-after',
+      },
+    }));
+    const key = created.key;
+
+    const result = await client.callTool({
+      name: 'close_task',
+      arguments: {
+        key,
+        comment: { author: 'orchestrator', body: 'Landed.' },
+        linked_commits: [realSha, '0000000000000000000000000000000000000000', 'deadbeef'],
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    const parsed = parse(result);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.linked_commits_verification.checked).toBe(true);
+    expect(parsed.linked_commits_verification.present).toEqual([realSha]);
+    expect(parsed.linked_commits_verification.missing.sort()).toEqual(
+      ['0000000000000000000000000000000000000000', 'deadbeef'].sort(),
+    );
+
+    // Advisory-only: the bogus shas do NOT block the close.
+    const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+    expect(task.status).toBe('done');
+    expect(task.linked_commits).toContain('deadbeef');
+  });
+
+  it('control — a repoRoot with no .git reports checked:false, reason:"not-a-git-repo" (never mislabels as "missing")', async () => {
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'no-git control',
+        description: 'd',
+        acceptance_criteria: ['x'],
+        priority: 'medium',
+        verification_tier: 'tests-after',
+      },
+    }));
+    const key = created.key;
+
+    const result = await client.callTool({
+      name: 'close_task',
+      arguments: {
+        key, comment: { author: 'orchestrator', body: 'Landed.' }, linked_commits: ['abc1234'],
+      },
+    });
+    const parsed = parse(result);
+    expect(parsed.linked_commits_verification).toEqual({
+      checked: false, reason: 'not-a-git-repo', present: [], missing: [],
+    });
+  });
+
+  it('control — no linked_commits at all reports checked:false, reason:"none-linked"', async () => {
+    const created = parse(await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'none-linked control',
+        description: 'd',
+        acceptance_criteria: ['x'],
+        priority: 'medium',
+        verification_tier: 'tests-after',
+      },
+    }));
+    const key = created.key;
+
+    const result = await client.callTool({
+      name: 'close_task',
+      arguments: { key, comment: { author: 'orchestrator', body: 'Landed.' } },
+    });
+    const parsed = parse(result);
+    expect(parsed.linked_commits_verification).toEqual({
+      checked: false, reason: 'none-linked', present: [], missing: [],
+    });
   });
 });

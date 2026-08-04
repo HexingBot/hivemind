@@ -7680,12 +7680,12 @@ var require_dist = __commonJS({
     var fastName = new codegen_1.Name("fastFormats");
     var formatsPlugin = (ajv, opts = { keywords: true }) => {
       if (Array.isArray(opts)) {
-        addFormats2(ajv, opts, formats_1.fullFormats, fullName);
+        addFormats3(ajv, opts, formats_1.fullFormats, fullName);
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
       const list = opts.formats || formats_1.formatNames;
-      addFormats2(ajv, list, formats, exportName);
+      addFormats3(ajv, list, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -7697,7 +7697,7 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats2(ajv, list, fs, exportName) {
+    function addFormats3(ajv, list, fs, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
@@ -7725,7 +7725,7 @@ var import_promises = require("node:fs/promises");
 var import_node_fs2 = require("node:fs");
 var import_node_path2 = require("node:path");
 var import__ = __toESM(require__(), 1);
-var import_ajv_formats = __toESM(require_dist(), 1);
+var import_ajv_formats2 = __toESM(require_dist(), 1);
 
 // tasks/schema.json
 var schema_default = {
@@ -7816,7 +7816,8 @@ var schema_default = {
     linked_commits: {
       type: "array",
       items: { type: "string" },
-      default: []
+      default: [],
+      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE only (/^[0-9a-f]{7,40}$/i, TASK-082) \u2014 it does NOT verify the sha resolves to a real commit (TASK-188 AC6: closeTask is a pure state-store function with no git dependency, deliberately). src/mcp-server.js's close_task tool runs a best-effort, advisory-only existence check (git cat-file, never blocking the close) and reports the result as linked_commits_verification in its response, distinguishing 'verified present/missing' from 'could not verify' (no git binary, or repoRoot is not a git work tree) rather than implying every recorded sha is trustworthy."
     },
     linked_prs: {
       type: "array",
@@ -7831,7 +7832,11 @@ var schema_default = {
         required: ["author", "at", "body"],
         additionalProperties: false,
         properties: {
-          author: { type: "string" },
+          author: {
+            type: "string",
+            enum: ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"],
+            description: "TASK-188 \u2014 constrained to the roles the system actually writes today (derived from the live tasks/ corpus plus src/backlog-seeder.js). This is a known-set check only, NOT proof of identity: every write flows through the same MCP surface regardless of author, so the primitive cannot verify WHO is calling. src/task-store.js additionally rejects 'reviewer' as close_task's own directly-supplied closing-comment author (see closeTask's ClosingCommentAuthorError) \u2014 a review's legitimacy is defined by being recorded as a separate, pre-existing comment, not fabricated as the terminal closing remark."
+          },
           at: { type: "string", format: "date-time" },
           body: { type: "string" }
         }
@@ -7948,11 +7953,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// src/bundle.js
+var import_ajv_formats = __toESM(require_dist(), 1);
+
 // src/task-store.js
 var PRIORITIES = ["low", "medium", "high", "critical"];
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
 var __ajv = new import__.default({ allErrors: true, strict: false });
-(0, import_ajv_formats.default)(__ajv);
+(0, import_ajv_formats2.default)(__ajv);
 var __validateTask = __ajv.compile(schema_default);
 function validateTaskOrThrow(task) {
   const ok = __validateTask(task);

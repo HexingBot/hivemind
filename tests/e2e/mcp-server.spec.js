@@ -191,16 +191,20 @@ describe('TASK-026 — MCP task-store server (in-memory round-trip)', () => {
     }));
     const key = created.key;
 
+    // TASK-188 AC4 — author is now constrained to a known enum
+    // (COMMENT_AUTHORS); 'tester' was never a real role, just an arbitrary
+    // round-trip probe value. 'developer' exercises the identical round-trip
+    // without relying on an author string the system doesn't actually use.
     const appended = parse(await client.callTool({
       name: 'append_comment',
-      arguments: { key, author: 'tester', body: 'a round-trip comment' },
+      arguments: { key, author: 'developer', body: 'a round-trip comment' },
     }));
     expect(appended.ok).toBe(true);
 
     const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
     expect(Array.isArray(task.comments)).toBe(true);
     const last = task.comments[task.comments.length - 1];
-    expect(last.author).toBe('tester');
+    expect(last.author).toBe('developer');
     expect(last.body).toBe('a round-trip comment');
   });
 

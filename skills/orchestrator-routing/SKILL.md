@@ -125,8 +125,15 @@ command (the project intake wizard) before any other workflow step. If
 To update, route the write through the MCP task-store tools
 (`close_task`/`transition_status`/`append_comment` — see "Ticket-update
 protocol" below). A direct `Edit` of the task file is a documented, degraded
-fallback only, used when the MCP server is unavailable — it bypasses both
-deterministic close guards (TASK-082).
+fallback only, used when the MCP server is unavailable, and (TASK-188)
+narrowly scoped: it must never set `status: "done"`, append a `comments`
+entry, or write `linked_commits`/`linked_prs` — a raw file edit runs through
+neither ajv schema validation nor any mutation-seam guard (the uat-only
+done-guard, the now-default-on loop-mode close guard, the comment-author
+enum, or the reviewer-closing-comment restriction — see "Ticket-update
+protocol" below for the full list). If `close_task` is genuinely
+unreachable, stop and tell the human rather than hand-editing status to
+`done`.
 
 **Eventually:** Jira via the Atlassian MCP server. The field names match so the
 same workflow applies; only the I/O surface changes.
@@ -139,8 +146,11 @@ same workflow applies; only the I/O surface changes.
   "Ticket-update protocol" below); `Read`/`Glob` on `tasks/` remains the read
   path.
 - **Local task store fallback** (`Edit` on `tasks/`) — documented, degraded
-  fallback only, used when the MCP server is unavailable; bypasses both
-  deterministic close guards (TASK-082).
+  fallback only, used when the MCP server is unavailable, and (TASK-188)
+  narrowed to non-status, non-comment edits (`title`/`description`/`labels`/
+  etc.); it must never set `status: "done"`, append a `comments` entry, or
+  write `linked_commits`/`linked_prs` — see "Ticket-update protocol" below
+  for exactly which guards a raw edit bypasses.
 - **Atlassian MCP server** (`mcp__atlassian__*`) — only after migration; same
   field semantics.
 - **GitHub MCP server** (`mcp__github__*`) — read repo state, open/close PRs,
@@ -193,9 +203,13 @@ same workflow applies; only the I/O surface changes.
    transitions during the workflow (`todo → in_progress → in_review → done`, or
    `→ blocked`) go through `transition_status`/`append_comment` instead. A
    direct `Edit` of `tasks/<KEY>.json` is a documented, degraded fallback
-   only — used when the MCP server is unavailable — since it bypasses both
-   deterministic close guards (the uat-only done-guard and the loop-mode close
-   guard, TASK-082).
+   only — used when the MCP server is unavailable — and (TASK-188) never
+   acceptable for setting `status: "done"`, appending a `comments` entry, or
+   writing `linked_commits`/`linked_prs`: a raw edit bypasses ajv schema
+   validation and every mutation-seam guard (the uat-only done-guard, the
+   now-default-on loop-mode close guard, the comment-author enum, the
+   reviewer-closing-comment restriction — TASK-082/TASK-188). If `close_task`
+   is genuinely unreachable, stop and tell the human instead.
 7. **Close out the session.** See "Session close-out" above.
 
 ## Delegation protocol
@@ -985,14 +999,50 @@ compose the three deterministic mutation-seam guards below; a direct hand
   narrows, it does not eliminate, the fabrication surface — a human who
   grants `uat_delegated_to_orchestrator` is trusting the Orchestrator's own
   delegated verification, same as Gate 2's read-time check already assumed.
+- **The loop-mode close guard is now the DEFAULT at the primitive (TASK-188
+  AC3)** — before this ticket, `closeGuard` was an OPTIONAL parameter that
+  `transitionStatus`/`closeTask` silently skipped when a caller omitted it,
+  so any caller that forgot to compose `loopModeCloseGuard` (a test script, a
+  future direct call) silently lost every loop-mode protection above; the
+  documented direct-`Edit` fallback made this concrete, since it never called
+  either function at all. `src/task-store.js` now imports `loopModeCloseGuard`
+  directly and defaults to it when `closeGuard` is omitted — matching how the
+  uat-only done-guard has always been unconditional. There is no opt-out flag.
+- **The comment-author enum + reviewer-closing-comment restriction (TASK-188
+  AC4, replaying probe A6)** — `comment.author`/`append_comment`'s `author`
+  is constrained to a known role (`orchestrator`, `developer`, `reviewer`,
+  `researcher`, `uat`, `backlog-seeder` — mirrors `tasks/schema.json`'s
+  `comments.items.properties.author` enum). This is a known-set check only,
+  NOT proof of identity — every write flows through the same MCP surface
+  regardless of claimed author, so nothing at this layer can verify WHO is
+  calling. `close_task`'s own directly-supplied closing comment additionally
+  may not claim `author: 'reviewer'` (`ClosingCommentAuthorError`,
+  `code: 'E_INVALID_CLOSING_COMMENT_AUTHOR'`): a review's legitimacy is
+  defined by being recorded as a SEPARATE, pre-existing comment (appended via
+  `append_comment` during the Review step), never fabricated as the terminal
+  closing remark in the same call — exactly what probe A6 demonstrated was
+  previously accepted. `src/task-store.js` exports `hasCommentFromAuthor(task,
+  author)` (true iff any on-disk comment carries that author, no content
+  check) as the seam a future close precondition — e.g. "a reviewer comment
+  must exist before close" — builds on, so it does not need to invent its own
+  presence check.
 
 **On a clean review (closing a ticket)**, call the `close_task` tool once —
 it performs the transition, the closing comment, the `linked_commits`/
 `linked_prs` append, and the `tasks/index.json` regen as a single
-validate-then-atomic pass (all-or-nothing: a guard failure or a malformed
-commit sha leaves the ticket file and the index byte-unchanged), and (TASK-163)
-runs the loop-mode uat-comment write guard against its own `comment.author`
-before that atomic write — the same rule `append_comment` enforces:
+validate-then-atomic pass (all-or-nothing: a guard failure, a malformed
+commit sha, an unknown comment author, or a closing comment authored
+`reviewer` leaves the ticket file and the index byte-unchanged), and
+(TASK-163) runs the loop-mode uat-comment write guard against its own
+`comment.author` before that atomic write — the same rule `append_comment`
+enforces. `linked_commits` is validated for SHAPE only
+(`/^[0-9a-f]{7,40}$/i`) — `closeTask` does not verify a sha resolves to a
+real commit (task-store.js is a pure state-store function with no git
+dependency, TASK-188 AC6); the tool's response instead carries a best-effort,
+advisory-only `linked_commits_verification` (never blocking the close) that
+distinguishes verified-present/verified-missing from could-not-verify (no
+git binary, or the repo has no `.git`) — see `tasks/schema.json`'s
+`linked_commits` description for the full contract:
 
 ```
 mcp__plugin_hivemind_hivemind-tasks__close_task({
@@ -1016,15 +1066,24 @@ unless the comment's `author` is `'uat'` AND the session is in loop mode AND
 the identical check against its own `comment.author`, so no write seam is
 guard-free.
 
-**Fallback (documented, not preferred):** if the MCP server is unavailable,
-a direct `Edit` of `tasks/<KEY>.json` following the old six-step pattern
-(set `status`, append the comment, append `linked_commits`/`linked_prs`,
-refresh `updated_at`, regenerate `tasks/index.json`) is acceptable — but it
-bypasses all four guards above, so the orchestrator must manually verify the
-uat-only, loop-mode Gate 1, loop-mode Gate 2, and the Gate 2 write-side
-preconditions (both the `append_comment` and `close_task` comment seams)
-before hand-editing a ticket to `done` or fabricating a `uat`
-comment.
+**Fallback (documented, narrowly scoped — TASK-188):** if the MCP server is
+unavailable, a direct `Edit` of `tasks/<KEY>.json` remains acceptable ONLY
+for non-status, non-comment fields (`title`, `description`, `labels`,
+`depends_on`, `priority`, `assignee`). It is NEVER acceptable to set
+`status: "done"`, append a `comments` entry, or write
+`linked_commits`/`linked_prs` via a direct `Edit` — a raw file edit runs
+through neither ajv schema validation nor ANY of the guards above (the
+uat-only done-guard, loop-mode Gate 1, loop-mode Gate 2, the Gate 2
+write-side preconditions, the comment-author enum constraining `author` to a
+known role, or the reviewer-closing-comment restriction that blocks a
+self-authored `reviewer` approval on `close_task`'s own closing comment —
+TASK-188 AC4, replaying probe A6). Before TASK-188 this fallback asked the
+orchestrator to "manually verify" those preconditions instead; that framing
+is retired because manually re-deriving a structured-grammar/enum check by
+eyeballing prose is not a real control — it is the exact convention-not-a-
+control gap TASK-188 exists to close. If a ticket genuinely needs to close
+and `close_task` is unreachable, stop and tell the human — do not hand-edit
+`status` to `done` or fabricate any comment.
 
 ## Recording decision→task edges at ticket close (TASK-035, id convention fixed by TASK-104)
 

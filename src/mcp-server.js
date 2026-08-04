@@ -38,6 +38,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -50,6 +51,7 @@ import {
   transitionStatus,
   appendComment,
   closeTask,
+  COMMENT_AUTHORS,
 } from './task-store.js';
 import { loopModeCloseGuard, loopModeUatCommentGuard } from './close-guard.js';
 import { lookupKnowledge, recordKbReuse } from './knowledge.js';
@@ -62,6 +64,11 @@ import { taskKeyToNodeId } from './graph-freshness.js';
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
 const VERIFICATION_TIER = z.enum(['tdd', 'tests-after', 'uat-only']);
+// TASK-188 AC4 — mirrors src/task-store.js's COMMENT_AUTHORS (itself a mirror
+// of tasks/schema.json's comments.items.properties.author enum). Rejects an
+// unknown author string at the MCP boundary with a friendly zod error before
+// task-store.js's own (also-enforced) check ever runs.
+const COMMENT_AUTHOR = z.enum(COMMENT_AUTHORS);
 // Spine calibration (Phase 2) — mirror of tasks/schema.json calibration fields.
 const MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]']);
 const SOURCE_TIER = z.enum(['T1', 'T2', 'T3', 'T4', 'TX']);
@@ -246,6 +253,63 @@ export async function recordTaskGraphNode({
 }
 
 /**
+ * TASK-188 AC6 — best-effort, ADVISORY-ONLY existence check for
+ * close_task's linked_commits, run ONLY here at the MCP layer (never inside
+ * src/task-store.js — closeTask is a pure state-store function with no git
+ * dependency, deliberately: see the TASK-188 hand-off for why adding one
+ * there was rejected). Never throws and never blocks the close (STRIDE-
+ * Repudiation was scoped LOW in the originating probe, P8, and git
+ * verification has too many legitimate false-negative paths — shallow
+ * clones, rebased/squashed history, a sandboxed environment with no git
+ * binary at all — to safely gate a close on it).
+ *
+ * Empty-result contract (TASK-192): the caller must be able to tell
+ * "verified, none missing", "verified, some missing", and "could not
+ * verify at all" APART — an unqualified `{}` (or a bare boolean) would
+ * collapse the last two into indistinguishable silence, exactly the defect
+ * class that contract exists to close. `checked: false` always carries a
+ * `reason` naming WHY nothing was verified (`'none-linked'` — nothing to
+ * check, not an error; `'git-unavailable'` — no git binary on PATH;
+ * `'not-a-git-repo'` — repoRoot itself is not inside a git work tree, the
+ * common case for e2e test fixtures built with plain mkdtemp). `checked:
+ * true` always carries `present`/`missing` arrays that partition every
+ * input sha.
+ *
+ * @returns {{checked: boolean, reason: string|null, present: string[], missing: string[]}}
+ */
+export function verifyLinkedCommits(repoRoot, shas) {
+  const list = Array.isArray(shas) ? shas : [];
+  if (list.length === 0) {
+    return {
+      checked: false, reason: 'none-linked', present: [], missing: [],
+    };
+  }
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: repoRoot, stdio: 'pipe' });
+  } catch (err) {
+    return {
+      checked: false,
+      reason: err && err.code === 'ENOENT' ? 'git-unavailable' : 'not-a-git-repo',
+      present: [],
+      missing: [],
+    };
+  }
+  const present = [];
+  const missing = [];
+  for (const sha of list) {
+    try {
+      execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: repoRoot, stdio: 'pipe' });
+      present.push(sha);
+    } catch {
+      missing.push(sha);
+    }
+  }
+  return {
+    checked: true, reason: null, present, missing,
+  };
+}
+
+/**
  * Build and return a configured McpServer with all seven task-store tools plus
  * kb_lookup (TASK-106) registered, each closing over `repoRoot`. Throwing
  * handlers surface to the client as { isError: true } (the SDK converts a
@@ -353,7 +417,7 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
       description: 'Append a comment ({ author, body }) to a task.',
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
-        author: z.string(),
+        author: COMMENT_AUTHOR,
         body: z.string(),
       },
     },
@@ -379,11 +443,14 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         'Atomically close a task: transition to done, append the closing '
         + 'comment, and record linked_commits/linked_prs in a single '
         + 'validate-then-write pass (TASK-082). Enforces the uat-only '
-        + 'done-guard, the loop-mode close guard, and (TASK-163) the '
-        + 'loop-mode uat-comment write guard on comment.author.',
+        + 'done-guard, the loop-mode close guard, (TASK-163) the '
+        + 'loop-mode uat-comment write guard on comment.author, and '
+        + "(TASK-188) rejects comment.author 'reviewer'. Reports a "
+        + 'best-effort, advisory-only linked_commits_verification (never '
+        + 'blocks the close) — see the TASK-188 hand-off / tasks/schema.json.',
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
-        comment: z.object({ author: z.string(), body: z.string() }),
+        comment: z.object({ author: COMMENT_AUTHOR, body: z.string() }),
         linked_commits: z.array(z.string()).optional(),
         linked_prs: z.array(z.string()).optional(),
       },
@@ -409,6 +476,11 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         linked_prs: linked_prs ?? [],
         closeGuard: loopModeCloseGuard,
       });
+      // TASK-188 AC6 — best-effort-AFTER, same ordering rationale as
+      // graph_node below: closeTask() has already committed atomically, so a
+      // verification failure here (or git being unavailable) never reaches
+      // the caller as a rejection, only as this field's own `checked`/`reason`.
+      const linked_commits_verification = verifyLinkedCommits(repoRoot, linked_commits ?? []);
       // TASK-171 (KB-GRAPH-4) — best-effort-AFTER: closeTask() above already
       // completed atomically. See recordTaskGraphNode's doc comment for the
       // full ordering rationale; a failure here never reaches the caller as
@@ -416,7 +488,7 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
       const graph_node = await recordTaskGraphNode({
         repoRoot, key, brain, recordNode,
       });
-      return ok({ ok: true, graph_node });
+      return ok({ ok: true, graph_node, linked_commits_verification });
     },
   );
 

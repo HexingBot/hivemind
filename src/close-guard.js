@@ -1,10 +1,14 @@
 // src/close-guard.js
 // TASK-082 — the injectable loop-mode close guard: the `closeGuard` seam that
 // task-store.js's transitionStatus/closeTask accept and call BEFORE any disk
-// write when status === 'done'. task-store.js itself imports nothing from
-// this module (or bundle.js/operating-mode.js/loop-auth.js) — the MCP layer
-// (src/mcp-server.js) is what imports loopModeCloseGuard and passes it in as
-// `closeGuard`, keeping task-store decoupled from session/bundle internals.
+// write when status === 'done'. TASK-188 (AC3) — task-store.js now imports
+// loopModeCloseGuard from this module directly and uses it as the DEFAULT
+// closeGuard when a caller omits one (see task-store.js's resolveCloseGuard),
+// so the loop-mode guard is enforced even if the MCP layer (src/mcp-server.js,
+// which also composes it explicitly) is bypassed entirely. This module still
+// imports nothing FROM task-store.js (no cycle) and still does all the actual
+// session/bundle reading itself — task-store.js still never inspects
+// pointer/bundle state directly, it only calls into this module.
 
 import { readPointer } from './pointer.js';
 import { readBundleSession } from './bundle.js';

@@ -86,7 +86,8 @@
     "linked_commits": {
       "type": "array",
       "items": { "type": "string" },
-      "default": []
+      "default": [],
+      "description": "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE only (/^[0-9a-f]{7,40}$/i, TASK-082) — it does NOT verify the sha resolves to a real commit (TASK-188 AC6: closeTask is a pure state-store function with no git dependency, deliberately). src/mcp-server.js's close_task tool runs a best-effort, advisory-only existence check (git cat-file, never blocking the close) and reports the result as linked_commits_verification in its response, distinguishing 'verified present/missing' from 'could not verify' (no git binary, or repoRoot is not a git work tree) rather than implying every recorded sha is trustworthy."
     },
     "linked_prs": {
       "type": "array",
@@ -101,7 +102,11 @@
         "required": ["author", "at", "body"],
         "additionalProperties": false,
         "properties": {
-          "author": { "type": "string" },
+          "author": {
+            "type": "string",
+            "enum": ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"],
+            "description": "TASK-188 — constrained to the roles the system actually writes today (derived from the live tasks/ corpus plus src/backlog-seeder.js). This is a known-set check only, NOT proof of identity: every write flows through the same MCP surface regardless of author, so the primitive cannot verify WHO is calling. src/task-store.js additionally rejects 'reviewer' as close_task's own directly-supplied closing-comment author (see closeTask's ClosingCommentAuthorError) — a review's legitimacy is defined by being recorded as a separate, pre-existing comment, not fabricated as the terminal closing remark."
+          },
           "at": { "type": "string", "format": "date-time" },
           "body": { "type": "string" }
         }

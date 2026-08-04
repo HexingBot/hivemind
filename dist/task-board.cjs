@@ -7735,10 +7735,10 @@ var import_node_path6 = require("node:path");
 
 // src/task-store.js
 var import_promises = require("node:fs/promises");
-var import_node_fs2 = require("node:fs");
-var import_node_path2 = require("node:path");
+var import_node_fs4 = require("node:fs");
+var import_node_path4 = require("node:path");
 var import__ = __toESM(require__(), 1);
-var import_ajv_formats = __toESM(require_dist(), 1);
+var import_ajv_formats2 = __toESM(require_dist(), 1);
 
 // tasks/schema.json
 var schema_default = {
@@ -7829,7 +7829,8 @@ var schema_default = {
     linked_commits: {
       type: "array",
       items: { type: "string" },
-      default: []
+      default: [],
+      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE only (/^[0-9a-f]{7,40}$/i, TASK-082) \u2014 it does NOT verify the sha resolves to a real commit (TASK-188 AC6: closeTask is a pure state-store function with no git dependency, deliberately). src/mcp-server.js's close_task tool runs a best-effort, advisory-only existence check (git cat-file, never blocking the close) and reports the result as linked_commits_verification in its response, distinguishing 'verified present/missing' from 'could not verify' (no git binary, or repoRoot is not a git work tree) rather than implying every recorded sha is trustworthy."
     },
     linked_prs: {
       type: "array",
@@ -7844,7 +7845,11 @@ var schema_default = {
         required: ["author", "at", "body"],
         additionalProperties: false,
         properties: {
-          author: { type: "string" },
+          author: {
+            type: "string",
+            enum: ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"],
+            description: "TASK-188 \u2014 constrained to the roles the system actually writes today (derived from the live tasks/ corpus plus src/backlog-seeder.js). This is a known-set check only, NOT proof of identity: every write flows through the same MCP surface regardless of author, so the primitive cannot verify WHO is calling. src/task-store.js additionally rejects 'reviewer' as close_task's own directly-supplied closing-comment author (see closeTask's ClosingCommentAuthorError) \u2014 a review's legitimacy is defined by being recorded as a separate, pre-existing comment, not fabricated as the terminal closing remark."
+          },
           at: { type: "string", format: "date-time" },
           body: { type: "string" }
         }
@@ -7927,328 +7932,31 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// src/task-store.js
-var STATUSES = ["todo", "in_progress", "in_review", "blocked", "done"];
-var PRIORITIES = ["low", "medium", "high", "critical"];
-var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
-var __ajv = new import__.default({ allErrors: true, strict: false });
-(0, import_ajv_formats.default)(__ajv);
-var __validateTask = __ajv.compile(schema_default);
-function validateTaskOrThrow(task) {
-  const ok = __validateTask(task);
-  if (ok) return;
-  const errs = __validateTask.errors || [];
-  const msg = errs.map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ");
-  throw new Error(`task payload failed schema validation: ${msg}`);
-}
-function tasksDir(repoRoot) {
-  return (0, import_node_path2.join)(repoRoot, "tasks");
-}
-function taskFilePath(repoRoot, key) {
-  return (0, import_node_path2.join)(tasksDir(repoRoot), `${key}.json`);
-}
-function indexFilePath(repoRoot) {
-  return (0, import_node_path2.join)(tasksDir(repoRoot), "index.json");
-}
-function numericKeyOrder(a, b) {
-  const ka = typeof a === "string" ? a : a.key;
-  const kb = typeof b === "string" ? b : b.key;
-  const ma = /-(\d+)$/.exec(ka);
-  const mb = /-(\d+)$/.exec(kb);
-  if (ma && mb) {
-    const na = parseInt(ma[1], 10);
-    const nb = parseInt(mb[1], 10);
-    if (na !== nb) return na - nb;
-    return 0;
-  }
-  return ka < kb ? -1 : ka > kb ? 1 : 0;
-}
-async function readAllTasks(repoRoot) {
-  const dir = tasksDir(repoRoot);
-  let entries;
-  try {
-    entries = await (0, import_promises.readdir)(dir);
-  } catch (err) {
-    if (err && err.code === "ENOENT") return [];
-    throw err;
-  }
-  const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
-  const out = [];
-  for (const name of taskFiles) {
-    const raw = await (0, import_promises.readFile)((0, import_node_path2.join)(dir, name), "utf8");
-    if (raw.length === 0) continue;
-    out.push(JSON.parse(raw));
-  }
-  return out;
-}
-function buildIndexBytes(tasks, generatedAt) {
-  const summary = tasks.map((t) => ({
-    key: t.key,
-    title: t.title,
-    status: t.status,
-    priority: t.priority
-  })).sort(numericKeyOrder);
-  return JSON.stringify({ generated_at: generatedAt, tasks: summary }, null, 2) + "\n";
-}
-var KeyCollisionError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "KeyCollisionError";
-    this.code = "E_KEY_COLLISION";
-  }
-};
-var UatGuardError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "UatGuardError";
-    this.code = "UAT_GUARD_REQUIRED";
-  }
-};
-var AcceptanceCriteriaError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "AcceptanceCriteriaError";
-    this.code = "E_INVALID_ACCEPTANCE_CRITERIA";
-  }
-};
-var AC_BRIEFING_CAP_CHARS = 4e3;
-function validateAcceptanceCriteria(acceptance_criteria) {
-  if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
-    throw new AcceptanceCriteriaError(
-      "acceptance_criteria must be a non-empty array (schema minItems: 1)"
-    );
-  }
-  let totalLength = 0;
-  for (let i = 0; i < acceptance_criteria.length; i++) {
-    const item = acceptance_criteria[i];
-    if (typeof item !== "string" || item.trim().length === 0) {
-      throw new AcceptanceCriteriaError(
-        `acceptance_criteria[${i}] is empty or whitespace-only \u2014 every criterion must contain at least one non-whitespace character (it gives the reviewer's AC-compliance step no falsifiable target otherwise)`
-      );
-    }
-    totalLength += item.length;
-  }
-  if (totalLength > AC_BRIEFING_CAP_CHARS) {
-    throw new AcceptanceCriteriaError(
-      `acceptance_criteria total length (${totalLength} chars across ${acceptance_criteria.length} criteria) exceeds the ${AC_BRIEFING_CAP_CHARS}-char briefing cap documented in .claude/skills/orchestrator-routing/SKILL.md \u2014 a criterion beyond that cap is silently truncated in the briefing an agent actually reads, so it would be binding on the ticket while invisible to whoever verifies it. Split the ticket or shorten the criteria.`
-    );
-  }
-}
-var SCHEMA_CHANGE_RE = /\bschema\.json\b|\bstate[- ]schema\b|\bschema\s+(?:change|changes|migration|mutation)\b/i;
-function checkTierContentMismatch({ title, description, verification_tier }) {
-  if (verification_tier === void 0 || verification_tier === "tdd") return [];
-  const text = `${title || ""}
-${description || ""}`;
-  if (!SCHEMA_CHANGE_RE.test(text)) return [];
-  return [
-    `verification_tier "${verification_tier}" may be too light \u2014 the title/description mentions a schema change, and CLAUDE.md reserves "tdd" for schema/state-schema changes. This is an advisory signal only (not a block): re-check the tier assignment, or ignore if the match is a false positive (e.g. negated, or describing data that merely conforms to an existing schema rather than changing one).`
-  ];
-}
-var UAT_VERDICT_WORD_RE = /\bpass\b/i;
-var VERDICT_FAIL_RE = /verdict\s*:\s*fail/i;
-var OVERALL_FAIL_RE = /overall(?:\s+result)?\s*:?\s*fail/i;
-function hasRecordedUatVerdict(task) {
-  const comments = Array.isArray(task && task.comments) ? task.comments : [];
-  const uatComments = comments.filter((c) => c && c.author === "uat");
-  if (uatComments.length === 0) return false;
-  const last = uatComments[uatComments.length - 1];
-  const body = String(last && last.body || "").trim();
-  if (body === "") return false;
-  if (VERDICT_FAIL_RE.test(body) || OVERALL_FAIL_RE.test(body)) return false;
-  return UAT_VERDICT_WORD_RE.test(body);
-}
-function checkUatGuard(task) {
-  if (task.verification_tier !== "uat-only") return;
-  if (!hasRecordedUatVerdict(task)) {
-    throw new UatGuardError(
-      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without its most recent "uat" comment recording a recognizable verdict (a non-empty body naming a PASS result)`
-    );
-  }
-}
-async function transitionStatus({
-  repoRoot,
-  key,
-  status,
-  now = () => (/* @__PURE__ */ new Date()).toISOString(),
-  closeGuard
-}) {
-  if (!STATUSES.includes(status)) {
-    throw new Error(
-      `invalid status "${status}" \u2014 must be one of ${STATUSES.join(", ")}`
-    );
-  }
-  const allTasks = await readAllTasks(repoRoot);
-  const task = allTasks.find((t) => t.key === key);
-  if (!task) throw new Error(`unknown task key: ${key}`);
-  if (status === "done") {
-    checkUatGuard(task);
-    if (typeof closeGuard === "function") {
-      await closeGuard({ repoRoot, task, key });
-    }
-  }
-  const stamp = now();
-  task.status = status;
-  task.updated_at = stamp;
-  validateTaskOrThrow(task);
-  await atomicWriteFiles([
-    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
-  ]);
-}
-async function deriveNextKey(repoRoot) {
-  const dir = tasksDir(repoRoot);
-  let entries;
-  try {
-    entries = await (0, import_promises.readdir)(dir);
-  } catch (err) {
-    if (err && err.code === "ENOENT") entries = [];
-    else throw err;
-  }
-  let maxN = 0;
-  for (const name of entries) {
-    const m = TASK_FILENAME_RE.exec(name);
-    if (!m) continue;
-    const n = parseInt(m[1], 10);
-    if (n > maxN) maxN = n;
-  }
-  const next = maxN + 1;
-  const width = Math.max(3, String(next).length);
-  return `TASK-${String(next).padStart(width, "0")}`;
-}
-var VERIFICATION_TIERS = ["tdd", "tests-after", "uat-only"];
-async function createTask({
-  repoRoot,
-  title,
-  description,
-  acceptance_criteria,
-  priority,
-  labels = [],
-  depends_on = [],
-  verification_tier,
-  marker,
-  source_tier,
-  confidence,
-  now = () => (/* @__PURE__ */ new Date()).toISOString()
-}) {
-  validateAcceptanceCriteria(acceptance_criteria);
-  if (!PRIORITIES.includes(priority)) {
-    throw new Error(
-      `invalid priority "${priority}" \u2014 must be one of ${PRIORITIES.join(", ")}`
-    );
-  }
-  if (verification_tier !== void 0 && !VERIFICATION_TIERS.includes(verification_tier)) {
-    throw new Error(
-      `invalid verification_tier "${verification_tier}" \u2014 must be one of ${VERIFICATION_TIERS.join(", ")}`
-    );
-  }
-  const key = await deriveNextKey(repoRoot);
-  const stamp = now();
-  const task = {
-    key,
-    title,
-    description,
-    acceptance_criteria,
-    status: "todo",
-    priority,
-    labels,
-    assignee: null,
-    depends_on,
-    linked_commits: [],
-    linked_prs: [],
-    comments: [],
-    created_at: stamp,
-    updated_at: stamp,
-    jira_key: null,
-    ...verification_tier !== void 0 ? { verification_tier } : {},
-    // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
-    // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
-    ...marker !== void 0 ? { marker } : {},
-    ...source_tier !== void 0 ? { source_tier } : {},
-    ...confidence !== void 0 ? { confidence } : {}
-  };
-  validateTaskOrThrow(task);
-  const existing = await readAllTasks(repoRoot);
-  const allTasks = [...existing, task];
-  (0, import_node_fs2.mkdirSync)(tasksDir(repoRoot), { recursive: true });
-  const target = taskFilePath(repoRoot, key);
-  const taskBytes = JSON.stringify(task, null, 2) + "\n";
-  const payload = Buffer.from(taskBytes, "utf8");
-  let reserveFd;
-  try {
-    reserveFd = (0, import_node_fs2.openSync)(target, import_node_fs2.constants.O_CREAT | import_node_fs2.constants.O_EXCL | import_node_fs2.constants.O_WRONLY, 384);
-  } catch (err) {
-    if (err && err.code === "EEXIST") {
-      throw new KeyCollisionError(
-        `createTask: key collision \u2014 ${target} already exists (a concurrent writer won the race for ${key})`
-      );
-    }
-    throw err;
-  }
-  try {
-    let written = 0;
-    while (written < payload.length) {
-      written += (0, import_node_fs2.writeSync)(reserveFd, payload, written, payload.length - written);
-    }
-    (0, import_node_fs2.fsyncSync)(reserveFd);
-  } finally {
-    (0, import_node_fs2.closeSync)(reserveFd);
-  }
-  const onDisk = (0, import_node_fs2.readFileSync)(target, "utf8");
-  if (onDisk !== taskBytes) {
-    throw new KeyCollisionError(
-      `createTask: verify-after-write detected a competing writer's payload at ${target} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
-    );
-  }
-  await atomicWriteFiles([
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
-  ]);
-  const warnings = checkTierContentMismatch({ title, description, verification_tier });
-  return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
-}
-
-// src/knowledge-graph.js
-var import_promises2 = require("node:fs/promises");
-var import_node_fs3 = require("node:fs");
-var import_node_path3 = require("node:path");
-var import_ajv_formats2 = __toESM(require_dist(), 1);
-function graphPath(repoRoot) {
-  return (0, import_node_path3.join)(repoRoot, "knowledge", "graph", "graph.json");
-}
-function emptyGraph() {
-  return { schema_version: 1, nodes: [], edges: [] };
-}
-async function loadGraph({ repoRoot }) {
-  const path = graphPath(repoRoot);
-  if (!(0, import_node_fs3.existsSync)(path)) return emptyGraph();
-  const raw = await (0, import_promises2.readFile)(path, "utf8");
-  return JSON.parse(raw);
-}
-
 // src/pointer.js
-var import_node_fs4 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs2 = require("node:fs");
+var import_node_path2 = require("node:path");
 function pointerFilePath(repoRoot) {
-  return (0, import_node_path4.join)(repoRoot, "state", "session.json");
+  return (0, import_node_path2.join)(repoRoot, "state", "session.json");
 }
 function readPointer(repoRoot) {
   const p = pointerFilePath(repoRoot);
-  if (!(0, import_node_fs4.existsSync)(p)) return null;
-  return JSON.parse((0, import_node_fs4.readFileSync)(p, "utf8"));
+  if (!(0, import_node_fs2.existsSync)(p)) return null;
+  return JSON.parse((0, import_node_fs2.readFileSync)(p, "utf8"));
 }
 
 // src/bundle.js
-var import_node_fs5 = require("node:fs");
-var import_node_path5 = require("node:path");
-var import_ajv_formats3 = __toESM(require_dist(), 1);
+var import_node_fs3 = require("node:fs");
+var import_node_path3 = require("node:path");
+var import_ajv_formats = __toESM(require_dist(), 1);
 function bundleDirFor(repoRoot, sessionId) {
-  return (0, import_node_path5.join)(repoRoot, "state", "sessions", sessionId);
+  return (0, import_node_path3.join)(repoRoot, "state", "sessions", sessionId);
 }
 function bundleSessionPath(repoRoot, sessionId) {
-  return (0, import_node_path5.join)(bundleDirFor(repoRoot, sessionId), "session.json");
+  return (0, import_node_path3.join)(bundleDirFor(repoRoot, sessionId), "session.json");
 }
 function readBundleSession(repoRoot, sessionId) {
   const p = bundleSessionPath(repoRoot, sessionId);
-  return JSON.parse((0, import_node_fs5.readFileSync)(p, "utf8"));
+  return JSON.parse((0, import_node_fs3.readFileSync)(p, "utf8"));
 }
 
 // src/operating-mode.js
@@ -8372,6 +8080,310 @@ async function loopModeCloseGuard({ repoRoot, task }) {
       );
     }
   }
+}
+
+// src/task-store.js
+var STATUSES = ["todo", "in_progress", "in_review", "blocked", "done"];
+var PRIORITIES = ["low", "medium", "high", "critical"];
+var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
+var __ajv = new import__.default({ allErrors: true, strict: false });
+(0, import_ajv_formats2.default)(__ajv);
+var __validateTask = __ajv.compile(schema_default);
+function validateTaskOrThrow(task) {
+  const ok = __validateTask(task);
+  if (ok) return;
+  const errs = __validateTask.errors || [];
+  const msg = errs.map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ");
+  throw new Error(`task payload failed schema validation: ${msg}`);
+}
+function tasksDir(repoRoot) {
+  return (0, import_node_path4.join)(repoRoot, "tasks");
+}
+function taskFilePath(repoRoot, key) {
+  return (0, import_node_path4.join)(tasksDir(repoRoot), `${key}.json`);
+}
+function indexFilePath(repoRoot) {
+  return (0, import_node_path4.join)(tasksDir(repoRoot), "index.json");
+}
+function numericKeyOrder(a, b) {
+  const ka = typeof a === "string" ? a : a.key;
+  const kb = typeof b === "string" ? b : b.key;
+  const ma = /-(\d+)$/.exec(ka);
+  const mb = /-(\d+)$/.exec(kb);
+  if (ma && mb) {
+    const na = parseInt(ma[1], 10);
+    const nb = parseInt(mb[1], 10);
+    if (na !== nb) return na - nb;
+    return 0;
+  }
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
+async function readAllTasks(repoRoot) {
+  const dir = tasksDir(repoRoot);
+  let entries;
+  try {
+    entries = await (0, import_promises.readdir)(dir);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return [];
+    throw err;
+  }
+  const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
+  const out = [];
+  for (const name of taskFiles) {
+    const raw = await (0, import_promises.readFile)((0, import_node_path4.join)(dir, name), "utf8");
+    if (raw.length === 0) continue;
+    out.push(JSON.parse(raw));
+  }
+  return out;
+}
+function buildIndexBytes(tasks, generatedAt) {
+  const summary = tasks.map((t) => ({
+    key: t.key,
+    title: t.title,
+    status: t.status,
+    priority: t.priority
+  })).sort(numericKeyOrder);
+  return JSON.stringify({ generated_at: generatedAt, tasks: summary }, null, 2) + "\n";
+}
+var KeyCollisionError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "KeyCollisionError";
+    this.code = "E_KEY_COLLISION";
+  }
+};
+var UatGuardError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UatGuardError";
+    this.code = "UAT_GUARD_REQUIRED";
+  }
+};
+var AcceptanceCriteriaError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "AcceptanceCriteriaError";
+    this.code = "E_INVALID_ACCEPTANCE_CRITERIA";
+  }
+};
+var AC_BRIEFING_CAP_CHARS = 4e3;
+function validateAcceptanceCriteria(acceptance_criteria) {
+  if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
+    throw new AcceptanceCriteriaError(
+      "acceptance_criteria must be a non-empty array (schema minItems: 1)"
+    );
+  }
+  let totalLength = 0;
+  for (let i = 0; i < acceptance_criteria.length; i++) {
+    const item = acceptance_criteria[i];
+    if (typeof item !== "string" || item.trim().length === 0) {
+      throw new AcceptanceCriteriaError(
+        `acceptance_criteria[${i}] is empty or whitespace-only \u2014 every criterion must contain at least one non-whitespace character (it gives the reviewer's AC-compliance step no falsifiable target otherwise)`
+      );
+    }
+    totalLength += item.length;
+  }
+  if (totalLength > AC_BRIEFING_CAP_CHARS) {
+    throw new AcceptanceCriteriaError(
+      `acceptance_criteria total length (${totalLength} chars across ${acceptance_criteria.length} criteria) exceeds the ${AC_BRIEFING_CAP_CHARS}-char briefing cap documented in .claude/skills/orchestrator-routing/SKILL.md \u2014 a criterion beyond that cap is silently truncated in the briefing an agent actually reads, so it would be binding on the ticket while invisible to whoever verifies it. Split the ticket or shorten the criteria.`
+    );
+  }
+}
+var SCHEMA_CHANGE_RE = /\bschema\.json\b|\bstate[- ]schema\b|\bschema\s+(?:change|changes|migration|mutation)\b/i;
+function checkTierContentMismatch({ title, description, verification_tier }) {
+  if (verification_tier === void 0 || verification_tier === "tdd") return [];
+  const text = `${title || ""}
+${description || ""}`;
+  if (!SCHEMA_CHANGE_RE.test(text)) return [];
+  return [
+    `verification_tier "${verification_tier}" may be too light \u2014 the title/description mentions a schema change, and CLAUDE.md reserves "tdd" for schema/state-schema changes. This is an advisory signal only (not a block): re-check the tier assignment, or ignore if the match is a false positive (e.g. negated, or describing data that merely conforms to an existing schema rather than changing one).`
+  ];
+}
+var UAT_VERDICT_WORD_RE = /\bpass\b/i;
+var VERDICT_FAIL_RE = /verdict\s*:\s*fail/i;
+var OVERALL_FAIL_RE = /overall(?:\s+result)?\s*:?\s*fail/i;
+function hasRecordedUatVerdict(task) {
+  const comments = Array.isArray(task && task.comments) ? task.comments : [];
+  const uatComments = comments.filter((c) => c && c.author === "uat");
+  if (uatComments.length === 0) return false;
+  const last = uatComments[uatComments.length - 1];
+  const body = String(last && last.body || "").trim();
+  if (body === "") return false;
+  if (VERDICT_FAIL_RE.test(body) || OVERALL_FAIL_RE.test(body)) return false;
+  return UAT_VERDICT_WORD_RE.test(body);
+}
+function checkUatGuard(task) {
+  if (task.verification_tier !== "uat-only") return;
+  if (!hasRecordedUatVerdict(task)) {
+    throw new UatGuardError(
+      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without its most recent "uat" comment recording a recognizable verdict (a non-empty body naming a PASS result)`
+    );
+  }
+}
+function resolveCloseGuard(closeGuard) {
+  if (closeGuard === void 0) return loopModeCloseGuard;
+  if (typeof closeGuard !== "function") {
+    throw new TypeError(
+      `closeGuard must be a function when provided \u2014 omit it entirely to use the default loop-mode guard (loopModeCloseGuard); received ${JSON.stringify(closeGuard)}`
+    );
+  }
+  return closeGuard;
+}
+async function transitionStatus({
+  repoRoot,
+  key,
+  status,
+  now = () => (/* @__PURE__ */ new Date()).toISOString(),
+  closeGuard
+}) {
+  if (!STATUSES.includes(status)) {
+    throw new Error(
+      `invalid status "${status}" \u2014 must be one of ${STATUSES.join(", ")}`
+    );
+  }
+  const allTasks = await readAllTasks(repoRoot);
+  const task = allTasks.find((t) => t.key === key);
+  if (!task) throw new Error(`unknown task key: ${key}`);
+  if (status === "done") {
+    checkUatGuard(task);
+    await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+  }
+  const stamp = now();
+  task.status = status;
+  task.updated_at = stamp;
+  validateTaskOrThrow(task);
+  await atomicWriteFiles([
+    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
+    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+  ]);
+}
+async function deriveNextKey(repoRoot) {
+  const dir = tasksDir(repoRoot);
+  let entries;
+  try {
+    entries = await (0, import_promises.readdir)(dir);
+  } catch (err) {
+    if (err && err.code === "ENOENT") entries = [];
+    else throw err;
+  }
+  let maxN = 0;
+  for (const name of entries) {
+    const m = TASK_FILENAME_RE.exec(name);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (n > maxN) maxN = n;
+  }
+  const next = maxN + 1;
+  const width = Math.max(3, String(next).length);
+  return `TASK-${String(next).padStart(width, "0")}`;
+}
+var VERIFICATION_TIERS = ["tdd", "tests-after", "uat-only"];
+async function createTask({
+  repoRoot,
+  title,
+  description,
+  acceptance_criteria,
+  priority,
+  labels = [],
+  depends_on = [],
+  verification_tier,
+  marker,
+  source_tier,
+  confidence,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  validateAcceptanceCriteria(acceptance_criteria);
+  if (!PRIORITIES.includes(priority)) {
+    throw new Error(
+      `invalid priority "${priority}" \u2014 must be one of ${PRIORITIES.join(", ")}`
+    );
+  }
+  if (verification_tier !== void 0 && !VERIFICATION_TIERS.includes(verification_tier)) {
+    throw new Error(
+      `invalid verification_tier "${verification_tier}" \u2014 must be one of ${VERIFICATION_TIERS.join(", ")}`
+    );
+  }
+  const key = await deriveNextKey(repoRoot);
+  const stamp = now();
+  const task = {
+    key,
+    title,
+    description,
+    acceptance_criteria,
+    status: "todo",
+    priority,
+    labels,
+    assignee: null,
+    depends_on,
+    linked_commits: [],
+    linked_prs: [],
+    comments: [],
+    created_at: stamp,
+    updated_at: stamp,
+    jira_key: null,
+    ...verification_tier !== void 0 ? { verification_tier } : {},
+    // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
+    // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
+    ...marker !== void 0 ? { marker } : {},
+    ...source_tier !== void 0 ? { source_tier } : {},
+    ...confidence !== void 0 ? { confidence } : {}
+  };
+  validateTaskOrThrow(task);
+  const existing = await readAllTasks(repoRoot);
+  const allTasks = [...existing, task];
+  (0, import_node_fs4.mkdirSync)(tasksDir(repoRoot), { recursive: true });
+  const target = taskFilePath(repoRoot, key);
+  const taskBytes = JSON.stringify(task, null, 2) + "\n";
+  const payload = Buffer.from(taskBytes, "utf8");
+  let reserveFd;
+  try {
+    reserveFd = (0, import_node_fs4.openSync)(target, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
+  } catch (err) {
+    if (err && err.code === "EEXIST") {
+      throw new KeyCollisionError(
+        `createTask: key collision \u2014 ${target} already exists (a concurrent writer won the race for ${key})`
+      );
+    }
+    throw err;
+  }
+  try {
+    let written = 0;
+    while (written < payload.length) {
+      written += (0, import_node_fs4.writeSync)(reserveFd, payload, written, payload.length - written);
+    }
+    (0, import_node_fs4.fsyncSync)(reserveFd);
+  } finally {
+    (0, import_node_fs4.closeSync)(reserveFd);
+  }
+  const onDisk = (0, import_node_fs4.readFileSync)(target, "utf8");
+  if (onDisk !== taskBytes) {
+    throw new KeyCollisionError(
+      `createTask: verify-after-write detected a competing writer's payload at ${target} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
+    );
+  }
+  await atomicWriteFiles([
+    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+  ]);
+  const warnings = checkTierContentMismatch({ title, description, verification_tier });
+  return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
+}
+
+// src/knowledge-graph.js
+var import_promises2 = require("node:fs/promises");
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
+var import_ajv_formats3 = __toESM(require_dist(), 1);
+function graphPath(repoRoot) {
+  return (0, import_node_path5.join)(repoRoot, "knowledge", "graph", "graph.json");
+}
+function emptyGraph() {
+  return { schema_version: 1, nodes: [], edges: [] };
+}
+async function loadGraph({ repoRoot }) {
+  const path = graphPath(repoRoot);
+  if (!(0, import_node_fs5.existsSync)(path)) return emptyGraph();
+  const raw = await (0, import_promises2.readFile)(path, "utf8");
+  return JSON.parse(raw);
 }
 
 // src/task-board.js

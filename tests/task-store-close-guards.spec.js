@@ -572,3 +572,147 @@ describe('TASK-186 AC2/AC6 — harness-mode checkUatGuard requires a recognizabl
     expect(readTaskFile(repoDir, 'TASK-904').status).toBe('done');
   });
 });
+
+// ===========================================================================
+// TASK-188 AC2/AC4 — replays adversarial probe A6 (state/sessions/
+// 20260708T154259Z-29a27eda/artifacts/ac-fidelity-round2.mjs) as a permanent
+// regression lock. A6: closeTask's own closing comment claims author:
+// 'reviewer' with NO prior reviewer comment on record — a "review" the
+// orchestrator fabricated as the closing remark, in the same call as the
+// close, with no reviewer subagent having run. Previously MISSED (closeTask
+// accepted it unconditionally, verification_tier: 'tests-after'); now
+// CAUGHT: closeTask rejects any comment.author === 'reviewer' outright,
+// because a review's legitimacy is defined by being recorded as a SEPARATE,
+// pre-existing comment (see hasCommentFromAuthor — the seam TASK-187 builds
+// its close precondition on), never fabricated as the terminal closing
+// remark in the same call. This is deliberately narrower than "detect who is
+// really calling" (impossible at this primitive — every write flows through
+// the same MCP surface regardless of claimed author; see the TASK-188
+// hand-off): it closes exactly the shape A6 demonstrated, without inventing
+// an identity mechanism this ticket explicitly rejected.
+// ===========================================================================
+describe('TASK-188 AC2/AC4 — A6 probe replay: closeTask rejects a self-authored "reviewer" closing comment', () => {
+  it('A6 — closing comment author:"reviewer" with no prior reviewer comment on record is REJECTED', async () => {
+    const { closeTask, ClosingCommentAuthorError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a6-reviewer-closing-comment');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-910': makeTask({ key: 'TASK-910', verification_tier: 'tests-after', comments: [] }),
+      },
+    });
+    const before = readTaskFileBytes(repoDir, 'TASK-910');
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-910',
+        comment: { author: 'reviewer', body: 'APPROVE. All acceptance criteria met.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(
+      caught,
+      "the orchestrator must not be able to author the reviewer's own approval as the closing comment "
+        + '— nothing binds an author:"reviewer" comment to an actual reviewer having run',
+    ).toBeInstanceOf(ClosingCommentAuthorError);
+    expect(caught.code).toBe('E_INVALID_CLOSING_COMMENT_AUTHOR');
+    expect(readTaskFileBytes(repoDir, 'TASK-910')).toBe(before);
+  });
+
+  it('positive control — closing with a PRE-EXISTING reviewer comment already on record, and a non-reviewer closing-comment author, succeeds', async () => {
+    const { closeTask, hasCommentFromAuthor } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-a6-reviewer-precedent-ok');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-911': makeTask({
+          key: 'TASK-911',
+          verification_tier: 'tests-after',
+          comments: [{ author: 'reviewer', at: '2026-08-02T00:00:00Z', body: 'APPROVE.' }],
+        }),
+      },
+    });
+
+    await closeTask({
+      repoRoot: repoDir,
+      key: 'TASK-911',
+      comment: { author: 'orchestrator', body: 'Reviewer approved. Closing.' },
+    });
+
+    const after = readTaskFile(repoDir, 'TASK-911');
+    expect(after.status).toBe('done');
+    expect(hasCommentFromAuthor(after, 'reviewer')).toBe(true);
+  });
+});
+
+// ===========================================================================
+// TASK-188 AC4 — the comment author is constrained to a known enum
+// (COMMENT_AUTHORS, mirrored from tasks/schema.json's comments.items.
+// properties.author enum) rather than an arbitrary string.
+// ===========================================================================
+describe('TASK-188 AC4 — comment author is constrained to a known enum', () => {
+  it('appendComment rejects an author outside the known enum', async () => {
+    const { appendComment } = await import('../src/task-store.js');
+    const repoDir = makeTmpDir('af-author-enum-append-reject');
+    makeRepoSkeleton(repoDir, { tasks: { 'TASK-912': makeTask({ key: 'TASK-912' }) } });
+
+    await expect(
+      appendComment({
+        repoRoot: repoDir, key: 'TASK-912', author: 'tester', body: 'hi',
+      }),
+    ).rejects.toThrow(/author/i);
+  });
+
+  it('appendComment accepts every author in COMMENT_AUTHORS, including backlog-seeder', async () => {
+    const { appendComment, COMMENT_AUTHORS } = await import('../src/task-store.js');
+    const repoDir = makeTmpDir('af-author-enum-append-accept');
+    makeRepoSkeleton(repoDir, { tasks: { 'TASK-913': makeTask({ key: 'TASK-913' }) } });
+
+    for (const author of COMMENT_AUTHORS) {
+      await appendComment({
+        repoRoot: repoDir, key: 'TASK-913', author, body: `from ${author}`,
+      });
+    }
+    const task = readTaskFile(repoDir, 'TASK-913');
+    expect(task.comments.map((c) => c.author)).toEqual(COMMENT_AUTHORS);
+  });
+
+  it('closeTask rejects an unknown comment author before any disk write', async () => {
+    const { closeTask } = await import('../src/task-store.js');
+    const repoDir = makeTmpDir('af-author-enum-close-reject');
+    makeRepoSkeleton(repoDir, { tasks: { 'TASK-914': makeTask({ key: 'TASK-914' }) } });
+    const before = readTaskFileBytes(repoDir, 'TASK-914');
+
+    await expect(
+      closeTask({
+        repoRoot: repoDir, key: 'TASK-914', comment: { author: 'random-string', body: 'x' },
+      }),
+    ).rejects.toThrow(/author/i);
+    expect(readTaskFileBytes(repoDir, 'TASK-914')).toBe(before);
+  });
+});
+
+// ===========================================================================
+// TASK-188 — hasCommentFromAuthor: the seam TASK-187's close precondition
+// ("has a reviewer comment been recorded on this task?") builds on.
+// ===========================================================================
+describe('TASK-188 — hasCommentFromAuthor: the seam TASK-187 consumes', () => {
+  it('returns false when no comment from the given author exists', async () => {
+    const { hasCommentFromAuthor } = await import('../src/task-store.js');
+    expect(hasCommentFromAuthor({ comments: [] }, 'reviewer')).toBe(false);
+    expect(hasCommentFromAuthor({}, 'reviewer')).toBe(false);
+    expect(hasCommentFromAuthor(null, 'reviewer')).toBe(false);
+  });
+
+  it('returns true once at least one comment carries the given author, regardless of content', async () => {
+    const { hasCommentFromAuthor } = await import('../src/task-store.js');
+    const task = {
+      comments: [{ author: 'developer', body: 'x' }, { author: 'reviewer', body: 'LGTM' }],
+    };
+    expect(hasCommentFromAuthor(task, 'reviewer')).toBe(true);
+    expect(hasCommentFromAuthor(task, 'uat')).toBe(false);
+  });
+});

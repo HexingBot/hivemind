@@ -27,11 +27,14 @@
 //   - This is the exact shape task-store.transitionStatus/closeTask's
 //     `closeGuard` param expects: `async ({ repoRoot, task, key }) => void`,
 //     called ONLY when status === 'done', AFTER the uat-only guard and BEFORE
-//     any disk write. task-store.js itself imports NOTHING from
-//     close-guard.js, operating-mode.js, bundle.js, or loop-auth.js — the MCP
-//     layer (src/mcp-server.js) is what imports loopModeCloseGuard and passes
-//     it as `closeGuard` into transitionStatus/closeTask. This is the
-//     "task-store must not hard-couple to bundle internals" requirement.
+//     any disk write. TASK-188 (AC3) — task-store.js now imports
+//     loopModeCloseGuard directly and uses it as closeGuard's DEFAULT when a
+//     caller omits the param (see task-store.js's resolveCloseGuard); the MCP
+//     layer (src/mcp-server.js) and src/task-board.js still also compose it
+//     explicitly (redundant with the new default, kept for clarity, harmless).
+//     Before TASK-188, an omitted closeGuard silently disabled every
+//     loop-mode protection — see the "TASK-188 AC1/AC3" describe block below
+//     for the composition-gap proof and its fix.
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -218,16 +221,75 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
     expect(after.status).toBe('done');
   });
 
-  it('is a no-op seam: omitting closeGuard entirely leaves loop mode unenforced (task-store stays inert without composition)', async () => {
+  // ---------------------------------------------------------------------------
+  // TASK-188 AC1/AC3 — the composition gap. Historically this exact scenario
+  // (omitting closeGuard entirely, in loop mode with
+  // auto_close_on_green_review false) succeeded — task-store.js treated a
+  // missing closeGuard as a no-op, silently disabling every loop-mode
+  // protection. This replaces the old "is a no-op seam" test above, which
+  // asserted that (defective) behavior as if it were the intended contract.
+  // See the TASK-188 hand-off for the captured red-run output demonstrating
+  // this succeeded before the fix, while the MCP-composed call
+  // (transition_status_surfaces_the_loop_mode_guard_as_an_error_when_
+  // unauthorized in tests/e2e/mcp-close-task.spec.js) was already blocked —
+  // exactly the asymmetry AC1 names.
+  // ---------------------------------------------------------------------------
+  it('TASK-188 AC1/AC3 — omitting closeGuard entirely no longer disables loop-mode protection; the default now enforces it', async () => {
+    const { transitionStatus } = await import(TASK_STORE_URL);
+    const { LoopCloseGuardError } = await import(CLOSE_GUARD_URL);
+
+    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: { auto_close_on_green_review: false } });
+    makeRepoSkeleton(root, { tasks: { 'TASK-212': makeTask('TASK-212') } });
+    const before = readTaskFileBytes(root, 'TASK-212');
+
+    // No closeGuard passed at all — the default (loopModeCloseGuard) must
+    // still fire because loop mode is active and unauthorized.
+    await expect(
+      transitionStatus({ repoRoot: root, key: 'TASK-212', status: 'done' }),
+    ).rejects.toBeInstanceOf(LoopCloseGuardError);
+
+    expect(readTaskFileBytes(root, 'TASK-212')).toBe(before);
+  });
+
+  it('TASK-188 AC3 — closeTask (not just transitionStatus) also enforces the default when closeGuard is omitted', async () => {
+    const { closeTask } = await import(TASK_STORE_URL);
+    const { LoopCloseGuardError } = await import(CLOSE_GUARD_URL);
+
+    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: { auto_close_on_green_review: false } });
+    makeRepoSkeleton(root, { tasks: { 'TASK-216': makeTask('TASK-216') } });
+    const before = readTaskFileBytes(root, 'TASK-216');
+
+    await expect(
+      closeTask({
+        repoRoot: root, key: 'TASK-216', comment: { author: 'developer', body: 'Ship it.' },
+      }),
+    ).rejects.toBeInstanceOf(LoopCloseGuardError);
+
+    expect(readTaskFileBytes(root, 'TASK-216')).toBe(before);
+  });
+
+  it('TASK-188 AC3 — a non-function, non-undefined closeGuard throws loudly instead of silently no-op\'ing', async () => {
     const { transitionStatus } = await import(TASK_STORE_URL);
 
-    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: {} });
-    makeRepoSkeleton(root, { tasks: { 'TASK-212': makeTask('TASK-212') } });
+    const { root } = makeRepoWithMode({ mode: 'harness' });
+    makeRepoSkeleton(root, { tasks: { 'TASK-217': makeTask('TASK-217') } });
 
-    // No closeGuard passed -> task-store itself does not know about loop mode.
-    await transitionStatus({ repoRoot: root, key: 'TASK-212', status: 'done' });
+    await expect(
+      transitionStatus({
+        repoRoot: root, key: 'TASK-217', status: 'done', closeGuard: null,
+      }),
+    ).rejects.toThrow(TypeError);
+  });
 
-    const after = JSON.parse(readTaskFileBytes(root, 'TASK-212'));
+  it('TASK-188 AC3 — the default still no-ops in harness mode, matching the pre-existing composed behavior', async () => {
+    const { transitionStatus } = await import(TASK_STORE_URL);
+
+    const { root } = makeRepoWithMode({ mode: 'harness' });
+    makeRepoSkeleton(root, { tasks: { 'TASK-218': makeTask('TASK-218') } });
+
+    await transitionStatus({ repoRoot: root, key: 'TASK-218', status: 'done' });
+
+    const after = JSON.parse(readTaskFileBytes(root, 'TASK-218'));
     expect(after.status).toBe('done');
   });
 });
