@@ -12264,6 +12264,9 @@ var schema_default = {
   ]
 };
 
+// src/intake-sanitizer.js
+var FORMAT_CHAR_RE = new RegExp("\\p{Cf}", "u");
+
 // src/task-store.js
 var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;

@@ -7953,6 +7953,9 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// src/intake-sanitizer.js
+var FORMAT_CHAR_RE = new RegExp("\\p{Cf}", "u");
+
 // src/bundle.js
 var import_ajv_formats = __toESM(require_dist(), 1);
 

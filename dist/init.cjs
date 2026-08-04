@@ -10294,6 +10294,9 @@ var schema_default = {
 // src/task-store.js
 var PRIORITIES = ["low", "medium", "high", "critical"];
 var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
+function sanitizeCommentBody(body) {
+  return typeof body === "string" ? stripInvisibleChars(body) : body;
+}
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
 var __ajv2 = new import__3.default({ allErrors: true, strict: false });
 (0, import_ajv_formats3.default)(__ajv2);
@@ -10418,7 +10421,7 @@ async function appendComment({
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
   const stamp = now();
-  const comment = { author, at: stamp, body };
+  const comment = { author, at: stamp, body: sanitizeCommentBody(body) };
   task.comments = Array.isArray(task.comments) ? [...task.comments, comment] : [comment];
   task.updated_at = stamp;
   validateTaskOrThrow(task);

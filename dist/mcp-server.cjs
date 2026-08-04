@@ -25655,6 +25655,29 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// src/intake-sanitizer.js
+var TAG_BLOCK_START = 917504;
+var TAG_BLOCK_END = 917631;
+var FORMAT_CHAR_RE = new RegExp("\\p{Cf}", "u");
+function isStrippableControlCodePoint(codePoint) {
+  if (codePoint === 9 || codePoint === 10 || codePoint === 13) return false;
+  if (codePoint <= 31) return true;
+  if (codePoint >= 127 && codePoint <= 159) return true;
+  if (codePoint >= TAG_BLOCK_START && codePoint <= TAG_BLOCK_END) return true;
+  return false;
+}
+function stripInvisibleChars(value) {
+  if (typeof value !== "string" || value.length === 0) return value;
+  let out = "";
+  for (const ch of value) {
+    const codePoint = ch.codePointAt(0);
+    if (isStrippableControlCodePoint(codePoint)) continue;
+    if (FORMAT_CHAR_RE.test(ch)) continue;
+    out += ch;
+  }
+  return out;
+}
+
 // src/pointer.js
 var import_node_fs2 = require("node:fs");
 var import_node_path2 = require("node:path");
@@ -25827,6 +25850,9 @@ async function loopModeUatCommentGuard({ repoRoot, author }) {
 var STATUSES = ["todo", "in_progress", "in_review", "blocked", "done"];
 var PRIORITIES = ["low", "medium", "high", "critical"];
 var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
+function sanitizeCommentBody(body) {
+  return typeof body === "string" ? stripInvisibleChars(body) : body;
+}
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
 var TMP_FILE_RE = /\.tmp\.[0-9a-f]+(?:-[0-9a-f]+)?$/i;
 var __ajv = new import__.default({ allErrors: true, strict: false });
@@ -26193,7 +26219,7 @@ async function transitionStatus({
     const marker = {
       author: resolvedException.author,
       at: stamp,
-      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`
+      body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`)
     };
     task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
   }
@@ -26219,7 +26245,7 @@ async function appendComment({
   const task = allTasks.find((t) => t.key === key);
   if (!task) throw new Error(`unknown task key: ${key}`);
   const stamp = now();
-  const comment = { author, at: stamp, body };
+  const comment = { author, at: stamp, body: sanitizeCommentBody(body) };
   task.comments = Array.isArray(task.comments) ? [...task.comments, comment] : [comment];
   task.updated_at = stamp;
   validateTaskOrThrow(task);
@@ -26267,14 +26293,14 @@ async function closeTask({
   }
   const previousStatus = task.status;
   const stamp = now();
-  const newComment = { author: comment.author, at: stamp, body: comment.body };
+  const newComment = { author: comment.author, at: stamp, body: sanitizeCommentBody(comment.body) };
   task.status = "done";
   task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
   if (resolvedException && previousStatus !== "done") {
     const marker = {
       author: resolvedException.author,
       at: stamp,
-      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`
+      body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`)
     };
     task.comments.splice(task.comments.length - 1, 0, marker);
   }

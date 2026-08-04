@@ -7932,6 +7932,29 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// src/intake-sanitizer.js
+var TAG_BLOCK_START = 917504;
+var TAG_BLOCK_END = 917631;
+var FORMAT_CHAR_RE = new RegExp("\\p{Cf}", "u");
+function isStrippableControlCodePoint(codePoint) {
+  if (codePoint === 9 || codePoint === 10 || codePoint === 13) return false;
+  if (codePoint <= 31) return true;
+  if (codePoint >= 127 && codePoint <= 159) return true;
+  if (codePoint >= TAG_BLOCK_START && codePoint <= TAG_BLOCK_END) return true;
+  return false;
+}
+function stripInvisibleChars(value) {
+  if (typeof value !== "string" || value.length === 0) return value;
+  let out = "";
+  for (const ch of value) {
+    const codePoint = ch.codePointAt(0);
+    if (isStrippableControlCodePoint(codePoint)) continue;
+    if (FORMAT_CHAR_RE.test(ch)) continue;
+    out += ch;
+  }
+  return out;
+}
+
 // src/pointer.js
 var import_node_fs2 = require("node:fs");
 var import_node_path2 = require("node:path");
@@ -8086,6 +8109,9 @@ async function loopModeCloseGuard({ repoRoot, task }) {
 var STATUSES = ["todo", "in_progress", "in_review", "blocked", "done"];
 var PRIORITIES = ["low", "medium", "high", "critical"];
 var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
+function sanitizeCommentBody(body) {
+  return typeof body === "string" ? stripInvisibleChars(body) : body;
+}
 var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
 var __ajv = new import__.default({ allErrors: true, strict: false });
 (0, import_ajv_formats2.default)(__ajv);
@@ -8325,7 +8351,7 @@ async function transitionStatus({
     const marker = {
       author: resolvedException.author,
       at: stamp,
-      body: `${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`
+      body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`)
     };
     task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
   }

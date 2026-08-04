@@ -419,6 +419,11 @@ describe('DOC — runtime facts that motivate bundling over NODE_PATH', () => {
     copyFileSync(join(REPO_ROOT, 'src', 'operating-mode.js'), join(srcDir, 'operating-mode.js'));
     copyFileSync(join(REPO_ROOT, 'src', 'host.js'), join(srcDir, 'host.js'));
     copyFileSync(join(REPO_ROOT, 'src', 'schemas.js'), join(srcDir, 'schemas.js'));
+    // TASK-201 — task-store.js now imports intake-sanitizer.js directly
+    // (stripInvisibleChars, reused from TASK-159 for the comment-body
+    // invisible-Unicode guard). intake-sanitizer.js itself has zero imports
+    // (pure functions only), so no further transitive copy is needed.
+    copyFileSync(join(REPO_ROOT, 'src', 'intake-sanitizer.js'), join(srcDir, 'intake-sanitizer.js'));
     copyFileSync(join(REPO_ROOT, 'tasks', 'schema.json'), join(tasksDir, 'schema.json'));
     return { root, srcDir };
   }
