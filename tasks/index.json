@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T04:58:53.029Z",
+  "generated_at": "2026-08-04T05:32:45.603Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1090,7 +1090,7 @@
     {
       "key": "TASK-187",
       "title": "A ticket can go todo to done in one hop with no review and no evidence",
-      "status": "todo",
+      "status": "in_review",
       "priority": "high"
     },
     {
