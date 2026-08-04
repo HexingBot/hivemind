@@ -1364,6 +1364,12 @@
       "label": "UAT verdict is a token scan, so a recorded failure phrased without FAIL-words closes autonomously"
     },
     {
+      "id": "task-187",
+      "type": "task",
+      "ref": "tasks/TASK-187.json",
+      "label": "A ticket can go todo to done in one hop with no review and no evidence"
+    },
+    {
       "id": "task-188",
       "type": "task",
       "ref": "tasks/TASK-188.json",
