@@ -1,0 +1,32 @@
+{
+  "key": "TASK-203",
+  "title": "assimilateSkill clobbers sibling-pack owner edges — the same defect TASK-200 fixed, in the data-loss direction",
+  "description": "Found by TASK-200's reviewer, which went looking for siblings of the defect it was reviewing rather than stopping at the one in scope.\n\n**The defect.** `src/assimilate.js:586-599` — `assimilateSkill` writes `owners: []` and then calls `addOwner(lock, id, pack)`. This is character-for-character the pattern TASK-200 just removed from `executeInstall`: re-assimilating a resource id that another pack already owns **silently drops the sibling's edge**.\n\n**Why this one is worse than TASK-200's.** TASK-200's residual fails toward *retention* — an edge survives that should have gone, and a human can clear it. This one fails toward *deletion*: once pack A's edge is dropped, pack A's resource looks unowned, and the assimilating pack's later remove deletes a resource pack A still wants. That is precisely the failure mode TASK-200's own description names, and it is unrecoverable.\n\n**Not introduced by TASK-200** — it predates that ticket and sits outside `executeInstall`'s scope, which is why it was correctly not treated as a blocker there.\n\n**Live-ness.** The same reasoning that made TASK-200's defect latent applies: no multi-owner entries exist in any lockfile today, and the two built-in packs (`design-power`, `watch`) declare disjoint resources. **Verify this independently rather than inheriting the claim** — assimilation is a human-gated path that adopts third-party skills, so the population of resource ids it can touch is not bounded by the built-in descriptors the way the reconciler's is. A consumer who assimilates a skill whose id collides with a pack-owned one is the realistic trigger.\n\n**The fix is almost certainly TASK-200's fix applied here** — seed from the prior entry's owners and union, rather than reset. Read TASK-200's closing comment for the reasoning it recorded, and prefer consistency with it over inventing a second approach; two divergent implementations of the same invariant is its own defect class this repo has hit before.\n\n**Check for further instances while you are here.** TASK-200's reviewer found this one by grepping for the pattern; a third may exist. Search every writer of `owners` across `src/` and report what you find, even if you fix only this one.",
+  "acceptance_criteria": [
+    "A failing spec first reproduces the clobber through the real assimilate path: a resource already owned by pack A is re-assimilated, and pack A's owner edge disappears. Capture the red-run output verbatim.",
+    "Sibling-pack owner edges survive assimilateSkill, matching the invariant TASK-200 established for executeInstall.",
+    "The downstream consequence is proven, not just the field: after the re-assimilation, a resource still owned by pack A is not removable as an orphan - the same shape as TASK-200's AC3 spec.",
+    "Every writer of owners[] across src/ is surveyed and the result reported, so a third instance is either fixed or explicitly recorded as absent.",
+    "The approach is consistent with TASK-200's preserve-and-union rather than a second divergent implementation; if a different approach is genuinely needed here, state why in the closing comment.",
+    "Live-ness is verified independently rather than inherited: report whether any current lockfile or built-in pack can actually reach this, given assimilation adopts third-party ids outside the built-in descriptors' range.",
+    "npm run test:all is green; dist bundles rebuilt and committed if bundled source changes, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "packs",
+    "lockfile",
+    "data-loss",
+    "review-followup",
+    "assimilate"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T14:58:20.259Z",
+  "updated_at": "2026-08-04T14:58:20.259Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T14:14:23.685Z",
+  "generated_at": "2026-08-04T14:58:20.259Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1168,12 +1168,24 @@
     {
       "key": "TASK-200",
       "title": "Owner-edge clobber in executeInstall is now reachable on the routine replace path",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
       "key": "TASK-201",
       "title": "Invisible Unicode-tag characters persist into ticket comments, unlike intake values",
+      "status": "in_review",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-202",
+      "title": "Phantom same-pack version edges make a lock resource permanently un-removable",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-203",
+      "title": "assimilateSkill clobbers sibling-pack owner edges — the same defect TASK-200 fixed, in the data-loss direction",
       "status": "todo",
       "priority": "medium"
     }

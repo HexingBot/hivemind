@@ -1,0 +1,30 @@
+{
+  "key": "TASK-202",
+  "title": "Phantom same-pack version edges make a lock resource permanently un-removable",
+  "description": "From TASK-200's gating review (MEDIUM-1), demonstrated empirically by the reviewer rather than reasoned about.\n\n**The defect.** Owner strings are `pack-id@version` (e.g. `watch@2.0.0`, composed at `src/pack-orchestrator.js:73`). TASK-200 changed `executeInstall` to preserve-and-union owner edges instead of resetting them — correctly, because the reset was dropping *sibling packs'* edges and breaking `executeRemove`'s \"a still-owned resource is never deleted\" guarantee.\n\nBut nothing drops a pack's **own stale version-suffixed edge** when that pack bumps its descriptor version while still wanting the same resource. The old buggy reset cleaned these up incidentally; preserve-and-union does not.\n\n**Reviewer's probe, reproduced in a sandbox:** prior owners `[\"design-power@0.1.0\",\"watch@1.0.0\"]`; a replace executed by `watch@2.0.0` yields `[\"design-power@0.1.0\",\"watch@1.0.0\",\"watch@2.0.0\"]`. After **both** `watch@2.0.0` and `design-power@0.1.0` remove, the entry survives with `[\"watch@1.0.0\"]` and the live directory is still on disk. No reconciler flow can ever clear it: `dropOwner` is an exact-string match and nothing anywhere parses a pack-id out of `pack-id@version`.\n\n**Why it was right to land TASK-200 anyway, and why this still needs closing.** The failure direction is *retention*, which a human can recover with a manual lock edit. The alternative the old code implemented was *deletion of a sibling's working skill*, which is unrecoverable. And `plan()`'s removal candidacy already requires owners-empty (`src/pack-reconcile.js:231-234`), so no end-to-end reconcile flow reaches the stranding today — it bites only direct `applyPlan` callers.\n\nBut phantom edges **accumulate monotonically** with every version-bump-plus-re-materialize, and each one quietly hollows out `executeRemove`'s contract for any future caller. Retention that can never be cleared is a slow leak, not a safe default.\n\n**Suggested fix (the reviewer's, and it looks right).** During the union, drop prior edges whose pack-id matches the current owner's pack-id but whose version differs. Owner strings are `${descriptor.id}@${descriptor.version}`, so a last-`@` split is well-defined. Note that no pack-id parsing exists anywhere in the codebase today — introducing it is a real (if small) new concept, so keep it in one place and name it.\n\n**Also fold in the TASK-200 LOW while in this file:** the decision comment at `src/pack-apply.js:449-450` claims `dropOwner`/`isOrphaned` are \"the only other readers of `owners[]`\", but `plan()` also reads it via an inlined owners-empty check (`src/pack-reconcile.js:231-232`) and `assimilateSkill` writes it (`src/assimilate.js:593`). The conclusion holds; the survey does not.",
+  "acceptance_criteria": [
+    "A failing spec first reproduces the strand: a pack bumps its descriptor version, re-materializes a resource, then every owning pack removes - and the lock entry plus live directory survive with a phantom pack@old-version edge. Capture the red-run output verbatim.",
+    "Same-pack stale-version edges no longer accumulate: after a version-bumped re-materialize, the resource carries exactly one edge for that pack, and sibling packs' edges are untouched.",
+    "A sensor exists for the condition itself - a resource carrying two edges with the same pack-id and different versions - so a regression is caught mechanically rather than by inspection.",
+    "The cross-pack guarantee TASK-200 established does not regress: after a replace by pack B, a resource still owned by pack A is still not removable as an orphan. Re-run TASK-200's own AC3 spec as part of the gate.",
+    "Pack-id parsing is introduced in exactly one named place with its assumption stated (owner strings are ${descriptor.id}@${descriptor.version}), and what happens to a malformed owner string is decided rather than left implicit.",
+    "The TASK-200 LOW is fixed in passing: src/pack-apply.js's decision comment correctly names every reader and writer of owners[], including plan()'s inlined check and assimilateSkill's write.",
+    "npm run test:all is green; dist/pack-ctl.cjs rebuilt and committed if bundled source changes, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "packs",
+    "lockfile",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-04T14:57:56.812Z",
+  "updated_at": "2026-08-04T14:57:56.812Z",
+  "jira_key": null,
+  "verification_tier": "tdd"
+}
