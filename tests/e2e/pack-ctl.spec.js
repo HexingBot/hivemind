@@ -80,6 +80,12 @@ const ASSIMILATE_PACK = 'design-power@0.1.0';
 function runCli(args, { cwd, env } = {}) {
   const cleanEnv = { ...process.env, ...env };
   delete cleanEnv.CLAUDE_PROJECT_DIR;
+  // TASK-182 AC3 — mirror tests/e2e/pack-ctl-consumer-source.spec.js:70-74's
+  // stricter hygiene: no test in this file may be influenced by an ambient
+  // plugin-session CLAUDE_PLUGIN_ROOT (previously only CLAUDE_PROJECT_DIR was
+  // deleted here).
+  delete cleanEnv.CLAUDE_PLUGIN_ROOT;
+  if (env) Object.assign(cleanEnv, env);
   const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd: cwd || REPO_ROOT,
     env: cleanEnv,

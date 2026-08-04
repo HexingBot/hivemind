@@ -1385,6 +1385,14 @@ third-party skill.
 - **`/hivemind:design-pack`** (`commands/design-pack.md`) drives the resolve -> reconcile-plan ->
   reconcile-apply sequence end to end for the design-power pack and reports the split between what
   was materialized and what the human still needs to install themselves.
+- **Dual-copy precedence (TASK-182):** a built-in pack skill can exist both project-scope
+  (`.claude/skills/<id>/`, `/​<id>`) and plugin-shipped (`${CLAUDE_PLUGIN_ROOT}/skills/<id>/`,
+  `/hivemind:<id>`) — the plugin copy wins whenever `reconcile-apply` can decide the plugin's pin is
+  equal-or-newer, retiring the stale project copy in place (never a bare `REMOVE`) and announcing it
+  in `packs[].report` (`retired: true`); an undecidable pin comparison (e.g. two different git shas)
+  always keeps the project copy and surfaces the ambiguity instead of guessing. See
+  `docs/design/addon-packs.md` §2.4 for the full decision record and `commands/design-pack.md` Step 4
+  for how to read the report and tell which copy is active at what pin.
 - **Tracked external design tools** (`impeccable`, `taste-skill`, `higgsfield`, `21st-dev-magic`;
   TASK-178) are deliberately INERT in the reconciler — no `resourceActivations` entry, so they never
   appear in `resolve`/`reconcile-plan`/`report`. `/hivemind:design-pack`'s own Step 6 (TASK-179)

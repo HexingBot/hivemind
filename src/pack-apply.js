@@ -106,6 +106,78 @@ export class ContentIntegrityMismatchError extends Error {
   }
 }
 
+// TASK-182 — dual-copy precedence (human decision, direction (a), recorded on
+// the ticket 2026-08-04): "the reconciler retires the project-scope resource
+// when the plugin ships the same resource id at an equal-or-newer pin; the
+// project-scope copy survives only when it is ahead of the plugin." Also
+// settles the TASK-181 accident: applyPlan's search-path precedence (below)
+// let a STALE project copy silently shadow a NEWER plugin copy purely by
+// existsSync ordering, with no pin awareness at all -- the exact inversion of
+// this rule.
+//
+// The wrinkle the direction does not settle on its own: `pin` is documented
+// (state/integrations-lock.schema.json) as "commit-sha or exact semver --
+// never a range", and a git-sha pin has NO natural order. Given an installed
+// pin A and a shipped pin B, no arithmetic says which is newer unless BOTH
+// happen to parse as semver (major.minor.patch). INVESTIGATED alternatives
+// (recorded, not merely asserted):
+//   - an ORDERABLE VERSION FIELD alongside the sha (schema addition +
+//     lockfile migration for every existing entry) -- rejected as more
+//     machinery than this ticket's single concrete case (watch) justifies,
+//     and the schema already permits an exact-semver `pin` today, so a pack
+//     that wants orderability can already choose that shape without a schema
+//     change.
+//   - PROVENANCE-BASED ordering (resolve from "when was each pin adopted")
+//     -- rejected because the PLUGIN's candidate is never itself a lock
+//     entry (assimilateSkill only records an entry for a PROJECT's own
+//     staged/installed copy), so there is no "installed_at" to compare the
+//     plugin's shipped pin against in the first place; this doesn't actually
+//     resolve the comparison it would need to resolve.
+//   - EQUALITY-ONLY (retire only on a byte-identical pin, keep-and-surface on
+//     any divergence) -- the always-safe fallback, but leaves the exact
+//     scenario AC6 exists to test (a genuinely newer plugin pin) unresolved.
+// CHOSEN: semver-aware comparison, reusing the pin field's ALREADY-PERMITTED
+// semver shape (no schema/migration cost) -- decidable when both sides parse
+// as semver, honestly 'undecidable' otherwise. Per the repo's Empty-result
+// contract, 'undecidable' must stay distinguishable from 'equal' and must
+// NEVER silently resolve to retiring the project's copy -- every caller below
+// treats it as the safe keep-both-and-surface outcome. In production, a real
+// git-sha `watch` pin divergence is therefore always 'undecidable' today
+// (reported, kept) unless/until a pack chooses to pin via semver instead.
+const SEMVER_TRIAD_RE = /^(\d+)\.(\d+)\.(\d+)/;
+
+/**
+ * Compare an INSTALLED (project-scope, already-in-the-lock) pin against a
+ * SHIPPED (plugin-desired, from the active descriptor's `resource.pin`) pin.
+ * Pure, no I/O. See the block comment above for the full decision record.
+ *
+ * @param {string} installedPin
+ * @param {string} shippedPin
+ * @returns {'equal'|'installed-newer'|'shipped-newer'|'undecidable'}
+ */
+export function comparePinPrecedence(installedPin, shippedPin) {
+  if (installedPin === shippedPin) return 'equal';
+  const a = typeof installedPin === 'string' ? installedPin.match(SEMVER_TRIAD_RE) : null;
+  const b = typeof shippedPin === 'string' ? shippedPin.match(SEMVER_TRIAD_RE) : null;
+  if (!a || !b) return 'undecidable';
+  for (let i = 1; i <= 3; i++) {
+    const na = Number(a[i]);
+    const nb = Number(b[i]);
+    if (na !== nb) return na > nb ? 'installed-newer' : 'shipped-newer';
+  }
+  // Identical major.minor.patch (only a pre-release/build suffix differs, or
+  // no suffix at all beyond what SEMVER_TRIAD_RE captured) -- treated as
+  // equal, not undecidable; the numeric triad is what's actually orderable.
+  return 'equal';
+}
+
+/** True iff `precedence` means the PLUGIN's shipped pin should win (equal-or-
+ * newer, per the chosen rule above) -- the single predicate every call site
+ * below shares, so "equal-or-newer" is defined in exactly one place. */
+function shippedPinWins(precedence) {
+  return precedence === 'equal' || precedence === 'shipped-newer';
+}
+
 function bareSkillId(id) {
   return id.startsWith(SKILL_ID_PREFIX) ? id.slice(SKILL_ID_PREFIX.length) : id;
 }
@@ -282,17 +354,44 @@ function isRealOwnedSkillCopy(dir) {
 // `sourceRoots.length ? sourceRoots : [sourceRoot]` fallback was therefore
 // unreachable dead code. Removed rather than kept "for safety"; `sourceRoots`
 // is now the sole, required search-path input.
-function executeInstall(lock, op, { root, sourceRoots, owner }) {
+//
+// TASK-182 — `projectSourceRoot`, when given, is the ONE entry in
+// `sourceRoots` that represents the project's own default staging dir
+// (applyPlan's `sourceRoot` param, always searchPath[0]). It is excluded from
+// the search ONLY when there is a real, DECIDABLE divergence between the
+// prior lock entry's pin and what's currently desired AND the plugin's
+// shipped pin wins (comparePinPrecedence, above) — otherwise the pre-existing
+// TASK-181 project-leads order is completely untouched (a fresh install with
+// no prior entry, an installed-newer/undecidable divergence, or no
+// divergence at all all fall through unchanged). Returns retirement metadata
+// so both applyPlan loops (install/replace) can announce it identically —
+// see the "must never be silent" constraint on TASK-182.
+function executeInstall(lock, op, {
+  root, sourceRoots, owner, projectSourceRoot,
+}) {
   const { id, resource } = op;
   const bareId = resource.id;
+
+  const priorEntry = lock.resources[id];
+  const hasPriorPin = Boolean(priorEntry && priorEntry.pin !== undefined);
+  const pinDiverges = hasPriorPin && priorEntry.pin !== resource.pin;
+  const precedence = pinDiverges ? comparePinPrecedence(priorEntry.pin, resource.pin) : null;
+  const retiring = pinDiverges && shippedPinWins(precedence);
+
   // TASK-181 — owned copies can live in more than one place, so this is a
   // SEARCH PATH, not a single directory. applyPlan (the only caller) always
   // leads this array with the project's own `<repoRoot>/assimilated-skills/`
   // (where src/assimilate.js stages a skill the project itself adopted, so a
-  // local adoption always beats a built-in of the same id), with the
-  // plugin's own owned copies as fallbacks that make built-in packs work in
-  // a consumer project at all.
-  const candidates = (Array.isArray(sourceRoots) ? sourceRoots : [])
+  // local adoption always beats a built-in of the same id BY DEFAULT), with
+  // the plugin's own owned copies as fallbacks that make built-in packs work
+  // in a consumer project at all. TASK-182 narrows that default: when
+  // `retiring` is true, the project's own candidate is dropped from the
+  // search entirely so this materialize cannot re-select the very stale
+  // content driving the divergence it exists to resolve.
+  const effectiveSourceRoots = retiring && projectSourceRoot
+    ? (sourceRoots || []).filter((base) => base !== projectSourceRoot)
+    : sourceRoots;
+  const candidates = (Array.isArray(effectiveSourceRoots) ? effectiveSourceRoots : [])
     .filter(Boolean)
     .map((base) => join(base, bareId));
   // TASK-183 AC2 — an invalid/empty candidate is skipped in favour of the
@@ -308,9 +407,17 @@ function executeInstall(lock, op, { root, sourceRoots, owner }) {
   // the module header). A stage-time baseline only exists when the CURRENT
   // lock entry already carries BOTH new-style fields (an entry with only the
   // legacy `integrity`, or no entry at all, has nothing to verify against —
-  // documented backward-compat, see the module header).
-  const priorEntry = lock.resources[id];
-  const hasStageTimeBaseline = Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
+  // documented backward-compat, see the module header). TASK-182: the
+  // baseline is ALSO only meaningful when we are re-materializing the SAME
+  // pin that was staged — a deliberate pin switch (this ticket's retire
+  // path) makes the OLD baseline describe different content by definition,
+  // so comparing fresh (correct) content against a stale baseline would
+  // always false-mismatch. Gated on pin equality, never on `retiring` alone,
+  // so a same-pin re-verify (the pre-existing TASK-142 contract) is
+  // completely unaffected.
+  const samePinAsBaseline = !hasPriorPin || priorEntry.pin === resource.pin;
+  const hasStageTimeBaseline = samePinAsBaseline
+    && Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
   if (hasStageTimeBaseline) {
     const actualContentIntegrity = `sha256:${hashOwnedSkillDir(sourceDir)}`;
     if (actualContentIntegrity !== priorEntry.content_integrity) {
@@ -347,6 +454,19 @@ function executeInstall(lock, op, { root, sourceRoots, owner }) {
     verified: 'unsigned',
   };
   addOwner(lock, id, owner);
+
+  // TASK-182 — retirement metadata for the caller (applyPlan) to announce;
+  // "the retire is user-visible and must be announced, never silent" (the
+  // ticket's second hard constraint). Undefined fromPin/precedence when there
+  // was nothing to retire (a plain install/reinstall) — retired is always a
+  // real boolean either way, never merely absent, so a caller can check it
+  // without an existence test.
+  return {
+    retired: retiring,
+    fromPin: hasPriorPin ? priorEntry.pin : undefined,
+    toPin: resource.pin,
+    precedence,
+  };
 }
 
 // remove op = { id: "skill:<bareId>", entry: <lock entry, plan-time snapshot> }.
@@ -408,7 +528,23 @@ export async function applyPlan({
 
   for (const op of plan.install || []) {
     try {
-      executeInstall(lock, op, { root, sourceRoots: searchPath, owner });
+      const result = executeInstall(lock, op, {
+        root, sourceRoots: searchPath, owner, projectSourceRoot: sourceRoot,
+      });
+      // TASK-182 — "the retire is user-visible and must be announced, never
+      // silent": a fresh install can itself retire a divergent STAGED (but
+      // not-yet-live) project pin in favor of the plugin's — see
+      // executeInstall's own header for why this reaches the install bucket
+      // rather than replace (TASK-121 staged-vs-live).
+      if (result && result.retired) {
+        report.push({
+          id: op.id,
+          reason: `installed "${op.id}" from the plugin's shipped pin "${result.toPin}", superseding a divergent staged project pin "${result.fromPin}" (${result.precedence}, TASK-182 direction (a)) -- if this resource was also reachable under a project-scope alias, that alias now resolves through the plugin's own copy instead`,
+          blocking: false,
+          executed: true,
+          retired: true,
+        });
+      }
     } catch (err) {
       if (op.resource.required === 'hard') await abort(op.id, err);
       report.push({ id: op.id, reason: err.message, blocking: false });
@@ -425,14 +561,37 @@ export async function applyPlan({
   }
 
   for (const op of plan.replace || []) {
-    // Deferred, not this wave's scope (see module header) — reported, not
-    // silently dropped, so a caller can see the gap.
-    report.push({
-      id: op.id,
-      reason: 'replace is not yet executed by the Wave-1 applier (install/remove only)',
-      blocking: false,
-      executed: false,
-    });
+    // TASK-182 — dual-copy precedence (human decision, direction (a)):
+    // "equal-or-newer" plugin pin retires the stale project-scope copy in
+    // place (never a bare REMOVE — AC5). Any other outcome (project
+    // genuinely ahead, or a comparison this ticket's chosen rule cannot
+    // decide at all) stays on the pre-existing deferred/keep-as-is path, the
+    // Wave-1 applier's original scope for `replace` — reported either way,
+    // never silently dropped.
+    const precedence = comparePinPrecedence(op.from, op.to);
+    if (!shippedPinWins(precedence)) {
+      const reason = precedence === 'installed-newer'
+        ? `installed pin "${op.from}" is ahead of the shipped pin "${op.to}" for "${op.id}" -- the project-scope copy is a deliberate override; kept as-is (TASK-182 direction (a))`
+        : `pin drift for "${op.id}" (installed "${op.from}" vs shipped "${op.to}") cannot be ordered (non-semver pin on at least one side) -- keeping the currently-installed project-scope copy rather than risk retiring a deliberate override; review manually (TASK-182's documented residual: "cannot determine" must never silently resolve to a retire)`;
+      report.push({ id: op.id, reason, blocking: false, executed: false });
+      continue;
+    }
+
+    try {
+      executeInstall(lock, { id: op.id, resource: op.resource }, {
+        root, sourceRoots: searchPath, owner, projectSourceRoot: sourceRoot,
+      });
+      report.push({
+        id: op.id,
+        reason: `retired the project-scope copy of "${op.id}" (pin "${op.from}") in favor of the plugin's shipped pin "${op.to}" (${precedence}, TASK-182 direction (a)) -- if this resource was reachable under a project-scope alias (e.g. an unnamespaced skill/command name), that alias now resolves through the plugin's own copy instead; update any script or doc that named the old alias`,
+        blocking: false,
+        executed: true,
+        retired: true,
+      });
+    } catch (err) {
+      if (op.resource.required === 'hard') await abort(op.id, err);
+      report.push({ id: op.id, reason: err.message, blocking: false });
+    }
   }
 
   await writeLock(lockPath, lock);

@@ -8895,6 +8895,22 @@ var ContentIntegrityMismatchError = class extends Error {
     this.actual = actual;
   }
 };
+var SEMVER_TRIAD_RE = /^(\d+)\.(\d+)\.(\d+)/;
+function comparePinPrecedence(installedPin, shippedPin) {
+  if (installedPin === shippedPin) return "equal";
+  const a = typeof installedPin === "string" ? installedPin.match(SEMVER_TRIAD_RE) : null;
+  const b = typeof shippedPin === "string" ? shippedPin.match(SEMVER_TRIAD_RE) : null;
+  if (!a || !b) return "undecidable";
+  for (let i = 1; i <= 3; i++) {
+    const na = Number(a[i]);
+    const nb = Number(b[i]);
+    if (na !== nb) return na > nb ? "installed-newer" : "shipped-newer";
+  }
+  return "equal";
+}
+function shippedPinWins(precedence) {
+  return precedence === "equal" || precedence === "shipped-newer";
+}
 function bareSkillId(id) {
   return id.startsWith(SKILL_ID_PREFIX) ? id.slice(SKILL_ID_PREFIX.length) : id;
 }
@@ -8962,16 +8978,27 @@ function isRealOwnedSkillCopy(dir) {
     return false;
   }
 }
-function executeInstall(lock, op, { root, sourceRoots, owner }) {
+function executeInstall(lock, op, {
+  root,
+  sourceRoots,
+  owner,
+  projectSourceRoot
+}) {
   const { id, resource } = op;
   const bareId = resource.id;
-  const candidates = (Array.isArray(sourceRoots) ? sourceRoots : []).filter(Boolean).map((base) => (0, import_node_path4.join)(base, bareId));
+  const priorEntry = lock.resources[id];
+  const hasPriorPin = Boolean(priorEntry && priorEntry.pin !== void 0);
+  const pinDiverges = hasPriorPin && priorEntry.pin !== resource.pin;
+  const precedence = pinDiverges ? comparePinPrecedence(priorEntry.pin, resource.pin) : null;
+  const retiring = pinDiverges && shippedPinWins(precedence);
+  const effectiveSourceRoots = retiring && projectSourceRoot ? (sourceRoots || []).filter((base) => base !== projectSourceRoot) : sourceRoots;
+  const candidates = (Array.isArray(effectiveSourceRoots) ? effectiveSourceRoots : []).filter(Boolean).map((base) => (0, import_node_path4.join)(base, bareId));
   const sourceDir = candidates.find((dir) => isRealOwnedSkillCopy(dir));
   if (!sourceDir) {
     throw new Error(`owned source not found for "${bareId}" (no candidate held a readable ${SKILL_FILENAME}): ${candidates.join(", ")}`);
   }
-  const priorEntry = lock.resources[id];
-  const hasStageTimeBaseline = Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
+  const samePinAsBaseline = !hasPriorPin || priorEntry.pin === resource.pin;
+  const hasStageTimeBaseline = samePinAsBaseline && Boolean(priorEntry && priorEntry.content_integrity && priorEntry.source_integrity);
   if (hasStageTimeBaseline) {
     const actualContentIntegrity = `sha256:${hashOwnedSkillDir(sourceDir)}`;
     if (actualContentIntegrity !== priorEntry.content_integrity) {
@@ -9000,6 +9027,12 @@ function executeInstall(lock, op, { root, sourceRoots, owner }) {
     verified: "unsigned"
   };
   addOwner(lock, id, owner);
+  return {
+    retired: retiring,
+    fromPin: hasPriorPin ? priorEntry.pin : void 0,
+    toPin: resource.pin,
+    precedence
+  };
 }
 function executeRemove(lock, op, { root, owner }) {
   const { id } = op;
@@ -9026,7 +9059,21 @@ async function applyPlan({
   }
   for (const op of plan2.install || []) {
     try {
-      executeInstall(lock, op, { root, sourceRoots: searchPath, owner });
+      const result = executeInstall(lock, op, {
+        root,
+        sourceRoots: searchPath,
+        owner,
+        projectSourceRoot: sourceRoot
+      });
+      if (result && result.retired) {
+        report.push({
+          id: op.id,
+          reason: `installed "${op.id}" from the plugin's shipped pin "${result.toPin}", superseding a divergent staged project pin "${result.fromPin}" (${result.precedence}, TASK-182 direction (a)) -- if this resource was also reachable under a project-scope alias, that alias now resolves through the plugin's own copy instead`,
+          blocking: false,
+          executed: true,
+          retired: true
+        });
+      }
     } catch (err) {
       if (op.resource.required === "hard") await abort(op.id, err);
       report.push({ id: op.id, reason: err.message, blocking: false });
@@ -9041,12 +9088,30 @@ async function applyPlan({
     }
   }
   for (const op of plan2.replace || []) {
-    report.push({
-      id: op.id,
-      reason: "replace is not yet executed by the Wave-1 applier (install/remove only)",
-      blocking: false,
-      executed: false
-    });
+    const precedence = comparePinPrecedence(op.from, op.to);
+    if (!shippedPinWins(precedence)) {
+      const reason = precedence === "installed-newer" ? `installed pin "${op.from}" is ahead of the shipped pin "${op.to}" for "${op.id}" -- the project-scope copy is a deliberate override; kept as-is (TASK-182 direction (a))` : `pin drift for "${op.id}" (installed "${op.from}" vs shipped "${op.to}") cannot be ordered (non-semver pin on at least one side) -- keeping the currently-installed project-scope copy rather than risk retiring a deliberate override; review manually (TASK-182's documented residual: "cannot determine" must never silently resolve to a retire)`;
+      report.push({ id: op.id, reason, blocking: false, executed: false });
+      continue;
+    }
+    try {
+      executeInstall(lock, { id: op.id, resource: op.resource }, {
+        root,
+        sourceRoots: searchPath,
+        owner,
+        projectSourceRoot: sourceRoot
+      });
+      report.push({
+        id: op.id,
+        reason: `retired the project-scope copy of "${op.id}" (pin "${op.from}") in favor of the plugin's shipped pin "${op.to}" (${precedence}, TASK-182 direction (a)) -- if this resource was reachable under a project-scope alias (e.g. an unnamespaced skill/command name), that alias now resolves through the plugin's own copy instead; update any script or doc that named the old alias`,
+        blocking: false,
+        executed: true,
+        retired: true
+      });
+    } catch (err) {
+      if (op.resource.required === "hard") await abort(op.id, err);
+      report.push({ id: op.id, reason: err.message, blocking: false });
+    }
   }
   await writeLock(lockPath, lock);
   return { report };

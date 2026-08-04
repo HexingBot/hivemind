@@ -60,6 +60,21 @@ changed reproduces the same `plan` with empty `install`/`remove`/`replace`.
   resource it could not materialize and stopped short; `report` is that pack's own per-pack report,
   with entries of the form `skill:<resource-id>` (distinct from the top-level `plan.report`, which
   only ever holds `mcp`/`plugin` entries).
+- **Dual-copy precedence (TASK-182):** a skill that is both a project-scope resource (`.claude/skills/<id>/`,
+  reachable as `/<id>`) AND shipped directly with the plugin (`${CLAUDE_PLUGIN_ROOT}/skills/<id>/`,
+  reachable as `/hivemind:<id>`) can diverge if the project-scope copy goes stale relative to a newer
+  plugin release. **The plugin copy wins whenever the comparison is decidable and equal-or-newer** —
+  see `docs/design/addon-packs.md` §2.4 for the full decision record (including the residual: a
+  non-semver/git-sha pin divergence is `'undecidable'` and is always kept, never silently retired).
+  When this happens, `packs[].report` carries an entry with `retired: true` and `executed: true`,
+  naming the old and new pin in `reason` — surface this to the human exactly like any other report
+  entry; it means the project-scope alias for that skill now serves the plugin's content, not a
+  stale local one. **To tell which copy is currently active and at what pin:** read the resource's
+  own `.claude/skills/<resource-id>/SKILL.md` provenance block (`- pin: <value>`, under "## Sources &
+  provenance (hivemind)") for what's actually live, and compare it against the SAME resource's `pin`
+  in `packs/design-power/descriptor.json` / `packs/watch/descriptor.json` (whichever pack owns it)
+  for what the plugin currently ships; `source_root` (below) names the directory the last
+  `reconcile-apply` actually vendored content from.
 - `planned_install_count` (= `plan.install.length`) and `installed_count` (= the sum of every pack's
   `installed.length`) are the run-level triage numbers — read these FIRST, before looking at any
   individual pack's `report`. `source_root` is the directory the reconciler vendored owned skill

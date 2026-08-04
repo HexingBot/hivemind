@@ -628,8 +628,13 @@ describe('TASK-183 — precedence: applyPlan multi-root search proves a local ad
   });
 });
 
-describe('a replace op is surfaced in the report as deferred, never silently dropped', () => {
+describe('a replace op with an UNDECIDABLE pin comparison is surfaced in the report as deferred, never silently dropped', () => {
   it('does_not_touch_the_lock_entry_or_live_dir_and_reports_executed_false', async () => {
+    // "v1"/"v2" are opaque, non-semver tokens -- comparePinPrecedence cannot
+    // order them (see tests/pack-apply-pin-precedence.spec.js), so this stays
+    // on the deferred/keep-as-is path exactly like before TASK-182. The
+    // DECIDABLE cases (plugin ahead, project ahead) are covered by the
+    // "TASK-182 — dual-copy precedence" describe block below.
     const { applyPlan } = await import(PROD.packApply);
 
     const root = makeTmpDir('pa-replace-deferred');
@@ -652,9 +657,217 @@ describe('a replace op is surfaced in the report as deferred, never silently dro
 
     expect(result.report).toHaveLength(1);
     expect(result.report[0]).toMatchObject({ id: 'skill:foo', executed: false });
+    expect(result.report[0].reason).toMatch(/cannot.*ordered|undecidable/i);
 
     expect(readFileSync(join(liveDir, 'SKILL.md'), 'utf8')).toBe('# Foo v1\n');
     const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
     expect(onDisk.resources['skill:foo'].pin).toBe('v1');
+  });
+});
+
+// TASK-182 — dual-copy precedence (human decision, direction (a), recorded on
+// the ticket 2026-08-04): "the reconciler retires the project-scope resource
+// when the plugin ships the same resource id at an equal-or-newer pin; the
+// project-scope copy survives only when it is ahead of the plugin." This also
+// reconciles the TASK-181 accident named in that decision:
+// src/pack-apply.js#applyPlan's search-path precedence (consumer staging dir
+// always leads the plugin, by first-existing-match) let a STALE project copy
+// silently shadow a NEWER plugin copy -- the exact inversion of the rule.
+//
+// AC5's already-installed-project precondition is modeled explicitly in every
+// fixture below: a lockfile that ALREADY owns skill:watch (a prior
+// reconcile-apply materialized it), never a fresh/never-installed resource --
+// a bare REMOVE against that state is the defect this ticket exists to avoid
+// (see the "no dangling edge, no lost skill" assertions).
+describe('TASK-182 — dual-copy precedence: plugin wins on a DECIDABLE equal-or-newer pin, project wins only when ahead, an undecidable divergence is never silently resolved', () => {
+  it('AC6 — plugin ships watch at a NEWER decidable pin than an already-installed project lockfile entry: the stale project-scope copy is retired, the plugin content materializes, and the retirement is announced -- no dangling edge, no lost skill', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-182-shipped-newer-retires');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch v1\nSTALE project-pinned copy -- must be retired.\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch v2\nCurrent plugin copy -- must win.\n');
+
+    // AC5 precondition: already installed & lock-owned, materialized at the
+    // OLDER pin (a prior reconcile-apply run, not a fresh/never-installed id).
+    const liveDir = join(root, '.claude', 'skills', 'watch');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Watch v1\nSTALE project-pinned copy -- must be retired.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, { 'skill:watch': makeEntry({ pin: '1.0.0', owners: ['watch@1.0.0'], required: 'soft' }) });
+
+    const plan = {
+      install: [],
+      remove: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+        from: '1.0.0',
+        to: '2.0.0',
+      }],
+      report: [],
+    };
+
+    const result = await applyPlan({
+      plan, lockPath, root, owner: 'watch@2.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    // Materialized from the PLUGIN candidate, not the stale project one.
+    expect(readFileSync(join(liveDir, 'SKILL.md'), 'utf8')).toBe('# Watch v2\nCurrent plugin copy -- must win.\n');
+
+    // AC5 — no dangling edge, no lost skill: the id is still owned and still
+    // live; this is an in-place content refresh, never a REMOVE.
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:watch'];
+    expect(entry).toBeDefined();
+    expect(entry.pin).toBe('2.0.0');
+    expect(entry.owners).toContain('watch@2.0.0');
+    expect(existsSync(liveDir)).toBe(true);
+
+    // Announced, never silent (the "must never be silent" constraint).
+    expect(result.report).toHaveLength(1);
+    expect(result.report[0]).toMatchObject({ id: 'skill:watch', executed: true, retired: true });
+    expect(result.report[0].reason).toMatch(/retired/i);
+    expect(result.report[0].reason).toMatch(/1\.0\.0/);
+    expect(result.report[0].reason).toMatch(/2\.0\.0/);
+  });
+
+  it('the installed (project) pin is AHEAD of the shipped (plugin) pin: the project-scope copy survives untouched and is reported informationally, never retired', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-182-installed-newer-survives');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch v3\nDeliberately-pinned-ahead project copy -- must survive.\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch v2\nOlder plugin copy -- must lose.\n');
+
+    const liveDir = join(root, '.claude', 'skills', 'watch');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Watch v3\nDeliberately-pinned-ahead project copy -- must survive.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, { 'skill:watch': makeEntry({ pin: '3.0.0', owners: ['watch@3.0.0'], required: 'soft' }) });
+
+    const plan = {
+      install: [],
+      remove: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+        from: '3.0.0',
+        to: '2.0.0',
+      }],
+      report: [],
+    };
+
+    const result = await applyPlan({
+      plan, lockPath, root, owner: 'watch@2.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    expect(readFileSync(join(liveDir, 'SKILL.md'), 'utf8')).toBe('# Watch v3\nDeliberately-pinned-ahead project copy -- must survive.\n');
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(onDisk.resources['skill:watch'].pin).toBe('3.0.0');
+
+    expect(result.report).toHaveLength(1);
+    expect(result.report[0]).toMatchObject({ id: 'skill:watch', executed: false });
+    expect(result.report[0].retired).toBeFalsy();
+    expect(result.report[0].reason).toMatch(/ahead/i);
+  });
+
+  it('an UNDECIDABLE divergence (real git-sha-shaped pins) keeps the project-scope copy and surfaces the ambiguity loudly instead of silently retiring it', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-182-undecidable-git-shas');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch (project sha)\nProject-pinned copy.\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch (plugin sha)\nPlugin copy.\n');
+
+    const projectPin = '83da59fa78c3eee9e20f515fe75c438bb5166efd';
+    const pluginPin = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+
+    const liveDir = join(root, '.claude', 'skills', 'watch');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Watch (project sha)\nProject-pinned copy.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, { 'skill:watch': makeEntry({ pin: projectPin, owners: ['watch@1.0.0'], required: 'soft' }) });
+
+    const plan = {
+      install: [],
+      remove: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: pluginPin, scope: 'project', required: 'soft' },
+        from: projectPin,
+        to: pluginPin,
+      }],
+      report: [],
+    };
+
+    const result = await applyPlan({
+      plan, lockPath, root, owner: 'watch@2.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    // Kept -- the residual "cannot determine" outcome must never silently
+    // retire the project's copy.
+    expect(readFileSync(join(liveDir, 'SKILL.md'), 'utf8')).toBe('# Watch (project sha)\nProject-pinned copy.\n');
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(onDisk.resources['skill:watch'].pin).toBe(projectPin);
+
+    expect(result.report).toHaveLength(1);
+    expect(result.report[0]).toMatchObject({ id: 'skill:watch', executed: false });
+    expect(result.report[0].retired).toBeFalsy();
+    expect(result.report[0].reason).toMatch(/cannot.*order|undecidable/i);
+  });
+
+  it('a fresh install (no prior lock entry) with a divergent staged project pin also routes through the plugin candidate when the plugin is equal-or-newer, and announces it', async () => {
+    // Distinct from the replace-op fixtures above: this exercises the INSTALL
+    // path (plan.install, not plan.replace) -- e.g. a project ran its own
+    // `assimilate stage` (which records a lock entry at STAGE time, before
+    // any materialize -- src/assimilate.js) but the resource was never live
+    // yet when this reconcile-apply runs, so plan() proposes an install, not
+    // a replace (TASK-121's staged-vs-live rule). The SAME precedence
+    // decision must still apply to the search-path candidate selection.
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-182-install-path-shipped-newer');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch v1\nSTALE staged-but-not-yet-live project copy.\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch v2\nCurrent plugin copy -- must win.\n');
+
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, { 'skill:watch': makeEntry({ pin: '1.0.0', owners: [], required: 'soft' }) });
+
+    const plan = {
+      install: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    const result = await applyPlan({
+      plan, lockPath, root, owner: 'watch@2.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    const liveFile = join(root, '.claude', 'skills', 'watch', 'SKILL.md');
+    expect(readFileSync(liveFile, 'utf8')).toBe('# Watch v2\nCurrent plugin copy -- must win.\n');
+
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(onDisk.resources['skill:watch'].pin).toBe('2.0.0');
+
+    expect(result.report).toHaveLength(1);
+    expect(result.report[0]).toMatchObject({ id: 'skill:watch', executed: true, retired: true });
   });
 });

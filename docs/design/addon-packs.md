@@ -49,6 +49,64 @@ The source spec's "if install fails, continue with a hole and report" is right f
 
 The setup phase gates on hard prereqs before handing off to the loop.
 
+### 2.4 Dual-copy precedence: project-scope vs plugin-shipped (TASK-182)
+
+A resource the plugin ships as a **built-in pack skill** can end up materialized in two places at
+once: `.claude/skills/<id>/` (project scope, reconciler-managed, reachable as the unnamespaced
+`/<id>`) and `${CLAUDE_PLUGIN_ROOT}/skills/<id>/` (shipped straight with the plugin, reachable as
+`/hivemind:<id>`, not reconciler-managed at all). They start byte-identical, but the project-scope
+copy is only refreshed when someone re-runs `reconcile-apply` — so a plugin release that re-pins the
+resource can leave the project copy stale indefinitely.
+
+**Decision (human-directed, 2026-08-04, TASK-182): the plugin copy wins when it is current.** The
+reconciler retires the project-scope resource's stale content when the plugin ships the same
+resource id at an **equal-or-newer pin**, releasing the lockfile edge cleanly (never a bare `REMOVE`
+against an already-installed consumer — that would delete a working skill out from under a project;
+see TASK-180/TASK-182's AC5). The project-scope copy survives **only when it is genuinely ahead** —
+i.e. a consumer deliberately re-pinned it newer than what the plugin currently ships. This also
+settles what TASK-181 shipped as a **de-facto, undocumented, and ultimately accidental** rule: prior
+to this decision, `src/pack-apply.js#applyPlan`'s search path let the project's own staging dir
+(`<repoRoot>/assimilated-skills/<id>/`, when present) always win by first-existing-match, with no pin
+awareness at all — letting a *stale* project copy silently shadow a *newer* plugin copy, the exact
+inversion of the rule above.
+
+**Mechanism.** `src/pack-apply.js#executeInstall` compares the lock's prior recorded pin for the
+resource against the currently-desired (plugin-shipped) pin via `comparePinPrecedence`. When they
+diverge and the plugin's pin wins, the project's own default search-path candidate is excluded from
+that materialize, so the plugin's content wins the copy — for an already-installed resource this
+happens through the reconciler's `replace` bucket (now actually executed for the winning case,
+rather than left permanently deferred), for a never-yet-materialized one through `install`. Either
+way the resource's lock entry and live directory are refreshed in place — the id is never dropped,
+so there is no dangling ownership edge and no window where the skill is simply gone. Every retire is
+announced in `packs[].report` (`{ retired: true, executed: true, reason }`, naming the old and new
+pin) — see `commands/design-pack.md` Step 4 for exactly which output fields to check to tell which
+copy is currently active and at what pin.
+
+**The unresolved wrinkle, and how it's handled.** `pin` is documented (`state/integrations-
+lock.schema.json`) as "commit-sha or exact semver — never a range," and a git-sha pin has no natural
+order — no arithmetic says whether one sha is "newer" than another. Three approaches were weighed:
+- *Equality only* (retire only on a byte-identical pin) — always computable and safe, but leaves the
+  actual divergence case (a genuinely newer plugin pin) permanently unresolved.
+- *An orderable version field* alongside the pin, in the descriptor and lockfile schema — makes
+  "newer" always meaningful, at the cost of a schema addition and a migration for every existing
+  lockfile entry.
+- *Provenance-based* (order by when each pin was adopted) — does not actually work here: the
+  plugin's candidate is never itself a lock entry (only a project's own staged/installed copy gets
+  one), so there is no adoption timestamp to compare the plugin's shipped pin against.
+
+**Chosen: semver-aware comparison, reusing the pin field's already-permitted semver shape** — no
+schema change, no migration. `comparePinPrecedence(installedPin, shippedPin)` returns `'equal'` (pins
+identical), `'installed-newer'` / `'shipped-newer'` (both pins parse as `major.minor.patch` and
+differ), or `'undecidable'` (a git sha on either side, or any other non-semver/mismatched shape).
+**`'undecidable'` is never treated as a license to retire** — per this repo's Empty-result contract,
+"cannot determine which is newer" must stay distinguishable from "they are the same," so an
+undecidable divergence keeps the project-scope copy exactly as TASK-181 left it and surfaces the
+ambiguity in the report instead of silently resolving it either way. In production this means a real
+git-sha `watch` divergence (the concrete case this ticket exists for) is `'undecidable'` today and
+is kept-and-reported, not auto-retired — the decidable (semver) path exists so a pack that *chooses*
+to pin via semver gets the full equal-or-newer behavior, and is exercised end to end by
+`tests/e2e/pack-apply.spec.js`'s "TASK-182 — dual-copy precedence" describe block.
+
 ---
 
 ## 3. Execution sequence
