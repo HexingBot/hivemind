@@ -106,16 +106,24 @@ function countUnmergedCommits(repoRoot, targetBranch, branch, label) {
 }
 
 /** Normalize a filesystem path for cross-representation comparison: resolve
- * symlinks / Windows 8.3 short names to the canonical long form, then use
- * forward slashes — `git worktree list --porcelain` reports forward-slash
- * paths even on Windows, and a caller-supplied path may be a backslash
- * `join()` result or an 8.3 short form from `os.tmpdir()`. Falls back to a
- * plain slash-normalized path if the target no longer exists on disk. */
-function normalizeForCompare(p) {
+ * symlinks / Windows 8.3 short names to the canonical long form, then — on
+ * win32 only — rewrite to forward slashes, since `git worktree list
+ * --porcelain` reports forward-slash paths even on Windows, and a
+ * caller-supplied path may be a backslash `join()` result or an 8.3 short
+ * form from `os.tmpdir()`. The rewrite is gated on `process.platform ===
+ * 'win32'` (TASK-195 fix round 2, LOW-1): an unconditional backslash rewrite
+ * is an over-normalization vector on POSIX, where `\` is a legal filename
+ * character — a directory literally named `a\b` would otherwise compare
+ * equal to the path `a/b`. Git never emits backslash-separated paths on
+ * POSIX, so no rewrite is needed there. Falls back to a plain (still
+ * platform-gated) normalized path if the target no longer exists on disk. */
+export function normalizeForCompare(p) {
   try {
-    return realpathSync.native(p).replace(/\\/g, '/');
+    const resolved = realpathSync.native(p);
+    return process.platform === 'win32' ? resolved.replace(/\\/g, '/') : resolved;
   } catch {
-    return String(p).replace(/\\/g, '/');
+    const s = String(p);
+    return process.platform === 'win32' ? s.replace(/\\/g, '/') : s;
   }
 }
 
@@ -189,35 +197,66 @@ export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
     return { merged: true, sha };
   }
 
-  // Non-zero exit — determine whether this is a real content conflict (git
-  // leaves conflict markers + unmerged index entries) via `git status`
-  // rather than parsing locale-dependent stdout text.
-  const statusOut = git(repoRoot, ['status', '--porcelain=v1']).stdout || '';
-  const conflictedFiles = statusOut
-    .split('\n')
-    .filter((l) => UNMERGED_STATUS_RE.test(l))
-    .map((l) => l.slice(3).trim());
+  // Non-zero exit — but a failed `git merge` does not always mean a merge
+  // was actually STARTED: an unresolvable branch name or a dirty primary
+  // tree both fail before MERGE_HEAD is ever written (verified against real
+  // git). Probe MERGE_HEAD (same form as the up-front check above) BEFORE
+  // doing anything abort-related (TASK-195 fix round 2, MEDIUM-1) — the
+  // prior version unconditionally ran `git merge --abort` here, which
+  // itself fails ("There is no merge to abort") for exactly these two
+  // cases, and that abort failure was misrouted to E_MERGE_ABORT_FAILED —
+  // a FALSE "may be left mid-merge; manual intervention required" while the
+  // repo was actually clean. An operator acting on that false claim (e.g.
+  // `git reset --hard`) in the dirty-primary-tree case would have destroyed
+  // the very uncommitted edit that caused the refusal.
+  const mergeHeadAfterFailure = git(repoRoot, ['rev-parse', '--verify', '-q', 'MERGE_HEAD']);
+  const mergeWasStarted = mergeHeadAfterFailure.status === 0;
 
-  // Always abort — conflict or not — so the main line never ends up parked
-  // mid-merge (see module doc comment, case 2). Check the abort's own exit
-  // status instead of discarding it (TASK-195 fix round, MEDIUM-1): a failed
-  // abort must be surfaced, not silently swallowed while a half-merged state
-  // is left behind.
-  const abortResult = git(repoRoot, ['merge', '--abort']);
-  if (abortResult.status !== 0) {
-    throw makeErr(
-      'E_MERGE_ABORT_FAILED',
-      `mergeWorktreeBranch: merge of ${branch} failed and \`git merge --abort\` itself failed (exit ` +
-      `${abortResult.status}): ${abortResult.stderr} — ${repoRoot} may be left mid-merge; manual intervention required`,
-    );
+  if (mergeWasStarted) {
+    // Determine whether this is a real content conflict (git leaves conflict
+    // markers + unmerged index entries) via `git status` rather than parsing
+    // locale-dependent stdout text. A failed `git status` here must be
+    // surfaced, not silently read as "no conflicts" via `.stdout || ''`
+    // (TASK-195 fix round 2, LOW-1 — same seam as MEDIUM-1): that would
+    // mislabel a real conflict as an unrelated merge failure while leaving
+    // the merge parked instead of aborting it.
+    const statusOut = git(repoRoot, ['status', '--porcelain=v1']);
+    if (statusOut.status !== 0) {
+      throw makeErr(
+        'E_GIT_FAILED',
+        `mergeWorktreeBranch: git status --porcelain=v1 failed while inspecting a conflicted merge of ${branch} ` +
+        `(exit ${statusOut.status}): ${statusOut.stderr}`,
+      );
+    }
+    const conflictedFiles = statusOut.stdout
+      .split('\n')
+      .filter((l) => UNMERGED_STATUS_RE.test(l))
+      .map((l) => l.slice(3).trim());
+
+    // A merge that genuinely started is always aborted, so the main line
+    // never ends up parked mid-merge (see module doc comment, case 2). Check
+    // the abort's own exit status instead of discarding it: a failed abort
+    // must be surfaced, not silently swallowed while a half-merged state is
+    // left behind. This is now reachable ONLY when a merge was actually in
+    // progress, so E_MERGE_ABORT_FAILED can no longer over-fire.
+    const abortResult = git(repoRoot, ['merge', '--abort']);
+    if (abortResult.status !== 0) {
+      throw makeErr(
+        'E_MERGE_ABORT_FAILED',
+        `mergeWorktreeBranch: merge of ${branch} failed and \`git merge --abort\` itself failed (exit ` +
+        `${abortResult.status}): ${abortResult.stderr} — ${repoRoot} may be left mid-merge; manual intervention required`,
+      );
+    }
+
+    if (conflictedFiles.length > 0) {
+      return { merged: false, conflict: true, conflictedFiles };
+    }
   }
 
-  if (conflictedFiles.length > 0) {
-    return { merged: false, conflict: true, conflictedFiles };
-  }
-
-  // Not a content conflict (e.g. unknown branch, dirty target tree) —
-  // surface the real git failure rather than mislabeling it a conflict.
+  // Either not a content conflict at all (e.g. unknown branch, dirty target
+  // tree — MERGE_HEAD never existed, so no abort was even attempted), or a
+  // merge that started but left no unmerged index entries — surface the
+  // real git failure rather than mislabeling either case.
   throw makeErr(
     'E_MERGE_FAILED',
     `mergeWorktreeBranch: git merge ${branch} failed for a reason other than a content conflict: ${r.stderr}`,
@@ -229,8 +268,14 @@ export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
  * commits not yet merged into `targetBranch`, or uncommitted working-tree
  * changes — including a DETACHED worktree with a dirty working tree
  * (reported with `branch: null`; TASK-195 fix round, MEDIUM-3). Detection
- * only — never deletes anything. Fails CLOSED (throws E_GIT_FAILED) if git
- * cannot determine a branch's ahead-count, rather than under-reporting.
+ * only — never deletes anything. Fails CLOSED on BOTH legs, never
+ * under-reporting: an unresolvable `targetBranch` throws `E_GIT_FAILED` (the
+ * ahead-count leg), and a worktree whose own `git status` cannot answer —
+ * e.g. a corrupted per-worktree git-dir pointer or index, a realistic
+ * crashed-agent artifact — is reported `dirty: true` rather than read as
+ * clean (the dirty leg; TASK-195 fix round 2, MEDIUM-2 — an earlier version
+ * of this comment claimed fail-closed behavior for both legs while the
+ * dirty leg still read a `git status` failure as "not dirty").
  *
  * @param {{ repoRoot: string, targetBranch?: string }} opts
  * @returns {Array<{ path: string, branch: string | null, unmergedCommits: number, dirty: boolean }>}
@@ -254,8 +299,12 @@ export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}
       ? countUnmergedCommits(repoRoot, targetBranch, wt.branch, 'detectOrphanedWorktrees')
       : 0;
 
+    // Fails CLOSED (TASK-195 fix round 2, MEDIUM-2): a `git status` failure
+    // in THIS worktree (e.g. a corrupted git-dir pointer/index) is reported
+    // dirty rather than read as clean — the population this function exists
+    // to find includes exactly this kind of crashed-agent artifact.
     const dirtyOut = git(wt.path, ['status', '--porcelain']);
-    const dirty = dirtyOut.status === 0 && dirtyOut.stdout.trim().length > 0;
+    const dirty = dirtyOut.status !== 0 || dirtyOut.stdout.trim().length > 0;
 
     if (unmergedCommits > 0 || dirty) {
       orphans.push({ path: wt.path, branch: wt.branch, unmergedCommits, dirty });

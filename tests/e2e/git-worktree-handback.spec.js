@@ -12,12 +12,17 @@
 // conflict, orphan detection/disposal) against real git.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { writeFileSync, appendFileSync, existsSync, realpathSync } from 'node:fs';
+import { writeFileSync, appendFileSync, existsSync, realpathSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
-import { mergeWorktreeBranch, detectOrphanedWorktrees, removeMergedWorktree } from '../../src/worktree-handback.js';
+import {
+  mergeWorktreeBranch,
+  detectOrphanedWorktrees,
+  removeMergedWorktree,
+  normalizeForCompare,
+} from '../../src/worktree-handback.js';
 
 afterAll(() => cleanupAll());
 
@@ -560,5 +565,159 @@ describe('MEDIUM-4 — removeMergedWorktree requires targetBranch explicitly, no
 
     expect(thrown).not.toBeNull();
     expect(thrown.code).toBe('E_ARGS');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-195 fix round 2 — REQUEST-CHANGES replays (2 MEDIUM + 2 LOW, both
+// adjacent seams). See the latest orchestrator comment on tasks/TASK-195.json
+// for the full re-run attack battery this round responds to.
+// ---------------------------------------------------------------------------
+
+describe('MEDIUM-1 (fix round 2) — a merge that never STARTS must not be misrouted to E_MERGE_ABORT_FAILED', () => {
+  it('throws_E_MERGE_FAILED_not_E_MERGE_ABORT_FAILED_when_the_branch_name_never_resolves_and_no_MERGE_HEAD_is_ever_written', () => {
+    const dir = makeTmpDir('wt-medium1-typo');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    // No MERGE_HEAD is ever written for an unresolvable branch name — the
+    // merge never gets far enough to start one (confirmed against real git:
+    // `git merge --no-ff <typo> -m x` exits 1 with "not something we can
+    // merge", no .git/MERGE_HEAD). The pre-fix code unconditionally ran
+    // `git merge --abort` here anyway, which itself fails ("There is no
+    // merge to abort", exit 128) and got misrouted to E_MERGE_ABORT_FAILED
+    // — a false "may be left mid-merge; manual intervention required".
+    let thrown = null;
+    try {
+      mergeWorktreeBranch({ repoRoot: dir, branch: 'this-branch-does-not-exist-typo' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_MERGE_FAILED');
+
+    // The repo really is clean — no manual intervention needed, in contrast
+    // to what the misrouted E_MERGE_ABORT_FAILED message used to claim.
+    expect(existsSync(join(dir, '.git', 'MERGE_HEAD'))).toBe(false);
+    const status = git(dir, ['status', '--porcelain']);
+    expect(status.trim()).toBe('');
+  });
+});
+
+describe('MEDIUM-1 (fix round 2) — a dirty primary tree that refuses the merge outright must not be misrouted either', () => {
+  it('throws_E_MERGE_FAILED_not_E_MERGE_ABORT_FAILED_when_the_primary_tree_is_dirty_and_git_refuses_to_start_the_merge', () => {
+    const dir = makeTmpDir('wt-medium1-dirty');
+    initRepo(dir);
+    writeFileSync(join(dir, 'shared.txt'), 'line1\n');
+    git(dir, ['add', 'shared.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const wt = join(makeTmpDir('wt-medium1-dirty-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-dirty-primary', wt]);
+    appendFileSync(join(wt, 'shared.txt'), 'agent edit\n');
+    git(wt, ['add', 'shared.txt']);
+    git(wt, ['commit', '-q', '-m', 'agent edits shared.txt']);
+
+    // Dirty the PRIMARY tree with an uncommitted edit to the SAME file the
+    // merge would need to touch — git refuses to even attempt the merge
+    // ("Your local changes ... would be overwritten by merge"), so no
+    // MERGE_HEAD is ever written. This is the concrete data-loss scenario
+    // from the review: the pre-fix code told the operator the repo "may be
+    // left mid-merge; manual intervention required", and an operator acting
+    // on that (e.g. `git reset --hard`) would have destroyed this exact
+    // uncommitted edit — the repo is actually clean apart from it.
+    appendFileSync(join(dir, 'shared.txt'), 'uncommitted local edit\n');
+
+    let thrown = null;
+    try {
+      mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-dirty-primary' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_MERGE_FAILED');
+    expect(existsSync(join(dir, '.git', 'MERGE_HEAD'))).toBe(false);
+
+    // The uncommitted edit survives untouched — nothing was reset or aborted.
+    const status = git(dir, ['status', '--porcelain']);
+    expect(status).toContain('M shared.txt');
+    const primaryContent = readFileSync(join(dir, 'shared.txt'), 'utf8');
+    expect(primaryContent).toContain('uncommitted local edit');
+  });
+});
+
+describe('MEDIUM-2 (fix round 2) — detectOrphanedWorktrees must fail CLOSED, not open, when a worktree\'s own `git status` cannot answer', () => {
+  it('reports_the_worktree_as_dirty_when_git_status_itself_fails_instead_of_silently_reporting_zero_orphans', () => {
+    const dir = makeTmpDir('wt-medium2-status-fail');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const wt = join(makeTmpDir('wt-medium2-status-fail-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-status-fail', wt]);
+    // Unique staged work nothing else tracks — the exact population
+    // detectOrphanedWorktrees exists to find (a realistic crashed-agent
+    // artifact, per the review).
+    writeFileSync(join(wt, 'unique.txt'), 'staged, unique work\n');
+    git(wt, ['add', 'unique.txt']);
+    const wtPosix = toPosix(wt);
+
+    // Corrupt THIS worktree's own git-dir pointer — in a worktree, `.git` is
+    // a text file (not a directory) containing `gitdir: <path>` — so any git
+    // command run WITH THIS WORKTREE AS CWD fails outright (verified against
+    // real git: exit 128, "fatal: invalid gitfile format"). This reproduces
+    // the same failure mode the review's corrupted-index probe measured
+    // (also exit 128) by a more portable corruption; `git worktree list
+    // --porcelain` run from `repoRoot` is unaffected (it only reads
+    // administrative files under repoRoot/.git/worktrees), so the entry is
+    // still listed — only its own `git status` call fails.
+    //
+    // The `.git` file in a worktree is created with the hidden attribute on
+    // Windows, and Node's `writeFileSync` (which implicitly truncates) fails
+    // EPERM against a hidden file there — unlink first, then write fresh.
+    unlinkSync(join(wt, '.git'));
+    writeFileSync(join(wt, '.git'), 'not a valid gitdir pointer\n');
+    const statusProbe = spawnSync('git', ['status', '--porcelain'], { cwd: wt, encoding: 'utf8' });
+    expect(statusProbe.status).not.toBe(0);
+
+    const orphans = detectOrphanedWorktrees({ repoRoot: dir });
+    const entry = orphans.find((o) => o.path.replace(/\\/g, '/') === wtPosix);
+
+    expect(entry).toBeDefined();
+    expect(entry.dirty).toBe(true);
+  });
+});
+
+describe('LOW-1 (fix round 2) — normalizeForCompare only rewrites backslashes on win32, never on POSIX', () => {
+  it('leaves_a_literal_backslash_in_a_path_component_untouched_when_platform_is_not_win32', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    try {
+      // A nonexistent path hits the realpathSync fallback branch directly —
+      // exercising the rewrite logic without needing a literal
+      // backslash-named directory, which cannot be created on Windows
+      // (where this suite runs), since backslash IS the path separator
+      // there.
+      const posixPathWithLiteralBackslash = '/tmp/does-not-exist/a\\b';
+      expect(normalizeForCompare(posixPathWithLiteralBackslash)).toBe(posixPathWithLiteralBackslash);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
+  });
+
+  it('still_rewrites_backslashes_to_forward_slashes_when_platform_is_win32', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      const winPathWithBackslashes = 'C:\\does-not-exist\\a\\b';
+      expect(normalizeForCompare(winPathWithBackslashes)).toBe('C:/does-not-exist/a/b');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
   });
 });

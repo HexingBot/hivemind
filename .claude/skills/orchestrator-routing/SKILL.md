@@ -311,9 +311,13 @@ handling: nothing sweeps it automatically. Use `src/worktree-handback.js`'s
 `detectOrphanedWorktrees({ repoRoot, targetBranch })` to list every worktree
 (other than the primary checkout) carrying unmerged commits or a dirty
 working tree — including a dirty DETACHED worktree, reported with
-`branch: null`, not skipped. Fails CLOSED (throws `E_GIT_FAILED`) rather than
-under-reporting if git itself cannot answer. Disposition is always a
-deliberate Orchestrator/human decision, never automatic: merge the
+`branch: null`, not skipped. Fails CLOSED on both legs rather than
+under-reporting if git itself cannot answer: an unresolvable `targetBranch`
+throws `E_GIT_FAILED` (the ahead-count leg), and a worktree whose own `git
+status` fails — e.g. a corrupted per-worktree git-dir pointer or index, a
+realistic crashed-agent artifact — is reported `dirty: true` rather than
+treated as clean (the dirty leg; TASK-195 fix round 2, MEDIUM-2). Disposition
+is always a deliberate Orchestrator/human decision, never automatic: merge the
 recoverable work via `mergeWorktreeBranch` and then remove the worktree once
 merged, or discard it explicitly if the work is not wanted.
 `removeMergedWorktree({ repoRoot, worktreePath, branch, targetBranch })` is
