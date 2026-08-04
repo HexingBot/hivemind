@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T03:56:39.909Z",
+  "generated_at": "2026-08-04T04:03:32.324Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1102,7 +1102,7 @@
     {
       "key": "TASK-189",
       "title": "Acceptance criteria accept vacuous, invisible, and mis-tiered inputs with no validation",
-      "status": "in_review",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
