@@ -241,7 +241,7 @@ describe('AC2 — detectOrphanedWorktrees and removeMergedWorktree: orphan handl
     // tmp-dir labels for why a message regex is unreliable here).
     let unmergedThrown = null;
     try {
-      removeMergedWorktree({ repoRoot: dir, worktreePath: wtUnmerged, branch: 'agent-unmerged' });
+      removeMergedWorktree({ repoRoot: dir, worktreePath: wtUnmerged, branch: 'agent-unmerged', targetBranch: 'HEAD' });
     } catch (e) {
       unmergedThrown = e;
     }
@@ -251,7 +251,7 @@ describe('AC2 — detectOrphanedWorktrees and removeMergedWorktree: orphan handl
     // ...and refuses the dirty orphan (would discard uncommitted work).
     let dirtyThrown = null;
     try {
-      removeMergedWorktree({ repoRoot: dir, worktreePath: wtDirty, branch: 'agent-dirty' });
+      removeMergedWorktree({ repoRoot: dir, worktreePath: wtDirty, branch: 'agent-dirty', targetBranch: 'HEAD' });
     } catch (e) {
       dirtyThrown = e;
     }
@@ -259,8 +259,306 @@ describe('AC2 — detectOrphanedWorktrees and removeMergedWorktree: orphan handl
     expect(dirtyThrown.code).toBe('E_WORKTREE_DIRTY');
 
     // ...but succeeds for the clean, fully-merged worktree.
-    removeMergedWorktree({ repoRoot: dir, worktreePath: wtClean, branch: 'agent-clean' });
+    removeMergedWorktree({ repoRoot: dir, worktreePath: wtClean, branch: 'agent-clean', targetBranch: 'HEAD' });
     const listAfter = git(dir, ['worktree', 'list']);
-    expect(listAfter).not.toContain(wtClean);
+    // MEDIUM-2 (TASK-195 fix round): assert against wtCleanPosix — computed
+    // above BEFORE removal, since realpath fails once the directory is gone
+    // — not the raw backslash `join()` path. `git worktree list` reports
+    // forward-slash paths even on Windows (confirmed by attack A11), so the
+    // raw path never appears in `listAfter` whether or not removal
+    // happened; that made this assertion pass vacuously either way.
+    expect(listAfter).not.toContain(wtCleanPosix);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-195 fix round — REQUEST-CHANGES attack replays.
+//
+// Each block below replays one attack from the review's full-depth battery
+// (see the orchestrator comment on tasks/TASK-195.json) against the SAME
+// module, asserting the fix's outcome: refusal, not deletion/destruction.
+// Every assertion keys off `err.code`, never a message regex or a raw
+// backslash path (per MEDIUM-2's lesson, applied here too).
+// ---------------------------------------------------------------------------
+
+describe('HIGH-1 (A6) — removeMergedWorktree fails CLOSED, not open, on a typo\'d targetBranch', () => {
+  it('throws_E_GIT_FAILED_instead_of_treating_an_unresolvable_targetBranch_as_zero_unmerged_commits', () => {
+    const dir = makeTmpDir('wt-attack-a6');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const wt = join(makeTmpDir('wt-attack-a6-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-a6', wt]);
+    writeFileSync(join(wt, 'unmerged.txt'), 'never landed\n');
+    git(wt, ['add', 'unmerged.txt']);
+    git(wt, ['commit', '-q', '-m', 'unmerged work']);
+    const wtPosix = toPosix(wt);
+
+    // `branch` matches what the worktree actually has checked out — this
+    // isolates HIGH-1 (the rev-list fail-open defect) from HIGH-2 (the
+    // actual-state-verification defect), which A4 below exercises instead.
+    let thrown = null;
+    try {
+      removeMergedWorktree({
+        repoRoot: dir,
+        worktreePath: wt,
+        branch: 'agent-a6',
+        targetBranch: 'definitely-not-a-real-branch-mian',
+      });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_GIT_FAILED');
+
+    // Refused, not deleted.
+    const listAfter = git(dir, ['worktree', 'list']);
+    expect(listAfter).toContain(wtPosix);
+  });
+});
+
+describe('HIGH-1 (detectOrphanedWorktrees) — fails CLOSED on a git rev-list failure instead of under-reporting', () => {
+  it('throws_E_GIT_FAILED_when_targetBranch_does_not_resolve_instead_of_silently_finding_nothing', () => {
+    const dir = makeTmpDir('wt-attack-detect-failclosed');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const wt = join(makeTmpDir('wt-attack-detect-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-x', wt]);
+    writeFileSync(join(wt, 'unmerged.txt'), 'never landed\n');
+    git(wt, ['add', 'unmerged.txt']);
+    git(wt, ['commit', '-q', '-m', 'unmerged work']);
+
+    let thrown = null;
+    try {
+      detectOrphanedWorktrees({ repoRoot: dir, targetBranch: 'definitely-not-a-real-branch' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_GIT_FAILED');
+  });
+});
+
+describe('HIGH-2 (A4) — removeMergedWorktree verifies actual checked-out state, catching a post-creation branch rename', () => {
+  it('throws_E_WORKTREE_BRANCH_MISMATCH_when_the_branch_was_renamed_after_the_caller_captured_the_old_name', () => {
+    const dir = makeTmpDir('wt-attack-a4');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const wt = join(makeTmpDir('wt-attack-a4-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-original-name', wt]);
+    writeFileSync(join(wt, 'unmerged.txt'), 'never landed\n');
+    git(wt, ['add', 'unmerged.txt']);
+    git(wt, ['commit', '-q', '-m', 'unmerged work']);
+    const wtPosix = toPosix(wt);
+
+    // Branch renamed after the worktree (and the caller's captured branch
+    // name) existed — git updates the worktree's own checkout to the new
+    // name, so the old name the caller still holds no longer matches what
+    // is actually checked out there.
+    git(wt, ['branch', '-m', 'agent-original-name', 'agent-renamed']);
+
+    let thrown = null;
+    try {
+      removeMergedWorktree({ repoRoot: dir, worktreePath: wt, branch: 'agent-original-name', targetBranch: 'HEAD' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    // Caught by the HIGH-2 actual-state check before the HIGH-1 rev-list
+    // check is even reached — defense in depth: the old name no longer
+    // resolves at all, but the mismatch is detected first.
+    expect(thrown.code).toBe('E_WORKTREE_BRANCH_MISMATCH');
+
+    const listAfter = git(dir, ['worktree', 'list']);
+    expect(listAfter).toContain(wtPosix);
+  });
+});
+
+describe('HIGH-2 (A1) — removeMergedWorktree refuses a detached-HEAD worktree instead of deleting a unique commit', () => {
+  it('throws_E_WORKTREE_DETACHED_and_leaves_the_unique_commit_reachable', () => {
+    const dir = makeTmpDir('wt-attack-a1');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    // A branch that IS fully merged (points at the same commit as HEAD),
+    // used as the caller's claimed `branch` argument — isolates the
+    // detached-state defect from the unrelated unmerged-commits check.
+    git(dir, ['branch', 'looks-merged']);
+
+    const headSha = git(dir, ['rev-parse', 'HEAD']).trim();
+    const wt = join(makeTmpDir('wt-attack-a1-wt'), 'wt');
+    git(dir, ['worktree', 'add', '--detach', wt, headSha]);
+    const wtPosix = toPosix(wt);
+
+    // A commit reachable from NOTHING except this detached worktree's HEAD.
+    writeFileSync(join(wt, 'unique.txt'), 'only lives here\n');
+    git(wt, ['add', 'unique.txt']);
+    git(wt, ['commit', '-q', '-m', 'unique detached commit']);
+    const uniqueSha = git(wt, ['rev-parse', 'HEAD']).trim();
+
+    let thrown = null;
+    try {
+      removeMergedWorktree({ repoRoot: dir, worktreePath: wt, branch: 'looks-merged', targetBranch: 'HEAD' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_WORKTREE_DETACHED');
+
+    // Refused, not deleted — the worktree is still present...
+    const listAfter = git(dir, ['worktree', 'list']);
+    expect(listAfter).toContain(wtPosix);
+    // ...and the unique commit is still reachable (nothing was lost).
+    const catFileOut = git(wt, ['cat-file', '-e', uniqueSha]);
+    expect(catFileOut).toBe('');
+  });
+});
+
+describe('HIGH-2 (A7/A12) — removeMergedWorktree refuses when the worktree\'s real branch differs from the claim', () => {
+  it('throws_E_WORKTREE_BRANCH_MISMATCH_instead_of_deleting_a_worktree_with_real_unmerged_commits', () => {
+    const dir = makeTmpDir('wt-attack-a7');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    // A branch that IS fully merged, distinct from the worktree's real branch.
+    git(dir, ['branch', 'looks-merged']);
+
+    const wtReal = join(makeTmpDir('wt-attack-a7-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-real', wtReal]);
+    writeFileSync(join(wtReal, 'unmerged.txt'), 'never landed\n');
+    git(wtReal, ['add', 'unmerged.txt']);
+    git(wtReal, ['commit', '-q', '-m', 'unmerged work']);
+    const wtRealPosix = toPosix(wtReal);
+
+    // Caller claims (wrongly, whether by stale state or typo) that this
+    // worktree is on the already-merged branch.
+    let thrown = null;
+    try {
+      removeMergedWorktree({ repoRoot: dir, worktreePath: wtReal, branch: 'looks-merged', targetBranch: 'HEAD' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_WORKTREE_BRANCH_MISMATCH');
+
+    const listAfter = git(dir, ['worktree', 'list']);
+    expect(listAfter).toContain(wtRealPosix);
+  });
+});
+
+describe('MEDIUM-1 (A10) — mergeWorktreeBranch refuses when a merge is already parked, instead of misattributing or destroying it', () => {
+  it('throws_E_MERGE_IN_PROGRESS_and_leaves_the_pre_existing_parked_merge_untouched', () => {
+    const dir = makeTmpDir('wt-attack-a10');
+    initRepo(dir);
+    writeFileSync(join(dir, 'base.txt'), 'base\n');
+    git(dir, ['add', 'base.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+    const defaultBranch = git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+
+    // Two branches that diverge on base.txt.
+    git(dir, ['branch', 'primary-conflict-b']);
+    git(dir, ['checkout', '-q', 'primary-conflict-b']);
+    writeFileSync(join(dir, 'base.txt'), 'b version\n');
+    git(dir, ['commit', '-q', '-am', 'b edits base.txt']);
+    git(dir, ['checkout', '-q', defaultBranch]);
+    writeFileSync(join(dir, 'base.txt'), 'default version\n');
+    git(dir, ['commit', '-q', '-am', 'default edits base.txt']);
+
+    // Park an UNRELATED conflicted merge directly in the primary checkout —
+    // nothing to do with any worktree handback — and leave it unresolved.
+    const conflictResult = spawnSync('git', ['merge', 'primary-conflict-b'], { cwd: dir, encoding: 'utf8' });
+    expect(conflictResult.status).not.toBe(0);
+    expect(existsSync(join(dir, '.git', 'MERGE_HEAD'))).toBe(true);
+
+    // A worktree with an entirely unrelated file, never touching base.txt.
+    const wt = join(makeTmpDir('wt-attack-a10-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-c', wt]);
+    writeFileSync(join(wt, 'other.txt'), 'other content\n');
+    git(wt, ['add', 'other.txt']);
+    git(wt, ['commit', '-q', '-m', 'agent C: add other.txt only']);
+
+    let thrown = null;
+    try {
+      mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-c', message: 'handback: agent-c' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_MERGE_IN_PROGRESS');
+
+    // The PRE-EXISTING parked merge must be untouched — not aborted, not
+    // resolved, not blamed on a file the handback branch never touched.
+    expect(existsSync(join(dir, '.git', 'MERGE_HEAD'))).toBe(true);
+    const status = git(dir, ['status', '--porcelain']);
+    expect(status).toContain('UU base.txt');
+    expect(status).not.toContain('other.txt');
+  });
+});
+
+describe('MEDIUM-3 (A9) — detectOrphanedWorktrees sees a dirty DETACHED worktree instead of being blind to it', () => {
+  it('reports_a_dirty_detached_worktree_with_branch_null', () => {
+    const dir = makeTmpDir('wt-attack-a9');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const headSha = git(dir, ['rev-parse', 'HEAD']).trim();
+    const wt = join(makeTmpDir('wt-attack-a9-wt'), 'wt');
+    git(dir, ['worktree', 'add', '--detach', wt, headSha]);
+    const wtPosix = toPosix(wt);
+
+    // Agent crashed mid-edit, detached HEAD, uncommitted change — never
+    // committed, so no branch anywhere points at this state.
+    writeFileSync(join(wt, 'crash.txt'), 'mid-edit\n');
+    git(wt, ['add', 'crash.txt']);
+
+    const orphans = detectOrphanedWorktrees({ repoRoot: dir });
+    const entry = orphans.find((o) => o.path.replace(/\\/g, '/') === wtPosix);
+
+    expect(entry).toBeDefined();
+    expect(entry.branch).toBeNull();
+    expect(entry.dirty).toBe(true);
+  });
+});
+
+describe('MEDIUM-4 — removeMergedWorktree requires targetBranch explicitly, no silent ambient-HEAD default', () => {
+  it('throws_E_ARGS_when_targetBranch_is_omitted', () => {
+    const dir = makeTmpDir('wt-attack-medium4');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    const wt = join(makeTmpDir('wt-attack-medium4-wt'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-medium4', wt]);
+
+    let thrown = null;
+    try {
+      removeMergedWorktree({ repoRoot: dir, worktreePath: wt, branch: 'agent-medium4' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe('E_ARGS');
   });
 });

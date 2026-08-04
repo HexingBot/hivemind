@@ -285,6 +285,12 @@ commits if the wrong range is named. Use `src/worktree-handback.js`'s
 `git merge --no-ff <branch>` by hand) — it merges the named branch into
 whatever is currently checked out at `repoRoot`.
 
+`mergeWorktreeBranch` refuses up front with `E_MERGE_IN_PROGRESS` if a merge
+is already parked at `repoRoot` (checked via `MERGE_HEAD`) — proceeding would
+misattribute that unrelated merge's conflicts to this handback and the abort
+below would destroy whatever partial resolution exists in a merge this
+function did not start.
+
 **On conflict: surface, never auto-resolve.** `mergeWorktreeBranch` aborts the
 merge (`git merge --abort`) the instant git reports a conflict and returns
 `{ merged: false, conflict: true, conflictedFiles }` instead of resolving
@@ -304,14 +310,26 @@ typically because the spawn crashed or was killed mid-work — needs explicit
 handling: nothing sweeps it automatically. Use `src/worktree-handback.js`'s
 `detectOrphanedWorktrees({ repoRoot, targetBranch })` to list every worktree
 (other than the primary checkout) carrying unmerged commits or a dirty
-working tree. Disposition is always a deliberate Orchestrator/human decision,
-never automatic: merge the recoverable work via `mergeWorktreeBranch` and then
-remove the worktree once merged, or discard it explicitly if the work is not
-wanted. `removeMergedWorktree({ repoRoot, worktreePath, branch, targetBranch })`
-is the one safe-disposal helper offered — it refuses (throws
-`E_WORKTREE_UNMERGED` / `E_WORKTREE_DIRTY`) unless it can prove the branch is
-fully merged into `targetBranch` and the working tree is clean, so it can
-never discard unique work.
+working tree — including a dirty DETACHED worktree, reported with
+`branch: null`, not skipped. Fails CLOSED (throws `E_GIT_FAILED`) rather than
+under-reporting if git itself cannot answer. Disposition is always a
+deliberate Orchestrator/human decision, never automatic: merge the
+recoverable work via `mergeWorktreeBranch` and then remove the worktree once
+merged, or discard it explicitly if the work is not wanted.
+`removeMergedWorktree({ repoRoot, worktreePath, branch, targetBranch })` is
+the one safe-disposal helper offered — `targetBranch` is REQUIRED here (no
+default; unlike `detectOrphanedWorktrees`, where `'HEAD'` remains the default
+for a read-only report) because a destructive operation must not silently
+bind to whatever the primary checkout happens to have checked out. It refuses
+(throws) unless it can verify all of: the worktree's ACTUAL checked-out
+branch matches `branch` (`E_WORKTREE_DETACHED` / `E_WORKTREE_BRANCH_MISMATCH`
+— checked against `git worktree list --porcelain`, never the caller's claim
+alone), that branch is fully merged into `targetBranch`
+(`E_WORKTREE_UNMERGED`, and any git failure while checking fails CLOSED as
+`E_GIT_FAILED` rather than reading as "0 unmerged"), and the working tree is
+clean (`E_WORKTREE_DIRTY`). Caveat: gitignored untracked content is invisible
+to this check (and to git's own removal machinery) and is silently discarded
+on removal — "never discards unique work" does not cover gitignored content.
 
 ### Residual: same-path collisions are made visible, not resolved
 

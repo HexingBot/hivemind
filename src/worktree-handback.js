@@ -19,7 +19,10 @@
 //      branch's commit SHAs, invalidating any hand-off report that already
 //      names them; a cherry-pick risks silently dropping commits if the
 //      wrong range is named. `git merge --no-ff` keeps the branch's commits
-//      intact and visible in history.
+//      intact and visible in history. Refuses up front (E_MERGE_IN_PROGRESS)
+//      if a merge is already parked in `repoRoot` — proceeding would
+//      misattribute that unrelated merge's conflicts to this handback and
+//      destroy it on abort (TASK-195 fix round, MEDIUM-1).
 //
 //   2. Conflict handling (inside mergeWorktreeBranch) — ABORT, never
 //      resolve. The instant git reports a conflict, the merge is aborted
@@ -36,12 +39,23 @@
 //   3. detectOrphanedWorktrees / removeMergedWorktree — an agent that dies
 //      mid-work leaves a worktree with either unmerged commits or a dirty
 //      working tree. detectOrphanedWorktrees() only reports; it never
-//      deletes. removeMergedWorktree() is the one safe-disposal path this
-//      module offers, and it refuses (throws) unless it can prove the
-//      worktree's branch is fully merged and its working tree is clean — it
-//      can never discard unique work.
+//      deletes, and now also reports dirty DETACHED worktrees (branch: null)
+//      rather than skipping them (TASK-195 fix round, MEDIUM-3).
+//      removeMergedWorktree() is the one safe-disposal path this module
+//      offers. It fails CLOSED rather than open: any git failure while
+//      proving merged-ness throws rather than being read as "0 unmerged"
+//      (HIGH-1), and it verifies the worktree's ACTUAL checked-out state via
+//      `git worktree list --porcelain` instead of trusting the caller's
+//      `branch` argument — refusing on a detached worktree or a branch
+//      mismatch (HIGH-2) — before it ever runs the merged-ness check.
+//      Residual caveat: gitignored untracked content in the worktree is
+//      invisible to both `git status --porcelain` and git's own removal
+//      check, so it is silently discarded on removal — this module cannot
+//      see it either. "Never discards unique work" therefore excludes
+//      gitignored content; see the SKILL prose for the same caveat.
 
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 
 function git(cwd, args) {
   return spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -65,8 +79,85 @@ function makeErr(code, message) {
 const UNMERGED_STATUS_RE = /^(UU|AA|DD|AU|UA|UD|DU) /;
 
 /**
+ * Count commits reachable from `branch` but not `targetBranch`, failing
+ * CLOSED (throwing E_GIT_FAILED) if git cannot answer, rather than reading a
+ * `rev-list` failure as "0 unmerged commits" — see the TASK-195 fix round's
+ * HIGH-1 finding: an unresolvable `branch` (renamed/deleted) or a typo'd
+ * `targetBranch` used to be silently coerced to zero, which is what let
+ * removeMergedWorktree delete worktrees with real unmerged commits still on
+ * them.
+ */
+function countUnmergedCommits(repoRoot, targetBranch, branch, label) {
+  const aheadOut = git(repoRoot, ['rev-list', '--count', `${targetBranch}..${branch}`]);
+  if (aheadOut.status !== 0) {
+    throw makeErr(
+      'E_GIT_FAILED',
+      `${label}: git rev-list --count ${targetBranch}..${branch} failed (exit ${aheadOut.status}): ${aheadOut.stderr}`,
+    );
+  }
+  const n = parseInt(aheadOut.stdout.trim(), 10);
+  if (Number.isNaN(n)) {
+    throw makeErr(
+      'E_GIT_FAILED',
+      `${label}: git rev-list --count ${targetBranch}..${branch} returned unparseable output: ${JSON.stringify(aheadOut.stdout)}`,
+    );
+  }
+  return n;
+}
+
+/** Normalize a filesystem path for cross-representation comparison: resolve
+ * symlinks / Windows 8.3 short names to the canonical long form, then use
+ * forward slashes — `git worktree list --porcelain` reports forward-slash
+ * paths even on Windows, and a caller-supplied path may be a backslash
+ * `join()` result or an 8.3 short form from `os.tmpdir()`. Falls back to a
+ * plain slash-normalized path if the target no longer exists on disk. */
+function normalizeForCompare(p) {
+  try {
+    return realpathSync.native(p).replace(/\\/g, '/');
+  } catch {
+    return String(p).replace(/\\/g, '/');
+  }
+}
+
+/** Parse `git worktree list --porcelain` output into [{ path, branch, detached }]. */
+function parseWorktreeList(porcelainOut) {
+  const worktrees = [];
+  let current = null;
+  for (const line of porcelainOut.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      if (current) worktrees.push(current);
+      current = { path: line.slice('worktree '.length).trim(), branch: null, detached: false };
+    } else if (line.startsWith('branch ') && current) {
+      current.branch = line.slice('branch '.length).trim().replace(/^refs\/heads\//, '');
+    } else if (line === 'detached' && current) {
+      current.detached = true;
+    }
+  }
+  if (current) worktrees.push(current);
+  return worktrees;
+}
+
+/** Find the `git worktree list --porcelain` entry for `worktreePath`, ground
+ * truth for what that worktree actually has checked out (TASK-195 fix round,
+ * HIGH-2) — never trust a caller-supplied `branch` argument alone. */
+function findWorktreeEntry(repoRoot, worktreePath, label) {
+  const listOut = runGitOrThrow(repoRoot, ['worktree', 'list', '--porcelain'], label);
+  const worktrees = parseWorktreeList(listOut);
+  const target = normalizeForCompare(worktreePath);
+  const entry = worktrees.find((wt) => normalizeForCompare(wt.path) === target);
+  if (!entry) {
+    throw makeErr(
+      'E_WORKTREE_NOT_FOUND',
+      `${label}: ${worktreePath} is not a worktree of the repo at ${repoRoot} (per git worktree list)`,
+    );
+  }
+  return entry;
+}
+
+/**
  * Merge `branch` (a worktree's branch) into whatever is currently checked
  * out at `repoRoot`. Never resolves a conflict — aborts and reports instead.
+ * Refuses up front if a merge is already in progress at `repoRoot`.
  *
  * @param {{ repoRoot: string, branch: string, message?: string }} opts
  * @returns {{ merged: true, sha: string } | { merged: false, conflict: true, conflictedFiles: string[] }}
@@ -74,6 +165,20 @@ const UNMERGED_STATUS_RE = /^(UU|AA|DD|AU|UA|UD|DU) /;
 export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
   if (!repoRoot) throw makeErr('E_ARGS', 'mergeWorktreeBranch: repoRoot is required');
   if (!branch) throw makeErr('E_ARGS', 'mergeWorktreeBranch: branch is required');
+
+  // Refuse if a merge is already parked in `repoRoot` (TASK-195 fix round,
+  // MEDIUM-1) — proceeding would attempt a merge on top of an unrelated
+  // conflicted merge, misattribute ITS conflicted files to this handback,
+  // and the abort below would destroy whatever partial resolution exists in
+  // a merge this function did not start.
+  const mergeHeadCheck = git(repoRoot, ['rev-parse', '--verify', '-q', 'MERGE_HEAD']);
+  if (mergeHeadCheck.status === 0) {
+    throw makeErr(
+      'E_MERGE_IN_PROGRESS',
+      `mergeWorktreeBranch: refusing to merge ${branch} into ${repoRoot} — a merge is already in progress ` +
+      'there (MERGE_HEAD exists); resolve or abort it before handing back another branch',
+    );
+  }
 
   const args = ['merge', '--no-ff', branch];
   args.push('-m', message || `merge worktree branch ${branch}`);
@@ -94,8 +199,18 @@ export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
     .map((l) => l.slice(3).trim());
 
   // Always abort — conflict or not — so the main line never ends up parked
-  // mid-merge (see module doc comment, case 2).
-  git(repoRoot, ['merge', '--abort']);
+  // mid-merge (see module doc comment, case 2). Check the abort's own exit
+  // status instead of discarding it (TASK-195 fix round, MEDIUM-1): a failed
+  // abort must be surfaced, not silently swallowed while a half-merged state
+  // is left behind.
+  const abortResult = git(repoRoot, ['merge', '--abort']);
+  if (abortResult.status !== 0) {
+    throw makeErr(
+      'E_MERGE_ABORT_FAILED',
+      `mergeWorktreeBranch: merge of ${branch} failed and \`git merge --abort\` itself failed (exit ` +
+      `${abortResult.status}): ${abortResult.stderr} — ${repoRoot} may be left mid-merge; manual intervention required`,
+    );
+  }
 
   if (conflictedFiles.length > 0) {
     return { merged: false, conflict: true, conflictedFiles };
@@ -109,29 +224,16 @@ export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
   );
 }
 
-/** Parse `git worktree list --porcelain` output into [{ path, branch }]. */
-function parseWorktreeList(porcelainOut) {
-  const worktrees = [];
-  let current = null;
-  for (const line of porcelainOut.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      if (current) worktrees.push(current);
-      current = { path: line.slice('worktree '.length).trim(), branch: null };
-    } else if (line.startsWith('branch ') && current) {
-      current.branch = line.slice('branch '.length).trim().replace(/^refs\/heads\//, '');
-    }
-  }
-  if (current) worktrees.push(current);
-  return worktrees;
-}
-
 /**
  * Report every worktree (other than the primary checkout) carrying either
  * commits not yet merged into `targetBranch`, or uncommitted working-tree
- * changes. Detection only — never deletes anything.
+ * changes — including a DETACHED worktree with a dirty working tree
+ * (reported with `branch: null`; TASK-195 fix round, MEDIUM-3). Detection
+ * only — never deletes anything. Fails CLOSED (throws E_GIT_FAILED) if git
+ * cannot determine a branch's ahead-count, rather than under-reporting.
  *
  * @param {{ repoRoot: string, targetBranch?: string }} opts
- * @returns {Array<{ path: string, branch: string, unmergedCommits: number, dirty: boolean }>}
+ * @returns {Array<{ path: string, branch: string | null, unmergedCommits: number, dirty: boolean }>}
  */
 export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}) {
   if (!repoRoot) throw makeErr('E_ARGS', 'detectOrphanedWorktrees: repoRoot is required');
@@ -143,10 +245,14 @@ export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}
   const orphans = [];
   for (const wt of worktrees) {
     if (wt.path === primaryPath) continue; // skip the primary checkout
-    if (!wt.branch) continue; // detached worktree — out of scope here
 
-    const aheadOut = git(repoRoot, ['rev-list', '--count', `${targetBranch}..${wt.branch}`]);
-    const unmergedCommits = aheadOut.status === 0 ? (parseInt(aheadOut.stdout.trim(), 10) || 0) : 0;
+    // A detached worktree has no branch to rank against targetBranch, so its
+    // ahead-count is always 0 — but unlike before, it is NOT skipped
+    // outright: the dirty check below needs no branch, so a crashed agent
+    // left in detached HEAD with uncommitted changes is still found.
+    const unmergedCommits = wt.branch
+      ? countUnmergedCommits(repoRoot, targetBranch, wt.branch, 'detectOrphanedWorktrees')
+      : 0;
 
     const dirtyOut = git(wt.path, ['status', '--porcelain']);
     const dirty = dirtyOut.status === 0 && dirtyOut.stdout.trim().length > 0;
@@ -159,21 +265,58 @@ export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}
 }
 
 /**
- * Remove a worktree, but ONLY if its branch is fully merged into
- * `targetBranch` and its working tree is clean. Refuses (throws) otherwise —
- * the one disposal path this module offers, and it never discards unique
- * work.
+ * Remove a worktree, but ONLY if its ACTUAL checked-out branch matches
+ * `branch`, that branch is fully merged into `targetBranch`, and its working
+ * tree is clean. Refuses (throws) otherwise.
  *
- * @param {{ repoRoot: string, worktreePath: string, branch: string, targetBranch?: string }} opts
+ * `targetBranch` has NO default (TASK-195 fix round, MEDIUM-4) — this is a
+ * destructive operation and must not silently bind to whatever the primary
+ * checkout happens to have checked out; the caller must state its intent.
+ *
+ * Caveat: gitignored untracked content in the worktree is invisible to
+ * `git status --porcelain` and to git's own removal check, so it is
+ * silently discarded on removal. This function cannot see it either — "it
+ * never discards unique work" does not cover gitignored content.
+ *
+ * @param {{ repoRoot: string, worktreePath: string, branch: string, targetBranch: string }} opts
  * @returns {void}
  */
-export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBranch = 'HEAD' } = {}) {
+export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBranch } = {}) {
   if (!repoRoot) throw makeErr('E_ARGS', 'removeMergedWorktree: repoRoot is required');
   if (!worktreePath) throw makeErr('E_ARGS', 'removeMergedWorktree: worktreePath is required');
   if (!branch) throw makeErr('E_ARGS', 'removeMergedWorktree: branch is required');
+  if (!targetBranch) {
+    throw makeErr(
+      'E_ARGS',
+      "removeMergedWorktree: targetBranch is required (no default) — this destructive operation must not " +
+      "silently bind to whatever the primary checkout happens to have checked out; pass the intended target " +
+      "explicitly, e.g. targetBranch: 'HEAD' if that really is the intent",
+    );
+  }
 
-  const aheadOut = git(repoRoot, ['rev-list', '--count', `${targetBranch}..${branch}`]);
-  const unmergedCommits = aheadOut.status === 0 ? (parseInt(aheadOut.stdout.trim(), 10) || 0) : 0;
+  // Verify the worktree's ACTUAL checked-out state instead of trusting the
+  // caller's `branch` claim (TASK-195 fix round, HIGH-2) — `git worktree
+  // list --porcelain` is ground truth and this module already parses it.
+  const entry = findWorktreeEntry(repoRoot, worktreePath, 'removeMergedWorktree');
+  if (entry.detached) {
+    throw makeErr(
+      'E_WORKTREE_DETACHED',
+      `removeMergedWorktree: refusing to remove ${worktreePath} — it is in detached HEAD state, not on a ` +
+      `branch, so the claim that branch ${branch} is merged cannot be verified against what this worktree ` +
+      'actually has checked out',
+    );
+  }
+  if (entry.branch !== branch) {
+    throw makeErr(
+      'E_WORKTREE_BRANCH_MISMATCH',
+      `removeMergedWorktree: refusing to remove ${worktreePath} — it has ${entry.branch} checked out, not ` +
+      `the claimed ${branch}; the merged-ness check would have run against the wrong branch`,
+    );
+  }
+
+  // Fails CLOSED (throws E_GIT_FAILED) rather than treating a git failure as
+  // zero unmerged commits (TASK-195 fix round, HIGH-1).
+  const unmergedCommits = countUnmergedCommits(repoRoot, targetBranch, branch, 'removeMergedWorktree');
   if (unmergedCommits > 0) {
     throw makeErr(
       'E_WORKTREE_UNMERGED',
@@ -191,4 +334,5 @@ export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBra
   }
 
   runGitOrThrow(repoRoot, ['worktree', 'remove', worktreePath], 'removeMergedWorktree');
+
 }
