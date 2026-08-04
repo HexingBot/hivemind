@@ -83,3 +83,60 @@ describe('TASK-185 AC3 — mutation-locked alternations', () => {
     expect(safeRef('docs/../../etc/passwd')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-193 AC1 — the TASK-185 reviewer executed the committed guard against
+// adjacent forms and found these pass through UNCHANGED (not null), because
+// UNSAFE_REF_RE only matches the literal token `%2e%2e` and requires `..` to
+// be flanked by a path separator or string start/end. None of these is
+// exploitable today (no consumer percent-decodes or naively strips `../`
+// before resolving; refs are opened as literal repo-relative paths) — that is
+// why TASK-185 closed this as LOW rather than blocking. This block is the
+// tests-first failing spec: today safeRef(input) === input for every case
+// below; the fix must make every one resolve to null.
+// ---------------------------------------------------------------------------
+describe('TASK-193 AC1 — percent-encoding / dot-stripper-bait residuals are blocked', () => {
+  it('double-encoded traversal (%252e%252e) is blocked', () => {
+    expect(safeRef('%252e%252e/x')).toBeNull();
+  });
+
+  it('literal .. with an encoded forward-slash separator is blocked', () => {
+    expect(safeRef('..%2fx')).toBeNull();
+  });
+
+  it('literal .. with an encoded backslash separator is blocked', () => {
+    expect(safeRef('..%5cx')).toBeNull();
+  });
+
+  it('double encoded-separator traversal is blocked', () => {
+    expect(safeRef('..%2f..%2fetc%2fpasswd')).toBeNull();
+  });
+
+  it('mid-path .. with an encoded separator is blocked', () => {
+    expect(safeRef('x%2f..%2fetc')).toBeNull();
+  });
+
+  it('naive ../-stripper bait (repeated dots before a doubled slash) is blocked', () => {
+    expect(safeRef('....//etc/passwd')).toBeNull();
+  });
+
+  it('embedded percent-encoded null byte is blocked', () => {
+    expect(safeRef('a%00/etc/passwd')).toBeNull();
+  });
+});
+
+describe('TASK-193 AC6 — no false-negative regression against the live graph', () => {
+  it('every ref currently stored in knowledge/graph/graph.json still passes through unchanged', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const { join, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const raw = await readFile(join(__dirname, '..', 'knowledge', 'graph', 'graph.json'), 'utf8');
+    const graph = JSON.parse(raw);
+    const refs = (graph.nodes || []).map((n) => n.ref).filter((r) => typeof r === 'string');
+    expect(refs.length).toBeGreaterThan(0);
+    for (const ref of refs) {
+      expect(safeRef(ref)).toBe(ref);
+    }
+  });
+});

@@ -96,13 +96,37 @@ function ok(value) {
 // the WRITE-side contract every addNode/addEdge/writeGraph call validates
 // against, and tightening it is a real trust-boundary change (deliberately
 // out of scope for this LOW cleanup item; see the TASK-175 hand-off, and
-// TASK-185's hand-off which re-confirmed the boundary). A ref that is an
-// absolute path, a `..` traversal segment (literal or percent-encoded), a
-// home-dir shorthand, a UNC \\host\share path, or carries a URL scheme
-// (http:, file:, javascript:, a Windows drive letter, ...) is replaced with
-// null rather than surfaced for an agent to blindly open. Case-insensitive
-// (`i`) so `%2E%2E` is caught alongside `%2e%2e`.
-const UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|(?:^|[/\\])\.\.(?:[/\\]|$)|%2e%2e/i;
+// TASK-185's hand-off which re-confirmed the boundary; TASK-193 re-examined
+// the boundary a third time — see that ticket's closing comment — and again
+// decided consumption-point validation is the right and sufficient place for
+// this control). A ref that is an absolute path, a `..` traversal segment
+// anywhere in the string, a home-dir shorthand, a UNC \\host\share path,
+// carries a URL scheme (http:, file:, javascript:, a Windows drive letter,
+// ...), or contains a literal `%` at all is replaced with null rather than
+// surfaced for an agent to blindly open.
+//
+// TASK-193 — the TASK-185 reviewer found that the prior rule (`..` only
+// caught when flanked by a path separator or string start/end, plus a single
+// literal-token `%2e%2e` check) let percent-encoded and dot-stripper-bait
+// variants straight through: "%252e%252e/x" (double-encoded), "..%2fx" /
+// "..%5cx" (literal ".." followed directly by an encoded separator, so the
+// old flanking requirement never matched), "....//etc/passwd" (four dots
+// before a doubled slash — bait for a naive "../"-stripper — contains no "%"
+// and no flanked ".." either), and "a%00/etc/passwd" (encoded null byte).
+// None of these was ever exploitable — no consumer in this repo
+// percent-decodes or naively strips "../" before resolving a ref; every
+// consumer opens it as a literal repo-relative path — but a token blacklist
+// loses arms races by construction, so two changes replace it with
+// whitelist-shaped rules instead of chasing more tokens: (1) `..` is now
+// matched unanchored (bare `\.\.`, no flanking requirement) so it catches any
+// occurrence, including inside a run of dots like "...."; (2) any bare `%` is
+// rejected outright rather than matching specific encoded tokens, since a
+// legitimate ref never needs one. Verified against the live
+// knowledge/graph/graph.json before landing this: 0 of 233 refs contain `%`
+// and 0 contain a literal ".." substring, so both rules are false-negative
+// clean today (see the TASK-193 hand-off for the fresh count). Case-
+// insensitive (`i`) so an uppercase scheme is still caught.
+const UNSAFE_REF_RE = /^[/\\~]|^[a-zA-Z][a-zA-Z0-9+.-]*:|\.\.|%/i;
 
 // TASK-175 — exported (was module-private) solely so tests/safe-ref.spec.js
 // can unit-lock the guard directly (including running the AC3 mutation
@@ -543,12 +567,18 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
         + 'guarantee. A missing id yields empty nodes, never a throw; '
         + 'omitting both id and type also yields an empty, documented '
         + 'result. A node\'s `ref` is normally a repo-relative path — but it '
-        + 'is replaced with `null` (TASK-175/TASK-185) when the stored value '
-        + 'would be unsafe to auto-follow as a path (absolute, a `..` '
-        + 'traversal, a `~`/UNC shorthand, a URL scheme, or disguised via '
-        + 'padding/percent-encoding); treat `ref: null` as "no safe path '
-        + 'available", never as an error, and fall back to the node\'s `id`/'
-        + '`label` instead of opening it. No supplied filter is ever silently dropped: { id, type } '
+        + 'is replaced with `null` (TASK-175/TASK-185/TASK-193) when the '
+        + 'stored value is unsafe to auto-follow as a path: absolute, a '
+        + '`~`/UNC shorthand, a URL scheme (incl. a Windows drive letter), a '
+        + '`..` substring anywhere in the string, a literal `%` character '
+        + 'anywhere in the string (percent-encoding is rejected outright, '
+        + 'not decoded), or leading/trailing whitespace / an embedded CR or '
+        + 'LF. This is a raw string check — it does not decode, normalize, '
+        + 'or resolve symlinks; it fully covers every consumer here today '
+        + '(none decode or strip `../` before resolving) but is not a '
+        + 'guarantee against a future consumer that does. Treat `ref: null` '
+        + 'as "no safe path available", never as an error, and fall back to '
+        + 'the node\'s `id`/`label` instead of opening it. No supplied filter is ever silently dropped: { id, type } '
         + 'applies `type` as a POST-FILTER on the neighbor result (only '
         + 'neighbors whose own type matches survive); `relation` or '
         + '`direction` supplied WITHOUT an `id` — alone, together, or '

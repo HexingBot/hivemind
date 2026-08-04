@@ -97,6 +97,18 @@ export const GRAPH_SCHEMA = {
       properties: {
         id: { type: 'string', minLength: 1 },
         type: { type: 'string', enum: ['knowledge_entry', 'task', 'decision', 'skill'] },
+        // ref: deliberately no shape/pattern validation here (TASK-175,
+        // re-examined and re-confirmed TASK-185, TASK-193). This is the
+        // WRITE-side contract; the unsafe-path guard (UNSAFE_REF_RE,
+        // src/mcp-server.js) lives at the READ boundary instead, because
+        // that is the only place a `ref` becomes an instruction to open a
+        // file — the control is complete regardless of what shape is
+        // stored. Tightening this schema would be defense-in-depth, not a
+        // closed gap: it's a real trust-boundary change that would need a
+        // migration path for the ~233 refs already in
+        // knowledge/graph/graph.json, for no consumer-facing benefit, since
+        // no write path here decodes or resolves a `ref` either. See the
+        // TASK-193 hand-off for the full reasoning.
         ref: { type: 'string', minLength: 1 },
         label: { type: 'string', minLength: 1 },
       },
