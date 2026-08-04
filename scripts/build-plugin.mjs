@@ -107,6 +107,26 @@ export async function buildTo(outDir) {
       // `with { type: 'json' }` imports; ajv/ajv-formats/gray-matter are pulled
       // in from devDependencies at build time.
       logLevel: 'info',
+      // TASK-198: an isolated worktree's node_modules is a junction/symlink to
+      // the PRIMARY checkout's real node_modules (src/worktree-provision.js).
+      // esbuild's DEFAULT behavior resolves that symlink to its real path
+      // before computing the source-path comments it embeds in the bundle
+      // (e.g. `// node_modules/ajv/...`) — and the real path lives in a
+      // SIBLING directory tree (the primary checkout), not nested under the
+      // worktree, so the computed comment becomes `// ../hivemind/
+      // node_modules/ajv/...` instead of `// node_modules/ajv/...`. That is
+      // the exact dist-parity false-positive TASK-198 was filed over: a build
+      // run inside a correctly-linked worktree still emitted different bytes
+      // than the primary's committed dist/, because of this one option's
+      // default, not because the dependency tree actually differed.
+      // `preserveSymlinks: true` makes esbuild use the symlink's OWN
+      // (nominal) path for module identity and source comments instead of
+      // resolving through it — verified to make a worktree build byte-
+      // identical to the primary's committed dist/*.cjs (TASK-198 hand-off).
+      // No effect on the primary checkout itself: there is no symlink to
+      // preserve there (node_modules is a real directory), so this build
+      // stays byte-unchanged.
+      preserveSymlinks: true,
     });
     // eslint-disable-next-line no-console
     console.log(`built ${outfile}`);
