@@ -53,6 +53,24 @@
 //      check, so it is silently discarded on removal — this module cannot
 //      see it either. "Never discards unique work" therefore excludes
 //      gitignored content; see the SKILL prose for the same caveat.
+//
+// MODULE INVARIANT (TASK-195 fix round 3): no raw `git()` result may be read
+// as a state assertion — i.e. no call site may collapse a `status` field to
+// a bare "did the checked-for state hold" boolean. Four consecutive review
+// rounds each closed one such site and opened a new one, because a plain
+// git command has (at least) three distinct outcomes — "yes", "no", and "git
+// itself could not answer" — and reading only two of them is exactly the
+// TASK-192 empty-result-contract defect class applied to process exit
+// status. Every call site in this module must therefore go through one of:
+//   - `runGitOrThrow` — any non-zero exit is a failure, full stop (used
+//     whenever there is no meaningful "no" outcome, only "yes" or "error").
+//   - a dedicated three-valued probe like `probeMergeHead` below — used
+//     whenever a non-zero exit can legitimately mean either "no" (e.g. exit
+//     1 from `--verify -q`) or "git failed" (any other exit), and those two
+//     must not be conflated.
+// A new git call that reads `.status === 0` (or `!== 0`) as its only
+// disposition, with no throw for the "neither yes nor no" case, has
+// re-introduced this bug. Do not add one.
 
 import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -103,6 +121,29 @@ function countUnmergedCommits(repoRoot, targetBranch, branch, label) {
     );
   }
   return n;
+}
+
+/**
+ * Three-valued probe for whether a merge is currently parked in `repoRoot`
+ * (i.e. `MERGE_HEAD` exists) — the module invariant's canonical probe. Never
+ * conflates a probe FAILURE with "absent": `git rev-parse --verify -q
+ * MERGE_HEAD` exits 0 when `MERGE_HEAD` exists, 1 when it does not (git's
+ * documented `--verify -q` "missing ref" signal), and anything else
+ * (observed: 128) is a git-level error that must be surfaced, not silently
+ * read as either state (TASK-195 fix round 3, MEDIUM — the shared fix for
+ * the fail-open shape found latent at two call sites: the up-front parked-
+ * merge check and the post-failure abort-routing check).
+ *
+ * @returns {'present' | 'absent'}
+ */
+export function probeMergeHead(repoRoot, label) {
+  const r = git(repoRoot, ['rev-parse', '--verify', '-q', 'MERGE_HEAD']);
+  if (r.status === 0) return 'present';
+  if (r.status === 1) return 'absent';
+  throw makeErr(
+    'E_GIT_FAILED',
+    `${label}: git rev-parse --verify -q MERGE_HEAD failed unexpectedly (exit ${r.status}): ${r.stderr}`,
+  );
 }
 
 /** Normalize a filesystem path for cross-representation comparison: resolve
@@ -178,9 +219,13 @@ export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
   // MEDIUM-1) — proceeding would attempt a merge on top of an unrelated
   // conflicted merge, misattribute ITS conflicted files to this handback,
   // and the abort below would destroy whatever partial resolution exists in
-  // a merge this function did not start.
-  const mergeHeadCheck = git(repoRoot, ['rev-parse', '--verify', '-q', 'MERGE_HEAD']);
-  if (mergeHeadCheck.status === 0) {
+  // a merge this function did not start. Uses the shared three-valued probe
+  // (TASK-195 fix round 3) rather than reading the raw exit status inline —
+  // a probe FAILURE here must not be read as "no merge parked": doing so
+  // would let execution proceed into a parked-merge situation this check
+  // exists to catch, and the abort further down could then destroy that
+  // unrelated merge's partial resolution.
+  if (probeMergeHead(repoRoot, 'mergeWorktreeBranch') === 'present') {
     throw makeErr(
       'E_MERGE_IN_PROGRESS',
       `mergeWorktreeBranch: refusing to merge ${branch} into ${repoRoot} — a merge is already in progress ` +
@@ -200,17 +245,22 @@ export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
   // Non-zero exit — but a failed `git merge` does not always mean a merge
   // was actually STARTED: an unresolvable branch name or a dirty primary
   // tree both fail before MERGE_HEAD is ever written (verified against real
-  // git). Probe MERGE_HEAD (same form as the up-front check above) BEFORE
-  // doing anything abort-related (TASK-195 fix round 2, MEDIUM-1) — the
-  // prior version unconditionally ran `git merge --abort` here, which
-  // itself fails ("There is no merge to abort") for exactly these two
-  // cases, and that abort failure was misrouted to E_MERGE_ABORT_FAILED —
-  // a FALSE "may be left mid-merge; manual intervention required" while the
-  // repo was actually clean. An operator acting on that false claim (e.g.
-  // `git reset --hard`) in the dirty-primary-tree case would have destroyed
-  // the very uncommitted edit that caused the refusal.
-  const mergeHeadAfterFailure = git(repoRoot, ['rev-parse', '--verify', '-q', 'MERGE_HEAD']);
-  const mergeWasStarted = mergeHeadAfterFailure.status === 0;
+  // git). Probe MERGE_HEAD (the SAME shared helper as the up-front check
+  // above, not a hand-rolled re-read of the exit status — TASK-195 fix
+  // round 3) BEFORE doing anything abort-related (TASK-195 fix round 2,
+  // MEDIUM-1) — the prior version unconditionally ran `git merge --abort`
+  // here, which itself fails ("There is no merge to abort") for exactly
+  // these two cases, and that abort failure was misrouted to
+  // E_MERGE_ABORT_FAILED — a FALSE "may be left mid-merge; manual
+  // intervention required" while the repo was actually clean. An operator
+  // acting on that false claim (e.g. `git reset --hard`) in the
+  // dirty-primary-tree case would have destroyed the very uncommitted edit
+  // that caused the refusal. A probe FAILURE here must not be silently read
+  // as "not started": that under-fire would skip the abort on a merge that
+  // genuinely DID start and conflict, leaving the repo parked mid-merge
+  // while the thrown E_MERGE_FAILED below falsely claims otherwise (fix
+  // round 3's MEDIUM, chain (a)).
+  const mergeWasStarted = probeMergeHead(repoRoot, 'mergeWorktreeBranch') === 'present';
 
   if (mergeWasStarted) {
     // Determine whether this is a real content conflict (git leaves conflict
@@ -383,5 +433,4 @@ export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBra
   }
 
   runGitOrThrow(repoRoot, ['worktree', 'remove', worktreePath], 'removeMergedWorktree');
-
 }
