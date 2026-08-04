@@ -11,7 +11,7 @@
     "TASK-191's pathspec protocol and post-commit verification are NOT removed unless the new mechanism strictly supersedes them — if both are kept, say which is the primary control and which is the backstop, in the briefing docs.",
     "npm run test:all is green; no existing spec regresses; parity copies byte-identical for any briefing doc touched; dist rebuilt and committed if any bundled source changes."
   ],
-  "status": "in_progress",
+  "status": "in_review",
   "priority": "medium",
   "labels": [
     "orchestration",
@@ -38,7 +38,7 @@
     }
   ],
   "created_at": "2026-08-02T20:58:57.921Z",
-  "updated_at": "2026-08-04T02:41:09.107Z",
+  "updated_at": "2026-08-04T02:55:12.194Z",
   "jira_key": null,
   "verification_tier": "tdd",
   "marker": "[EXPLICIT]",
