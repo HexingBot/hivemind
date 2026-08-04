@@ -61,16 +61,23 @@
 // git command has (at least) three distinct outcomes — "yes", "no", and "git
 // itself could not answer" — and reading only two of them is exactly the
 // TASK-192 empty-result-contract defect class applied to process exit
-// status. Every call site in this module must therefore go through one of:
+// status. Every call site in this module goes through one of three
+// sanctioned shapes:
 //   - `runGitOrThrow` — any non-zero exit is a failure, full stop (used
 //     whenever there is no meaningful "no" outcome, only "yes" or "error").
 //   - a dedicated three-valued probe like `probeMergeHead` below — used
 //     whenever a non-zero exit can legitimately mean either "no" (e.g. exit
 //     1 from `--verify -q`) or "git failed" (any other exit), and those two
 //     must not be conflated.
+//   - inline handling where every non-yes/no outcome, including a raw git
+//     failure, folds into the CONSERVATIVE disposition (a throw, or the
+//     alarm-raising answer) rather than the benign one — see
+//     mergeWorktreeBranch's merge invocation, its conflict-status read, and
+//     its abort-status check, plus the dirty checks in
+//     detectOrphanedWorktrees and removeMergedWorktree, below.
 // A new git call that reads `.status === 0` (or `!== 0`) as its only
-// disposition, with no throw for the "neither yes nor no" case, has
-// re-introduced this bug. Do not add one.
+// disposition and folds the "neither yes nor no" case into the BENIGN
+// outcome has re-introduced this bug. Do not add one.
 
 import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
