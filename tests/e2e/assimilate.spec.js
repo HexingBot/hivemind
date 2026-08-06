@@ -1418,6 +1418,39 @@ describe('TASK-203 — assimilateSkill must preserve a sibling pack\'s owner edg
     expect(result.owners).toEqual(entry.owners);
   });
 
+  it('AC2 (TASK-202 wiring): a version-bumped re-assimilation drops only ITS OWN stale-version edge, leaving the sibling pack untouched', async () => {
+    // Mirrors tests/e2e/pack-apply.spec.js's TASK-202 "AC2 (replace path)"
+    // fixture shape exactly -- proves dropStaleSameOwnerEdges is wired the
+    // same way on the assimilate call site as on executeInstall's, not just
+    // present. With only a CROSS-pack sibling edge in the fixture (as in the
+    // RED-LOCK test above), dropStaleSameOwnerEdges is a no-op regardless of
+    // which argument is passed as currentOwner -- this fixture's same-pack
+    // stale-version edge is what actually exercises the wiring.
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-203-stale-self-edge');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK, 'third-party-assimilate@0.9.0']);
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: ASSIMILATING_PACK, // 'third-party-assimilate@1.0.0' -- a version bump over the seeded 0.9.0
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = lock.resources['skill:permissive-skill'];
+    // Exactly one edge for the assimilating pack (the NEW version,
+    // third-party-assimilate@0.9.0 dropped as stale) -- sibling untouched.
+    expect(entry.owners).toEqual([PACK, ASSIMILATING_PACK]);
+  });
+
   it('AC3: after re-assimilation by another pack, a resource still owned by the prior pack is NOT removable as an orphan', async () => {
     // Proves the DOWNSTREAM CONSEQUENCE the field exists to produce, not just
     // the array contents -- the same shape as TASK-200's AC3 spec.
@@ -1433,6 +1466,15 @@ describe('TASK-203 — assimilateSkill must preserve a sibling pack\'s owner edg
     const root = makeTmpDir('asm-203-orphan');
     const lockPath = join(root, 'integrations.lock.json');
     seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK]);
+
+    // A live dir, matching the TASK-200/202 fixture shape exactly (see e.g.
+    // tests/e2e/pack-apply.spec.js:895-897) -- without this, executeRemove's
+    // `rmSync(liveDir)` half is never exercised and the lock-entry assertion
+    // below is the only proof, even though both deletions live in the same
+    // isOrphaned-gated branch.
+    const liveDir = join(root, '.claude', 'skills', 'permissive-skill');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Permissive Skill\nLive copy.\n');
 
     await assimilateSkill({
       source: PERMISSIVE_FIXTURE,
@@ -1464,7 +1506,8 @@ describe('TASK-203 — assimilateSkill must preserve a sibling pack\'s owner edg
       owner: ASSIMILATING_PACK,
     });
 
-    // Still owned by PACK -> must NOT have been deleted.
+    // Still owned by PACK -> must NOT have been deleted, on disk OR in the lock.
+    expect(existsSync(liveDir)).toBe(true);
     const lockAfterRemove = JSON.parse(readFileSync(lockPath, 'utf8'));
     const entryAfterRemove = lockAfterRemove.resources['skill:permissive-skill'];
     expect(entryAfterRemove).toBeDefined();
