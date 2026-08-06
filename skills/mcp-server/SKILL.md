@@ -162,8 +162,11 @@ test; or when migrating the task-store MCP surface to a Jira/Atlassian backend
 - [`references/in-memory-test-harness.md`](references/in-memory-test-harness.md)
   — full vitest round-trip harness (Client + InMemoryTransport linked pair).
 - [`references/tool-contract.md`](references/tool-contract.md) — the seven
-  task-store tool→args→returns→wraps rows plus `kb_lookup` (TASK-106), and the
-  exact `task-store.js`/`knowledge.js` signatures.
+  task-store tool→args→returns→wraps rows (`list_todos`, `list_ready`,
+  `get_task`, `create_task`, `transition_status`, `append_comment`,
+  `close_task`) plus three extension tools — `kb_lookup` (TASK-106),
+  `kb_graph_query` (TASK-168), `mcp_build_status` (TASK-204) — ten tools
+  total, and the exact `task-store.js`/`knowledge.js` signatures.
 - [`references/esbuild-and-mcp-json.md`](references/esbuild-and-mcp-json.md) —
   esbuild bundling gotchas + the `.mcp.json` interpolation rules.
 

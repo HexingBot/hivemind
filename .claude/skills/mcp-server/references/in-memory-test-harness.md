@@ -16,8 +16,9 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 ## Recommended structure: a factory, not a side-effecting module
 
 `src/mcp-server.js` should export a `createServer({ repoRoot })` that builds and
-returns an `McpServer` with all eight tools registered (seven task-store tools
-plus `kb_lookup`, TASK-106), and ONLY auto-connect a
+returns an `McpServer` with all ten tools registered (seven task-store tools plus
+three extension tools — `kb_lookup` (TASK-106), `kb_graph_query` (TASK-168),
+`mcp_build_status` (TASK-204)), and ONLY auto-connect a
 `StdioServerTransport` when run as the entrypoint. That lets the test inject a
 per-test temp `repoRoot` instead of relying on the `CLAUDE_PROJECT_DIR` env var.
 
@@ -25,7 +26,7 @@ per-test temp `repoRoot` instead of relying on the `CLAUDE_PROJECT_DIR` env var.
 // src/mcp-server.js (shape)
 export function createServer({ repoRoot }) {
   const server = new McpServer({ name: 'hivemind-tasks', version: '0.1.0' });
-  // ...registerTool x8, each closing over `repoRoot`...
+  // ...registerTool x10, each closing over `repoRoot`...
   return server;
 }
 
@@ -118,10 +119,12 @@ describe('MCP task-store round-trip', () => {
 
 - `client.callTool({ name, arguments })` is the SDK client call shape; it returns
   the same `{ content: [...] , isError? }` object the handler returned.
-- `listTools()` on the client is a cheap extra assertion that all eight tools
-  registered (assert the returned `tools` array has length 8 with the expected
-  names, including `close_task` and `kb_lookup`) — good for an AC1-style "the
-  surface is complete" check.
+- `listTools()` on the client is a cheap extra assertion that all ten tools
+  registered (assert the returned `tools` array has length 10 with the expected
+  names: `list_todos`, `list_ready`, `get_task`, `create_task`,
+  `transition_status`, `append_comment`, `close_task`, `kb_lookup`,
+  `kb_graph_query`, `mcp_build_status`) — good for an AC1-style "the surface is
+  complete" check.
 - Connect server and client concurrently (`Promise.all`) — the in-memory
   handshake needs both ends live.
 - Each test gets a fresh `mkdtempSync` repo, so the task store starts empty and

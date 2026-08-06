@@ -5,7 +5,7 @@ source_tier: T2
 Authoritative tool surface is `tasks/TASK-020.research.md` §E.1, reproduced here
 with the verified `src/task-store.js` export names and call signatures.
 
-## The seven task-store tools (§E.1 + TASK-082's `close_task`) plus `kb_lookup` (TASK-106)
+## The seven task-store tools (§E.1 + TASK-082's `close_task`) plus three extension tools — `kb_lookup` (TASK-106), `kb_graph_query` (TASK-168), `mcp_build_status` (TASK-204) — ten tools total
 
 | MCP tool | Args | Returns | Wraps |
 |----------|------|---------|-------|
@@ -17,13 +17,18 @@ with the verified `src/task-store.js` export names and call signatures.
 | `append_comment` | `{ key: string, author: string, body: string }` | `{ ok: true }` | `loopModeUatCommentGuard({repoRoot, author})` (TASK-108, no-op unless loop mode + author:'uat' + undelegated) then `appendComment({repoRoot, key, author, body})` |
 | `close_task` | `{ key: string, comment: { author: string, body: string }, linked_commits?: string[], linked_prs?: string[] }` | `{ ok: true }` | `closeTask({repoRoot, key, comment, linked_commits, linked_prs, closeGuard})` |
 | `kb_lookup` (TASK-106) | `{ question: string }` | `{ query: string, kb_hits: [{ id, path, score }], reuse: { bumped: string[], failed: [{ id, error }] } }` (kb_hits sorted score desc, then id asc) | `lookupKnowledge({repoRoot, question})` then `recordKbReuse({repoRoot, entryId})` for every returned hit, one bump at a time (TASK-113(c): a throwing bump is caught per-hit and reported in `reuse.failed` — it does not abort the other hits or the call) |
+| `kb_graph_query` (TASK-168) | `{ id?: string, type?: string, relation?: string, direction?: "out"\|"in" }` | `{ query, source, nodes: [{ id, type, ref, label }] }` (nodes sorted by id asc; `relation`/`direction` without `id` is rejected with `E_UNANCHORED_EDGE_FILTER`) | `neighbors()` / `nodesByType()` (`src/knowledge-graph.js`) via `neighborsCanonicalFirst` (`src/graph-sync.js`) |
+| `mcp_build_status` (TASK-204) | `{}` | a two-leg (self/repo) bundle-freshness report — see the tool's own `description` in `src/mcp-server.js` for the exact, independently-evolving field names | `checkBundleFreshness(buildStamp, repoRoot)` (`src/mcp-server.js`) |
 
 The first seven map 1:1 onto the Jira-compatible field names in `tasks/schema.json`, so
 that surface survives the eventual Atlassian-MCP migration (backend swaps from local
-JSON to Jira; the tool names stay). `kb_lookup` is NOT ticket CRUD — it is a scoped
-extension of the MCP surface (see the WILL/WON'T docstring below) wrapping
-`src/knowledge.js`'s grep-KB lookup so the Researcher subagent gets an executable,
-reproducible lookup instead of hand-emulating the scoring algorithm.
+JSON to Jira; the tool names stay). The remaining three — `kb_lookup` (TASK-106),
+`kb_graph_query` (TASK-168), `mcp_build_status` (TASK-204) — are NOT ticket CRUD; they
+are scoped extensions of the MCP surface (see the WILL/WON'T docstring below):
+`kb_lookup` wraps `src/knowledge.js`'s grep-KB lookup so the Researcher subagent gets an
+executable, reproducible lookup instead of hand-emulating the scoring algorithm;
+`kb_graph_query` queries `knowledge/graph/graph.json` deterministically; `mcp_build_status`
+reveals whether this MCP server process is running a stale bundle.
 
 ## Verified `src/task-store.js` exports (single object-arg, all async)
 
@@ -188,11 +193,13 @@ inputSchema: { question: z.string() }
 A non-Claude-Code MCP client (claude.ai, Claude Desktop, any MCP host) **WILL**
 get the seven task-store tools: read the backlog, read/create tickets, transition
 status, append comments, and atomically close a ticket (`close_task`) — full CRUD
-on the ticket store — plus, since TASK-106, an eighth tool, `kb_lookup`, that
-looks up the local grep knowledge base (not ticket CRUD, but still exposed to
-any MCP client). It **WON'T** get the
+on the ticket store — plus three extension tools that are not ticket CRUD but are
+still exposed to any MCP client: `kb_lookup` (TASK-106, local grep-KB lookup),
+`kb_graph_query` (TASK-168, deterministic knowledge-graph query), and
+`mcp_build_status` (TASK-204, bundle-staleness report) — ten tools total. It
+**WON'T** get the
 orchestrator → developer/reviewer/researcher subagent loop, the RESUME-FIRST
 session-state orchestration, or the TDD-enforced dev loop — those are Claude
 Code-exclusive file-based constructs that MCP cannot install or drive. In one
-line: the MCP seam turns the framework's *ticket store* (plus one KB-lookup
-tool) into a cross-client API, but the *orchestration* stays Claude Code-only.
+line: the MCP seam turns the framework's *ticket store* (plus three extension
+tools) into a cross-client API, but the *orchestration* stays Claude Code-only.
