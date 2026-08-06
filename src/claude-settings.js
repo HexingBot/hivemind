@@ -9,6 +9,26 @@
 //   - Absolute plugin root baked at call time (CLAUDE_PLUGIN_ROOT is NOT
 //     expanded in project-level settings.json — see claude-code-plugin-path-resolution
 //     skill for the authoritative rationale).
+//
+// TASK-209 — why the version-pinned absolute path is not eliminated outright:
+//   A stable-launcher indirection (a small script whose OWN path never moves,
+//   committed into the consumer project, which resolves the CURRENT plugin
+//   root at RUN time — e.g. from ~/.claude/plugins/installed_plugins.json, or
+//   via src/plugin-root.js's multi-source resolver — then execs the real
+//   script) would end the version-pinning class completely. It was
+//   deliberately NOT built here: the observable failure this ticket exists to
+//   close (a stale path silently doing nothing after `/plugin update`) is
+//   already closed by context-monitor/repin.mjs, a PLUGIN-level SessionStart
+//   hook — plugin-level hook paths DO expand ${CLAUDE_PLUGIN_ROOT}, so
+//   repin.mjs itself is never stale — that self-heals BEFORE the user can
+//   observe a broken statusline/hook, on the very next session. Adding a
+//   second indirection layer on top of an already-shipped, already-tested
+//   self-heal mechanism would be net-new surface (a launcher script materialized
+//   into every consumer project, a second path-resolution algorithm to keep
+//   correct across Windows/POSIX) for no coverage the self-heal doesn't
+//   already provide. If repin.mjs is ever found to miss a real window (e.g. a
+//   session that never restarts across an update), the launcher approach
+//   above is the next escalation — not a rewrite of this file.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';

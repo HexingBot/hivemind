@@ -19,6 +19,11 @@
  *   4. No-ops if paths are already current (idempotent).
  *   5. NEVER injects new context-monitor entries (heal-only, never force-enable).
  *   6. Never throws — a re-pin failure must not block the session.
+ *   7. TASK-209 — when (and only when) it actually repairs a stale path, prints
+ *      a SessionStart hookSpecificOutput.additionalContext note to stdout (the
+ *      same channel session-start.mjs already uses for HANDOFF.md restoration)
+ *      so the repair is visible in the session transcript instead of silent.
+ *      A no-op run (paths already current) prints nothing, same as before.
  *
  * Project root resolution (priority order):
  *   1. stdin JSON `cwd` field (standard hook input)
@@ -99,20 +104,25 @@ function normalizeSeps(p) {
  *
  * @param {object|null|undefined} settings - parsed settings object
  * @param {string} newCmDir - the current context-monitor directory
- * @returns {object & { needsWrite: boolean }} — the (possibly-repinned) settings object
- *   with a `needsWrite` flag mixed in. For non-object inputs (null/undefined/array),
- *   returns `{ needsWrite: false }`.
+ * @returns {object & { needsWrite: boolean, repairedCount: number }} — the
+ *   (possibly-repinned) settings object with `needsWrite`/`repairedCount`
+ *   mixed in. `repairedCount` (TASK-209) is the number of individual command
+ *   strings actually rewritten (0 when nothing was stale) — it is what lets
+ *   callers report the repair rather than perform it silently. For
+ *   non-object inputs (null/undefined/array), returns
+ *   `{ needsWrite: false, repairedCount: 0 }`.
  */
 export function repinSettingsObject(settings, newCmDir) {
   // Guard: must be a plain, non-array object.
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
-    return { needsWrite: false };
+    return { needsWrite: false, repairedCount: 0 };
   }
 
   // Normalize newCmDir for comparison (cross-platform).
   const newCmDirNorm = normalizeSeps(newCmDir);
 
   let needsWrite = false;
+  let repairedCount = 0;
   const out = { ...settings };
 
   // --- statusLine ---
@@ -130,6 +140,7 @@ export function repinSettingsObject(settings, newCmDir) {
         command: repinCommand(out.statusLine.command, oldDir, newCmDir),
       };
       needsWrite = true;
+      repairedCount += 1;
     }
   }
 
@@ -152,6 +163,7 @@ export function repinSettingsObject(settings, newCmDir) {
         if (!oldDir || normalizeSeps(oldDir) === newCmDirNorm) return entry;
 
         arrChanged = true;
+        repairedCount += 1;
         return { ...entry, command: repinCommand(entry.command, oldDir, newCmDir) };
       });
 
@@ -167,10 +179,10 @@ export function repinSettingsObject(settings, newCmDir) {
     }
   }
 
-  // Return the repinned settings merged with the needsWrite flag so callers can
-  // do both `const { needsWrite } = repinSettingsObject(...)` and
-  // `result.statusLine.command` on the same return value.
-  return { ...out, needsWrite };
+  // Return the repinned settings merged with the needsWrite/repairedCount
+  // flags so callers can do both `const { needsWrite } = repinSettingsObject(...)`
+  // and `result.statusLine.command` on the same return value.
+  return { ...out, needsWrite, repairedCount };
 }
 
 /**
@@ -203,14 +215,16 @@ function detectCmDir(cmd) {
  * @param {object} opts
  * @param {string} opts.projectRoot   - absolute path to the consuming project root
  * @param {string} opts.currentCmDir  - the current context-monitor directory
- * @returns {Promise<{ wrote: boolean, path: string }>}
+ * @returns {Promise<{ wrote: boolean, path: string, repairedCount: number }>}
+ *   `repairedCount` (TASK-209) is always present so callers can decide whether
+ *   to report the repair; it is 0 whenever `wrote` is false.
  */
 export async function repinFile({ projectRoot, currentCmDir }) {
   const settingsPath = join(projectRoot, '.claude', 'settings.json');
 
   // If the settings file doesn't exist, nothing to heal.
   if (!existsSync(settingsPath)) {
-    return { wrote: false, path: settingsPath };
+    return { wrote: false, path: settingsPath, repairedCount: 0 };
   }
 
   // Read and parse — silent no-op on malformed JSON.
@@ -219,17 +233,17 @@ export async function repinFile({ projectRoot, currentCmDir }) {
     const raw = readFileSync(settingsPath, 'utf8');
     parsed = JSON.parse(raw);
   } catch {
-    return { wrote: false, path: settingsPath };
+    return { wrote: false, path: settingsPath, repairedCount: 0 };
   }
 
-  // Run the pure re-pin logic. The return value has needsWrite + settings props spread in.
+  // Run the pure re-pin logic. The return value has needsWrite + repairedCount + settings props spread in.
   const repinned = repinSettingsObject(parsed, currentCmDir);
   if (!repinned.needsWrite) {
-    return { wrote: false, path: settingsPath };
+    return { wrote: false, path: settingsPath, repairedCount: 0 };
   }
 
-  // Serialize: exclude the synthetic `needsWrite` flag from the JSON output.
-  const { needsWrite: _nw, ...settingsToWrite } = repinned;
+  // Serialize: exclude the synthetic needsWrite/repairedCount flags from the JSON output.
+  const { needsWrite: _nw, repairedCount, ...settingsToWrite } = repinned;
   const serialized = JSON.stringify(settingsToWrite, null, 2) + '\n';
 
   // Atomic write: write to a temp file in the same directory, then rename.
@@ -248,10 +262,33 @@ export async function repinFile({ projectRoot, currentCmDir }) {
         unlinkSync(tmpPath);
       }
     } catch { /* ignore */ }
-    return { wrote: false, path: settingsPath };
+    return { wrote: false, path: settingsPath, repairedCount: 0 };
   }
 
-  return { wrote: true, path: settingsPath };
+  return { wrote: true, path: settingsPath, repairedCount };
+}
+
+// ---------------------------------------------------------------------------
+// AC2 signal (TASK-209) — the message shown when a repair actually happened
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the SessionStart additionalContext note reporting a completed repair.
+ * Pure/exported for testing so the wording is locked without spawning a
+ * subprocess for every assertion.
+ *
+ * @param {number} repairedCount - number of command strings rewritten (> 0)
+ * @returns {string}
+ */
+export function buildRepinReportMessage(repairedCount) {
+  const plural = repairedCount === 1 ? '' : 's';
+  return (
+    `hivemind: repaired ${repairedCount} stale context-monitor path${plural} in ` +
+    '.claude/settings.json. They pointed at a previously-installed plugin version ' +
+    'that no longer exists on disk (expected after `/plugin update`) — the ' +
+    'statusline and context-monitor hooks are now re-pointed at the current install. ' +
+    'No action needed.'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +362,19 @@ if (__isMain) {
   const currentCmDir = join(pluginRoot, 'context-monitor');
 
   try {
-    await repinFile({ projectRoot, currentCmDir });
+    const result = await repinFile({ projectRoot, currentCmDir });
+    // TASK-209 AC2 — only emit when a repair actually happened; a no-op run
+    // (paths already current, no settings.json, malformed JSON, heal-only
+    // skip) stays exactly as quiet as before.
+    if (result.wrote && result.repairedCount > 0) {
+      const response = {
+        hookSpecificOutput: {
+          hookEventName: 'SessionStart',
+          additionalContext: buildRepinReportMessage(result.repairedCount),
+        },
+      };
+      process.stdout.write(JSON.stringify(response));
+    }
   } catch {
     // Exit 0 always — a re-pin failure must never block the session.
   }

@@ -28,7 +28,33 @@ After the plugin updates, run `/hivemind:apply-workflows` to bring any new workf
 
 > **Why apply-workflows?** The plugin update refreshes the installed plugin code, but it does not automatically copy new files into your project. `/hivemind:apply-workflows` detects which workflow files are missing from your project and adds only those — it never overwrites anything you already have.
 
-**You do not need to re-run `/hivemind:init-project`.** That command bootstraps a brand-new project; for an already-initialized project, `apply-workflows` is the right follow-up after an update.
+## Step 3 — Context-monitor paths self-heal; you don't need to do anything for them either
+
+Your project's `.claude/settings.json` carries an **absolute, version-pinned path** into the plugin
+cache for the statusline and context-monitor hook commands — baked in at init time because
+`${CLAUDE_PLUGIN_ROOT}` is *not* expanded inside a project's own `settings.json` (only inside the
+plugin's own `hooks/hooks.json`). After `/plugin update`, the old version's cache directory is
+removed, so that baked path points at nothing.
+
+This is **not** something you need to repair by hand. `context-monitor/repin.mjs` ships as a
+plugin-level `SessionStart` hook — running from the plugin's own `hooks/hooks.json`, where
+`${CLAUDE_PLUGIN_ROOT}` *is* expanded — and re-points any stale context-monitor paths automatically
+the moment your **next session starts** (idempotent, heal-only: it only fixes hivemind's own
+entries, never touches anything else in `settings.json`). Watch for a short transcript note at that
+session's start, e.g. `hivemind: repaired 3 stale context-monitor paths in .claude/settings.json...`
+— that confirms it ran. No note means nothing was stale.
+
+If you want the repair to happen immediately, without waiting for your next session, run:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs
+```
+
+**You do not need to re-run `/hivemind:init-project`** to fix any of this. That command bootstraps
+a brand-new project (`PROJECT.md`, seeded backlog, session bundle) — for an already-initialized
+project, `apply-workflows` (Step 2) is the right follow-up for new workflow *files*, and the
+automatic re-pin above (or the manual command) is what handles stale settings.json paths;
+`init-project` would do far more than either of those need.
 
 ## Notes
 
