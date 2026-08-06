@@ -69,6 +69,21 @@ export function resolvePluginRoot() {
 /**
  * Build the context-monitor entries to inject into settings.json.
  *
+ * TASK-210 — hooks.Stop/hooks.SessionStart entries use the documented NESTED
+ * shape (`{ matcher?, hooks: [{ type, command }] }`), matching the plugin's
+ * own hooks/hooks.json and the official hooks reference: "You cannot place a
+ * handler directly on the matcher group. Handlers must nest inside the hooks
+ * array." Verified empirically against `claude doctor`: the flat shape (a
+ * `command` sitting directly on the array element) is rejected as invalid
+ * settings (`hooks.Stop.0.hooks: Expected array, but received undefined`);
+ * the nested shape below produces zero validation errors. `matcher` is only
+ * valid for events that support it — SessionStart does, Stop does not, so
+ * `stopHook` carries no `matcher` key at all (not even `undefined`).
+ *
+ * `statusLine` is a different top-level settings key with a different
+ * (flat, genuinely-honoured) shape — not part of the hooks schema — and is
+ * unaffected by this change.
+ *
  * @param {string} pluginRoot - absolute path to the plugin root
  * @returns {{ statusLine: object, stopHook: object, sessionStartHook: object }}
  */
@@ -87,15 +102,91 @@ export function buildContextMonitorEntries(pluginRoot) {
       command: statusLineCmd,
     },
     stopHook: {
-      type: 'command',
-      command: stopHookCmd,
+      // No `matcher` key — Stop does not support one.
+      hooks: [{ type: 'command', command: stopHookCmd }],
     },
     sessionStartHook: {
-      type: 'command',
       matcher: 'clear|compact',
-      command: sessionStartCmd,
+      hooks: [{ type: 'command', command: sessionStartCmd }],
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Shape-agnostic entry matching (TASK-210)
+// ---------------------------------------------------------------------------
+
+/**
+ * Every command string found inside a hooks.<Event> array element, handling
+ * BOTH the canonical nested shape (`entry.hooks[]`) and the legacy flat shape
+ * (`entry.command` directly) so callers can detect "is this ours" regardless
+ * of which shape is currently on disk.
+ *
+ * @param {*} entry
+ * @returns {string[]}
+ */
+function commandsOf(entry) {
+  if (!entry || typeof entry !== 'object') return [];
+  if (Array.isArray(entry.hooks)) {
+    return entry.hooks
+      .filter((h) => h && typeof h.command === 'string')
+      .map((h) => h.command);
+  }
+  if (typeof entry.command === 'string') return [entry.command];
+  return [];
+}
+
+/**
+ * True if `entry` (whichever shape) references `scriptName` by filename —
+ * i.e. it is one of OUR own context-monitor entries, not an unrelated
+ * user/third-party hook.
+ *
+ * @param {*} entry
+ * @param {string} scriptName - e.g. 'stop-hook.mjs'
+ * @returns {boolean}
+ */
+function isOurHookEntry(entry, scriptName) {
+  return commandsOf(entry).some((cmd) => cmd.includes(scriptName));
+}
+
+/**
+ * Reconcile a single hooks.<Event> array against our canonical entry:
+ *   - If OUR entry is present but in the legacy FLAT shape, replace it
+ *     in place (same array index) with `canonicalEntry` — this is the
+ *     shape MIGRATION for pre-existing projects (TASK-210 AC4).
+ *   - If OUR entry is present and already nested, leave it byte-for-byte
+ *     untouched (no needless rewrite — keeps idempotency/serialization
+ *     stable).
+ *   - If OUR entry is absent and `inject` is true, append `canonicalEntry`.
+ *   - If OUR entry is absent and `inject` is false, do nothing (heal-only —
+ *     used by the automatic migration hook, which must never force-enable
+ *     context-monitor for a project that never had it).
+ *   - Every other (unrelated) entry is left completely untouched.
+ *
+ * @param {Array} arr - existing hooks.<Event> array (or undefined)
+ * @param {string} scriptName - e.g. 'stop-hook.mjs'
+ * @param {object} canonicalEntry - the correct nested-shape entry
+ * @param {{ inject: boolean }} opts
+ * @returns {{ arr: Array, changed: boolean }}
+ */
+function reconcileHookArray(arr, scriptName, canonicalEntry, { inject }) {
+  const base = Array.isArray(arr) ? arr : [];
+  const idx = base.findIndex((h) => isOurHookEntry(h, scriptName));
+
+  if (idx === -1) {
+    if (!inject) return { arr: base, changed: false };
+    return { arr: [...base, canonicalEntry], changed: true };
+  }
+
+  if (Array.isArray(base[idx].hooks)) {
+    // Already correctly nested — no rewrite needed.
+    return { arr: base, changed: false };
+  }
+
+  // Legacy flat shape — migrate in place.
+  const next = [...base];
+  next[idx] = canonicalEntry;
+  return { arr: next, changed: true };
 }
 
 /**
@@ -129,33 +220,83 @@ export function mergeContextMonitorSettings(existing, entries) {
     out.hooks = { ...out.hooks };
   }
 
-  // hooks.Stop: append if not already present (match by script name).
-  if (!Array.isArray(out.hooks.Stop)) {
-    out.hooks.Stop = [];
-  } else {
-    out.hooks.Stop = [...out.hooks.Stop];
-  }
-  const hasStopHook = out.hooks.Stop.some(
-    (h) => h && typeof h.command === 'string' && h.command.includes('stop-hook.mjs'),
-  );
-  if (!hasStopHook) {
-    out.hooks.Stop.push(entries.stopHook);
-  }
+  // hooks.Stop: append if absent; migrate in place if present but legacy-flat
+  // (TASK-210) — this is what makes writeClaudeSettings self-repairing for
+  // projects initialized before the nested-shape fix, without duplicating or
+  // reordering unrelated entries.
+  out.hooks.Stop = reconcileHookArray(out.hooks.Stop, 'stop-hook.mjs', entries.stopHook, {
+    inject: true,
+  }).arr;
 
-  // hooks.SessionStart: append if not already present.
-  if (!Array.isArray(out.hooks.SessionStart)) {
-    out.hooks.SessionStart = [];
-  } else {
-    out.hooks.SessionStart = [...out.hooks.SessionStart];
-  }
-  const hasSessionStartHook = out.hooks.SessionStart.some(
-    (h) => h && typeof h.command === 'string' && h.command.includes('session-start.mjs'),
-  );
-  if (!hasSessionStartHook) {
-    out.hooks.SessionStart.push(entries.sessionStartHook);
-  }
+  // hooks.SessionStart: same treatment.
+  out.hooks.SessionStart = reconcileHookArray(
+    out.hooks.SessionStart,
+    'session-start.mjs',
+    entries.sessionStartHook,
+    { inject: true },
+  ).arr;
 
   return out;
+}
+
+/**
+ * Heal-only sibling of mergeContextMonitorSettings (TASK-210 AC4/AC6): migrates
+ * a pre-existing LEGACY FLAT context-monitor hook entry to the documented
+ * nested shape, in place, WITHOUT ever injecting a new entry into a project
+ * that never had one. This is the narrower contract required by the automatic
+ * plugin-level migration hook (context-monitor/settings-migrate.mjs), which
+ * — like context-monitor/repin.mjs's existing path-repair hook — must never
+ * force-enable context-monitor for a project that opted out by removing the
+ * entries.
+ *
+ * Composition with repin.mjs (TASK-209): repin.mjs repairs stale PATHS
+ * regardless of shape (it already traverses both flat and nested for that);
+ * this function repairs SHAPE only and never touches the command's path
+ * (whatever path is currently present is preserved verbatim by
+ * reconcileHookArray leaving already-nested entries untouched — the only
+ * case that rewrites the command at all is a flat->nested migration, which
+ * always uses the CURRENT plugin root via `entries`, same as a fresh write).
+ * Both hooks are independently idempotent and safe to run every session; see
+ * context-monitor/settings-migrate.mjs for the disk-level orchestration
+ * (including how it avoids clobbering a concurrent repin.mjs write).
+ *
+ * @param {object} existing - parsed settings object (may be {})
+ * @param {{ statusLine, stopHook, sessionStartHook }} entries - from buildContextMonitorEntries
+ * @returns {{ settings: object, changed: boolean }}
+ */
+export function migrateContextMonitorShape(existing, entries) {
+  if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+    return { settings: existing, changed: false };
+  }
+  if (!existing.hooks || typeof existing.hooks !== 'object' || Array.isArray(existing.hooks)) {
+    return { settings: existing, changed: false };
+  }
+
+  let changed = false;
+  const hooks = { ...existing.hooks };
+
+  const stopResult = reconcileHookArray(hooks.Stop, 'stop-hook.mjs', entries.stopHook, {
+    inject: false,
+  });
+  if (stopResult.changed) {
+    hooks.Stop = stopResult.arr;
+    changed = true;
+  }
+
+  const ssResult = reconcileHookArray(
+    hooks.SessionStart,
+    'session-start.mjs',
+    entries.sessionStartHook,
+    { inject: false },
+  );
+  if (ssResult.changed) {
+    hooks.SessionStart = ssResult.arr;
+    changed = true;
+  }
+
+  if (!changed) return { settings: existing, changed: false };
+
+  return { settings: { ...existing, hooks }, changed: true };
 }
 
 // ---------------------------------------------------------------------------

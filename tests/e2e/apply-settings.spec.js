@@ -85,8 +85,10 @@ describe('AC2a — --apply-settings on already-initialized project writes settin
     expect(settings.hooks, 'hooks must be added').toBeDefined();
     expect(Array.isArray(settings.hooks.Stop)).toBe(true);
     expect(Array.isArray(settings.hooks.SessionStart)).toBe(true);
-    expect(settings.hooks.Stop.some((h) => /stop-hook\.mjs/.test(h.command))).toBe(true);
-    expect(settings.hooks.SessionStart.some((h) => /session-start\.mjs/.test(h.command))).toBe(true);
+    // TASK-210 — hook entries use the documented NESTED shape: the command
+    // lives inside entry.hooks[], not directly on the array element.
+    expect(settings.hooks.Stop.some((h) => h.hooks?.some((hh) => /stop-hook\.mjs/.test(hh.command)))).toBe(true);
+    expect(settings.hooks.SessionStart.some((h) => h.hooks?.some((hh) => /session-start\.mjs/.test(hh.command)))).toBe(true);
 
     // PROJECT.md must be byte-identical (--apply-settings must not touch it).
     expect(readFileSync(projectMdPath, 'utf8')).toBe(projectMdBefore);
@@ -119,8 +121,8 @@ describe('AC2b — --apply-settings on uninitialized project writes settings.jso
 
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     expect(settings.statusLine).toBeDefined();
-    expect(settings.hooks.Stop.some((h) => /stop-hook\.mjs/.test(h.command))).toBe(true);
-    expect(settings.hooks.SessionStart.some((h) => /session-start\.mjs/.test(h.command))).toBe(true);
+    expect(settings.hooks.Stop.some((h) => h.hooks?.some((hh) => /stop-hook\.mjs/.test(hh.command)))).toBe(true);
+    expect(settings.hooks.SessionStart.some((h) => h.hooks?.some((hh) => /session-start\.mjs/.test(hh.command)))).toBe(true);
 
     // PROJECT.md must NOT be created.
     expect(existsSync(join(repoDir, 'PROJECT.md'))).toBe(false);
@@ -146,8 +148,8 @@ describe('AC2c — --apply-settings is idempotent: no duplicate entries', () => 
 
     const settingsPath = join(repoDir, '.claude', 'settings.json');
     const afterFirst = JSON.parse(readFileSync(settingsPath, 'utf8'));
-    const stopCount1 = afterFirst.hooks.Stop.filter((h) => /stop-hook\.mjs/.test(h.command)).length;
-    const ssCount1 = afterFirst.hooks.SessionStart.filter((h) => /session-start\.mjs/.test(h.command)).length;
+    const stopCount1 = afterFirst.hooks.Stop.filter((h) => h.hooks?.some((hh) => /stop-hook\.mjs/.test(hh.command))).length;
+    const ssCount1 = afterFirst.hooks.SessionStart.filter((h) => h.hooks?.some((hh) => /session-start\.mjs/.test(hh.command))).length;
 
     // Second run.
     await runInit({
@@ -158,8 +160,8 @@ describe('AC2c — --apply-settings is idempotent: no duplicate entries', () => 
     });
 
     const afterSecond = JSON.parse(readFileSync(settingsPath, 'utf8'));
-    const stopCount2 = afterSecond.hooks.Stop.filter((h) => /stop-hook\.mjs/.test(h.command)).length;
-    const ssCount2 = afterSecond.hooks.SessionStart.filter((h) => /session-start\.mjs/.test(h.command)).length;
+    const stopCount2 = afterSecond.hooks.Stop.filter((h) => h.hooks?.some((hh) => /stop-hook\.mjs/.test(hh.command))).length;
+    const ssCount2 = afterSecond.hooks.SessionStart.filter((h) => h.hooks?.some((hh) => /session-start\.mjs/.test(hh.command))).length;
 
     expect(stopCount2).toBe(stopCount1);
     expect(ssCount2).toBe(ssCount1);

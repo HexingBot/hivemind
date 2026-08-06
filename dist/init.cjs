@@ -11148,15 +11148,39 @@ function buildContextMonitorEntries(pluginRoot) {
       command: statusLineCmd
     },
     stopHook: {
-      type: "command",
-      command: stopHookCmd
+      // No `matcher` key — Stop does not support one.
+      hooks: [{ type: "command", command: stopHookCmd }]
     },
     sessionStartHook: {
-      type: "command",
       matcher: "clear|compact",
-      command: sessionStartCmd
+      hooks: [{ type: "command", command: sessionStartCmd }]
     }
   };
+}
+function commandsOf(entry) {
+  if (!entry || typeof entry !== "object") return [];
+  if (Array.isArray(entry.hooks)) {
+    return entry.hooks.filter((h) => h && typeof h.command === "string").map((h) => h.command);
+  }
+  if (typeof entry.command === "string") return [entry.command];
+  return [];
+}
+function isOurHookEntry(entry, scriptName) {
+  return commandsOf(entry).some((cmd) => cmd.includes(scriptName));
+}
+function reconcileHookArray(arr, scriptName, canonicalEntry, { inject }) {
+  const base = Array.isArray(arr) ? arr : [];
+  const idx = base.findIndex((h) => isOurHookEntry(h, scriptName));
+  if (idx === -1) {
+    if (!inject) return { arr: base, changed: false };
+    return { arr: [...base, canonicalEntry], changed: true };
+  }
+  if (Array.isArray(base[idx].hooks)) {
+    return { arr: base, changed: false };
+  }
+  const next = [...base];
+  next[idx] = canonicalEntry;
+  return { arr: next, changed: true };
 }
 function mergeContextMonitorSettings(existing, entries) {
   const out = { ...existing };
@@ -11168,28 +11192,15 @@ function mergeContextMonitorSettings(existing, entries) {
   } else {
     out.hooks = { ...out.hooks };
   }
-  if (!Array.isArray(out.hooks.Stop)) {
-    out.hooks.Stop = [];
-  } else {
-    out.hooks.Stop = [...out.hooks.Stop];
-  }
-  const hasStopHook = out.hooks.Stop.some(
-    (h) => h && typeof h.command === "string" && h.command.includes("stop-hook.mjs")
-  );
-  if (!hasStopHook) {
-    out.hooks.Stop.push(entries.stopHook);
-  }
-  if (!Array.isArray(out.hooks.SessionStart)) {
-    out.hooks.SessionStart = [];
-  } else {
-    out.hooks.SessionStart = [...out.hooks.SessionStart];
-  }
-  const hasSessionStartHook = out.hooks.SessionStart.some(
-    (h) => h && typeof h.command === "string" && h.command.includes("session-start.mjs")
-  );
-  if (!hasSessionStartHook) {
-    out.hooks.SessionStart.push(entries.sessionStartHook);
-  }
+  out.hooks.Stop = reconcileHookArray(out.hooks.Stop, "stop-hook.mjs", entries.stopHook, {
+    inject: true
+  }).arr;
+  out.hooks.SessionStart = reconcileHookArray(
+    out.hooks.SessionStart,
+    "session-start.mjs",
+    entries.sessionStartHook,
+    { inject: true }
+  ).arr;
   return out;
 }
 function writeClaudeSettings({ repoRoot, pluginRoot }) {
