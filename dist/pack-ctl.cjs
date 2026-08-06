@@ -10032,6 +10032,16 @@ async function assimilateSkill(opts) {
   return {
     ...base,
     status: "assimilated",
+    // TASK-207 review: `path` is always the shared assimilated-skills/<id>/
+    // location even on a foreign collision, where THIS call wrote nothing
+    // there -- deliberate, not an oversight. It is still where the
+    // resource's (prior owner's) content actually lives, and
+    // `ownership_joined_existing`/`reason` below are the discriminator a
+    // caller needs to know this call itself didn't write it. Likewise
+    // `source_integrity`/`content_integrity` can be `undefined` here for a
+    // pre-TASK-142 (`integrity`-only) prior entry -- carried through
+    // unchanged from `recordedEntry`, never backfilled with a
+    // freshly-computed hash the collision guard exists to avoid computing.
     path: ownedDir,
     origin: recordedEntry.origin,
     pin: recordedEntry.pin,
