@@ -125,6 +125,94 @@ import { spawnSync } from 'node:child_process';
 import { realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { ENTRYPOINT_NAMES } from '../scripts/build-plugin.mjs';
+
+// TASK-197 — GENERATED-ARTIFACT MERGE HAZARD.
+//
+// On 2026-08-03, TASK-193 (main tree) and TASK-189 (isolated worktree) both
+// branched from d3c80c1 and both regenerated dist/*.cjs independently.
+// mergeWorktreeBranch merged the two branches with NO conflict reported —
+// git treats a generated bundle as ordinary text and happily splices
+// non-overlapping hunks from two DIFFERENT builds into one file. The result
+// matched neither build and was only caught by the unrelated dist-parity
+// sensor (TASK-049); had that sensor not existed, a spliced bundle would
+// have shipped. A conflict would have been the SAFE outcome here — a
+// successful textual merge of a generated artifact is the dangerous one,
+// because it is silent.
+//
+// MITIGATION CHOSEN: option 3 from the ticket (refuse when both sides
+// independently modified a generated path since diverging), not option 1
+// (exclude + always take target side) or option 2 (detect + auto-rebuild).
+// Rationale, recorded here because it is the one non-obvious decision in
+// this module's addition:
+//   - This repo's house style for exactly this class of hazard (see the
+//     MODULE INVARIANT above, and the E_NODE_MODULES_* typed-refusal family)
+//     is fail-closed and loud, never silent-and-self-healing. Option 2 would
+//     be the first place in this module that runs a BUILD as a side effect
+//     of a MERGE — new failure surface (a build can itself fail, hang, or
+//     drift the merge commit's tree out from under the caller) in exchange
+//     for automating a step a human/Orchestrator can trivially run by hand
+//     (`npm run build:plugin`) once told to.
+//   - Option 1 (silently take target side, then rebuild) throws away
+//     whichever side's regeneration was NOT already on the target branch
+//     without ever telling the operator a second build happened to exist —
+//     the same "silent" shape as the original defect, just relocated.
+//   - Option 3 converts the silent case into EXACTLY the conflict it should
+//     have been: it refuses BEFORE the merge is attempted, names the
+//     colliding path(s), and leaves both branches and the target tree
+//     completely untouched — the same "abort, never resolve, hand back to
+//     the Orchestrator/human" shape mergeWorktreeBranch already uses for a
+//     real content conflict, so this is not a new decision axis, only a new
+//     trigger for an existing one.
+//
+// COST: a merge that used to succeed automatically whenever both sides
+// touched dist/*.cjs (the overwhelmingly common case for two developer
+// spawns landing in the same window — dist/ changes on almost every ticket
+// that touches bin/ or src/) now requires a manual rebuild-and-retry step:
+// re-run `npm run build:plugin` on the merged source tree and re-attempt
+// the merge (which will then see only ONE side — the rebuilt one — having
+// touched the generated path, since the retry's "target" already carries
+// the merged source). This is deliberately more friction than option 2's
+// auto-heal, traded for never silently shipping a spliced bundle.
+//
+// WHAT THIS DOES NOT PROTECT AGAINST (the residual, stated explicitly per
+// the ticket's demand):
+//   - This module has NO independent way to know a path is "generated" —
+//     it can only refuse for paths a caller told it about. The set used
+//     here (getGeneratedArtifactPaths, below) is derived from
+//     scripts/build-plugin.mjs's ENTRYPOINT_NAMES, which covers the dist/
+//     bundles this repo's OWN build produces. Any other generated artifact
+//     in this repo or a consuming project (a different build tool, a
+//     generated lockfile, a codegen'd file this list doesn't know about) is
+//     silently unprotected — the exact TASK-197 defect can still occur for
+//     any generated path outside this list.
+//   - This is a MERGE-TIME check keyed on "did both sides touch this path
+//     since their common ancestor". It does not catch the case where only
+//     ONE side touched a generated path but the OTHER side's unmerged
+//     source changes would have produced different bytes for that same
+//     path had it been rebuilt — that is exactly what dist-parity
+//     (tests/e2e/dist-parity.spec.js) exists to catch post-merge, and this
+//     check does not replace it.
+//   - It protects mergeWorktreeBranch only. A generated artifact merged by
+//     any other path (a manual `git merge`, a rebase, a cherry-pick outside
+//     this module) is not covered.
+
+/**
+ * The set of generated bundle paths (repo-root-relative, forward-slash,
+ * matching `git diff --name-only` output on every platform) this module
+ * refuses to silently textually-merge. Derived directly from
+ * scripts/build-plugin.mjs's ENTRYPOINT_NAMES — the same export
+ * tests/e2e/dist-parity.spec.js already imports — so there is exactly one
+ * list of "what dist/ contains" in this repo, not a second copy that can
+ * drift (TASK-197 AC4; this repo has been bitten by exactly that class of
+ * duplication before).
+ *
+ * @returns {string[]}
+ */
+export function getGeneratedArtifactPaths() {
+  return ENTRYPOINT_NAMES.map((name) => `dist/${name}`);
+}
+
 function git(cwd, args) {
   return spawnSync('git', args, { cwd, encoding: 'utf8' });
 }
@@ -254,9 +342,58 @@ function findWorktreeEntry(repoRoot, worktreePath, label) {
 }
 
 /**
+ * Detect whether both `targetRef` (the checkout at `repoRoot`, always
+ * `'HEAD'`) and `branch` have independently modified a generated artifact
+ * path (per getGeneratedArtifactPaths) since their common ancestor — the
+ * exact precondition under which git's textual merge splices two
+ * independently-generated builds together without reporting a conflict
+ * (TASK-197).
+ *
+ * Deliberately does NOT fail closed on a `git merge-base` failure: an
+ * unresolvable `branch` (typo, never-created) or genuinely unrelated
+ * histories both mean the collision QUESTION cannot even be asked — but
+ * they also both mean the real `git merge` attempt immediately below this
+ * check will fail on its own, for its own, more specific reason (an
+ * unresolvable branch name, or "refusing to merge unrelated histories").
+ * Returning "no collision" here in that case does not hide anything: no
+ * merge is going to succeed either way, so there is no silent path from
+ * this fallback to a shipped, spliced artifact. A `git diff` failure AFTER
+ * merge-base has already resolved is a different matter — at that point
+ * both refs are known-good, so any failure is a genuine anomaly and is
+ * surfaced via runGitOrThrow (E_GIT_FAILED), never read as "no collision".
+ *
+ * @returns {string[]} the colliding generated paths, empty if none (or if
+ *   merge-base itself could not be resolved).
+ */
+function detectGeneratedArtifactCollision(repoRoot, branch, label) {
+  const generatedPaths = getGeneratedArtifactPaths();
+  if (generatedPaths.length === 0) return [];
+
+  const mergeBaseOut = git(repoRoot, ['merge-base', 'HEAD', branch]);
+  if (mergeBaseOut.status !== 0) return [];
+  const mergeBase = mergeBaseOut.stdout.trim();
+  if (!mergeBase) return [];
+
+  const targetChanged = new Set(
+    runGitOrThrow(repoRoot, ['diff', '--name-only', `${mergeBase}..HEAD`], label)
+      .split('\n').map((l) => l.trim()).filter(Boolean),
+  );
+  const branchChanged = new Set(
+    runGitOrThrow(repoRoot, ['diff', '--name-only', `${mergeBase}..${branch}`], label)
+      .split('\n').map((l) => l.trim()).filter(Boolean),
+  );
+
+  return generatedPaths.filter((p) => targetChanged.has(p) && branchChanged.has(p));
+}
+
+/**
  * Merge `branch` (a worktree's branch) into whatever is currently checked
  * out at `repoRoot`. Never resolves a conflict — aborts and reports instead.
- * Refuses up front if a merge is already in progress at `repoRoot`.
+ * Refuses up front if a merge is already in progress at `repoRoot`, or if
+ * both sides independently modified a generated artifact path since
+ * diverging (TASK-197 — see detectGeneratedArtifactCollision and the module
+ * doc comment's "GENERATED-ARTIFACT MERGE HAZARD" section for the full
+ * rationale, cost, and residual).
  *
  * @param {{ repoRoot: string, branch: string, message?: string }} opts
  * @returns {{ merged: true, sha: string } | { merged: false, conflict: true, conflictedFiles: string[] }}
@@ -280,6 +417,25 @@ export function mergeWorktreeBranch({ repoRoot, branch, message } = {}) {
       'E_MERGE_IN_PROGRESS',
       `mergeWorktreeBranch: refusing to merge ${branch} into ${repoRoot} — a merge is already in progress ` +
       'there (MERGE_HEAD exists); resolve or abort it before handing back another branch',
+    );
+  }
+
+  // TASK-197 — refuse BEFORE attempting the merge if both sides
+  // independently modified a generated artifact path since diverging: this
+  // is the exact silent-splice precondition (see the module doc comment).
+  // Checked ahead of the merge attempt, not after, so the target tree is
+  // never even touched — the same "leave everything untouched, hand back
+  // to a human/Orchestrator" shape as the real-conflict abort path below,
+  // just triggered earlier and without ever starting a merge at all.
+  const generatedCollisions = detectGeneratedArtifactCollision(repoRoot, branch, 'mergeWorktreeBranch');
+  if (generatedCollisions.length > 0) {
+    throw makeErr(
+      'E_GENERATED_ARTIFACT_BOTH_SIDES_MODIFIED',
+      `mergeWorktreeBranch: refusing to merge ${branch} into ${repoRoot} — both sides independently modified ` +
+      `generated artifact path(s) since diverging: ${generatedCollisions.join(', ')}. A textual merge here would ` +
+      'silently splice two independently-generated builds together, producing an artifact matching neither ' +
+      '(TASK-197). Resolve by hand: merge the SOURCE changes only (or rebuild after merging), then rebuild ' +
+      "with `npm run build:plugin` and re-verify with `npm run test:all`'s dist-parity check before committing.",
     );
   }
 

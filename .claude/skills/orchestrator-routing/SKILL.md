@@ -457,6 +457,55 @@ losing agent against the now-merged tree, or resolve by hand. The main line is
 left clean either way; the abort guarantees no half-merged state blocks
 subsequent commits.
 
+**Generated artifacts: a clean merge is not always a correct one (TASK-197).**
+On 2026-08-03, TASK-193 (main tree) and TASK-189 (isolated worktree) both
+branched off `d3c80c1` and both regenerated `dist/*.cjs` independently.
+`mergeWorktreeBranch` reported `{ merged: true }` with **no conflict** — git
+treats a generated bundle as ordinary text and spliced non-overlapping hunks
+from the two DIFFERENT builds into one file. The result matched neither
+build and was only caught by the unrelated `dist-parity` sensor (TASK-049);
+had it not existed, a spliced bundle would have shipped. **A conflict would
+have been the SAFE outcome here** — a successful textual merge of a
+generated artifact is the dangerous one, precisely because it is silent.
+
+`mergeWorktreeBranch` now refuses BEFORE attempting the merge, with
+`E_GENERATED_ARTIFACT_BOTH_SIDES_MODIFIED`, whenever both the target
+checkout and the incoming branch independently modified the same generated
+artifact path since their common ancestor — converting the silent case into
+the conflict it should have been (the same "abort, never resolve, hand back
+to a human/Orchestrator" shape as the real-conflict case above, just
+triggered earlier and without ever starting a merge at all). Of the three
+options considered — (1) exclude generated paths from merges entirely and
+always take the target side, (2) detect the collision and auto-rebuild plus
+re-check parity as part of handback, (3) refuse outright — **option 3 was
+chosen**: it matches this module's existing fail-closed, loud house style
+(see the MODULE INVARIANT and the `E_NODE_MODULES_*` typed-refusal family in
+`src/worktree-handback.js`), whereas option 2 would make a merge run a BUILD
+as a side effect (new failure surface for a merge to inherit) and option 1
+would silently discard whichever side's regeneration lost, the same "silent"
+shape as the original defect, just relocated. **Cost:** a merge that used to
+succeed automatically whenever both sides touched `dist/*.cjs` — the common
+case whenever two developer spawns land in the same window and either
+touched `bin/` or `src/` — now requires a manual rebuild-and-retry: merge
+the source changes, run `npm run build:plugin`, and re-attempt the handback.
+**Residual, stated explicitly:** this module has no independent way to know
+a path is "generated" — the set it checks
+(`getGeneratedArtifactPaths` in `src/worktree-handback.js`) is derived
+directly from `scripts/build-plugin.mjs`'s `ENTRYPOINT_NAMES` (the same
+export `tests/e2e/dist-parity.spec.js` already imports, so there is exactly
+one list of "what `dist/` contains" in this repo, not a second copy that can
+drift), and covers only this repo's own `dist/` bundles — any other
+generated artifact, in this repo or a consuming project, is unprotected.
+This is also a merge-time-only check: it does not replace `dist-parity`,
+which still catches the case where only one side rebuilt but the other
+side's *unmerged source* would have produced different bytes had it been
+rebuilt too. **Sensor:** `tests/e2e/git-worktree-handback.spec.js`'s
+"AC1/AC3 (TASK-197)" block reproduces the defect against real git (two
+branches independently "regenerating" the same `dist/<entrypoint>.cjs` in
+non-overlapping regions, so a plain merge would succeed silently) and locks
+the refusal, plus a companion case proving the check does not over-trigger
+when only one side touched the path.
+
 **Orphaned worktrees (agent died mid-work).** The `Agent` tool auto-removes a
 worktree that is unchanged when its spawn ends normally. An orphan — a
 worktree left behind with commits not yet merged, or uncommitted dirty state,

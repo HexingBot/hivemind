@@ -25,6 +25,7 @@ import {
   detectOrphanedWorktrees,
   removeMergedWorktree,
   normalizeForCompare,
+  getGeneratedArtifactPaths,
 } from '../../src/worktree-handback.js';
 
 afterAll(() => cleanupAll());
@@ -53,6 +54,12 @@ function initRepo(dir) {
   git(dir, ['init', '-q']);
   git(dir, ['config', 'user.email', 'dev@example.com']);
   git(dir, ['config', 'user.name', 'Test Dev']);
+  // TASK-197: pin autocrlf off so a real `git merge`/checkout never rewrites
+  // LF content to CRLF on Windows regardless of the user's global git config
+  // — the generated-artifact tests below compare checked-out file bytes
+  // exactly, and a CRLF rewrite would fail those assertions for a reason
+  // that has nothing to do with the mechanism under test.
+  git(dir, ['config', 'core.autocrlf', 'false']);
 }
 
 /** Files present in the most recent commit, via `git show --stat`. */
@@ -817,5 +824,125 @@ describe('HIGH (TASK-198 fix round) — removeMergedWorktree severs a node_modul
     // The unrelated foreign target this junction happened to point at is
     // also untouched — the guard is unconditional, not primary-path-specific.
     expect(existsSync(join(foreignNodeModules, 'unrelated-package', 'marker.txt'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-197 — a textual merge of a generated artifact is silently WRONG, not
+// safely resolved. Two branches off one base each independently "regenerate"
+// the same bundled artifact (dist/<entrypoint>.cjs, per
+// getGeneratedArtifactPaths); a plain git merge splices non-overlapping
+// hunks from the two builds together with NO conflict reported — the
+// resulting file matches neither build. mergeWorktreeBranch must refuse
+// BEFORE attempting such a merge (option 3 from the ticket: convert the
+// silent case into the conflict it should have been).
+// ---------------------------------------------------------------------------
+
+describe('AC1/AC3 (TASK-197) — mergeWorktreeBranch refuses when both sides independently regenerated the same generated artifact', () => {
+  it('refuses_with_E_GENERATED_ARTIFACT_BOTH_SIDES_MODIFIED_instead_of_silently_splicing_two_independent_builds_together', () => {
+    const dir = makeTmpDir('wt-generated-artifact-collision');
+    initRepo(dir);
+
+    const [genRelPath] = getGeneratedArtifactPaths();
+    mkdirSync(join(dir, 'dist'), { recursive: true });
+
+    // A base "bundle" with enough non-overlapping lines that two edits far
+    // apart in it merge textually WITHOUT a conflict — the exact shape of
+    // the real TASK-193/TASK-189 incident (both builds diverged bundles via
+    // unrelated source changes, so git's 3-line-context merge saw no
+    // overlap and reported success).
+    const baseLines = ['// bundle header: BASE'];
+    for (let i = 1; i <= 30; i += 1) baseLines.push(`// filler line ${i}`);
+    baseLines.push('// bundle footer: BASE');
+    const baseContent = `${baseLines.join('\n')}\n`;
+
+    writeFileSync(join(dir, genRelPath), baseContent);
+    git(dir, ['add', genRelPath]);
+    git(dir, ['commit', '-q', '-m', 'baseline: initial generated artifact']);
+
+    const wtA = join(makeTmpDir('wt-genart-a'), 'wt');
+    const wtB = join(makeTmpDir('wt-genart-b'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-genart-a', wtA]);
+    git(dir, ['worktree', 'add', '-b', 'agent-genart-b', wtB]);
+
+    // Agent A's independent "build" — changes the header only.
+    const aLines = [...baseLines];
+    aLines[0] = '// bundle header: A-BUILD-HASH-1111';
+    const contentA = `${aLines.join('\n')}\n`;
+    writeFileSync(join(wtA, genRelPath), contentA);
+    git(wtA, ['add', genRelPath]);
+    git(wtA, ['commit', '-q', '-m', 'agent A: regenerate dist bundle']);
+
+    // Agent B's independent "build" — changes a DIFFERENT, non-overlapping
+    // region only, so a textual merge of A+B would report no conflict.
+    const bLines = [...baseLines];
+    bLines[16] = '// filler line 16 (agent B build content)';
+    const contentB = `${bLines.join('\n')}\n`;
+    writeFileSync(join(wtB, genRelPath), contentB);
+    git(wtB, ['add', genRelPath]);
+    git(wtB, ['commit', '-q', '-m', 'agent B: regenerate dist bundle']);
+
+    // Land A first — the first side to touch the generated path merges clean.
+    const mergeA = mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-genart-a', message: 'handback: agent-genart-a' });
+    expect(mergeA.merged).toBe(true);
+
+    // Land B — the load-bearing call. The target (now carrying A's
+    // regeneration) and agent-genart-b have BOTH independently modified
+    // genRelPath since their common ancestor (the baseline commit).
+    let thrown = null;
+    let mergeResult = null;
+    try {
+      mergeResult = mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-genart-b', message: 'handback: agent-genart-b' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    const artifactAfter = existsSync(join(dir, genRelPath)) ? readFileSync(join(dir, genRelPath), 'utf8') : '<missing>';
+    expect(
+      thrown,
+      `expected mergeWorktreeBranch to REFUSE (both sides independently modified ${genRelPath}) but it returned ` +
+      `${JSON.stringify(mergeResult)} instead. The would-be-merged artifact now reads:\n${artifactAfter}\n` +
+      `--- neither agent A's build ---\n${contentA}\n--- nor agent B's build ---\n${contentB}\n` +
+      'i.e. git silently spliced two independently-generated builds together (the TASK-197 defect this test reproduces).',
+    ).not.toBeNull();
+    expect(thrown.code).toBe('E_GENERATED_ARTIFACT_BOTH_SIDES_MODIFIED');
+    expect(thrown.message).toContain(genRelPath);
+
+    // Refused BEFORE the merge was even attempted: no MERGE_HEAD parked, no
+    // partial state, the target tree still holds exactly agent A's build —
+    // untouched by the refused attempt.
+    expect(existsSync(join(dir, '.git', 'MERGE_HEAD'))).toBe(false);
+    const status = git(dir, ['status', '--porcelain']);
+    expect(status.trim()).toBe('');
+    expect(readFileSync(join(dir, genRelPath), 'utf8')).toBe(contentA);
+
+    // Agent B's own commit is untouched on its own branch — nothing was
+    // resolved or discarded, only refused.
+    const bLog = git(dir, ['log', '-1', '--format=%s', 'agent-genart-b']);
+    expect(bLog.trim()).toBe('agent B: regenerate dist bundle');
+  });
+
+  it('merges_cleanly_and_does_not_over_trigger_when_only_the_incoming_branch_regenerated_the_artifact', () => {
+    const dir = makeTmpDir('wt-generated-artifact-single-side');
+    initRepo(dir);
+
+    const [genRelPath] = getGeneratedArtifactPaths();
+    mkdirSync(join(dir, 'dist'), { recursive: true });
+    writeFileSync(join(dir, genRelPath), 'base bundle content\n');
+    git(dir, ['add', genRelPath]);
+    git(dir, ['commit', '-q', '-m', 'baseline: initial generated artifact']);
+
+    const wt = join(makeTmpDir('wt-genart-single'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-genart-single', wt]);
+    writeFileSync(join(wt, genRelPath), 'regenerated bundle content\n');
+    git(wt, ['add', genRelPath]);
+    git(wt, ['commit', '-q', '-m', 'agent: regenerate dist bundle']);
+
+    // Target side never touched the generated path since diverging — only
+    // ONE side modified it, so this is an ordinary, safe merge, not a
+    // collision the TASK-197 mitigation should block.
+    const result = mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-genart-single', message: 'handback: agent-genart-single' });
+    expect(result.merged).toBe(true);
+    expect(readFileSync(join(dir, genRelPath), 'utf8')).toBe('regenerated bundle content\n');
   });
 });
