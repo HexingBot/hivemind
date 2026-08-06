@@ -26899,33 +26899,78 @@ async function computeBuildStamp(filePath) {
   const bytes = await (0, import_promises3.readFile)(filePath);
   return { path: filePath, sha256: (0, import_node_crypto2.createHash)("sha256").update(bytes).digest("hex") };
 }
-async function checkBundleFreshness(buildStamp) {
+async function checkBundleFreshness(buildStamp, repoRoot) {
   if (!buildStamp) {
     return {
       checked: false,
       reason: "no-build-stamp",
-      stale: null,
-      path: null
+      self_stale: null,
+      loaded_path: null,
+      loaded_sha256: null,
+      current_self_sha256: null,
+      repo_checked: false,
+      repo_reason: "no-build-stamp",
+      repo_divergent: null,
+      repo_path: null,
+      repo_sha256: null
     };
   }
-  let current;
+  let selfLeg;
   try {
-    current = await computeBuildStamp(buildStamp.path);
+    const current = await computeBuildStamp(buildStamp.path);
+    selfLeg = {
+      checked: true,
+      reason: null,
+      self_stale: current.sha256 !== buildStamp.sha256,
+      current_self_sha256: current.sha256
+    };
   } catch (err) {
-    return {
+    selfLeg = {
       checked: false,
       reason: err && err.code === "ENOENT" ? "bundle-missing" : "read-error",
-      stale: null,
-      path: buildStamp.path
+      self_stale: null,
+      current_self_sha256: null
     };
   }
+  const repoBundlePath = repoRoot ? (0, import_node_path7.join)(repoRoot, "dist", "mcp-server.cjs") : null;
+  let repoLeg;
+  if (!repoBundlePath) {
+    repoLeg = {
+      repo_checked: false,
+      repo_reason: "no-repo-root",
+      repo_divergent: null,
+      repo_sha256: null
+    };
+  } else {
+    try {
+      const repoStamp = await computeBuildStamp(repoBundlePath);
+      repoLeg = {
+        repo_checked: true,
+        repo_reason: null,
+        repo_divergent: repoStamp.sha256 !== buildStamp.sha256,
+        repo_sha256: repoStamp.sha256
+      };
+    } catch (err) {
+      repoLeg = {
+        repo_checked: false,
+        repo_reason: err && err.code === "ENOENT" ? "repo-bundle-missing" : "read-error",
+        repo_divergent: null,
+        repo_sha256: null
+      };
+    }
+  }
   return {
-    checked: true,
-    reason: null,
-    stale: current.sha256 !== buildStamp.sha256,
-    path: buildStamp.path,
+    checked: selfLeg.checked,
+    reason: selfLeg.reason,
+    self_stale: selfLeg.self_stale,
+    loaded_path: buildStamp.path,
     loaded_sha256: buildStamp.sha256,
-    current_sha256: current.sha256
+    current_self_sha256: selfLeg.current_self_sha256,
+    repo_path: repoBundlePath,
+    repo_checked: repoLeg.repo_checked,
+    repo_reason: repoLeg.repo_reason,
+    repo_divergent: repoLeg.repo_divergent,
+    repo_sha256: repoLeg.repo_sha256
   };
 }
 function createServer({
@@ -27185,10 +27230,10 @@ function createServer({
   server.registerTool(
     "mcp_build_status",
     {
-      description: "Reveal whether THIS MCP server process is running a stale bundle: compares a sha256 of dist/mcp-server.cjs hashed once at server startup against a fresh hash of the same file read right now. { checked: true, stale: true } means the committed bundle has changed since this process started \u2014 any guard added or changed since then is NOT executing in this process; restart the MCP server (reconnect the session) before trusting its behavior. { checked: true, stale: false } means this process matches the current committed bundle. { checked: false, reason } (e.g. 'no-build-stamp' when the server was started via createServer() directly rather than as the real dist/mcp-server.cjs entrypoint, or 'bundle-missing' / 'read-error') means the check could not run at all \u2014 treat as inconclusive, never as evidence of freshness. Scope: this can only ever be true of THIS long-lived process; direct src/ importers (the test suite, bin/ CLIs, the wargame harness) always execute current code on every run and are never stale in this sense.",
+      description: "Reveal whether THIS MCP server process is running a stale bundle, as two INDEPENDENT legs (self and repo \u2014 checking only one is not sufficient; an installed plugin loads dist/mcp-server.cjs from CLAUDE_PLUGIN_ROOT, a plugin CACHE that a rebuild in this repo never touches, so a self-only check reports false-fresh forever in that topology). LEG 1 (self_stale): has the exact file this process loaded mutated in place since server startup \u2014 a sha256 hashed once at startup vs. a fresh hash of the SAME path read right now. LEG 2 (repo_divergent): do the bytes this process loaded match <repoRoot>/dist/mcp-server.cjs \u2014 the repo's CURRENTLY COMMITTED bundle, the only file `npm run build:plugin` / dist-parity ever touch, read fresh on every call \u2014 regardless of which path this process actually loaded from. Either leg `true` means: a guard added or changed since this process started may not be executing in it; restart the MCP server (reconnect the session) before trusting its behavior. `checked`/`repo_checked: false` (with `reason`/`repo_reason`, e.g. 'no-build-stamp' when the server was started via createServer() directly rather than as the real entrypoint, or leg-2's 'repo-bundle-missing' \u2014 the normal case for a consumer project with no dist/ checked out) means that leg could not run at all \u2014 treat as inconclusive, never as evidence of matching. Scope: this can only ever be true of THIS long-lived process; direct src/ importers (the test suite, bin/ CLIs, the wargame harness) always execute current code on every run and are never stale in this sense.",
       inputSchema: {}
     },
-    async () => ok(await checkBundleFreshness(buildStamp))
+    async () => ok(await checkBundleFreshness(buildStamp, repoRoot))
   );
   return server;
 }

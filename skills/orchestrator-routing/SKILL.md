@@ -1172,25 +1172,50 @@ never stale in this sense. A green `npm test` / `npm run test:all` run is
 unaffected by this note and remains trustworthy evidence.
 
 **The fix is mechanical, not procedural** — a documented restart step alone
-already failed to prevent both incidents above. `main()` (`src/mcp-server.js`)
-snapshots a sha256 of the exact file this process loaded, once, before the
-server ever connects, and closes the `mcp_build_status` tool over that
-frozen snapshot. **What compares it, and when:** calling `mcp_build_status`
-(no arguments) re-hashes the SAME path on demand and reports `stale: true`
-the moment the two hashes diverge — i.e. the moment a rebuild has landed a
-bundle this process never loaded. `checked: false` (never a false "fresh")
-covers the two cases where no comparison could be made: `reason:
-'no-build-stamp'` (no snapshot to compare — the common case for every test
-in this repo, which calls `createServer({ repoRoot })` directly rather than
-running the real entrypoint) and `reason: 'bundle-missing'` / `'read-error'`
-(the snapshotted path could not be re-read).
+already failed to prevent both incidents above. It is **two independent
+legs**, not one (fix-round correction): `.mcp.json` spawns
+`${CLAUDE_PLUGIN_ROOT}/dist/mcp-server.cjs`, and for an installed plugin
+`CLAUDE_PLUGIN_ROOT` is the **plugin cache** (populated from the
+marketplace's remote git URL) — a different file from this repo's own
+`dist/mcp-server.cjs`, the only file `npm run build:plugin` / dist-parity
+ever touch. A single leg that only re-hashes "the path this process was
+spawned from" reports `stale: false` forever in that topology, no matter how
+far the cache has drifted from the repo — verified counterfactually against
+both TASK-200 and TASK-201, which a self-only check would have reported
+clean.
+
+- **Leg 1 (`self_stale`)** — `main()` (`src/mcp-server.js`) snapshots a
+  sha256 of the exact file this process loaded, once, before the server ever
+  connects. Calling `mcp_build_status` (no arguments) re-hashes the SAME
+  path on demand: `self_stale: true` means that exact path mutated in place
+  since startup.
+- **Leg 2 (`repo_divergent`)** — the same call also hashes THIS repo's
+  currently committed `<repoRoot>/dist/mcp-server.cjs` fresh, every time, and
+  compares it against what this process loaded, **regardless of which path
+  it was actually spawned from**. `repo_divergent: true` means the running
+  process does not reflect this repo's committed bundle — the leg that
+  actually answers "did my `npm run build:plugin` take effect in the live
+  server". `repo_checked: false, repo_reason: 'repo-bundle-missing'` is the
+  normal, legitimate case for a consumer project with no `dist/` checked
+  out — never collapsed into `repo_divergent: false` (Empty-result
+  contract, TASK-192).
+- `checked: false, reason: 'no-build-stamp'` disables both legs at once — no
+  snapshot to compare either way (the common case for every test in this
+  repo, which calls `createServer({ repoRoot })` directly rather than
+  running the real entrypoint).
 
 **Operational response:** after any rebuild (`npm run build:plugin`) that
 touches `src/task-store.js`, `src/close-guard.js`, or `src/mcp-server.js`
 itself, call `mcp_build_status` before relying on any guard behavior that
-landed this session. `stale: true` means restart the MCP server (reconnect
-the session) before trusting it; `checked: false` means the check could not
-run at all — treat as inconclusive, never as evidence of freshness. This is
+landed this session. Either leg `true` means restart the MCP server
+(reconnect the session) before trusting it; either leg's `checked: false`
+means that leg could not run at all — treat as inconclusive, never as
+evidence of matching. **Topology caveat:** for an installed plugin, a
+restart alone reloads from `CLAUDE_PLUGIN_ROOT` (the cache), which only
+updates from the marketplace's remote git URL — a local `npm run
+build:plugin` in this dev repo does not, by itself, change what a restarted
+installed-plugin server loads; `repo_divergent` reveals that gap but closing
+it needs a plugin update/reinstall, not just a reconnect. This mechanism is
 deliberately not hot-reload — the goal is making the discrepancy visible,
 not making it impossible.
 
