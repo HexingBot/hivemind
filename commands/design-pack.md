@@ -80,7 +80,7 @@ empty `install`/`remove`/`replace`.
   for what the plugin currently ships; `source_root` (below) names the directory the last
   `reconcile-apply` actually vendored content from.
 - `planned_install_count` (= `plan.install.length`) and `installed_count` (= the sum of every pack's
-  `installed.length`) are the run-level triage numbers — read these FIRST, before looking at any
+  `installed.length`) are RAW, run-level triage numbers — read these FIRST, before looking at any
   individual pack's `report`. `source_root` is the directory the reconciler vendored owned skill
   copies from (post-TASK-181, normally the plugin's own `assimilated-skills/`, or the project's own
   if it has one); `null` when no owned-source root could be resolved at all.
@@ -94,23 +94,38 @@ empty `install`/`remove`/`replace`.
   attempted replaces actually landed. A **successful** replace is visible here even when
   `installed`/`installed_count` show zero activity — do not read an all-zero install count as "the
   run did nothing" without also checking `replaced_count`.
-- **`ok: true` is the ONLY success path, and it means EVERY planned install AND EVERY planned
-  (attempted) replace actually materialized** (`installed_count === planned_install_count` AND
-  `replaced_count === planned_replace_count`) **and no pack aborted** (`packs.every(p =>
-  !p.aborted)`). It also covers the legitimate no-op (`planned_install_count === 0` AND
-  `planned_replace_count === 0` — nothing was ever desired or needed replacing).
-- **`ok: false` covers three distinct failure kinds**, now evaluated over install+replace combined —
-  total (something was planned across either bucket and NOTHING across either bucket landed), partial
-  (something landed but less than what was planned, in either bucket), and aborted (at least one pack
-  hard-aborted, checked first and taking precedence over the total/partial split). On ANY of the
-  three, the process also prints two extra top-level fields: `code` — one of
-  `E_PACK_APPLY_TOTAL_FAILURE`, `E_PACK_APPLY_PARTIAL_FAILURE`, or `E_PACK_APPLY_ABORTED_FAILURE` —
-  and `message`, a human-readable summary of the installed/planned AND replaced/planned counts (and
-  whether a hard-required resource aborted the run). The CLI process itself **exits 1** on any
-  `ok: false` result (`message` is also written to stderr) — a shell caller sees a non-zero exit
-  exactly when the JSON says `ok: false`, never a silent 0. Treat `ok: false` as a hard stop
-  regardless of which of the three kinds it is: show the human the full `packs[].report` (and
-  `code`/`message`) before doing anything else; do not proceed to Step 5's normal reporting.
+- **`ok: true` is the ONLY success path, and it means every planned install ID AND every planned
+  (attempted) replace ID was found among the landed IDs for that same bucket** — an ID-level
+  containment check (TASK-205), not a raw-count equality. `installed_count`/`replaced_count` are the
+  informational sums above and are **not** what `ok` is computed from: a pack's own re-plan (each
+  active pack's `reconcilePack` diffs against only that pack's own desired set, which can diverge from
+  the aggregate `plan` these counts summarize) can land an ID that was never in `plan.install`/
+  `plan.replace` at all, which makes the raw sums legitimately NOT equal `planned_install_count`/
+  `planned_replace_count` even on a fully successful run — do not treat `installed_count ===
+  planned_install_count` as the success test. **It also covers the legitimate no-op**
+  (`planned_install_count === 0` AND `planned_replace_count === 0` — nothing was ever desired or
+  needed replacing) **and no pack aborted** (`packs.every(p => !p.aborted)`).
+- **A surplus can never mask a shortfall (TASK-205).** Before this fix, `ok` was computed from
+  `installed_count + replaced_count` vs `planned_install_count + planned_replace_count` — a combined,
+  ID-blind SUM — so an unplanned ID landed by one pack (a surplus, from the per-pack-plan divergence
+  above) could numerically offset a genuinely soft-failed planned ID elsewhere, in the same bucket or
+  the other one, and the run still reported `ok: true`. The fix tracks planned IDs and landed IDs as
+  per-bucket sets; a surplus ID is simply not "planned and missing", so it can no longer offset
+  anything. On a failure, `message` names the specific missing planned IDs per bucket rather than only
+  a raw count.
+- **`ok: false` covers three distinct failure kinds**, evaluated over install+replace IDs combined —
+  total (something was planned across either bucket and NO planned ID across either bucket was found
+  among the landed IDs), partial (some but not all planned IDs were found among the landed IDs, in
+  either bucket), and aborted (at least one pack hard-aborted, checked first and taking precedence over
+  the total/partial split). On ANY of the three, the process also prints two extra top-level fields:
+  `code` — one of `E_PACK_APPLY_TOTAL_FAILURE`, `E_PACK_APPLY_PARTIAL_FAILURE`, or
+  `E_PACK_APPLY_ABORTED_FAILURE` — and `message`, a human-readable summary naming the specific missing
+  planned install/replace IDs (plus the raw installed/replaced totals across all packs, and whether a
+  hard-required resource aborted the run). The CLI process itself **exits 1** on any `ok: false` result
+  (`message` is also written to stderr) — a shell caller sees a non-zero exit exactly when the JSON
+  says `ok: false`, never a silent 0. Treat `ok: false` as a hard stop regardless of which of the three
+  kinds it is: show the human the full `packs[].report` (and `code`/`message`) before doing anything
+  else; do not proceed to Step 5's normal reporting.
 - A skill can be in the plan's top-level `install` bucket (Step 3) and still fail to materialize here
   for a documented, expected reason (no owned copy to vendor from) — that shows up as a
   `skill:<resource-id>` entry in `packs[].report`, and Step 5 turns every such entry into an adoption

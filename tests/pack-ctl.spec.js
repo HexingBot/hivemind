@@ -180,6 +180,129 @@ describe('computeApplyOutcome — TASK-199: the run-level ok/failureKind predica
 });
 
 // ---------------------------------------------------------------------------
+// computeApplyOutcome — TASK-205: identity-aware per-bucket comparison closes
+// the id-blind SUM masking a MEDIUM finding from TASK-199's gating review
+// flagged (bin/pack-ctl.js:470-478 pre-fix): a landed-but-unplanned op in one
+// bucket could numerically offset a genuinely soft-failed planned op
+// elsewhere, so the run still reported ok:true. Per-pack `reconcilePack`
+// re-plans against only that pack's own desired set, so a per-pack plan can
+// diverge from the aggregate `computedPlan` these tests build — a surplus
+// landing (an id never in `computedPlan.install`/`.replace` at all) is a real,
+// reachable-today shape, not hypothetical (see the reviewer's `skill:watch`
+// orphan-reinstall scenario, reproduced in the first test below).
+//
+// AC map: AC1 (the first test below is the load-bearing red-run proof — see
+// the ticket hand-off for the captured red output), AC2 (every test in this
+// block exercises the identity comparison directly: per-bucket id membership,
+// duplicate-id collapse, missing-id fail-closed handling, and "a surplus
+// alone is never itself a failure").
+// ---------------------------------------------------------------------------
+describe('computeApplyOutcome — TASK-205: identity-aware per bucket (planned ids vs landed ids)', () => {
+  it('AC1 — a landed-but-unplanned INSTALL no longer offsets a genuinely soft-failed planned INSTALL (the reviewer\'s concrete skill:watch scenario)', () => {
+    // design-power's aggregate plan wants ui-ux-pro-max; design-power's own
+    // pack result never reports it installed (a soft materialize failure).
+    // watch's per-pack plan diverges from the aggregate -- it independently
+    // reinstalls an orphaned-but-live skill:watch that was NEVER in
+    // computedPlan.install at all.
+    const computedPlan = {
+      install: [{ id: 'skill:ui-ux-pro-max', resource: { id: 'ui-ux-pro-max' } }],
+      replace: [],
+    };
+    const packs = [
+      { id: 'design-power', aborted: false, installed: [], replaced: [] },
+      { id: 'watch', aborted: false, installed: ['skill:watch'], replaced: [] },
+    ];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    // The pre-fix id-blind sum: plannedInstallCount(1) === installedCount(1)
+    // -> ok:true, masking the soft-failed ui-ux-pro-max install entirely.
+    // Both raw counts really are 1 and 1 (informational fields, unchanged) --
+    // the fix is that `ok`/`failureKind` no longer derive from THIS equality.
+    expect(outcome.installedCount).toBe(1);
+    expect(outcome.plannedInstallCount).toBe(1);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failureKind).toBe('total');
+    expect(outcome.missingInstallIds).toEqual(['skill:ui-ux-pro-max']);
+  });
+
+  it('AC1/AC2 — a landed-but-unplanned REPLACE cannot offset a shortfall in the INSTALL bucket either (the "combined totals" class named in the ticket)', () => {
+    const computedPlan = {
+      install: [{ id: 'skill:ui-ux-pro-max', resource: { id: 'ui-ux-pro-max' } }],
+      replace: [],
+    };
+    const packs = [
+      { id: 'design-power', aborted: false, installed: [], replaced: [] },
+      // A surplus replace, landed by some other pack, never in computedPlan.replace.
+      { id: 'watch', aborted: false, installed: [], replaced: ['skill:watch'] },
+    ];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    // Old combined-sum comparison: plannedTotal(1+0) === landedTotal(0+1) -> ok:true.
+    expect(outcome.installedCount + outcome.replacedCount).toBe(1);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failureKind).toBe('total');
+  });
+
+  it('a landed surplus with NOTHING planned in that bucket stays ok:true — a surplus is never itself a failure', () => {
+    const computedPlan = { install: [], replace: [] };
+    const packs = [{ id: 'watch', aborted: false, installed: ['skill:watch'], replaced: [] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.plannedInstallCount).toBe(0);
+    expect(outcome.installedCount).toBe(1);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.failureKind).toBeNull();
+    expect(outcome.missingInstallIds).toEqual([]);
+  });
+
+  it('AC2 — a duplicated planned id needs to land only once (Set-based identity, not array-length counting)', () => {
+    const computedPlan = {
+      install: [
+        { id: 'skill:a', resource: { id: 'a' } },
+        { id: 'skill:a', resource: { id: 'a' } },
+      ],
+      replace: [],
+    };
+    const packs = [{ id: 'pack', aborted: false, installed: ['skill:a'], replaced: [] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.plannedInstallCount).toBe(2); // raw array length, unchanged informational field
+    expect(outcome.installedCount).toBe(1);
+    expect(outcome.ok).toBe(true); // identity-based: the one distinct id landed
+    expect(outcome.missingInstallIds).toEqual([]);
+  });
+
+  it('AC2 — a planned op missing an `id` field is conservatively (fail-closed, never fail-open) always counted as missing', () => {
+    const computedPlan = { install: [{ resource: { id: 'x' } }], replace: [] }; // no `id`
+    const packs = [{ id: 'pack', aborted: false, installed: [], replaced: [] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.missingInstallIds).toEqual([undefined]);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failureKind).toBe('total');
+  });
+
+  it('AC2 — the replace bucket is identity-checked the same way: a genuinely soft-failed attempted replace names its id in missingReplaceIds', () => {
+    const computedPlan = {
+      install: [],
+      replace: [{ id: 'skill:watch', resource: { id: 'watch' }, from: '1.0.0', to: '2.0.0' }],
+    };
+    const packs = [{ id: 'watch', aborted: false, installed: [], replaced: [] }];
+
+    const outcome = computeApplyOutcome({ computedPlan, packs });
+
+    expect(outcome.missingReplaceIds).toEqual(['skill:watch']);
+    expect(outcome.missingInstallIds).toEqual([]);
+    expect(outcome.ok).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // profileResultFromFrontmatter — reverse of deriveProfileFields.
 // ---------------------------------------------------------------------------
 describe('profileResultFromFrontmatter — reconstructs a real scoreComplexity() shape from PROJECT.md fields', () => {

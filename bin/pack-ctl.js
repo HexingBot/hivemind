@@ -37,23 +37,36 @@
 //                     soft failure handling; this CLI does not reimplement any
 //                     of that). Prints `packs: [{id, owner, aborted, installed,
 //                     replaced, report}, ...]` alongside the pre-apply `plan`.
-//                     TASK-181/183/199 — the run-level `ok` is NOT a bare
+//                     TASK-181/183/199/205 — the run-level `ok` is NOT a bare
 //                     pass-through of any single pack's success: it also
 //                     prints `planned_install_count`/`installed_count` and
 //                     (TASK-199) `planned_replace_count`/`replaced_count`,
-//                     and `ok` requires EVERY planned install AND every
-//                     planned replace (the ones the apply-time precedence
+//                     and `ok` requires EVERY planned install id AND every
+//                     planned replace id (the ones the apply-time precedence
 //                     gate actually attempts -- see src/pack-apply.js's
 //                     `shippedPinWins`; a deliberately deferred/kept-as-is
 //                     replace is not "planned" in this count, since it is a
-//                     designed no-op, not a failure) to have landed, AND no
-//                     pack to have hard-aborted. A materialize failure in
-//                     EITHER bucket sets `ok:false` with `code`/`message`
-//                     naming the shortfall (`E_PACK_APPLY_<KIND>_FAILURE`,
-//                     KIND one of aborted|total|partial) -- never a silent
-//                     `ok:true` while a nested `packs[].report` entry
-//                     records the truth (the Empty-result contract this
-//                     ticket closes).
+//                     designed no-op, not a failure) to be found among the
+//                     LANDED ids for that same bucket, AND no pack to have
+//                     hard-aborted. TASK-205: the planned-vs-landed check is
+//                     IDENTITY-aware per bucket (a Set of planned op ids
+//                     compared against a Set of landed op ids), not a raw
+//                     count comparison -- a per-pack plan can diverge from
+//                     the aggregate `plan` this predicate is built from
+//                     (`reconcilePack` re-plans each pack against only that
+//                     pack's own desired set), so a pack can land an id that
+//                     was never in the aggregate plan at all; an id-blind sum
+//                     comparison let that surplus numerically offset an
+//                     unrelated shortfall (same bucket OR the other bucket)
+//                     and still report `ok:true` -- see computeApplyOutcome's
+//                     own header for the full identity-edge-case record
+//                     (duplicate ids, a missing `id` field). A materialize
+//                     failure in EITHER bucket sets `ok:false` with
+//                     `code`/`message` naming the shortfall
+//                     (`E_PACK_APPLY_<KIND>_FAILURE`, KIND one of
+//                     aborted|total|partial) -- never a silent `ok:true`
+//                     while a nested `packs[].report` entry records the
+//                     truth (the Empty-result contract this ticket closes).
 //   assimilate scan --path <skill>
 //                     TASK-135. Prints the risky-pattern scan report
 //                     ({findings, summary}) for the skill directory at --path,
@@ -454,26 +467,75 @@ async function runAssimilate(flags) {
  * bucket production-inert today; see the module-header comment above the
  * `reconcile-apply` subcommand for the printed-shape summary).
  *
+ * TASK-205 (MEDIUM from TASK-199's gating review) — the ok/failureKind
+ * determination itself is IDENTITY-aware per bucket, not a count comparison.
+ * The pre-fix version compared id-blind SUMS (`plannedInstallCount +
+ * plannedReplaceCount` vs `installedCount + replacedCount`): because
+ * `reconcilePack` re-plans each pack against only that pack's OWN desired
+ * set, a per-pack plan can diverge from the aggregate `computedPlan` this
+ * function is handed, so a pack can land an op that was never in the
+ * aggregate plan at all (a "surplus"). A raw-count comparison lets that
+ * surplus numerically offset a genuine shortfall elsewhere — in the SAME
+ * bucket (installedCount can equal plannedInstallCount while the specific
+ * planned id never landed) or ACROSS buckets (a surplus replace offsetting an
+ * install shortfall) — and still print `ok: true`. Fixed by tracking the
+ * PLANNED op ids and the LANDED op ids as Sets, per bucket, and requiring
+ * every planned id to appear among that bucket's landed ids; a landed id
+ * that was never planned (the surplus) is simply not planned-and-missing, so
+ * it can no longer mask anything, in either direction.
+ *
+ * Identity edge cases (deliberate, not incidental):
+ *   - A duplicated id within `computedPlan.install`/`.replace` collapses to
+ *     ONE Set entry — it needs to land once, not once per duplicate. The raw
+ *     `plannedInstallCount`/`plannedReplaceCount` fields below stay
+ *     array-length (informational, unchanged), so this can make
+ *     `installedCount < plannedInstallCount` even on a fully-successful run;
+ *     `ok` is driven by the identity check, not by those raw counts.
+ *   - An op with no `id` at all tracks under the literal `undefined` key,
+ *     which no real landed id (always a string) can ever equal — a missing
+ *     identity is therefore always conservatively (fail-closed, never
+ *     fail-open) reported as missing, never silently dropped from the check.
+ *   - A landed id repeated across multiple packs' `installed`/`replaced`
+ *     arrays also collapses to one Set entry — presence is what matters, not
+ *     multiplicity.
+ *
+ * `installedCount`/`replacedCount`/`plannedInstallCount`/`plannedReplaceCount`
+ * remain the same RAW sums/lengths as before (documented, unchanged fields —
+ * see commands/design-pack.md Step 4) for informational/triage use; they are
+ * no longer what `ok`/`failureKind` are computed from. `missingInstallIds`/
+ * `missingReplaceIds` are the new, purely additive diagnostic fields the
+ * identity check produces, used to build a precise failure `message` in
+ * `run()` below.
+ *
  * @param {{ computedPlan: {install: object[], replace: object[]}, packs: Array<{aborted: boolean, installed: string[], replaced: string[]}> }} args
- * @returns {{ ok: boolean, failureKind: string|null, plannedInstallCount: number, installedCount: number, plannedReplaceCount: number, replacedCount: number, anyAborted: boolean }}
+ * @returns {{ ok: boolean, failureKind: string|null, plannedInstallCount: number, installedCount: number, plannedReplaceCount: number, replacedCount: number, anyAborted: boolean, missingInstallIds: Array<string|undefined>, missingReplaceIds: Array<string|undefined> }}
  */
 export function computeApplyOutcome({ computedPlan, packs }) {
   const plannedInstallCount = computedPlan.install.length;
   const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
 
-  const plannedReplaceCount = computedPlan.replace
-    .filter((op) => shippedPinWins(comparePinPrecedence(op.from, op.to)))
-    .length;
+  const plannedReplaceOps = computedPlan.replace
+    .filter((op) => shippedPinWins(comparePinPrecedence(op.from, op.to)));
+  const plannedReplaceCount = plannedReplaceOps.length;
   const replacedCount = packs.reduce((n, p) => n + p.replaced.length, 0);
 
+  // Identity-aware per-bucket check (TASK-205) — see the header above.
+  const plannedInstallIds = new Set(computedPlan.install.map((op) => op.id));
+  const landedInstallIds = new Set(packs.flatMap((p) => p.installed));
+  const missingInstallIds = [...plannedInstallIds].filter((id) => !landedInstallIds.has(id));
+
+  const plannedReplaceIds = new Set(plannedReplaceOps.map((op) => op.id));
+  const landedReplaceIds = new Set(packs.flatMap((p) => p.replaced));
+  const missingReplaceIds = [...plannedReplaceIds].filter((id) => !landedReplaceIds.has(id));
+
   const anyAborted = packs.some((p) => p.aborted);
-  const plannedTotal = plannedInstallCount + plannedReplaceCount;
-  const landedTotal = installedCount + replacedCount;
+  const plannedIdentityTotal = plannedInstallIds.size + plannedReplaceIds.size;
+  const matchedIdentityTotal = plannedIdentityTotal - missingInstallIds.length - missingReplaceIds.length;
   const failureKind = anyAborted
     ? 'aborted'
-    : plannedTotal > 0 && landedTotal === 0
+    : plannedIdentityTotal > 0 && matchedIdentityTotal === 0
       ? 'total'
-      : landedTotal < plannedTotal
+      : matchedIdentityTotal < plannedIdentityTotal
         ? 'partial'
         : null;
 
@@ -485,6 +547,8 @@ export function computeApplyOutcome({ computedPlan, packs }) {
     plannedReplaceCount,
     replacedCount,
     anyAborted,
+    missingInstallIds,
+    missingReplaceIds,
   };
 }
 
@@ -547,15 +611,18 @@ async function run(subcommand, flags) {
         });
       }
 
-      // TASK-181/183/199 — see computeApplyOutcome's own header for the full
-      // decision record (install-bucket precedent, why "planned" replaces
-      // exclude the deliberately-deferred TASK-182 keep-as-is branch, and why
-      // "landed" replaces can't reuse the post-probe technique `installed`
-      // uses). `ok` is full success only: every planned install AND every
-      // planned (attempted) replace landed, and no pack hard-aborted.
+      // TASK-181/183/199/205 — see computeApplyOutcome's own header for the
+      // full decision record (install-bucket precedent, why "planned"
+      // replaces exclude the deliberately-deferred TASK-182 keep-as-is
+      // branch, why "landed" replaces can't reuse the post-probe technique
+      // `installed` uses, and TASK-205's identity-aware per-bucket fix).
+      // `ok` is full success only: every planned install id AND every
+      // planned (attempted) replace id was found among the landed ids, and
+      // no pack hard-aborted.
       const {
         ok, failureKind, plannedInstallCount, installedCount,
         plannedReplaceCount, replacedCount, anyAborted,
+        missingInstallIds, missingReplaceIds,
       } = computeApplyOutcome({ computedPlan, packs });
 
       return {
@@ -565,9 +632,21 @@ async function run(subcommand, flags) {
         // actually holds for a materialize failure, not just an argument
         // error: main() below checks `payload.ok` and exits 1 with this
         // message on stderr.
+        //
+        // TASK-205 — the message now names the specific missing planned ids
+        // rather than only a raw "X of Y" count: a per-pack plan divergence
+        // can land a surplus (an id never in `plan`) alongside a real
+        // shortfall, which would make "installed X of Y planned" read as
+        // coincidentally reassuring (X could equal Y) even on a failing run.
+        // The raw installed/replaced counts are kept in the message too, but
+        // clearly labeled "total" (across ALL packs, planned or not) so they
+        // are never mistaken for a per-id match count.
         ...(ok ? {} : {
           code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
-          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs, replaced ${replacedCount} of ${plannedReplaceCount} planned replaces${anyAborted ? ' (a hard-required resource aborted the run)' : ''}`,
+          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- `
+            + `missing planned installs: [${missingInstallIds.join(', ')}] (installed ${installedCount} total across all packs), `
+            + `missing planned replaces: [${missingReplaceIds.join(', ')}] (replaced ${replacedCount} total across all packs)`
+            + `${anyAborted ? ' (a hard-required resource aborted the run)' : ''}`,
         }),
         planned_install_count: plannedInstallCount,
         installed_count: installedCount,

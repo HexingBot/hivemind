@@ -10227,12 +10227,19 @@ async function runAssimilate(flags) {
 function computeApplyOutcome({ computedPlan, packs }) {
   const plannedInstallCount = computedPlan.install.length;
   const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
-  const plannedReplaceCount = computedPlan.replace.filter((op) => shippedPinWins(comparePinPrecedence(op.from, op.to))).length;
+  const plannedReplaceOps = computedPlan.replace.filter((op) => shippedPinWins(comparePinPrecedence(op.from, op.to)));
+  const plannedReplaceCount = plannedReplaceOps.length;
   const replacedCount = packs.reduce((n, p) => n + p.replaced.length, 0);
+  const plannedInstallIds = new Set(computedPlan.install.map((op) => op.id));
+  const landedInstallIds = new Set(packs.flatMap((p) => p.installed));
+  const missingInstallIds = [...plannedInstallIds].filter((id) => !landedInstallIds.has(id));
+  const plannedReplaceIds = new Set(plannedReplaceOps.map((op) => op.id));
+  const landedReplaceIds = new Set(packs.flatMap((p) => p.replaced));
+  const missingReplaceIds = [...plannedReplaceIds].filter((id) => !landedReplaceIds.has(id));
   const anyAborted = packs.some((p) => p.aborted);
-  const plannedTotal = plannedInstallCount + plannedReplaceCount;
-  const landedTotal = installedCount + replacedCount;
-  const failureKind = anyAborted ? "aborted" : plannedTotal > 0 && landedTotal === 0 ? "total" : landedTotal < plannedTotal ? "partial" : null;
+  const plannedIdentityTotal = plannedInstallIds.size + plannedReplaceIds.size;
+  const matchedIdentityTotal = plannedIdentityTotal - missingInstallIds.length - missingReplaceIds.length;
+  const failureKind = anyAborted ? "aborted" : plannedIdentityTotal > 0 && matchedIdentityTotal === 0 ? "total" : matchedIdentityTotal < plannedIdentityTotal ? "partial" : null;
   return {
     ok: failureKind === null,
     failureKind,
@@ -10240,7 +10247,9 @@ function computeApplyOutcome({ computedPlan, packs }) {
     installedCount,
     plannedReplaceCount,
     replacedCount,
-    anyAborted
+    anyAborted,
+    missingInstallIds,
+    missingReplaceIds
   };
 }
 async function run(subcommand, flags) {
@@ -10292,7 +10301,9 @@ async function run(subcommand, flags) {
         installedCount,
         plannedReplaceCount,
         replacedCount,
-        anyAborted
+        anyAborted,
+        missingInstallIds,
+        missingReplaceIds
       } = computeApplyOutcome({ computedPlan, packs });
       return {
         ok,
@@ -10301,9 +10312,18 @@ async function run(subcommand, flags) {
         // actually holds for a materialize failure, not just an argument
         // error: main() below checks `payload.ok` and exits 1 with this
         // message on stderr.
+        //
+        // TASK-205 — the message now names the specific missing planned ids
+        // rather than only a raw "X of Y" count: a per-pack plan divergence
+        // can land a surplus (an id never in `plan`) alongside a real
+        // shortfall, which would make "installed X of Y planned" read as
+        // coincidentally reassuring (X could equal Y) even on a failing run.
+        // The raw installed/replaced counts are kept in the message too, but
+        // clearly labeled "total" (across ALL packs, planned or not) so they
+        // are never mistaken for a per-id match count.
         ...ok ? {} : {
           code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
-          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- installed ${installedCount} of ${plannedInstallCount} planned installs, replaced ${replacedCount} of ${plannedReplaceCount} planned replaces${anyAborted ? " (a hard-required resource aborted the run)" : ""}`
+          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- missing planned installs: [${missingInstallIds.join(", ")}] (installed ${installedCount} total across all packs), missing planned replaces: [${missingReplaceIds.join(", ")}] (replaced ${replacedCount} total across all packs)${anyAborted ? " (a hard-required resource aborted the run)" : ""}`
         },
         planned_install_count: plannedInstallCount,
         installed_count: installedCount,
