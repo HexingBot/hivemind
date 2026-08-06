@@ -26,7 +26,12 @@
 //   extends ticket CRUD plus a KB-lookup tool").
 //
 // DESIGN: `createServer({ repoRoot })` is a factory returning a configured
-// McpServer with all eight tools registered, each closing over `repoRoot`. The
+// McpServer with every tool below registered, each closing over `repoRoot`
+// (no count stated here on purpose, TASK-208 fix round: a hardcoded count
+// rots on the next added/removed tool and drifted twice already — TASK-168,
+// TASK-204 — before every registered tool's presence in the mcp-server
+// skill docs became live-sensed by tests/mcp-tool-doc-lock.spec.js; that
+// spec's `createServer`-derived list is the actual source of truth). The
 // module only auto-connects a StdioServerTransport when run as the entrypoint
 // (the dual ESM/CJS guard at the bottom), so tests inject a per-test temp
 // repoRoot via the in-memory transport instead of relying on CLAUDE_PROJECT_DIR.

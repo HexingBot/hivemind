@@ -5,7 +5,16 @@ source_tier: T2
 Authoritative tool surface is `tasks/TASK-020.research.md` §E.1, reproduced here
 with the verified `src/task-store.js` export names and call signatures.
 
-## The seven task-store tools (§E.1 + TASK-082's `close_task`) plus three extension tools — `kb_lookup` (TASK-106), `kb_graph_query` (TASK-168), `mcp_build_status` (TASK-204) — ten tools total
+## The seven task-store tools (§E.1 + TASK-082's `close_task`) plus the extension tools — `kb_lookup` (TASK-106), `kb_graph_query` (TASK-168), `mcp_build_status` (TASK-204)
+
+The table below is the authoritative, current tool list, kept honest by
+`tests/mcp-tool-doc-lock.spec.js` (TASK-208), which derives the real
+registered set live from `createServer` and requires a table ROW for each
+one. Deliberately no tool COUNT is stated in this file (TASK-208 fix round):
+a count is a fact that rots by construction on every added/removed tool, and
+the sensor cannot mechanically verify a prose number-word without hardcoding
+one — which just relocates the drift. Don't add "N tools total" back; let
+the table speak for itself.
 
 | MCP tool | Args | Returns | Wraps |
 |----------|------|---------|-------|
@@ -193,13 +202,13 @@ inputSchema: { question: z.string() }
 A non-Claude-Code MCP client (claude.ai, Claude Desktop, any MCP host) **WILL**
 get the seven task-store tools: read the backlog, read/create tickets, transition
 status, append comments, and atomically close a ticket (`close_task`) — full CRUD
-on the ticket store — plus three extension tools that are not ticket CRUD but are
+on the ticket store — plus the extension tools that are not ticket CRUD but are
 still exposed to any MCP client: `kb_lookup` (TASK-106, local grep-KB lookup),
 `kb_graph_query` (TASK-168, deterministic knowledge-graph query), and
-`mcp_build_status` (TASK-204, bundle-staleness report) — ten tools total. It
+`mcp_build_status` (TASK-204, bundle-staleness report). It
 **WON'T** get the
 orchestrator → developer/reviewer/researcher subagent loop, the RESUME-FIRST
 session-state orchestration, or the TDD-enforced dev loop — those are Claude
 Code-exclusive file-based constructs that MCP cannot install or drive. In one
-line: the MCP seam turns the framework's *ticket store* (plus three extension
+line: the MCP seam turns the framework's *ticket store* (plus the extension
 tools) into a cross-client API, but the *orchestration* stays Claude Code-only.

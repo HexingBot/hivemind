@@ -164,9 +164,10 @@ test; or when migrating the task-store MCP surface to a Jira/Atlassian backend
 - [`references/tool-contract.md`](references/tool-contract.md) — the seven
   task-store tool→args→returns→wraps rows (`list_todos`, `list_ready`,
   `get_task`, `create_task`, `transition_status`, `append_comment`,
-  `close_task`) plus three extension tools — `kb_lookup` (TASK-106),
-  `kb_graph_query` (TASK-168), `mcp_build_status` (TASK-204) — ten tools
-  total, and the exact `task-store.js`/`knowledge.js` signatures.
+  `close_task`) plus the extension tools — `kb_lookup` (TASK-106),
+  `kb_graph_query` (TASK-168), `mcp_build_status` (TASK-204) — and the exact
+  `task-store.js`/`knowledge.js` signatures. (No tool count stated here on
+  purpose, TASK-208 fix round — the table there is the live source of truth.)
 - [`references/esbuild-and-mcp-json.md`](references/esbuild-and-mcp-json.md) —
   esbuild bundling gotchas + the `.mcp.json` interpolation rules.
 

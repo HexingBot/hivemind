@@ -53,6 +53,45 @@
 // must be literally named somewhere in the file) is enforced for all three
 // files; reverse coverage is enforced only where it can be derived
 // mechanically and unambiguously.
+//
+// FIX ROUND (post-APPROVE, same ticket) — the gating reviewer demonstrated
+// that "named anywhere in the file" is too weak for tool-contract.md
+// specifically: deleting a tool's TABLE ROW while its name stays present in
+// the section heading / WILL-WON'T prose left `findUndocumentedTools` green
+// — exactly the sub-defect this ticket exists to close (both kb_graph_query
+// and mcp_build_status were missing table rows, not just prose mentions,
+// before this ticket's first commit). tool-contract.md (both copies) now
+// ALSO requires every real tool to have an actual table ROW
+// (findToolsMissingTableRow, reusing parseToolContractTableNames — the same
+// mechanism AC4's reverse check already used), proven red on exactly that
+// scenario below. The two prose-only files stay on the anywhere-in-file
+// check; they have no table to require a row in.
+//
+// FIX ROUND — tool COUNT is no longer asserted anywhere in the checked docs
+// (or in src/mcp-server.js's top-of-file DESIGN comment): the reviewer
+// showed that rewriting "ten tools total" -> "eight tools total" left this
+// entire spec green, because every check here operates on NAMES, never on a
+// numeral or an English number-word. Asserting a number-word derivation
+// (`\b(seven|eight|nine|ten|eleven)\b`) was considered and rejected: a count
+// is a fact that rots by construction on the next added/removed tool, and
+// the docs already carry the full, itemized name list — a redundant total
+// adds a second, unsensed place for the exact defect class this ticket
+// exists to close to recur. The prose in all three doc files (and the
+// src/mcp-server.js comment) was edited to drop every "N tools" phrasing
+// instead.
+//
+// LOW (noted, not fixed) — (a) membership here counts a name in ANY
+// context: a URL, an HTML comment, a stray "TODO: document kb_lookup" line
+// would all satisfy isNameDocumented. The table-row check above closes this
+// for tool-contract.md; the three prose-only legs (in-memory-test-harness.md,
+// SKILL.md, and tool-contract.md's own prose outside the table) keep this
+// gap. (b) conditional-registration blindness: this spec instantiates
+// createServer with its DEFAULT options only, so a tool registered solely
+// under some non-default option would never appear in listTools() and would
+// never be doc-checked — a false green by construction. Nothing in
+// createServer registers conditionally today, but this is a real limit of
+// the instantiation approach, not a hypothetical one, and is recorded here
+// rather than silently assumed away.
 
 import {
   describe, it, expect, beforeAll, afterAll,
@@ -60,7 +99,6 @@ import {
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
@@ -97,6 +135,16 @@ function parseToolContractTableNames(text) {
 function findPhantomDocumentedTools(documentedNames, realToolNames) {
   const real = new Set(realToolNames);
   return documentedNames.filter((n) => !real.has(n));
+}
+
+/** Fix round (post-APPROVE) — real tool names with no matching TABLE ROW in
+ * `text` (stricter than isNameDocumented/findUndocumentedTools, which is
+ * satisfied by ANY mention, including a prose-only one). Reuses
+ * parseToolContractTableNames, the same table-structure derivation AC4's
+ * reverse check already uses. */
+function findToolsMissingTableRow(toolNames, text) {
+  const documented = new Set(parseToolContractTableNames(text));
+  return toolNames.filter((name) => !documented.has(name));
 }
 
 // ---------------------------------------------------------------------------
@@ -177,11 +225,6 @@ describe('AC1/AC3 — the checked set is real and non-empty, not a fixture', () 
     expect(realToolNames.length).toBeGreaterThan(0);
     expect(realToolNames).toContain('mcp_build_status');
   });
-
-  it('createServer is also an McpServer instance (sanity: this is the real factory, not a stub)', () => {
-    const server = createServer({ repoRoot: '/nonexistent/task-208-doc-lock-2' });
-    expect(server).toBeInstanceOf(McpServer);
-  });
 });
 
 const DOC_FILES = [
@@ -201,12 +244,46 @@ describe('AC1/AC6 — every real registered tool is documented (word-boundary) i
   });
 });
 
-describe('AC4 — reverse direction: tool-contract.md documents no phantom tool', () => {
-  const TOOL_CONTRACT_FILES = [
-    ['plugin-root', join('skills', 'mcp-server', 'references', 'tool-contract.md')],
-    ['dev-copy', join('.claude', 'skills', 'mcp-server', 'references', 'tool-contract.md')],
-  ];
+const TOOL_CONTRACT_FILES = [
+  ['plugin-root', join('skills', 'mcp-server', 'references', 'tool-contract.md')],
+  ['dev-copy', join('.claude', 'skills', 'mcp-server', 'references', 'tool-contract.md')],
+];
 
+// ---------------------------------------------------------------------------
+// Fix round (post-APPROVE) — tool-contract.md forward coverage requires an
+// actual table ROW, not just any mention anywhere in the file. Closes the
+// exact hole the gating reviewer demonstrated: deleting a table row while
+// the tool's name stays present in the section heading / WILL-WON'T prose
+// used to leave findUndocumentedTools green.
+// ---------------------------------------------------------------------------
+
+describe('AC1 (fix round) — tool-contract.md has a table row, not just a mention, for every registered tool', () => {
+  it.each(TOOL_CONTRACT_FILES)('%s table has a row for every registered tool', (_label, relPath) => {
+    const text = readFileSync(join(REPO_ROOT, relPath), 'utf8');
+    const missingRow = findToolsMissingTableRow(realToolNames, text);
+    expect(missingRow, `${relPath} table is missing a row for: ${missingRow.join(', ')}`).toEqual([]);
+  });
+
+  it('is proven red on exactly the sub-defect the reviewer found: a deleted table row with the prose mention left intact', () => {
+    const realText = readFileSync(
+      join(REPO_ROOT, '.claude', 'skills', 'mcp-server', 'references', 'tool-contract.md'),
+      'utf8',
+    );
+    // Delete ONLY the kb_graph_query table row; its prose mentions (section
+    // heading, WILL/WON'T docstring, etc.) are untouched.
+    const rowDeleted = realText.replace(/^\|\s*`kb_graph_query`.*\r?\n/m, '');
+    expect(rowDeleted, 'sanity: the row-delete regex must actually have removed a line').not.toEqual(realText);
+    // The OLD (weaker) check stays green — this is the hole the reviewer found.
+    expect(
+      findUndocumentedTools(['kb_graph_query'], rowDeleted),
+      'sanity: anywhere-in-file must NOT catch a row-only deletion (that IS the hole)',
+    ).toEqual([]);
+    // The NEW (stricter) check catches it.
+    expect(findToolsMissingTableRow(['kb_graph_query'], rowDeleted)).toEqual(['kb_graph_query']);
+  });
+});
+
+describe('AC4 — reverse direction: tool-contract.md documents no phantom tool', () => {
   it.each(TOOL_CONTRACT_FILES)('%s table lists no tool that is not actually registered', (_label, relPath) => {
     const text = readFileSync(join(REPO_ROOT, relPath), 'utf8');
     const documented = parseToolContractTableNames(text);
