@@ -10224,6 +10224,10 @@ async function runAssimilate(flags) {
       throw new Error(`unknown assimilate action: ${flags.action}`);
   }
 }
+function formatMissingIds(ids) {
+  if (ids.length === 0) return "none";
+  return ids.map((id) => typeof id === "string" ? id : "(missing id)").join(", ");
+}
 function computeApplyOutcome({ computedPlan, packs }) {
   const plannedInstallCount = computedPlan.install.length;
   const installedCount = packs.reduce((n, p) => n + p.installed.length, 0);
@@ -10231,11 +10235,11 @@ function computeApplyOutcome({ computedPlan, packs }) {
   const plannedReplaceCount = plannedReplaceOps.length;
   const replacedCount = packs.reduce((n, p) => n + p.replaced.length, 0);
   const plannedInstallIds = new Set(computedPlan.install.map((op) => op.id));
-  const landedInstallIds = new Set(packs.flatMap((p) => p.installed));
-  const missingInstallIds = [...plannedInstallIds].filter((id) => !landedInstallIds.has(id));
+  const landedInstallIds = new Set(packs.flatMap((p) => p.installed).filter((id) => typeof id === "string"));
+  const missingInstallIds = [...plannedInstallIds].filter((id) => typeof id !== "string" || !landedInstallIds.has(id));
   const plannedReplaceIds = new Set(plannedReplaceOps.map((op) => op.id));
-  const landedReplaceIds = new Set(packs.flatMap((p) => p.replaced));
-  const missingReplaceIds = [...plannedReplaceIds].filter((id) => !landedReplaceIds.has(id));
+  const landedReplaceIds = new Set(packs.flatMap((p) => p.replaced).filter((id) => typeof id === "string"));
+  const missingReplaceIds = [...plannedReplaceIds].filter((id) => typeof id !== "string" || !landedReplaceIds.has(id));
   const anyAborted = packs.some((p) => p.aborted);
   const plannedIdentityTotal = plannedInstallIds.size + plannedReplaceIds.size;
   const matchedIdentityTotal = plannedIdentityTotal - missingInstallIds.length - missingReplaceIds.length;
@@ -10323,7 +10327,7 @@ async function run(subcommand, flags) {
         // are never mistaken for a per-id match count.
         ...ok ? {} : {
           code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
-          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- missing planned installs: [${missingInstallIds.join(", ")}] (installed ${installedCount} total across all packs), missing planned replaces: [${missingReplaceIds.join(", ")}] (replaced ${replacedCount} total across all packs)${anyAborted ? " (a hard-required resource aborted the run)" : ""}`
+          message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- missing planned installs: [${formatMissingIds(missingInstallIds)}] (installed ${installedCount} total across all packs), missing planned replaces: [${formatMissingIds(missingReplaceIds)}] (replaced ${replacedCount} total across all packs)${anyAborted ? " (a hard-required resource aborted the run)" : ""}`
         },
         planned_install_count: plannedInstallCount,
         installed_count: installedCount,
