@@ -412,3 +412,55 @@ describe('TASK-202 AC3 — live-repo sensor: no resource in integrations.lock.js
     expect(offenders, JSON.stringify(offenders)).toEqual([]);
   });
 });
+
+// ===========================================================================
+// TASK-207 (review follow-up, MEDIUM-1) — hasForeignOwner: direct unit
+// coverage of the fail-safe branches (unparseable currentOwner, unparseable
+// prior edge, empty owners), matching the six-case precedent already set for
+// its sibling parseOwnerEdge above (tests/integrations-lock.spec.js:270-302).
+// The e2e-level proof that hasForeignOwner is WIRED correctly into
+// src/assimilate.js lives in tests/e2e/assimilate.spec.js's TASK-207 block;
+// these specs are about the pure predicate's own contract in isolation.
+// ===========================================================================
+describe('TASK-207 (review follow-up) — hasForeignOwner: foreign-owner-edge detection, fail-safe on anything unparseable', () => {
+  it('false for empty/absent owners -- nobody currently holds the resource, so it is never foreign', async () => {
+    const { hasForeignOwner } = await import(PROD.integrationsLock);
+    expect(hasForeignOwner([], 'design-power@0.1.0')).toBe(false);
+    expect(hasForeignOwner(undefined, 'design-power@0.1.0')).toBe(false);
+  });
+
+  it('false when every owner edge shares the current owner\'s packId (a version bump, or the exact edge repeated)', async () => {
+    const { hasForeignOwner } = await import(PROD.integrationsLock);
+    expect(hasForeignOwner(['design-power@0.1.0'], 'design-power@0.2.0')).toBe(false);
+    expect(hasForeignOwner(['design-power@0.1.0', 'design-power@0.1.0'], 'design-power@0.1.0')).toBe(false);
+    expect(hasForeignOwner(['watch@1.0.0', 'watch@0.9.0'], 'watch@2.0.0')).toBe(false);
+  });
+
+  it('true when at least one owner edge parses to a DIFFERENT packId, regardless of the other edges present', async () => {
+    const { hasForeignOwner } = await import(PROD.integrationsLock);
+    expect(hasForeignOwner(['design-power@0.1.0'], 'watch@1.0.0')).toBe(true);
+    // A sibling foreign edge is still foreign even when the CURRENT owner's
+    // own edge is present in the same array (own-edge presence is not an
+    // excuse for a DIFFERENT edge's packId).
+    expect(hasForeignOwner(['design-power@0.1.0', 'watch@1.0.0'], 'watch@1.0.0')).toBe(true);
+    expect(hasForeignOwner(['design-power@0.1.0', 'watch@1.0.0'], 'watch@2.0.0')).toBe(true);
+  });
+
+  it('an edge IDENTICAL to currentOwner is never foreign, even without parsing it', async () => {
+    const { hasForeignOwner } = await import(PROD.integrationsLock);
+    // 'not-a-valid-edge' cannot be parsed, but the exact-string branch
+    // short-circuits before parseOwnerEdge ever runs on it.
+    expect(hasForeignOwner(['not-a-valid-edge'], 'not-a-valid-edge')).toBe(false);
+  });
+
+  it('FAIL-SAFE: a currentOwner that fails to parse treats EVERY existing owner as foreign', async () => {
+    const { hasForeignOwner } = await import(PROD.integrationsLock);
+    expect(hasForeignOwner(['design-power@0.1.0'], 'not-a-valid-owner')).toBe(true);
+    expect(hasForeignOwner(['design-power@0.1.0'], '')).toBe(true);
+  });
+
+  it('FAIL-SAFE: a prior owner edge that fails to parse is treated as foreign -- cannot prove sameness', async () => {
+    const { hasForeignOwner } = await import(PROD.integrationsLock);
+    expect(hasForeignOwner(['not-a-valid-edge'], 'design-power@0.1.0')).toBe(true);
+  });
+});

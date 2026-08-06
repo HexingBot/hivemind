@@ -1678,7 +1678,7 @@ describe('TASK-207 — a foreign-owned resourceId collision must not clobber the
     expect(afterRemove.resources['skill:permissive-skill']).toBeDefined();
   });
 
-  it('AC3: a legitimate re-assimilation by the SAME pack is NOT treated as a collision -- origin/pin/required still update normally', async () => {
+  it('AC3: a legitimate re-assimilation by the SAME pack is NOT treated as a collision -- origin/pin update normally (required stays soft->soft here; see the dedicated ratchet spec below for the hard case)', async () => {
     const { assimilateSkill } = await import(PROD.assimilate);
     const root = makeTmpDir('asm-207-same-pack-refresh');
     const lockPath = join(root, 'integrations.lock.json');
@@ -1706,5 +1706,98 @@ describe('TASK-207 — a foreign-owned resourceId collision must not clobber the
     expect(entry.origin).toBe('github.com/example/permissive-skill');
     expect(entry.pin).toBe('new-pin');
     expect(entry.owners).toEqual([PACK]);
+    // Both prior and incoming required are 'soft' here, so this assertion
+    // alone can't distinguish "updates normally" from "ratchets" -- that
+    // distinction is what the next spec exists to prove.
+    expect(entry.required).toBe('soft');
+  });
+
+  // HIGH-1 (review follow-up) -- the ratchet in src/assimilate.js's
+  // requiredValue line is applied UNCONDITIONALLY (not gated on
+  // foreignCollision): `priorEntry && priorEntry.required === 'hard' ?
+  // 'hard' : required`. Nothing in the specs above can tell that apart from
+  // a collision-gated variant (`foreignCollision && priorEntry.required ===
+  // 'hard' ? 'hard' : required'), because every spec that seeds
+  // required:'hard' above ALSO triggers a foreign collision. This spec
+  // isolates the unconditional-ness itself: SAME pack (no collision),
+  // prior required:'hard', incoming call omits `required` (defaults to
+  // 'soft') -- under the collision-gated variant this would silently
+  // downgrade to 'soft'; under the shipped unconditional ratchet it stays
+  // 'hard'. origin/pin are asserted to update normally in the same call,
+  // underlining that ONLY required is a one-way ratchet -- origin/pin are
+  // not.
+  it('AC3: required is a ONE-WAY RATCHET even on the SAME pack\'s own re-assimilation -- a prior hard is never silently loosened by an incoming default soft', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-207-same-pack-required-ratchet');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK], {
+      required: 'hard', origin: 'github.com/example/old-origin', pin: 'old-pin',
+    });
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK, // the SAME pack -- hasForeignOwner is false, no collision
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'new-pin',
+      // required deliberately omitted -- defaults to 'soft'.
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = lock.resources['skill:permissive-skill'];
+    // required never loosens, even with no collision and no explicit
+    // 'hard' on this call.
+    expect(entry.required).toBe('hard');
+    // origin/pin are NOT a ratchet -- they update normally on a same-pack
+    // call, same as the spec above.
+    expect(entry.origin).toBe('github.com/example/permissive-skill');
+    expect(entry.pin).toBe('new-pin');
+  });
+
+  // Review follow-up -- the orphaned-but-retained case named in this
+  // module's own TASK-207 header comment: owners: [] is NOT a foreign
+  // collision (nobody currently holds the resource), so origin/pin/staged
+  // content DO get fully rewritten by whoever assimilates next, but
+  // required still never resets -- the same unconditional ratchet proven
+  // above, on the OTHER path that reaches it (empty owners rather than a
+  // same-pack edge).
+  it('AC3: an orphaned-but-retained entry (owners: []) is not a foreign collision -- content is adopted, but a prior required:hard still survives', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-207-orphaned-retained');
+    const lockPath = join(root, 'integrations.lock.json');
+    // owners: [] -- exactly the "hard orphan left in place, not removed"
+    // state src/pack-reconcile.js's plan() itself produces by design.
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [], {
+      required: 'hard', origin: 'github.com/example/old-origin', pin: 'old-pin',
+    });
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: ASSIMILATING_PACK, // a brand-new adopter -- no owner to collide with
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'new-pin',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    expect(result.ownership_joined_existing).toBeUndefined(); // not a collision
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = lock.resources['skill:permissive-skill'];
+    // Nobody owned it -- free to adopt the new content and provenance.
+    expect(entry.origin).toBe('github.com/example/permissive-skill');
+    expect(entry.pin).toBe('new-pin');
+    expect(entry.owners).toEqual([ASSIMILATING_PACK]);
+    // But required still never resets, even though this is NOT the
+    // foreign-collision path.
+    expect(entry.required).toBe('hard');
   });
 });

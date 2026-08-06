@@ -88,6 +88,79 @@
 // and fails closed on a mismatch — see that module's header for the full
 // contract and its documented backward-compat handling of pre-TASK-142
 // (`integrity`-only) lock entries.
+//
+// FOREIGN-OWNER COLLISION GUARD (TASK-207, from TASK-203's own reviewer,
+// which went looking past its own scope): TASK-203 fixed the reset-owners-
+// to-[] clobber below, but only ever protected owners[] — the REST of the
+// lock entry (origin, pin, the two integrity hashes, required) was still
+// replaced wholesale on every approve, silently overwriting a SIBLING
+// pack's provenance and able to downgrade its required:'hard' removal
+// brake (src/pack-reconcile.js's plan() — orphaned && required === 'soft'
+// is the ONLY removal path) to 'soft', reopening a removal path one level
+// up through a different field than TASK-203 closed. `resourceId` here is
+// human-supplied and bounded by no descriptor, so a colliding id is a real,
+// reachable trigger, not a hypothetical one (unlike src/pack-apply.js's
+// executeInstall, whose callers ARE bounded by the built-in descriptors'
+// disjoint id space).
+//
+// A "foreign" collision (hasForeignOwner, src/integrations-lock.js, built
+// on TASK-202's parseOwnerEdge) is a prior entry carrying at least one
+// owner edge NOT attributable to the CURRENT pack's packId. No prior
+// entry, or a prior entry owned ONLY by edges attributable to the current
+// pack (a same-pack version bump or plain repeat call), is NEVER a
+// collision — that is a legitimate self-update and behaves exactly as
+// before TASK-207.
+//
+// Field-by-field decision, since owners[]'s preserve-and-union has no
+// direct analogue for a single-valued field:
+//   - `required` — PRESERVE-THE-STRICTER (hard beats soft), applied
+//     UNCONDITIONALLY, not just on a foreign collision: a safety lever
+//     must never silently loosen via ANY re-assimilation, including a
+//     same-pack one that omits `required` on a later call (the param
+//     defaults to 'soft') — the same direction already committed to for
+//     owners[]. No union analogue is needed since hard/soft is already a
+//     total order. A deliberate consequence: an ORPHANED-BUT-RETAINED
+//     entry (owners: [] — the state pack-reconcile.js's plan() itself
+//     produces by design when a hard orphan is "left in place, not
+//     removed") is NOT a foreign collision (hasForeignOwner is false on
+//     empty owners — nobody currently holds it), so its origin/pin/staged
+//     bytes DO get fully rewritten by whoever assimilates that id next —
+//     but required still ratchets, never resets. This is intentional, not
+//     an oversight: the hard flag expresses "this must never silently
+//     disappear," an intent that does not evaporate merely because no pack
+//     currently owns the edge, and unconditional ratcheting keeps the rule
+//     "required never silently loosens" true everywhere rather than only
+//     on the foreign-collision branch.
+//   - `origin`/`pin`/the two integrity hashes — on a FOREIGN collision
+//     ONLY, PRESERVE THE PRIOR VALUES untouched (first-attested-wins):
+//     unlike `required`, there is no "stricter" direction for an identity
+//     field, and the staged bytes those hashes describe are ALSO left
+//     untouched (next bullet), so the recorded values must keep describing
+//     what is actually on disk. A same-pack re-assimilation is NOT a
+//     foreign collision, so these fields update normally, exactly as
+//     before TASK-207.
+//   - ALTERNATIVES CONSIDERED AND REJECTED for origin/pin: refuse-on-
+//     collision (throw, write nothing) was rejected because TASK-203's own
+//     already-approved regression spec requires a colliding
+//     re-assimilation to SUCCEED (status: 'assimilated', both owners
+//     unioned) — a blanket refusal would revert that locked behavior, and
+//     it would also make a legitimate content refresh by the resource's
+//     OWN pack impossible if applied without the foreign/same-pack
+//     distinction. Reset-with-proof (overwrite, but only when provably
+//     safe) was rejected because nothing bounds `resourceId` to a
+//     disjoint id space here — "no sibling can exist at this point" can
+//     never be proven in general on this path, mirroring the same
+//     conclusion TASK-200 reached for src/pack-apply.js#executeInstall's
+//     owners[] fix.
+//   - AC6 (staged copy) — ADDRESSED, not scoped out: a foreign collision
+//     skips the cpSync/provenance-rewrite into assimilated-skills/<id>/
+//     entirely (see the write below), for the same reason as the field
+//     decision above — writing the assimilating pack's different content
+//     there while attributing it to the PRIOR pack's origin/pin would be
+//     strictly worse than the original bug (a live provenance/content
+//     mismatch reachable by pack-apply's own TOCTOU content_integrity
+//     check), and writing it while updating provenance to the NEW values
+//     is exactly the clobber this ticket exists to close.
 
 import { existsSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
@@ -427,6 +500,17 @@ export function validateReviewerVerdict(reviewerVerdict) {
  *   masquerade as genuine). Writes NOTHING; carries only `id`, `status`, and
  *   `reason` — checked before license detection/scanning even run, so no
  *   `spdx_id`/`classification`/`scan`/`reviewer` fields are present.
+ *   TASK-207 -- an `assimilated` payload additionally carries
+ *   `ownership_joined_existing: true` plus a `reason` string whenever the
+ *   write took the FOREIGN-OWNER COLLISION GUARD path (see this module's
+ *   own header comment): the resourceId was already owned by a different
+ *   pack, so this call joined as an additional owner WITHOUT overwriting
+ *   the existing owner's origin/pin/integrity-hash/staged content — the
+ *   returned `origin`/`pin`/`source_integrity`/`content_integrity` in that
+ *   case describe the PRIOR owner's recorded values, not this call's
+ *   `opts.origin`/`opts.pin`. Absent (no `ownership_joined_existing` key at
+ *   all) on every other `assimilated` payload, including a fresh install
+ *   and a same-pack re-assimilation.
  */
 export async function assimilateSkill(opts) {
   const {
@@ -583,24 +667,20 @@ export async function assimilateSkill(opts) {
   const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
   const ownersWithoutStaleSelfEdges = dropStaleSameOwnerEdges(priorOwners, pack);
 
-  // TASK-207 (from TASK-203's own reviewer, which went looking past its own
-  // scope) -- the preserve-and-union fix above only ever protected
-  // owners[]; the REST of the entry (origin, pin, the two integrity hashes,
-  // required) was still replaced wholesale below, silently overwriting a
-  // sibling pack's provenance and able to downgrade its required:'hard'
-  // removal brake (src/pack-reconcile.js's plan() -- orphaned &&
-  // required === 'soft' is the ONLY removal path) to 'soft'. A "foreign"
-  // collision -- an existing owner edge NOT attributable to THIS pack's
-  // packId (hasForeignOwner, same parseOwnerEdge machinery TASK-202
+  // TASK-207 -- see the "FOREIGN-OWNER COLLISION GUARD" block in this
+  // module's own header comment (above the imports) for the full
+  // field-by-field decision and the alternatives considered/rejected. A
+  // "foreign" collision -- an existing owner edge NOT attributable to THIS
+  // pack's packId (hasForeignOwner, same parseOwnerEdge machinery TASK-202
   // introduced) -- is the trigger; a same-pack re-assimilation (a plain
   // repeat call, or a version bump) is never a collision and must behave
-  // exactly as before (see this module's TASK-207 header comment for the
-  // full field-by-field decision and the alternatives considered/rejected).
+  // exactly as before.
   const foreignCollision = Boolean(priorEntry) && hasForeignOwner(priorOwners, pack);
 
   // required -- PRESERVE-THE-STRICTER, unconditionally (not just on a
-  // foreign collision): a safety lever must never silently loosen via ANY
-  // re-assimilation, the same direction already committed to for owners[].
+  // foreign collision, and not reset merely because owners[] is currently
+  // empty) -- see the header block's "deliberate consequence" paragraph for
+  // the orphaned-but-retained case this also covers.
   const requiredValue = priorEntry && priorEntry.required === 'hard' ? 'hard' : required;
 
   const ownedDir = join(root, DEFAULT_STAGING_SUBDIR, resourceId);
@@ -662,6 +742,16 @@ export async function assimilateSkill(opts) {
   return {
     ...base,
     status: 'assimilated',
+    // TASK-207 review: `path` is always the shared assimilated-skills/<id>/
+    // location even on a foreign collision, where THIS call wrote nothing
+    // there -- deliberate, not an oversight. It is still where the
+    // resource's (prior owner's) content actually lives, and
+    // `ownership_joined_existing`/`reason` below are the discriminator a
+    // caller needs to know this call itself didn't write it. Likewise
+    // `source_integrity`/`content_integrity` can be `undefined` here for a
+    // pre-TASK-142 (`integrity`-only) prior entry -- carried through
+    // unchanged from `recordedEntry`, never backfilled with a
+    // freshly-computed hash the collision guard exists to avoid computing.
     path: ownedDir,
     origin: recordedEntry.origin,
     pin: recordedEntry.pin,
