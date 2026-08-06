@@ -26902,8 +26902,8 @@ async function computeBuildStamp(filePath) {
 async function checkBundleFreshness(buildStamp, repoRoot) {
   if (!buildStamp) {
     return {
-      checked: false,
-      reason: "no-build-stamp",
+      self_checked: false,
+      self_reason: "no-build-stamp",
       self_stale: null,
       loaded_path: null,
       loaded_sha256: null,
@@ -26919,15 +26919,15 @@ async function checkBundleFreshness(buildStamp, repoRoot) {
   try {
     const current = await computeBuildStamp(buildStamp.path);
     selfLeg = {
-      checked: true,
-      reason: null,
+      self_checked: true,
+      self_reason: null,
       self_stale: current.sha256 !== buildStamp.sha256,
       current_self_sha256: current.sha256
     };
   } catch (err) {
     selfLeg = {
-      checked: false,
-      reason: err && err.code === "ENOENT" ? "bundle-missing" : "read-error",
+      self_checked: false,
+      self_reason: err && err.code === "ENOENT" ? "bundle-missing" : "read-error",
       self_stale: null,
       current_self_sha256: null
     };
@@ -26960,8 +26960,8 @@ async function checkBundleFreshness(buildStamp, repoRoot) {
     }
   }
   return {
-    checked: selfLeg.checked,
-    reason: selfLeg.reason,
+    self_checked: selfLeg.self_checked,
+    self_reason: selfLeg.self_reason,
     self_stale: selfLeg.self_stale,
     loaded_path: buildStamp.path,
     loaded_sha256: buildStamp.sha256,
@@ -27230,7 +27230,7 @@ function createServer({
   server.registerTool(
     "mcp_build_status",
     {
-      description: "Reveal whether THIS MCP server process is running a stale bundle, as two INDEPENDENT legs (self and repo \u2014 checking only one is not sufficient; an installed plugin loads dist/mcp-server.cjs from CLAUDE_PLUGIN_ROOT, a plugin CACHE that a rebuild in this repo never touches, so a self-only check reports false-fresh forever in that topology). LEG 1 (self_stale): has the exact file this process loaded mutated in place since server startup \u2014 a sha256 hashed once at startup vs. a fresh hash of the SAME path read right now. LEG 2 (repo_divergent): do the bytes this process loaded match <repoRoot>/dist/mcp-server.cjs \u2014 the repo's CURRENTLY COMMITTED bundle, the only file `npm run build:plugin` / dist-parity ever touch, read fresh on every call \u2014 regardless of which path this process actually loaded from. Either leg `true` means: a guard added or changed since this process started may not be executing in it; restart the MCP server (reconnect the session) before trusting its behavior. `checked`/`repo_checked: false` (with `reason`/`repo_reason`, e.g. 'no-build-stamp' when the server was started via createServer() directly rather than as the real entrypoint, or leg-2's 'repo-bundle-missing' \u2014 the normal case for a consumer project with no dist/ checked out) means that leg could not run at all \u2014 treat as inconclusive, never as evidence of matching. Scope: this can only ever be true of THIS long-lived process; direct src/ importers (the test suite, bin/ CLIs, the wargame harness) always execute current code on every run and are never stale in this sense.",
+      description: "Reveal whether THIS MCP server process is running a stale bundle, as two INDEPENDENT legs \u2014 checking only one is not sufficient (an installed plugin can load from a cache a local rebuild never touches). LEG 1 (self_checked/self_reason/self_stale): has the exact file this process loaded mutated in place since startup? LEG 2 (repo_checked/repo_reason/repo_divergent): do the loaded bytes match <repoRoot>/dist/mcp-server.cjs \u2014 the repo's CURRENTLY COMMITTED bundle, read fresh on every call \u2014 regardless of which path this process actually loaded from. Either `self_stale`/`repo_divergent: true` means a guard added or changed since this process started may not be executing in it; restart the MCP server (reconnect the session) before trusting its behavior. Either leg's own `*_checked: false` (with a `*_reason`, e.g. 'no-build-stamp', or leg 2's 'repo-bundle-missing' \u2014 the normal case for a consumer project with no dist/ checked out) means that leg alone could not run \u2014 treat it as inconclusive, never as evidence of matching; it does not affect the other leg. Scope: this can only ever be true of THIS long-lived process; direct src/ importers (the test suite, bin/ CLIs, the wargame harness) always execute current code on every run and are never stale in this sense.",
       inputSchema: {}
     },
     async () => ok(await checkBundleFreshness(buildStamp, repoRoot))

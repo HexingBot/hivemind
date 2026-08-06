@@ -1184,40 +1184,56 @@ far the cache has drifted from the repo — verified counterfactually against
 both TASK-200 and TASK-201, which a self-only check would have reported
 clean.
 
-- **Leg 1 (`self_stale`)** — `main()` (`src/mcp-server.js`) snapshots a
-  sha256 of the exact file this process loaded, once, before the server ever
-  connects. Calling `mcp_build_status` (no arguments) re-hashes the SAME
-  path on demand: `self_stale: true` means that exact path mutated in place
-  since startup.
-- **Leg 2 (`repo_divergent`)** — the same call also hashes THIS repo's
-  currently committed `<repoRoot>/dist/mcp-server.cjs` fresh, every time, and
-  compares it against what this process loaded, **regardless of which path
-  it was actually spawned from**. `repo_divergent: true` means the running
-  process does not reflect this repo's committed bundle — the leg that
-  actually answers "did my `npm run build:plugin` take effect in the live
-  server". `repo_checked: false, repo_reason: 'repo-bundle-missing'` is the
-  normal, legitimate case for a consumer project with no `dist/` checked
-  out — never collapsed into `repo_divergent: false` (Empty-result
-  contract, TASK-192).
-- `checked: false, reason: 'no-build-stamp'` disables both legs at once — no
-  snapshot to compare either way (the common case for every test in this
-  repo, which calls `createServer({ repoRoot })` directly rather than
-  running the real entrypoint).
+- **Leg 1 (`self_checked`/`self_reason`/`self_stale`)** — `main()`
+  (`src/mcp-server.js`) snapshots a sha256 of the exact file this process
+  loaded, once, before the server ever connects. Calling `mcp_build_status`
+  (no arguments) re-hashes the SAME path on demand: `self_stale: true` means
+  that exact path mutated in place since startup.
+- **Leg 2 (`repo_checked`/`repo_reason`/`repo_divergent`)** — the same call
+  also hashes THIS repo's currently committed `<repoRoot>/dist/mcp-server.cjs`
+  fresh, every time, and compares it against what this process loaded,
+  **regardless of which path it was actually spawned from**.
+  `repo_divergent: true` means the running process does not reflect this
+  repo's committed bundle — the leg that actually answers "did my `npm run
+  build:plugin` take effect in the live server". `repo_checked: false,
+  repo_reason: 'repo-bundle-missing'` is the normal, legitimate case for a
+  consumer project with no `dist/` checked out — never collapsed into
+  `repo_divergent: false` (Empty-result contract, TASK-192).
+- The two legs are **independent** and neither suppresses the other:
+  `self_reason: 'no-build-stamp'` / `repo_reason: 'no-build-stamp'` disables
+  both at once — no snapshot to compare either way (the common case for
+  every test in this repo, which calls `createServer({ repoRoot })` directly
+  rather than running the real entrypoint) — but otherwise either leg can
+  fail on its own (e.g. the stamped path gets deleted) without affecting the
+  other: leg 2 still renders its own, independently correct result even when
+  leg 1 is broken (locked by
+  `leg2_repo_still_renders_repo_divergent_when_leg1_self_is_broken_non_suppression`
+  in `tests/e2e/mcp-build-status.spec.js`). `self_checked`/`repo_checked` are
+  deliberately namespaced rather than a single bare `checked` field, so
+  `false` never reads as "the whole check failed" when the other leg may be
+  reporting a perfectly good result right alongside it.
 
 **Operational response:** after any rebuild (`npm run build:plugin`) that
 touches `src/task-store.js`, `src/close-guard.js`, or `src/mcp-server.js`
 itself, call `mcp_build_status` before relying on any guard behavior that
 landed this session. Either leg `true` means restart the MCP server
-(reconnect the session) before trusting it; either leg's `checked: false`
-means that leg could not run at all — treat as inconclusive, never as
-evidence of matching. **Topology caveat:** for an installed plugin, a
-restart alone reloads from `CLAUDE_PLUGIN_ROOT` (the cache), which only
-updates from the marketplace's remote git URL — a local `npm run
-build:plugin` in this dev repo does not, by itself, change what a restarted
-installed-plugin server loads; `repo_divergent` reveals that gap but closing
-it needs a plugin update/reinstall, not just a reconnect. This mechanism is
-deliberately not hot-reload — the goal is making the discrepancy visible,
-not making it impossible.
+(reconnect the session) before trusting it; either leg's own `*_checked:
+false` means that leg could not run at all — treat it as inconclusive,
+never as evidence of matching, and it says nothing about the other leg.
+**Topology caveat:** for an installed plugin, a restart alone reloads from
+`CLAUDE_PLUGIN_ROOT` (the cache), which only updates from the marketplace's
+**remote** git URL — a local `npm run build:plugin` in this dev repo does
+not, by itself, change what a restarted installed-plugin server loads;
+`repo_divergent` reveals that gap but closing it needs a plugin
+update/reinstall, not just a reconnect. **And the work being rebuilt must
+already be reachable from that remote**: an operator with unpushed local
+commits who runs `/plugin update` still fetches the marketplace's remote git
+URL, so uncommitted or unpushed local changes are never picked up by that
+path — the change must be pushed to the marketplace's remote first (or the
+marketplace's source pointed at a local path instead of a remote URL) before
+a plugin update/reinstall can make a restarted installed-plugin server
+reflect it. This mechanism is deliberately not hot-reload — the goal is
+making the discrepancy visible, not making it impossible.
 
 **Route every ticket write through the MCP task-store tools** (`mcp__plugin_hivemind_hivemind-tasks__*`,
 backed by `src/task-store.js` / `src/mcp-server.js`), not direct `Edit` on

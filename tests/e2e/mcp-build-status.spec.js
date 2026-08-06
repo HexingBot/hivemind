@@ -30,6 +30,14 @@
 // deleting the mcp_build_status tool registration, or replacing either leg's
 // real re-hash-and-compare with a hardcoded `false`, fails the
 // "fires_..." tests below.
+//
+// FIX ROUND 2 (reviewer): leg 1's fields were renamed `checked`/`reason` ->
+// `self_checked`/`self_reason` for symmetry with leg 2's `repo_checked`/
+// `repo_reason` — a bare `checked: false` reads as "the whole check
+// failed", which is exactly wrong when leg 2 is reporting a perfectly good
+// result alongside it. `leg2_repo_still_renders_repo_divergent_when_leg1_
+// self_is_broken_non_suppression` below is the spec for that non-suppression
+// guarantee itself (previously asserted only informally, never locked).
 
 import {
   describe, it, expect, beforeEach, afterEach,
@@ -78,8 +86,8 @@ describe('TASK-204 — computeBuildStamp / checkBundleFreshness (pure mechanism)
   it('checkBundleFreshness_disables_both_legs_when_no_build_stamp_was_given', async () => {
     const result = await checkBundleFreshness(null, dir);
     expect(result).toEqual({
-      checked: false,
-      reason: 'no-build-stamp',
+      self_checked: false,
+      self_reason: 'no-build-stamp',
       self_stale: null,
       loaded_path: null,
       loaded_sha256: null,
@@ -95,7 +103,7 @@ describe('TASK-204 — computeBuildStamp / checkBundleFreshness (pure mechanism)
   it('leg1_self_stays_quiet_self_stale_false_on_a_fresh_unchanged_file', async () => {
     const stamp = await computeBuildStamp(bundlePath);
     const result = await checkBundleFreshness(stamp, null);
-    expect(result.checked).toBe(true);
+    expect(result.self_checked).toBe(true);
     expect(result.self_stale).toBe(false);
     expect(result.loaded_sha256).toBe(result.current_self_sha256);
   });
@@ -107,18 +115,60 @@ describe('TASK-204 — computeBuildStamp / checkBundleFreshness (pure mechanism)
     const stamp = await computeBuildStamp(bundlePath);
     writeFileSync(bundlePath, 'console.log("v2 - rebuilt");\n', 'utf8');
     const result = await checkBundleFreshness(stamp, null);
-    expect(result.checked).toBe(true);
+    expect(result.self_checked).toBe(true);
     expect(result.self_stale).toBe(true);
     expect(result.loaded_sha256).not.toBe(result.current_self_sha256);
   });
 
-  it('leg1_self_reports_checked_false_bundle_missing_when_the_snapshotted_path_is_deleted', async () => {
+  it('leg1_self_reports_self_checked_false_bundle_missing_when_the_snapshotted_path_is_deleted', async () => {
     const stamp = await computeBuildStamp(bundlePath);
     unlinkSync(bundlePath);
     const result = await checkBundleFreshness(stamp, null);
-    expect(result.checked).toBe(false);
-    expect(result.reason).toBe('bundle-missing');
+    expect(result.self_checked).toBe(false);
+    expect(result.self_reason).toBe('bundle-missing');
     expect(result.self_stale).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Reviewer MEDIUM (fix round 2): the design's central guarantee — neither
+  // leg suppresses the other — had no spec. This is the missing case: leg 1
+  // is BROKEN (self_checked: false) while leg 2 still renders its own
+  // result independently. The same argument that motivated the HIGH-1 fix
+  // applies verbatim: a missing spec is what let a false-green mechanism
+  // through review once already on this ticket.
+  // ---------------------------------------------------------------------------
+  it('leg2_repo_still_renders_repo_divergent_when_leg1_self_is_broken_non_suppression', async () => {
+    const stamp = await computeBuildStamp(bundlePath);
+    // Break leg 1: delete the exact path that was snapshotted, so the self
+    // leg's own re-read throws (self_checked: false, self_reason:
+    // 'bundle-missing' — see the test directly above).
+    unlinkSync(bundlePath);
+
+    const repoRoot = mkdtempSync(join(tmpdir(), 'mcp-build-status-nonsuppress-'));
+    try {
+      mkdirSync(join(repoRoot, 'dist'), { recursive: true });
+      // A real, DIVERGENT repo bundle — a completely independent path from
+      // the (now-deleted) stamped one — so leg 2 has a genuine true/false to
+      // report regardless of what happened to leg 1.
+      writeFileSync(join(repoRoot, 'dist', 'mcp-server.cjs'), 'console.log("v2 - repo diverges");\n', 'utf8');
+
+      const result = await checkBundleFreshness(stamp, repoRoot);
+
+      // Leg 1 is broken, as expected.
+      expect(result.self_checked).toBe(false);
+      expect(result.self_reason).toBe('bundle-missing');
+      expect(result.self_stale).toBeNull();
+
+      // Leg 2 is UNAFFECTED by leg 1's failure — it still renders its own,
+      // independently correct result. This is the assertion a suppressed
+      // (i.e. short-circuited) implementation would fail.
+      expect(result.repo_checked).toBe(true);
+      expect(result.repo_reason).toBeNull();
+      expect(result.repo_divergent).toBe(true);
+      expect(result.repo_sha256).not.toBe(result.loaded_sha256);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 
   it('leg2_repo_reports_repo_checked_false_no_repo_root_when_no_repoRoot_is_given', async () => {
@@ -183,7 +233,7 @@ describe('TASK-204 — computeBuildStamp / checkBundleFreshness (pure mechanism)
 
       const result = await checkBundleFreshness(stamp, repoRoot);
       // Leg 1 correctly stays quiet: the CACHE path itself never changed.
-      expect(result.checked).toBe(true);
+      expect(result.self_checked).toBe(true);
       expect(result.self_stale).toBe(false);
       // Leg 2 correctly fires: the REPO's committed bundle has moved on.
       expect(result.repo_checked).toBe(true);
@@ -231,8 +281,8 @@ describe('TASK-204 — mcp_build_status tool (full in-memory MCP round trip)', (
     // in (no buildStamp arg) — must never fabricate a matching verdict.
     await connect(undefined);
     const result = parse(await client.callTool({ name: 'mcp_build_status', arguments: {} }));
-    expect(result.checked).toBe(false);
-    expect(result.reason).toBe('no-build-stamp');
+    expect(result.self_checked).toBe(false);
+    expect(result.self_reason).toBe('no-build-stamp');
     expect(result.repo_checked).toBe(false);
     expect(result.repo_reason).toBe('no-build-stamp');
   });
@@ -247,7 +297,7 @@ describe('TASK-204 — mcp_build_status tool (full in-memory MCP round trip)', (
     writeFileSync(bundlePath, 'console.log("v2 - rebuilt while the process kept running");\n', 'utf8');
 
     const result = parse(await client.callTool({ name: 'mcp_build_status', arguments: {} }));
-    expect(result.checked).toBe(true);
+    expect(result.self_checked).toBe(true);
     expect(result.self_stale).toBe(true);
     expect(result.loaded_sha256).not.toBe(result.current_self_sha256);
   });
