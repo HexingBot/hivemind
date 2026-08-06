@@ -1360,7 +1360,11 @@ describe('TASK-142 HIGH FIX -- a decoy content_integrity-looking line in the ski
 // here, that sibling's resource looks unowned, and the sibling's own later
 // remove deletes a resource it still wants. Fix mirrors TASK-200/202:
 // preserve-and-union via dropStaleSameOwnerEdges, never a hard reset.
-function seedPriorLockEntry(lockPath, id, owners) {
+// TASK-207 -- `overrides` lets callers seed a distinct required/origin/pin
+// (default unchanged: required 'soft', matching every pre-existing TASK-203
+// call site, which never cared about these fields) without touching any of
+// the 8 existing 3-arg call sites above.
+function seedPriorLockEntry(lockPath, id, owners, overrides = {}) {
   const lock = {
     schema_version: 1,
     resources: {
@@ -1375,6 +1379,7 @@ function seedPriorLockEntry(lockPath, id, owners) {
         installed_at: '2026-07-01T00:00:00Z',
         install_method: 'reconcile-apply',
         verified: 'unsigned',
+        ...overrides,
       },
     },
   };
@@ -1512,5 +1517,194 @@ describe('TASK-203 — assimilateSkill must preserve a sibling pack\'s owner edg
     const entryAfterRemove = lockAfterRemove.resources['skill:permissive-skill'];
     expect(entryAfterRemove).toBeDefined();
     expect(entryAfterRemove.owners).toEqual([PACK]);
+  });
+});
+
+// TASK-207 (from TASK-203's own gating review, which went looking past the
+// defect in scope, exactly the way TASK-200's reviewer found TASK-203) --
+// assimilateSkill's TASK-203 fix preserve-and-unions owners[] correctly, but
+// still replaces the REST of the lock entry (origin, pin, required, the two
+// integrity hashes) wholesale with the assimilating call's own values. When
+// the colliding resourceId is already owned by a DIFFERENT pack, that
+// silently overwrites the sibling's provenance and can downgrade its
+// required:'hard' removal brake (src/pack-reconcile.js:233 -- orphaned &&
+// required==='soft' is the ONLY removal path) to 'soft', reopening a removal
+// path in the same direction TASK-203 just closed, one level up through a
+// different field. It also overwrites the SHARED staging/materialize
+// directory (assimilated-skills/<resourceId>/ is BOTH assimilate.js's
+// DEFAULT_STAGING_SUBDIR and pack-apply.js's DEFAULT_SOURCE_SUBDIR).
+//
+// DECIDED SEMANTICS (recorded here, matching src/assimilate.js's own
+// TASK-207 comment):
+//   - A "foreign" collision is a prior entry with at least one owner edge NOT
+//     attributable to the CURRENT pack's packId (parseOwnerEdge-based, same
+//     parser TASK-202 introduced; an edge that fails to parse is treated as
+//     foreign -- fail-safe, cannot prove sameness). No prior entry, or a
+//     prior entry owned ONLY by edges attributable to the current pack (a
+//     same-pack version bump or plain repeat call) is NEVER a collision --
+//     that is a legitimate self-update and must behave exactly as before.
+//   - `required` -- PRESERVE-THE-STRICTER (hard beats soft), applied
+//     unconditionally (not just on a foreign collision): a safety lever must
+//     never silently loosen via ANY re-assimilation, the same direction
+//     TASK-203 already committed to for owners[]. No union analogue needed
+//     here since 'hard'/'soft' is already a total order.
+//   - `origin`/`pin`/the two integrity hashes -- on a FOREIGN collision only,
+//     PRESERVE THE PRIOR VALUES untouched (first-attested-wins), because
+//     unlike `required` there is no "stricter" direction for an identity
+//     field -- and because the staged bytes those hashes describe are ALSO
+//     being left untouched (next bullet), so the recorded values must keep
+//     describing what is actually on disk. A same-pack re-assimilation is
+//     NOT a foreign collision, so it updates these fields exactly as before
+//     -- refuse-on-collision was considered and rejected because it would
+//     make a legitimate content refresh by the resource's own pack
+//     impossible, and because TASK-203's own already-approved regression
+//     spec (the RED-LOCK test above) requires a colliding re-assimilation to
+//     SUCCEED (status: 'assimilated', both owners unioned) -- a blanket
+//     refusal would revert that locked behavior.
+//   - AC6 (staged copy) -- ADDRESSED, not scoped out: a foreign collision
+//     skips the cpSync/provenance-rewrite into assimilated-skills/<id>/
+//     entirely, for the same reason as the field decision above -- writing
+//     the assimilating pack's different content there while attributing it
+//     to the PRIOR pack's origin/pin would be strictly worse than the
+//     original bug (a live provenance/content mismatch reachable by
+//     pack-apply's own TOCTOU content_integrity check), and writing it while
+//     updating provenance to the NEW values is exactly the clobber this
+//     ticket exists to close.
+describe('TASK-207 — a foreign-owned resourceId collision must not clobber the sibling\'s provenance, downgrade its required:hard brake, or overwrite its staged copy', () => {
+  const ASSIMILATING_PACK = 'third-party-assimilate@1.0.0';
+
+  it('AC1/AC6 RED-LOCK: re-assimilating a resourceId owned by a DIFFERENT pack (required:hard, origin+pin set) must not overwrite those fields or the shared staged copy', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-207-provenance-clobber');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK], { required: 'hard' });
+
+    // The sibling's staged copy already lives at the SHARED staging dir --
+    // AC6 is about THIS surviving untouched, not a scratch area.
+    const ownedDir = join(root, 'assimilated-skills', 'permissive-skill');
+    mkdirSync(ownedDir, { recursive: true });
+    const priorOwnedMarker = '# Prior owner\'s staged copy -- must survive untouched\n';
+    writeFileSync(join(ownedDir, 'SKILL.md'), priorOwnedMarker);
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: ASSIMILATING_PACK,
+      decision: 'approve',
+      // TASK-140 default-deny gate: an explicit safe verdict is required.
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    // Ownership is still correctly unioned -- TASK-203's fix is untouched.
+    expect(result.status).toBe('assimilated');
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = lock.resources['skill:permissive-skill'];
+    expect(entry.owners).toEqual([PACK, ASSIMILATING_PACK]);
+
+    // AC1 -- the sibling's provenance must survive; this is what clobbers
+    // pre-fix (origin/pin overwritten to the incoming values, required
+    // downgraded from 'hard' to the assimilating call's default 'soft').
+    expect(entry.origin).toBe('github.com/example/prior-owner');
+    expect(entry.pin).toBe('prior-pin');
+    expect(entry.required).toBe('hard');
+
+    // AC6 -- the shared staged/materialize copy must not be overwritten.
+    expect(readFileSync(join(ownedDir, 'SKILL.md'), 'utf8')).toBe(priorOwnedMarker);
+  });
+
+  it('AC2: the downstream consequence — required:hard must still block full removal after the collision, live dir included', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { applyPlan } = await import(PROD.packApply);
+    const { readLock, writeLock, dropOwner } = await import(PROD.integrationsLock);
+    // The required:'hard' brake lives in plan()'s removal-candidacy check
+    // (orphaned && entry.required === 'soft' is the ONLY condition that adds
+    // an id to the remove bucket) -- executeRemove itself is unconditional
+    // once handed a remove op and an orphan. So this proof must go through
+    // the REAL plan() to exercise the brake, not a hand-rolled remove op
+    // (which would delete unconditionally regardless of required, proving
+    // nothing about the brake either way).
+    const { plan } = await import(PROD.packReconcile);
+    const root = makeTmpDir('asm-207-removal-brake');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK], { required: 'hard' });
+
+    // A live directory whose deletion (or survival) is actually asserted --
+    // per TASK-203's own reviewer, a lock-entry-only assertion leaves
+    // executeRemove's rmSync(liveDir) half unexercised.
+    const liveDir = join(root, '.claude', 'skills', 'permissive-skill');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Permissive Skill\nLive copy.\n');
+
+    await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: ASSIMILATING_PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    // Both owners now drop the resource via the pure dropOwner (no
+    // executeRemove involved yet -- that step only ever runs on whatever
+    // plan() actually decides is removable), fully orphaning the entry.
+    let lock = await readLock(lockPath);
+    dropOwner(lock, 'skill:permissive-skill', PACK);
+    dropOwner(lock, 'skill:permissive-skill', ASSIMILATING_PACK);
+    await writeLock(lockPath, lock);
+    lock = await readLock(lockPath);
+    expect(lock.resources['skill:permissive-skill'].owners).toEqual([]);
+
+    // Nothing desires this resource any more -> the ONLY thing standing
+    // between "orphaned" and "removed" is plan()'s required check.
+    const computedPlan = plan([], lock, {});
+
+    await applyPlan({ plan: computedPlan, lockPath, root, owner: PACK });
+
+    // The required:hard removal brake (src/pack-reconcile.js's plan() --
+    // orphaned && required === 'soft' is the ONLY removal path) must still
+    // hold: the live dir and the lock entry both survive full orphaning.
+    // Pre-fix, the collision silently downgraded required to 'soft', so
+    // plan() would have put this id in the remove bucket and this same
+    // sequence deletes both.
+    expect(existsSync(liveDir)).toBe(true);
+    const afterRemove = JSON.parse(readFileSync(lockPath, 'utf8'));
+    expect(afterRemove.resources['skill:permissive-skill']).toBeDefined();
+  });
+
+  it('AC3: a legitimate re-assimilation by the SAME pack is NOT treated as a collision -- origin/pin/required still update normally', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-207-same-pack-refresh');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK], {
+      required: 'soft', origin: 'github.com/example/old-origin', pin: 'old-pin',
+    });
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: PACK, // the SAME pack that already owns this resource
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'new-pin',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = lock.resources['skill:permissive-skill'];
+    // Free to update -- this is the resource's own pack refreshing its
+    // content, never a foreign collision, so the incoming values apply.
+    expect(entry.origin).toBe('github.com/example/permissive-skill');
+    expect(entry.pin).toBe('new-pin');
+    expect(entry.owners).toEqual([PACK]);
   });
 });

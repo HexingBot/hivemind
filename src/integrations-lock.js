@@ -220,6 +220,42 @@ export function dropStaleSameOwnerEdges(owners, currentOwner) {
 }
 
 /**
+ * TASK-207 — true iff `owners` holds at least one edge that CANNOT be
+ * attributed to the same packId as `currentOwner` -- i.e. some OTHER pack
+ * (or an edge too malformed to prove sameness) already holds this resource.
+ * Used by src/assimilate.js to distinguish a legitimate same-pack
+ * re-assimilation (never a collision -- must behave exactly as before) from
+ * a genuinely foreign pack joining ownership of an already-owned resourceId
+ * (a real collision -- see that module's TASK-207 header comment for the
+ * full field-by-field decision this gates).
+ *
+ * Empty/absent `owners` is never foreign (nobody currently holds the
+ * resource). An edge identical to `currentOwner` itself is never foreign
+ * (trivially the same pack). A `currentOwner` that fails to parse treats
+ * EVERY existing owner as foreign -- fail-safe, mirroring
+ * dropStaleSameOwnerEdges's own "cannot be attributed, treat conservatively"
+ * doctrine, just inverted: there, an unattributable edge is left alone
+ * (never dropped); here, an unattributable relationship is never assumed
+ * safe (never treated as same-pack).
+ *
+ * @param {string[]} owners
+ * @param {string} currentOwner
+ * @returns {boolean}
+ */
+export function hasForeignOwner(owners, currentOwner) {
+  const list = Array.isArray(owners) ? owners : [];
+  if (list.length === 0) return false;
+  const current = parseOwnerEdge(currentOwner);
+  return list.some((o) => {
+    if (o === currentOwner) return false;
+    if (!current) return true;
+    const parsed = parseOwnerEdge(o);
+    if (!parsed) return true;
+    return parsed.packId !== current.packId;
+  });
+}
+
+/**
  * TASK-202 AC3 — the mechanical SENSOR for the condition dropStaleSameOwnerEdges
  * exists to prevent: an owners[] array carrying two or more edges that parse
  * to the SAME packId with DIFFERENT versions (a stranded phantom edge from a

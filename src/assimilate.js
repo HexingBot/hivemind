@@ -94,7 +94,7 @@ import { join, dirname, relative, sep } from 'node:path';
 
 import { detectLicense, classifyLicense } from './license-detect.js';
 import {
-  readLock, writeLock, addOwner, dropStaleSameOwnerEdges,
+  readLock, writeLock, addOwner, dropStaleSameOwnerEdges, hasForeignOwner,
 } from './integrations-lock.js';
 import { hashDir, hashOwnedSkillDir, PROVENANCE_HEADING } from './pack-apply.js';
 import { scanSkillContent } from './skill-scan.js';
@@ -562,21 +562,6 @@ export async function assimilateSkill(opts) {
 
   const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
 
-  const ownedDir = join(root, DEFAULT_STAGING_SUBDIR, resourceId);
-  mkdirSync(dirname(ownedDir), { recursive: true });
-  rmSync(ownedDir, { recursive: true, force: true }); // clean-replace: re-assimilate is idempotent
-  cpSync(source, ownedDir, { recursive: true });
-
-  // TASK-142 -- content_integrity (over the OWNED artifact, post-rewrite) is
-  // computed and folded into the SAME write as the description-tag +
-  // provenance-block rewrite; see rescopeWithContentIntegrity's header for
-  // why the final text is deterministically REBUILT (not text-spliced) --
-  // the fix for the reviewer-reproduced HIGH/MEDIUM.
-  const ownedSkillPath = join(ownedDir, SKILL_FILENAME);
-  const original = readFileSync(ownedSkillPath, 'utf8');
-  const { finalText, contentIntegrity } = rescopeWithContentIntegrity(original, fields, ownedDir);
-  writeFileSync(ownedSkillPath, finalText, 'utf8');
-
   const id = `skill:${resourceId}`;
   let lock;
   try {
@@ -597,33 +582,100 @@ export async function assimilateSkill(opts) {
   const priorEntry = lock.resources[id];
   const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
   const ownersWithoutStaleSelfEdges = dropStaleSameOwnerEdges(priorOwners, pack);
-  lock.resources[id] = {
-    kind: 'skill',
-    origin: fields.origin,
-    pin: fields.pin,
-    source_integrity: fields.source_integrity,
-    content_integrity: contentIntegrity,
-    scope: 'project',
-    owners: ownersWithoutStaleSelfEdges,
-    required,
-    installed_at: fields.assimilated_at,
-    install_method: 'assimilated',
-    verified: 'unsigned',
-  };
+
+  // TASK-207 (from TASK-203's own reviewer, which went looking past its own
+  // scope) -- the preserve-and-union fix above only ever protected
+  // owners[]; the REST of the entry (origin, pin, the two integrity hashes,
+  // required) was still replaced wholesale below, silently overwriting a
+  // sibling pack's provenance and able to downgrade its required:'hard'
+  // removal brake (src/pack-reconcile.js's plan() -- orphaned &&
+  // required === 'soft' is the ONLY removal path) to 'soft'. A "foreign"
+  // collision -- an existing owner edge NOT attributable to THIS pack's
+  // packId (hasForeignOwner, same parseOwnerEdge machinery TASK-202
+  // introduced) -- is the trigger; a same-pack re-assimilation (a plain
+  // repeat call, or a version bump) is never a collision and must behave
+  // exactly as before (see this module's TASK-207 header comment for the
+  // full field-by-field decision and the alternatives considered/rejected).
+  const foreignCollision = Boolean(priorEntry) && hasForeignOwner(priorOwners, pack);
+
+  // required -- PRESERVE-THE-STRICTER, unconditionally (not just on a
+  // foreign collision): a safety lever must never silently loosen via ANY
+  // re-assimilation, the same direction already committed to for owners[].
+  const requiredValue = priorEntry && priorEntry.required === 'hard' ? 'hard' : required;
+
+  const ownedDir = join(root, DEFAULT_STAGING_SUBDIR, resourceId);
+  let contentIntegrity;
+  // AC6 -- on a foreign collision, the shared staging/materialize dir
+  // (assimilated-skills/<id>/ is BOTH this module's DEFAULT_STAGING_SUBDIR
+  // and src/pack-apply.js's DEFAULT_SOURCE_SUBDIR) is left COMPLETELY
+  // untouched: no re-copy, no rewrite. origin/pin/the integrity hashes below
+  // are carried forward from priorEntry instead of recomputed -- no
+  // stricter direction exists for an identity field, and the staged bytes
+  // those hashes describe are, by the same token, still exactly what is on
+  // disk.
+  if (!foreignCollision) {
+    mkdirSync(dirname(ownedDir), { recursive: true });
+    rmSync(ownedDir, { recursive: true, force: true }); // clean-replace: re-assimilate is idempotent
+    cpSync(source, ownedDir, { recursive: true });
+
+    // TASK-142 -- content_integrity (over the OWNED artifact, post-rewrite)
+    // is computed and folded into the SAME write as the description-tag +
+    // provenance-block rewrite; see rescopeWithContentIntegrity's header for
+    // why the final text is deterministically REBUILT (not text-spliced) --
+    // the fix for the reviewer-reproduced HIGH/MEDIUM.
+    const ownedSkillPath = join(ownedDir, SKILL_FILENAME);
+    const original = readFileSync(ownedSkillPath, 'utf8');
+    const rescoped = rescopeWithContentIntegrity(original, fields, ownedDir);
+    writeFileSync(ownedSkillPath, rescoped.finalText, 'utf8');
+    contentIntegrity = rescoped.contentIntegrity;
+  }
+
+  lock.resources[id] = foreignCollision
+    ? {
+      // AC6 -- the shared staging/materialize dir (assimilated-skills/<id>/
+      // is BOTH this module's DEFAULT_STAGING_SUBDIR and
+      // src/pack-apply.js's DEFAULT_SOURCE_SUBDIR) was never touched above,
+      // so every OTHER field of the prior entry (kind, scope, installed_at,
+      // install_method, verified, ...) is carried forward unchanged too --
+      // only owners[] and required (never-loosen) are allowed to move.
+      ...priorEntry,
+      owners: ownersWithoutStaleSelfEdges,
+      required: requiredValue,
+    }
+    : {
+      kind: 'skill',
+      origin: fields.origin,
+      pin: fields.pin,
+      source_integrity: fields.source_integrity,
+      content_integrity: contentIntegrity,
+      scope: 'project',
+      owners: ownersWithoutStaleSelfEdges,
+      required: requiredValue,
+      installed_at: fields.assimilated_at,
+      install_method: 'assimilated',
+      verified: 'unsigned',
+    };
   addOwner(lock, id, pack);
   await writeLock(lockPath, lock);
 
+  const recordedEntry = lock.resources[id];
   return {
     ...base,
     status: 'assimilated',
     path: ownedDir,
-    origin: fields.origin,
-    pin: fields.pin,
-    source_integrity: fields.source_integrity,
-    content_integrity: contentIntegrity,
-    assimilated_at: fields.assimilated_at,
-    owners: lock.resources[id].owners,
+    origin: recordedEntry.origin,
+    pin: recordedEntry.pin,
+    source_integrity: recordedEntry.source_integrity,
+    content_integrity: recordedEntry.content_integrity,
+    assimilated_at: recordedEntry.installed_at,
+    owners: recordedEntry.owners,
     scan,
     reviewer: reviewerVerdict,
+    ...(foreignCollision
+      ? {
+        ownership_joined_existing: true,
+        reason: `resourceId "${resourceId}" is already owned by a different pack; joined as an additional owner without altering its existing provenance (origin/pin/required) or staged content (assimilated-skills/${resourceId}/ left untouched)`,
+      }
+      : {}),
   };
 }
