@@ -258,7 +258,18 @@ describe('computeApplyOutcome — TASK-205: identity-aware per bucket (planned i
     expect(outcome.missingInstallIds).toEqual([]);
   });
 
-  it('AC2 — a duplicated planned id needs to land only once (Set-based identity, not array-length counting)', () => {
+  // This is not merely a synthetic identity edge case: a duplicate id here is
+  // reachable TODAY. aggregateDesired (bin/pack-ctl.js) concatenates
+  // resolveDesired() across every active pack with NO dedup, so if two packs
+  // both desire the same not-yet-live skill id, src/pack-reconcile.js#plan()
+  // pushes an install op for that id once per desiring pack -- computedPlan.
+  // install really can carry the same id twice. Pre-TASK-205, the raw-count
+  // predicate compared array LENGTH (2 planned) against the single actual
+  // landed install (1), and reported a false-alarm ok:false/'partial' for a
+  // run that fully satisfied everything it needed to. This is a genuine
+  // second, over-reporting bug the identity-aware fix closes as a side
+  // effect of the same Set-based design, not something newly introduced.
+  it('AC2 — a duplicated planned id needs to land only once (Set-based identity, not array-length counting) — closes a real pre-fix false-alarm', () => {
     const computedPlan = {
       install: [
         { id: 'skill:a', resource: { id: 'a' } },

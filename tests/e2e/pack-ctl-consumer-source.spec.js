@@ -206,6 +206,19 @@ describe('TASK-181 — a total materialize failure is distinguishable from "noth
     expect(result.json.code).toBeTruthy();
     expect(result.json.message).toBeTruthy();
     expect(result.stderr).toMatch(/failure/i);
+
+    // TASK-205 review follow-up — `toBeTruthy()` alone never pins the
+    // message's actual SHAPE; this fixture's design profile activates BOTH
+    // built-in skill ids (see makeConsumerProject's DESIGN_ANSWERS), and both
+    // soft-fail here (no owned source root at all), so the message must name
+    // both specific missing ids, not just report a count. The replace bucket
+    // has nothing planned in this fixture, so it must render the word "none"
+    // -- never a bare "[]" that could be confused with the fail-closed
+    // no-`id` rendering bug this same follow-up fixed.
+    expect(result.json.message).toContain('missing planned installs:');
+    expect(result.json.message).toContain('skill:watch');
+    expect(result.json.message).toContain('skill:ui-ux-pro-max');
+    expect(result.json.message).toContain('missing planned replaces: [none]');
   });
 
   // TASK-183 AC5 — mutation-confirmed gap: the pre-fix guard only ever

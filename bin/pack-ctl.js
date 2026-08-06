@@ -420,6 +420,22 @@ async function runAssimilate(flags) {
   }
 }
 
+/** Render a bucket's `missingInstallIds`/`missingReplaceIds` array for the
+ * operator-facing failure `message` below. Two review follow-up fixes in one
+ * place: (1) a non-string entry (the fail-closed `undefined`-id case)
+ * stringifies to the EMPTY string via a bare `Array.prototype.join`, so
+ * `[undefined].join(', ')` silently renders as `[]` on a run that DID fail
+ * for that exact reason — an empty result presented as the explanation for a
+ * failure, the precise shape this ticket exists to close, so it must never
+ * happen in this ticket's own output; (2) a genuinely empty (zero-length)
+ * array — meaning nothing is missing in THIS bucket, a real and common state
+ * when the other bucket is what failed — renders as the word "none" rather
+ * than a bare "[]", so the two cases are never visually confusable. */
+function formatMissingIds(ids) {
+  if (ids.length === 0) return 'none';
+  return ids.map((id) => (typeof id === 'string' ? id : '(missing id)')).join(', ');
+}
+
 /**
  * TASK-199 — the run-level `ok`/`failureKind` predicate for `reconcile-apply`,
  * extended to see the replace bucket TASK-182 made executable (previously
@@ -491,10 +507,14 @@ async function runAssimilate(flags) {
  *     array-length (informational, unchanged), so this can make
  *     `installedCount < plannedInstallCount` even on a fully-successful run;
  *     `ok` is driven by the identity check, not by those raw counts.
- *   - An op with no `id` at all tracks under the literal `undefined` key,
- *     which no real landed id (always a string) can ever equal — a missing
- *     identity is therefore always conservatively (fail-closed, never
- *     fail-open) reported as missing, never silently dropped from the check.
+ *   - An op with no `id` at all (or any other non-string `id`) is ALWAYS
+ *     reported as missing, unconditionally — this is enforced at the Set
+ *     boundary below (`typeof id !== 'string'` short-circuits straight to
+ *     "missing", and the LANDED sets are built from string ids only), not
+ *     merely assumed from an upstream module's id-shape convention. Fail-
+ *     closed by construction: a malformed op can never be satisfied by a
+ *     coincidentally-equal malformed "landed" entry (e.g. two ops that both
+ *     lack an `id` would otherwise both stringify/compare as `undefined`).
  *   - A landed id repeated across multiple packs' `installed`/`replaced`
  *     arrays also collapses to one Set entry — presence is what matters, not
  *     multiplicity.
@@ -520,13 +540,20 @@ export function computeApplyOutcome({ computedPlan, packs }) {
   const replacedCount = packs.reduce((n, p) => n + p.replaced.length, 0);
 
   // Identity-aware per-bucket check (TASK-205) — see the header above.
+  // Boundary hardening (review follow-up): landed sets keep STRING ids only,
+  // and any non-string planned id (`typeof id !== 'string'`, e.g. a missing
+  // `id` field) is unconditionally treated as missing before the Set lookup
+  // even runs — so the fail-closed guarantee above holds by construction,
+  // never by relying on an upstream module's id-shape convention.
   const plannedInstallIds = new Set(computedPlan.install.map((op) => op.id));
-  const landedInstallIds = new Set(packs.flatMap((p) => p.installed));
-  const missingInstallIds = [...plannedInstallIds].filter((id) => !landedInstallIds.has(id));
+  const landedInstallIds = new Set(packs.flatMap((p) => p.installed).filter((id) => typeof id === 'string'));
+  const missingInstallIds = [...plannedInstallIds]
+    .filter((id) => typeof id !== 'string' || !landedInstallIds.has(id));
 
   const plannedReplaceIds = new Set(plannedReplaceOps.map((op) => op.id));
-  const landedReplaceIds = new Set(packs.flatMap((p) => p.replaced));
-  const missingReplaceIds = [...plannedReplaceIds].filter((id) => !landedReplaceIds.has(id));
+  const landedReplaceIds = new Set(packs.flatMap((p) => p.replaced).filter((id) => typeof id === 'string'));
+  const missingReplaceIds = [...plannedReplaceIds]
+    .filter((id) => typeof id !== 'string' || !landedReplaceIds.has(id));
 
   const anyAborted = packs.some((p) => p.aborted);
   const plannedIdentityTotal = plannedInstallIds.size + plannedReplaceIds.size;
@@ -644,8 +671,8 @@ async function run(subcommand, flags) {
         ...(ok ? {} : {
           code: `E_PACK_APPLY_${failureKind.toUpperCase()}_FAILURE`,
           message: `pack-ctl reconcile-apply: ${failureKind} materialize failure -- `
-            + `missing planned installs: [${missingInstallIds.join(', ')}] (installed ${installedCount} total across all packs), `
-            + `missing planned replaces: [${missingReplaceIds.join(', ')}] (replaced ${replacedCount} total across all packs)`
+            + `missing planned installs: [${formatMissingIds(missingInstallIds)}] (installed ${installedCount} total across all packs), `
+            + `missing planned replaces: [${formatMissingIds(missingReplaceIds)}] (replaced ${replacedCount} total across all packs)`
             + `${anyAborted ? ' (a hard-required resource aborted the run)' : ''}`,
         }),
         planned_install_count: plannedInstallCount,
