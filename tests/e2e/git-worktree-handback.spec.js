@@ -945,4 +945,80 @@ describe('AC1/AC3 (TASK-197) — mergeWorktreeBranch refuses when both sides ind
     expect(result.merged).toBe(true);
     expect(readFileSync(join(dir, genRelPath), 'utf8')).toBe('regenerated bundle content\n');
   });
+
+  it('merges_cleanly_and_does_not_over_trigger_when_only_the_target_side_regenerated_the_artifact', () => {
+    // Symmetric to the "incoming branch only" case above (TASK-197 fix
+    // round, LOW-4) — the target side is the one that touched the generated
+    // path since diverging, the incoming branch never did. Also not a
+    // collision: only ONE side modified it.
+    const dir = makeTmpDir('wt-generated-artifact-target-only');
+    initRepo(dir);
+
+    const [genRelPath] = getGeneratedArtifactPaths();
+    mkdirSync(join(dir, 'dist'), { recursive: true });
+    writeFileSync(join(dir, genRelPath), 'base bundle content\n');
+    git(dir, ['add', genRelPath]);
+    git(dir, ['commit', '-q', '-m', 'baseline: initial generated artifact']);
+
+    // A worktree that branches off baseline but never touches the generated
+    // path at all — only an unrelated file.
+    const wt = join(makeTmpDir('wt-genart-target-only'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-genart-target-only', wt]);
+    writeFileSync(join(wt, 'unrelated.txt'), 'unrelated change\n');
+    git(wt, ['add', 'unrelated.txt']);
+    git(wt, ['commit', '-q', '-m', 'agent: unrelated change only']);
+
+    // The TARGET (primary checkout) regenerates the bundle itself, after the
+    // worktree branched off but before handback — the target's own history
+    // now diverges from the branch on the generated path, while the branch
+    // never touched it at all.
+    writeFileSync(join(dir, genRelPath), 'target-side regenerated content\n');
+    git(dir, ['add', genRelPath]);
+    git(dir, ['commit', '-q', '-m', 'target: regenerate dist bundle before handback']);
+
+    const result = mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-genart-target-only', message: 'handback: agent-genart-target-only' });
+    expect(result.merged).toBe(true);
+    // The target's own regenerated content survives the merge untouched —
+    // the incoming branch had nothing to contribute for that path.
+    expect(readFileSync(join(dir, genRelPath), 'utf8')).toBe('target-side regenerated content\n');
+    expect(existsSync(join(dir, 'unrelated.txt'))).toBe(true);
+  });
+
+  it('merges_cleanly_without_refusing_when_both_sides_regenerated_the_artifact_to_byte_identical_content', () => {
+    // TASK-197 fix round, LOW-3: a collision on a path both sides changed to
+    // the EXACT SAME bytes (e.g. both rebuilt from the identical merged
+    // source) has no splice hazard — there is nothing to merge wrong. The
+    // refusal must not over-trigger on this benign case.
+    const dir = makeTmpDir('wt-generated-artifact-identical-content');
+    initRepo(dir);
+
+    const [genRelPath] = getGeneratedArtifactPaths();
+    mkdirSync(join(dir, 'dist'), { recursive: true });
+    writeFileSync(join(dir, genRelPath), 'base bundle content\n');
+    git(dir, ['add', genRelPath]);
+    git(dir, ['commit', '-q', '-m', 'baseline: initial generated artifact']);
+
+    const wtA = join(makeTmpDir('wt-genart-identical-a'), 'wt');
+    const wtB = join(makeTmpDir('wt-genart-identical-b'), 'wt');
+    git(dir, ['worktree', 'add', '-b', 'agent-genart-identical-a', wtA]);
+    git(dir, ['worktree', 'add', '-b', 'agent-genart-identical-b', wtB]);
+
+    const identicalContent = 'both builds produced this exact byte-for-byte content\n';
+    writeFileSync(join(wtA, genRelPath), identicalContent);
+    git(wtA, ['add', genRelPath]);
+    git(wtA, ['commit', '-q', '-m', 'agent A: regenerate dist bundle']);
+
+    writeFileSync(join(wtB, genRelPath), identicalContent);
+    git(wtB, ['add', genRelPath]);
+    git(wtB, ['commit', '-q', '-m', 'agent B: regenerate dist bundle to the identical bytes']);
+
+    const mergeA = mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-genart-identical-a', message: 'handback: agent-genart-identical-a' });
+    expect(mergeA.merged).toBe(true);
+
+    // Both sides now carry byte-identical content for genRelPath since their
+    // common ancestor — not refused.
+    const mergeB = mergeWorktreeBranch({ repoRoot: dir, branch: 'agent-genart-identical-b', message: 'handback: agent-genart-identical-b' });
+    expect(mergeB.merged).toBe(true);
+    expect(readFileSync(join(dir, genRelPath), 'utf8')).toBe(identicalContent);
+  });
 });

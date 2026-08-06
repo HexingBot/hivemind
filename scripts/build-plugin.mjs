@@ -45,22 +45,17 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 
+import { ENTRYPOINT_NAMES } from './entrypoint-names.mjs';
+
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dir, '..');
 const DEFAULT_OUT_DIR = join(REPO_ROOT, 'dist');
 
-// The canonical bundle output filenames — exported so the parity spec can
-// enumerate them without duplicating knowledge here.
-export const ENTRYPOINT_NAMES = [
-  'init.cjs',
-  'new-task.cjs',
-  'mcp-server.cjs',
-  'task-board.cjs',
-  'report-framework-bug.cjs',
-  'brain-launch.cjs',
-  'loop-ctl.cjs',
-  'pack-ctl.cjs',
-];
+// The canonical bundle output filenames now live in the zero-import
+// scripts/entrypoint-names.mjs (TASK-197 fix round, MEDIUM-2) — re-exported
+// here so every existing importer of ENTRYPOINT_NAMES from THIS file (the
+// parity spec, etc.) keeps working unchanged. Still exactly one literal list.
+export { ENTRYPOINT_NAMES };
 
 /**
  * Build all plugin bundles (see ENTRYPOINT_NAMES) into `outDir`.

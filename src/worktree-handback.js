@@ -125,7 +125,17 @@ import { spawnSync } from 'node:child_process';
 import { realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ENTRYPOINT_NAMES } from '../scripts/build-plugin.mjs';
+// TASK-197 fix round — MEDIUM-2: imports the data-only
+// scripts/entrypoint-names.mjs, NOT scripts/build-plugin.mjs. build-plugin.mjs
+// top-level-imports esbuild (a devDependency only), which is absent in a real
+// plugin install (a git-URL clone ships no node_modules) and cannot itself be
+// bundled (esbuild ships a native binary) — importing it from a module a
+// plugin install actually loads (this one; see skills/orchestrator-routing/
+// SKILL.md's handback protocol) breaks that install with
+// ERR_MODULE_NOT_FOUND. entrypoint-names.mjs has zero imports, so this stays
+// safe. build-plugin.mjs re-exports the same array, so there is still exactly
+// one list (AC4) — only which file OWNS the literal changed.
+import { ENTRYPOINT_NAMES } from '../scripts/entrypoint-names.mjs';
 
 // TASK-197 — GENERATED-ARTIFACT MERGE HAZARD.
 //
@@ -168,24 +178,35 @@ import { ENTRYPOINT_NAMES } from '../scripts/build-plugin.mjs';
 // COST: a merge that used to succeed automatically whenever both sides
 // touched dist/*.cjs (the overwhelmingly common case for two developer
 // spawns landing in the same window — dist/ changes on almost every ticket
-// that touches bin/ or src/) now requires a manual rebuild-and-retry step:
-// re-run `npm run build:plugin` on the merged source tree and re-attempt
-// the merge (which will then see only ONE side — the rebuilt one — having
-// touched the generated path, since the retry's "target" already carries
-// the merged source). This is deliberately more friction than option 2's
-// auto-heal, traded for never silently shipping a spliced bundle.
+// that touches bin/ or src/) is now REFUSED, and this refusal is TERMINAL
+// for automated handback of that branch (TASK-197 fix round, MEDIUM-1: an
+// earlier version of this comment, and of the SKILL.md prose, wrongly
+// claimed the operator could rebuild and "re-attempt the merge" — verified
+// against real git that this does NOT work: the merge base is unchanged by
+// a rebuild, so the target's own already-committed dist/ modification since
+// that base still exists, and `mergeWorktreeBranch` refuses again,
+// unconditionally, for the SAME branch). There is no retry loop through
+// this function. The only way out is the manual path this function
+// explicitly does NOT protect (see the residual below): merge the SOURCE
+// changes by hand (a plain `git merge`, resolving the generated-path
+// conflict however is appropriate, or simply taking one side and
+// discarding the other's stale bytes), then run `npm run build:plugin` on
+// the merged source tree, then verify with `npm run test:all`'s
+// dist-parity check before committing. This is deliberately more friction
+// than option 2's auto-heal, traded for never silently shipping a spliced
+// bundle.
 //
 // WHAT THIS DOES NOT PROTECT AGAINST (the residual, stated explicitly per
 // the ticket's demand):
 //   - This module has NO independent way to know a path is "generated" —
 //     it can only refuse for paths a caller told it about. The set used
 //     here (getGeneratedArtifactPaths, below) is derived from
-//     scripts/build-plugin.mjs's ENTRYPOINT_NAMES, which covers the dist/
-//     bundles this repo's OWN build produces. Any other generated artifact
-//     in this repo or a consuming project (a different build tool, a
-//     generated lockfile, a codegen'd file this list doesn't know about) is
-//     silently unprotected — the exact TASK-197 defect can still occur for
-//     any generated path outside this list.
+//     scripts/entrypoint-names.mjs's ENTRYPOINT_NAMES, which covers the
+//     dist/ bundles this repo's OWN build produces. Any other generated
+//     artifact in this repo or a consuming project (a different build
+//     tool, a generated lockfile, a codegen'd file this list doesn't know
+//     about) is silently unprotected — the exact TASK-197 defect can still
+//     occur for any generated path outside this list.
 //   - This is a MERGE-TIME check keyed on "did both sides touch this path
 //     since their common ancestor". It does not catch the case where only
 //     ONE side touched a generated path but the OTHER side's unmerged
@@ -193,9 +214,15 @@ import { ENTRYPOINT_NAMES } from '../scripts/build-plugin.mjs';
 //     path had it been rebuilt — that is exactly what dist-parity
 //     (tests/e2e/dist-parity.spec.js) exists to catch post-merge, and this
 //     check does not replace it.
-//   - It protects mergeWorktreeBranch only. A generated artifact merged by
-//     any other path (a manual `git merge`, a rebase, a cherry-pick outside
-//     this module) is not covered.
+//   - It protects mergeWorktreeBranch only. And because a refusal is
+//     TERMINAL for that function (see COST above), EVERY refusal's
+//     practical consequence is that the operator falls back to exactly
+//     that unprotected manual path — a plain `git merge` outside this
+//     module (or a rebase, or a cherry-pick), which carries the full
+//     original TASK-197 silent-splice risk with no guard at all. This is
+//     not a rare escape hatch; it is the ONLY resolution path this
+//     mitigation leaves, so it is worth stating plainly rather than
+//     leaving it to be inferred from the two bullets above.
 
 /**
  * The set of generated bundle paths (repo-root-relative, forward-slash,
@@ -262,26 +289,39 @@ function countUnmergedCommits(repoRoot, targetBranch, branch, label) {
 }
 
 /**
- * Three-valued probe for whether a merge is currently parked in `repoRoot`
- * (i.e. `MERGE_HEAD` exists) — the module invariant's canonical probe. Never
- * conflates a probe FAILURE with "absent": `git rev-parse --verify -q
- * MERGE_HEAD` exits 0 when `MERGE_HEAD` exists, 1 when it does not (git's
- * documented `--verify -q` "missing ref" signal), and anything else
- * (observed: 128) is a git-level error that must be surfaced, not silently
- * read as either state (TASK-195 fix round 3, MEDIUM — the shared fix for
- * the fail-open shape found latent at two call sites: the up-front parked-
- * merge check and the post-failure abort-routing check).
+ * Three-valued probe for whether `ref` resolves to a commit in `repoRoot`
+ * via `git rev-parse --verify -q <ref>` — the module invariant's canonical
+ * probe shape, and the SINGLE implementation both call sites that need it
+ * share (TASK-195's `probeMergeHead` below, and TASK-197's branch-existence
+ * check in `detectGeneratedArtifactCollision`), rather than two copies that
+ * could drift. Never conflates a probe FAILURE with "absent": exits 0 when
+ * `ref` resolves, 1 when it does not (git's documented `--verify -q`
+ * "missing ref" signal), and anything else (observed: 128) is a git-level
+ * error that must be surfaced, not silently read as either state (TASK-195
+ * fix round 3, MEDIUM — the shared fix for the fail-open shape found latent
+ * at two call sites: the up-front parked-merge check and the post-failure
+ * abort-routing check).
  *
  * @returns {'present' | 'absent'}
  */
-export function probeMergeHead(repoRoot, label) {
-  const r = git(repoRoot, ['rev-parse', '--verify', '-q', 'MERGE_HEAD']);
+function probeRefExists(repoRoot, ref, label) {
+  const r = git(repoRoot, ['rev-parse', '--verify', '-q', ref]);
   if (r.status === 0) return 'present';
   if (r.status === 1) return 'absent';
   throw makeErr(
     'E_GIT_FAILED',
-    `${label}: git rev-parse --verify -q MERGE_HEAD failed unexpectedly (exit ${r.status}): ${r.stderr}`,
+    `${label}: git rev-parse --verify -q ${ref} failed unexpectedly (exit ${r.status}): ${r.stderr}`,
   );
+}
+
+/**
+ * Three-valued probe for whether a merge is currently parked in `repoRoot`
+ * (i.e. `MERGE_HEAD` exists) — a specialization of probeRefExists above.
+ *
+ * @returns {'present' | 'absent'}
+ */
+export function probeMergeHead(repoRoot, label) {
+  return probeRefExists(repoRoot, 'MERGE_HEAD', label);
 }
 
 /** Normalize a filesystem path for cross-representation comparison: resolve
@@ -349,30 +389,62 @@ function findWorktreeEntry(repoRoot, worktreePath, label) {
  * independently-generated builds together without reporting a conflict
  * (TASK-197).
  *
- * Deliberately does NOT fail closed on a `git merge-base` failure: an
- * unresolvable `branch` (typo, never-created) or genuinely unrelated
- * histories both mean the collision QUESTION cannot even be asked — but
- * they also both mean the real `git merge` attempt immediately below this
- * check will fail on its own, for its own, more specific reason (an
- * unresolvable branch name, or "refusing to merge unrelated histories").
- * Returning "no collision" here in that case does not hide anything: no
- * merge is going to succeed either way, so there is no silent path from
- * this fallback to a shipped, spliced artifact. A `git diff` failure AFTER
- * merge-base has already resolved is a different matter — at that point
- * both refs are known-good, so any failure is a genuine anomaly and is
- * surfaced via runGitOrThrow (E_GIT_FAILED), never read as "no collision".
+ * Two DELIBERATE, DOCUMENTED "return no collision" legs, and nothing else
+ * (TASK-197 fix round, HIGH — the original version folded EVERY non-zero
+ * `merge-base` exit into this bucket, which is exactly the fail-open shape
+ * the MODULE INVARIANT above forbids: it cannot distinguish "branch does
+ * not exist" from "git itself could not answer for an unrelated,
+ * potentially environmental, reason" (spawn error, EMFILE, an AV/indexer
+ * lock — both would-be culprits can share the SAME non-zero exit code, 128,
+ * as an unresolvable branch name), so the fix checks branch existence via
+ * probeRefExists FIRST, as an independent, targeted signal, rather than
+ * inferring it from merge-base's exit code):
+ *   1. `branch` does not resolve at all (probeRefExists === 'absent') — the
+ *      real `git merge` attempt immediately below this check will fail on
+ *      its own, for its own, more specific reason (an unresolvable branch
+ *      name). No merge is going to succeed either way, so returning "no
+ *      collision" here does not hide anything.
+ *   2. `branch` DOES resolve, but shares no common ancestor with `HEAD`
+ *      (`git merge-base` exit 1, git's documented "no merge base" signal) —
+ *      genuinely unrelated histories cannot splice (there is no shared base
+ *      content to textually merge), and the real `git merge --no-ff` below
+ *      refuses on its own ("refusing to merge unrelated histories").
+ * Any OTHER `merge-base` exit — with `branch` already confirmed to exist —
+ * is a genuine, unenumerated git-level anomaly and is surfaced as
+ * `E_GIT_FAILED`, never silently read as "no collision" (this is the actual
+ * fix: previously this leg was indistinguishable from leg 1 above and got
+ * the same free pass). A `git diff` failure AFTER merge-base has already
+ * resolved is a different matter — at that point all three refs are
+ * known-good, so any failure is a genuine anomaly and is surfaced via
+ * runGitOrThrow (E_GIT_FAILED) exactly as before.
  *
- * @returns {string[]} the colliding generated paths, empty if none (or if
- *   merge-base itself could not be resolved).
+ * A path both sides changed to BYTE-IDENTICAL content (TASK-197 fix round,
+ * LOW-3) is dropped from the result: there is no splice hazard when both
+ * tips already carry the same bytes for that path — nothing would actually
+ * be merged wrong. Compared via blob hash (`git rev-parse <ref>:<path>`),
+ * not working-tree content, since `branch` need not be checked out anywhere
+ * for this to run. If either side's blob lookup itself fails (e.g. the path
+ * was DELETED on one side, so `<ref>:<path>` no longer resolves) this is
+ * conservatively NOT treated as proof of identity — the path stays in the
+ * result — matching this module's fail-closed style rather than silently
+ * dropping a real collision because a byte-comparison happened to fail.
+ *
+ * @returns {string[]} the colliding generated paths, empty if none.
  */
 function detectGeneratedArtifactCollision(repoRoot, branch, label) {
   const generatedPaths = getGeneratedArtifactPaths();
-  if (generatedPaths.length === 0) return [];
+
+  if (probeRefExists(repoRoot, branch, label) === 'absent') return [];
 
   const mergeBaseOut = git(repoRoot, ['merge-base', 'HEAD', branch]);
-  if (mergeBaseOut.status !== 0) return [];
+  if (mergeBaseOut.status === 1) return [];
+  if (mergeBaseOut.status !== 0) {
+    throw makeErr(
+      'E_GIT_FAILED',
+      `${label}: git merge-base HEAD ${branch} failed unexpectedly (exit ${mergeBaseOut.status}): ${mergeBaseOut.stderr}`,
+    );
+  }
   const mergeBase = mergeBaseOut.stdout.trim();
-  if (!mergeBase) return [];
 
   const targetChanged = new Set(
     runGitOrThrow(repoRoot, ['diff', '--name-only', `${mergeBase}..HEAD`], label)
@@ -383,7 +455,14 @@ function detectGeneratedArtifactCollision(repoRoot, branch, label) {
       .split('\n').map((l) => l.trim()).filter(Boolean),
   );
 
-  return generatedPaths.filter((p) => targetChanged.has(p) && branchChanged.has(p));
+  const collisions = generatedPaths.filter((p) => targetChanged.has(p) && branchChanged.has(p));
+
+  return collisions.filter((p) => {
+    const headBlob = git(repoRoot, ['rev-parse', `HEAD:${p}`]);
+    const branchBlob = git(repoRoot, ['rev-parse', `${branch}:${p}`]);
+    if (headBlob.status !== 0 || branchBlob.status !== 0) return true;
+    return headBlob.stdout.trim() !== branchBlob.stdout.trim();
+  });
 }
 
 /**

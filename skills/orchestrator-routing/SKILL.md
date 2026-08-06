@@ -486,25 +486,50 @@ would silently discard whichever side's regeneration lost, the same "silent"
 shape as the original defect, just relocated. **Cost:** a merge that used to
 succeed automatically whenever both sides touched `dist/*.cjs` — the common
 case whenever two developer spawns land in the same window and either
-touched `bin/` or `src/` — now requires a manual rebuild-and-retry: merge
-the source changes, run `npm run build:plugin`, and re-attempt the handback.
+touched `bin/` or `src/` — is now REFUSED, and **the refusal is terminal for
+automated handback of that branch**: rebuilding and calling
+`mergeWorktreeBranch` again does NOT work (verified against real git) —
+the merge base is unchanged by a rebuild, so the target's own already-
+committed `dist/` modification since that base still exists, and the
+function refuses again, unconditionally, for the same branch. There is no
+retry loop through this function. The only way out is a manual `git merge`
+of the source changes (resolving the generated-path conflict however is
+appropriate, or taking one side and discarding the other's stale bytes),
+then `npm run build:plugin` on the merged source tree, then `npm run
+test:all`'s `dist-parity` check before committing.
 **Residual, stated explicitly:** this module has no independent way to know
 a path is "generated" — the set it checks
 (`getGeneratedArtifactPaths` in `src/worktree-handback.js`) is derived
-directly from `scripts/build-plugin.mjs`'s `ENTRYPOINT_NAMES` (the same
-export `tests/e2e/dist-parity.spec.js` already imports, so there is exactly
-one list of "what `dist/` contains" in this repo, not a second copy that can
-drift), and covers only this repo's own `dist/` bundles — any other
-generated artifact, in this repo or a consuming project, is unprotected.
-This is also a merge-time-only check: it does not replace `dist-parity`,
-which still catches the case where only one side rebuilt but the other
-side's *unmerged source* would have produced different bytes had it been
-rebuilt too. **Sensor:** `tests/e2e/git-worktree-handback.spec.js`'s
+directly from `scripts/entrypoint-names.mjs`'s `ENTRYPOINT_NAMES` (a
+zero-import data module `scripts/build-plugin.mjs` re-exports, so
+`tests/e2e/dist-parity.spec.js` and this check both still read the same one
+list of "what `dist/` contains" in this repo, not a second copy that can
+drift — `build-plugin.mjs` itself is NOT importable from
+`src/worktree-handback.js`, because it top-level-imports `esbuild`, a
+devDependency absent from a real plugin install), and covers only this
+repo's own `dist/` bundles — any other generated artifact, in this repo or
+a consuming project, is unprotected. This is also a merge-time-only check:
+it does not replace `dist-parity`, which still catches the case where only
+one side rebuilt but the other side's *unmerged source* would have
+produced different bytes had it been rebuilt too. And because a refusal is
+terminal (above), **every refusal's practical consequence is that the
+operator falls back to exactly this unprotected manual `git merge`
+path** — not a rare escape hatch, but the only resolution this mitigation
+leaves, carrying the full original silent-splice risk with no guard at
+all. **Sensor:** `tests/e2e/git-worktree-handback.spec.js`'s
 "AC1/AC3 (TASK-197)" block reproduces the defect against real git (two
 branches independently "regenerating" the same `dist/<entrypoint>.cjs` in
 non-overlapping regions, so a plain merge would succeed silently) and locks
 the refusal, plus a companion case proving the check does not over-trigger
-when only one side touched the path.
+when only one side touched the path. The collision check itself fails
+CLOSED, not open, per the module invariant: a `git merge-base` failure with
+`branch` confirmed to exist (e.g. a transient spawn error, `EMFILE`, an
+AV/indexer lock) throws `E_GIT_FAILED` rather than silently returning "no
+collision" — that leg is distinct from `branch` simply not resolving at all
+(a typo, checked first, independently, via the same three-valued
+`git rev-parse --verify -q` probe `mergeWorktreeBranch` already uses for
+`MERGE_HEAD`), which safely returns "no collision" because the real merge
+attempt refuses on its own for that case (TASK-197 fix round, HIGH).
 
 **Orphaned worktrees (agent died mid-work).** The `Agent` tool auto-removes a
 worktree that is unchanged when its spawn ends normally. An orphan — a

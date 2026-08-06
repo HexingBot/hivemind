@@ -46,13 +46,18 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 import { REPO_ROOT } from '../helpers/repoRoot.js';
-import { ENTRYPOINT_NAMES } from '../../scripts/build-plugin.mjs';
+// TASK-197 fix round — imports the data-only scripts/entrypoint-names.mjs
+// (re-exported by build-plugin.mjs, which this spec also spawns as a
+// subprocess below) rather than build-plugin.mjs directly, for consistency
+// with src/worktree-handback.js's getGeneratedArtifactPaths, which MUST use
+// the data-only module (build-plugin.mjs top-level-imports esbuild, a
+// devDependency absent from a real plugin install). Still exactly one list.
+import { ENTRYPOINT_NAMES } from '../../scripts/entrypoint-names.mjs';
 
-// ENTRYPOINT_NAMES is the canonical list of bundle filenames exported by the
-// build script itself — ['init.cjs', 'new-task.cjs', 'mcp-server.cjs',
-// 'task-board.cjs']. Importing it here means a future 5th entrypoint added to
-// build-plugin.mjs is automatically covered by this parity check without any
-// change to this file.
+// ENTRYPOINT_NAMES is the canonical list of bundle filenames — ['init.cjs',
+// 'new-task.cjs', 'mcp-server.cjs', 'task-board.cjs', ...]. Importing it here
+// means a future entrypoint added there is automatically covered by this
+// parity check without any change to this file.
 const BUNDLE_NAMES = ENTRYPOINT_NAMES;
 
 const DIST_DIR = join(REPO_ROOT, 'dist');
