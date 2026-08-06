@@ -400,14 +400,26 @@ unlinks it non-recursively first (`rmSync(recursive: false)` — the same
 shape `provisionWorktreeNodeModules`'s `relink` action already uses).
 Unconditional, not opt-in: removing a symlink/junction itself never touches
 what it points at, so there is no data-loss risk to gate behind a manual
-step. A real (non-link) `node_modules` — the worktree's own, e.g.
-unprovisioned — is left alone; it belongs to the worktree being disposed of,
-so `git worktree remove` deleting it along with the rest of the tree is
-correct. **Sensor:** `tests/e2e/git-worktree-handback.spec.js`'s
+step. A real (non-link) `node_modules` at the TOP LEVEL — the worktree's
+own, e.g. unprovisioned — is left alone; it belongs to the worktree being
+disposed of, so `git worktree remove` deleting it along with the rest of the
+tree is ordinarily correct. **Sensor:** `tests/e2e/git-worktree-handback.spec.js`'s
 "HIGH (TASK-198 fix round)" block disposes of a provisioned worktree via
 `removeMergedWorktree` and asserts the primary's real `node_modules`
 content survives, plus a companion case for a junction pointing at a
 non-primary (stale/wrong) target.
+
+**Residual risk, not a live regression (TASK-198 deferral item 2,
+MEDIUM-1):** the guard above only `lstat`s the TOP-LEVEL `node_modules` — it
+does not descend. A real `node_modules` directory containing a NESTED
+symlink/junction one level down would pass this guard untouched, and
+`git worktree remove` would recurse through that nested link the same way it
+recurses through a top-level one (reproduced by the reviewer). No path in
+this framework currently creates that shape — `provisionWorktreeNodeModules`
+only ever creates the top-level link, and this repo's own `npm install`
+produces zero `node_modules` symlinks — which is why this is accepted as
+residual rather than closed by descending into every entry on every
+disposal.
 
 **Verification:** `npm run test:all` must be green from both the primary
 checkout and a provisioned worktree — this is the acceptance test for

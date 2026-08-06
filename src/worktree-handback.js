@@ -75,10 +75,26 @@
 //      itself never touches what it points at, so there is no data-loss
 //      risk to gate behind a manual step, and refusing would only force
 //      every caller to duplicate this exact unlink by hand before calling
-//      this function. A directory that is NOT a symlink/junction (the
-//      worktree's own real `node_modules`, e.g. unprovisioned) is left
-//      alone — it belongs to the worktree being disposed of, not the
-//      primary, and `git worktree remove` deleting it is correct.
+//      this function. A directory that is NOT a symlink/junction at the
+//      TOP LEVEL (the worktree's own real `node_modules`, e.g.
+//      unprovisioned) is left alone — it belongs to the worktree being
+//      disposed of, not the primary, and ordinarily `git worktree remove`
+//      deleting it is correct.
+//
+//      RESIDUAL RISK, not a live regression (TASK-198 deferral item 2,
+//      MEDIUM-1): this guard only `lstat`s the TOP-LEVEL `node_modules` —
+//      it does not descend. A real `node_modules` directory containing a
+//      NESTED symlink/junction one level down would pass this guard
+//      untouched, and `git worktree remove` would recurse through THAT
+//      nested link the same way it recurses through a top-level one
+//      (reproduced by the reviewer). "Deleting it along with the rest of
+//      the tree is correct" above is therefore only true for a real
+//      `node_modules` with no nested links inside it — no path in this
+//      framework currently creates the nested shape (`worktree-provision.js`
+//      only ever creates the top-level link, and this repo's own
+//      `npm install` produces zero `node_modules` symlinks), which is why
+//      this is accepted as residual rather than fixed by descending into
+//      every entry on every disposal.
 //
 // MODULE INVARIANT (TASK-195 fix round 3): no raw `git()` result may be read
 // as a state assertion — i.e. no call site may collapse a `status` field to
@@ -483,15 +499,44 @@ export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBra
   let nodeModulesLstat;
   try {
     nodeModulesLstat = lstatSync(worktreeNodeModules);
-  } catch {
-    nodeModulesLstat = null;
+  } catch (e) {
+    // Only a genuinely missing path (ENOENT — never provisioned; nothing to
+    // sever) is read as "absent" (TASK-198 deferral item 1, MEDIUM-2). A
+    // transient EPERM/EBUSY (AV scan, ACL contention) on a STILL-PRESENT
+    // junction used to be swallowed by a bare `catch`, which fails OPEN on
+    // this data-loss path: the sever step would be silently skipped and
+    // `git worktree remove` would proceed to recurse through the junction
+    // into the primary's real node_modules — the exact hazard this guard
+    // exists to close. This contradicts the module invariant at :83-89
+    // (that invariant was scoped to `git()` results; this reads an `fs`
+    // result instead, which is how it slipped past). Refuse with a typed
+    // error on anything other than ENOENT, matching this module's other
+    // typed-error refusals rather than guessing "nothing to sever".
+    if (e.code === 'ENOENT') {
+      nodeModulesLstat = null;
+    } else {
+      throw makeErr(
+        'E_NODE_MODULES_LSTAT_FAILED',
+        `removeMergedWorktree: refusing to remove ${worktreePath} — lstat of its node_modules at ` +
+        `${worktreeNodeModules} failed for a reason other than the path being absent (${e.code || e.message}); ` +
+        'treating an unreadable-but-possibly-present junction as "nothing to sever" would let ' +
+        '`git worktree remove` recurse through it and destroy the primary checkout\'s real node_modules',
+      );
+    }
   }
   if (nodeModulesLstat && nodeModulesLstat.isSymbolicLink()) {
     try {
       // recursive: false — the same shape worktree-provision.js's 'relink'
       // action uses. Removing a symlink/junction itself never deletes
-      // through it; recursive: true here would be the exact bug this fix
-      // closes.
+      // through it; on some platforms recursive: true on a symlink to a
+      // directory would delete through it (TASK-198 deferral item 3 —
+      // softened from an earlier, empirically-overstated claim that this was
+      // unconditionally "the exact bug this fix closes": on Windows,
+      // rmSync(recursive: true) on a junction unlinks the link and the
+      // target SURVIVES; `git worktree remove`, not `rmSync`, is this
+      // module's actual destruction vector — see the module doc comment).
+      // recursive: false is kept regardless, since it is the same safe shape
+      // used elsewhere in this codebase and costs nothing.
       rmSync(worktreeNodeModules, { recursive: false, force: true });
     } catch (e) {
       throw makeErr(
