@@ -54,5 +54,8 @@
   },
   "env": {
     "CLAUDE_PROJECT_NAME": "hivemind"
+  },
+  "worktree": {
+    "baseRef": "head"
   }
 }
