@@ -34,72 +34,184 @@
 const RELEASES = [
   {
     v: "0.20.0", date: "2026-08-04", tag: "Worktree isolation & ticket-integrity hardening",
+    summary: "Agents that run at the same time stopped sharing one folder, and the rules that decide when a ticket may be closed got a lot harder to talk your way past.",
     highlights: [
-      "Concurrent developer spawns now get their own git worktree, structurally removing the shared-git-index hazard the pathspec-limited commit protocol previously had to guard against by convention alone.",
-      "Worktree handback machinery (node_modules linked, not reinstalled) fixes a real data-loss hazard: git worktree remove recursing through a node_modules junction and emptying the primary checkout's dependency tree.",
-      "Ticket-integrity hardening: strict allowlist grammar for UAT verdicts, done reachable only from in_review, evidence proportional to tier, a comment-author enum, and invisible Unicode Tag-block stripping from comments.",
-      "Empty-result contract: test:since and test:changed now self-describe zero-selection instead of reporting a silent green, and reconcile-apply's ok predicate now sees the replace bucket.",
-      "Pack layer: owned skill copies now source from the plugin rather than the consumer repo, with dual-copy precedence and sibling-pack owner edges preserved through re-materialize.",
-      "Path-safety: safeRef now rejects whitespace, newlines, percent-encoding, and unanchored '..'; acceptance-criteria validation rejects vacuous/invisible ACs, closing a calibration-laundering gap.",
+      "Each concurrent developer agent now gets its own git worktree — its own checkout, its own git index. Before this, two agents working at once shared one staging area, and only a careful commit convention kept them from committing each other's half-finished files. This removes the hazard at the source instead of asking everyone to be careful.",
+      "Fixed a real data-loss bug found the first time worktrees were used for real. A worktree links to the main project's node_modules rather than reinstalling it, and deleting the worktree could follow that link and empty the main project's dependency folder. The link is now cut before deletion, verified in both directions: the destruction was reproduced without the fix, and the folder survived intact with it.",
+      "Ticket integrity: a manual test verdict must now match a strict grammar (so a note buried above or below the steps can't smuggle a failure past the gate), a ticket can only reach done from in_review, the evidence required scales with how the ticket was verified, comment authors are a fixed list, and invisible Unicode characters are stripped from comments.",
+      "Started a project-wide rule we call the empty-result contract: an operation that finds nothing must say whether that means nothing needed doing or the thing that looks for work is broken. Applied to the test-selection commands and to the pack installer, both of which could previously report plain success while doing nothing.",
+      "Pack layer: skill copies are now taken from the plugin rather than from the project installing it — the old default silently installed nothing in a real consumer project while still reporting success.",
+      "Path safety: reference names now reject whitespace, newlines, percent-encoding and unanchored '..' segments, and acceptance criteria that assert nothing are rejected at intake.",
     ],
   },
   {
-    v: "0.19.0", date: "2026-07-28", tag: "Watch skill ships out of the box",
+    v: "0.19.0", date: "2026-07-28", tag: "The watch skill works on install",
+    summary: "A delivery fix: the video-watching skill shipped in 0.18.0 but never actually appeared for anyone who installed the plugin.",
     highlights: [
-      "The watch video skill now ships at plugin-root skills/, so /hivemind:watch loads the moment the plugin is installed — no pack-ctl reconcile-apply step required.",
-      "New byte-identity sensor compares the shipped copy against the pinned assimilated-skills/watch/ tree file-for-file (scripts included), so a shipped copy can never drift from the copy the provenance hashes cover.",
-      "The addon-pack path is unchanged and additive: projects that already installed watch via integrations.lock.json keep it.",
+      "Claude Code only auto-discovers skills from one specific folder in a plugin, and watch wasn't in it. Installing the plugin gave you no watch skill at all unless you knew to run a manual reconcile command. It now ships in the right place and loads immediately.",
+      "Added a drift sensor that compares the shipped copy against the vetted original file-by-file and byte-by-byte, scripts included. Watch's behaviour lives in its Python scripts, so a check that only compared the documentation would let a modified downloader ship unnoticed.",
+      "The older add-on install path still works and was deliberately left in place. Removing it would have made the reconciler delete a working skill from projects that already had it.",
     ],
   },
   {
-    v: "0.18.0", date: "2026-07-23", tag: "Design-pack expansion",
+    v: "0.18.0", date: "2026-07-23", tag: "Design pack expansion",
+    summary: "Added a video skill as a built-in, and a consented way to pull in well-regarded third-party design tools without copying them into the project.",
     highlights: [
-      "watch video skill assimilated (github.com/bradautomates/claude-video, MIT) and registered as a built-in pack.",
-      "Generic reconciler activation seam: activate_when 'always' decouples non-design packs from the design profile.",
-      "Tracked external design tools (Impeccable, Taste Skill, Higgsfield, 21st.dev Magic) registered as upstream-tracking Wave-2 resources.",
-      "/hivemind:design-pack offers to install those tools on an explicit, per-tool human yes — never autonomous.",
+      "The watch video skill (from github.com/bradautomates/claude-video, MIT licensed) was vetted, copied in, and registered as a built-in pack so it installs through the normal reconcile step.",
+      "Packs can now activate independently of the design questionnaire. Before this, every pack resource was tied to the design profile, which made no sense for a video skill.",
+      "Four external design tools — Impeccable, Taste Skill, Higgsfield, 21st.dev Magic — are tracked by name and pinned version, but deliberately not auto-installed.",
+      "The design-pack command offers to install those tools one at a time, each needing an explicit yes from you. No standing permission grant can ever make that automatic.",
     ],
   },
   {
-    v: "0.17.0", date: "2026-07-18", tag: "Queryable knowledge graph & intake quality",
+    v: "0.17.0", date: "2026-07-18", tag: "The knowledge graph became queryable",
+    summary: "The project's internal knowledge graph stopped being a file agents read by hand and became a real tool that keeps itself up to date.",
     highlights: [
-      "New kb_graph_query MCP tool: deterministic graph queries on the canonical-first merge seam, with a total no-silent-drop filter contract (typed E_UNANCHORED_EDGE_FILTER).",
-      "Graph-freshness release-gate sensor + 74-node backfill; close_task now auto-creates the task graph node — the manual-convention drift source is gone.",
-      "KB-first contract wired to the tool: agents query the graph via kb_graph_query alongside kb_lookup, never hand-read graph.json.",
-      "Intake: seedBacklog mints an implementation-plan ticket from the captured problem/goals/scope; warn-but-allow checks for empty goals/scope and scope_in/scope_out overlap.",
-      "Fixed the stray '- null' PROJECT.md bullet on interactive Enter-skip, plus the loop-mode uat-comment guard on close_task's comment param.",
+      "New kb_graph_query tool for structured graph lookups. Every filter you pass either takes effect or returns a typed error — it will never quietly ignore one and hand back results that look complete but aren't.",
+      "A freshness sensor now fails the release gate when a finished ticket has no matching graph node, and closing a ticket creates that node automatically. Previously this depended on someone remembering. The sensor caught real drift twice within hours of shipping.",
+      "Agents now query the graph through the tool alongside the knowledge-base lookup before reaching for a web search, rather than reading the raw graph file.",
+      "The setup wizard now creates a planning ticket carrying the problem, goals and scope you described, so the discovery conversation actually reaches the backlog instead of evaporating.",
+      "Fixed a stray empty bullet in the generated project file when you skipped a question with Enter.",
     ],
   },
   {
     v: "0.16.0", date: "2026-07-14", tag: "Security hardening & self-improvement",
+    summary: "Split self-improvement into a constructive half and a security half, and hardened the setup wizard against hostile input.",
     highlights: [
-      "New constructive self-improve skill (hive-self-improve) with a hard hand-off gate to the security-focused hive-adversarial-improve.",
-      "Framework-vs-consumer skill scoping (isFrameworkRepo): framework-only skills stay local, -current-project variants ship to consumers.",
-      "Reviewer subagent re-pinned to Fable 5 — the independent quality gate runs on the strongest model.",
-      "Init intake trust-boundary hardening: reject control chars, strip invisible/Unicode-tag chars, escape Markdown structure; use-case DoS cap.",
-      "Loop-mode uat-comment fabrication channel closed; symmetric comma/brace frontmatter escaping; KB seam polish; bounded loop_state growth.",
+      "New hive-self-improve skill for quality work — simplification, dead code, coverage gaps. Any finding that touches security or a trust boundary is handed off to the adversarial skill rather than handled in place.",
+      "Skills are now scoped: the ones that operate on the framework itself stay local, and consumer-facing variants ship to installed projects. Neither can be run against the wrong target.",
+      "The reviewer agent was re-pinned to Fable 5, the strongest model, so the independent quality gate stays on the best available model regardless of what the session is running.",
+      "Setup wizard hardening: control characters rejected, invisible characters stripped, and Markdown structure escaped — so answers can no longer forge headings, settings keys, or instructions inside the files agents later read as trusted.",
+      "Narrowed the tests-first tier to security, parsing, schema and state work; everything else defaults to a lighter tier. Rigour where it earns its cost.",
     ],
   },
-  { v: "0.15.0", date: "2026-07-12", tag: "Wargame security hardening", highlights: [
-    "Hardened the skill-assimilation supply chain and design-pack surfaces: default-deny verdict gate, dual-hash integrity + TOCTOU re-verify, provenance-spoof refusal, first-class security-reviewer agent.",
-  ]},
-  { v: "0.14.2", date: "2026-07-09", tag: "Design-pack usability fix", highlights: ["Usability fixes for the design-power pack install flow."] },
-  { v: "0.14.1", date: "2026-07-09", tag: "hooks.json hotfix", highlights: ["Hotfix for plugin hooks configuration."] },
-  { v: "0.14.0", date: "2026-07-09", tag: "Phase G addon surface", highlights: ["Shipped the pack-ctl CLI, hivemind-assimilate-skill, and the design-power install flow."] },
-  { v: "0.13.0", date: "2026-07-08", tag: "Design-power pack", highlights: ["Diseño Poderoso design-power pack: design profiling + reconciled skill resources."] },
-  { v: "0.12.0", date: "2026-07-08", tag: "Skills & packs sub-page", highlights: ["Added the skills & packs sub-page on the site; packaging polish."] },
-  { v: "0.11.0", date: "2026-07-07", tag: "goal-sweep2 drive", highlights: ["Loop selection fix, shipped dist/loop-ctl.cjs, revived calibration gate, guarded ticket-close path, crash-resume correctness, KB lookup/capture seam."] },
-  { v: "0.10.0", date: "2026-07-04", tag: "Session-lock & state resilience", highlights: ["Session-lock hardening (exclusive acquire + CAS steal), loop crash-resume via loop_state, deterministic close gate + atomic close_task."] },
-  { v: "0.9.0", date: "2026-06-23", tag: "Lock & store robustness", highlights: ["Session-lock and state-store robustness."] },
-  { v: "0.8.0", date: "2026-06-23", tag: "Context auto-flush", highlights: ["Context auto-flush + path-healing."] },
-  { v: "0.7.0", date: "2026-06-17", tag: "Agentic framework", highlights: ["Promoted the beta line to the agentic framework: loop engine, harness/loop modes, app-preview."] },
-  { v: "0.6.0", date: "2026-06-16", tag: "OS-ergonomics trio", highlights: ["Console launcher into projects, /update, and the graphify skill + /graph."] },
-  { v: "0.5.0", date: "2026-06-15", tag: "Web-console epic", highlights: ["One-click launcher + /console (later removed)."] },
-  { v: "0.4.0", date: "2026-06-15", tag: "Discovery-first init", highlights: ["Discovery-first init + the dist/ parity gate."] },
-  { v: "0.3.0", date: "2026-06-12", tag: "Deep-workflows", highlights: ["Deep-review / deep-research + --apply-workflows retrofit; reviewer model set to inherit."] },
-  { v: "0.2.0", date: "2026-06-11", tag: "Refinement epic", highlights: ["Refinement epic."] },
-  { v: "0.1.1", date: "2026-06-08", tag: "Packaging fixes", highlights: ["Early packaging fixes."] },
-  { v: "0.1.0", date: "", tag: "Initial release", highlights: ["Intake wizard, seeded backlog, orchestrator + developer/reviewer/researcher subagents, portable session state, local task store."] },
+  {
+    v: "0.15.0", date: "2026-07-12", tag: "Supply-chain wargame hardening",
+    summary: "Attacked our own third-party skill adoption pipeline and fixed everything that broke.",
+    highlights: [
+      "The security verdict gate used to fail open — anything that wasn't the exact word 'suspicious' was treated as safe. It now defaults to deny.",
+      "Integrity is checked with two hashes and re-verified at the moment files are written, closing a window where the content could change between the check and the copy.",
+      "A skill can no longer forge its own provenance block to look like it was already approved.",
+      "The security reviewer became a first-class agent with its own definition, rather than an informal step in a prompt.",
+    ],
+  },
+  {
+    v: "0.14.2", date: "2026-07-09", tag: "Design-pack usability fix",
+    summary: "Follow-up fixes to the design-power install flow after real use.",
+    highlights: ["Usability fixes to the design-power pack install flow, on top of the surface shipped in 0.14.0."],
+  },
+  {
+    v: "0.14.1", date: "2026-07-09", tag: "Hooks hotfix",
+    summary: "Same-day hotfix for the plugin's hooks configuration.",
+    highlights: ["Fixed the plugin hooks configuration shipped in 0.14.0."],
+  },
+  {
+    v: "0.14.0", date: "2026-07-09", tag: "The add-on surface, wired up",
+    summary: "The machinery for add-on packs already existed; this release made it reachable from a real install.",
+    highlights: [
+      "Shipped pack-ctl as a bundled command-line tool, so it works in a plugin install where the framework's source files aren't on disk.",
+      "Added the assimilate skill that walks the full human-gated adoption protocol for a third-party skill: fetch and pin, classify the licence, scan for risky patterns, get a security verdict, then ask you to sign off.",
+      "Wired the design-power install flow end to end, reporting honestly which resources were installed and which you still have to add yourself.",
+    ],
+  },
+  {
+    v: "0.13.0", date: "2026-07-08", tag: "Design-power pack",
+    summary: "A pack for design-heavy projects, selected by a short questionnaire during setup.",
+    highlights: ["Design profiling during intake, and a set of design skill resources that install based on the answers."],
+  },
+  {
+    v: "0.12.0", date: "2026-07-08", tag: "Skills & packs page",
+    summary: "Documentation and packaging polish.",
+    highlights: ["Added the skills & packs sub-page to this site, plus packaging fixes."],
+  },
+  {
+    v: "0.11.0", date: "2026-07-07", tag: "Autonomous loop correctness",
+    summary: "A drive focused on making the self-driving loop pick the right work and survive a crash.",
+    highlights: [
+      "Fixed which ticket the loop selects next, and shipped the loop control tool as a bundle so it runs in a plugin install.",
+      "Revived the calibration gate, guarded the ticket-close path, and made crash resume correct — a crash mid-ticket no longer leaves that ticket invisible to the loop forever.",
+      "Added the knowledge-base lookup and capture seam, so what the loop learns can be written down.",
+    ],
+  },
+  {
+    v: "0.10.0", date: "2026-07-04", tag: "Session locking & state resilience",
+    summary: "Made it safe for only one session to drive at a time, and made a crash recoverable.",
+    highlights: [
+      "Session lock hardened with an exclusive acquire and a compare-and-swap steal for genuinely abandoned locks, so two sessions can't drive the same board at once.",
+      "The loop records where it is, so a crash resumes at the right phase instead of starting over or stranding a ticket.",
+      "Ticket close became a single all-or-nothing operation: a guard failure or a malformed input leaves the ticket file byte-unchanged rather than half-written.",
+    ],
+  },
+  {
+    v: "0.9.0", date: "2026-06-23", tag: "Lock & store robustness",
+    summary: "Reliability work on the session lock and the state store underneath it.",
+    highlights: ["Robustness fixes to the session lock and the state store."],
+  },
+  {
+    v: "0.8.0", date: "2026-06-23", tag: "Context auto-flush",
+    summary: "Long sessions stopped falling over when the context window filled up.",
+    highlights: ["Automatic context flushing, plus path healing for references that broke across a flush."],
+  },
+  {
+    v: "0.7.0", date: "2026-06-17", tag: "Promoted to an agentic framework",
+    summary: "The point where the beta line became the framework this is now.",
+    highlights: [
+      "Shipped the loop engine that drives tickets toward a stated goal without step-by-step instruction.",
+      "Introduced the two operating modes: harness, where a human approves each step, and loop, where the session drives itself within explicit gates.",
+      "Added app preview.",
+    ],
+  },
+  {
+    v: "0.6.0", date: "2026-06-16", tag: "Ergonomics trio",
+    summary: "Three quality-of-life additions.",
+    highlights: [
+      "A console launcher that opens directly into a project.",
+      "An /update command for pulling in newly shipped commands and agents.",
+      "The graphify skill and the /graph view for looking at the knowledge graph.",
+    ],
+  },
+  {
+    v: "0.5.0", date: "2026-06-15", tag: "Web console (since removed)",
+    summary: "A web console with a one-click launcher. It was removed in a later release — recorded here for completeness.",
+    highlights: ["One-click launcher and a /console command. Both were later removed."],
+  },
+  {
+    v: "0.4.0", date: "2026-06-15", tag: "Discovery-first setup",
+    summary: "Setup started by asking what you are building rather than jumping to configuration.",
+    highlights: [
+      "Discovery-first intake wizard.",
+      "Added the build-artifact parity gate: committed bundles are rebuilt and byte-compared during the release check, so a stale bundle can't ship silently.",
+    ],
+  },
+  {
+    v: "0.3.0", date: "2026-06-12", tag: "Deep workflows",
+    summary: "Multi-agent workflows for the cases where one reviewer or one researcher isn't enough.",
+    highlights: [
+      "deep-review fans out several review angles in parallel and then adversarially verifies each finding, for release gates and unusually large changes.",
+      "deep-research fans out several research angles at once for broad or unfamiliar questions.",
+      "A retrofit flag adds these to projects that were set up before they existed.",
+    ],
+  },
+  {
+    v: "0.2.0", date: "2026-06-11", tag: "Refinement",
+    summary: "A consolidation pass over the initial release.",
+    highlights: ["Refinement across the surfaces shipped in 0.1.0."],
+  },
+  {
+    v: "0.1.1", date: "2026-06-08", tag: "Packaging fixes",
+    summary: "Early fixes to how the plugin packages and installs.",
+    highlights: ["Packaging fixes found immediately after the first release."],
+  },
+  {
+    v: "0.1.0", date: "", tag: "First release",
+    summary: "Everything needed to take one ticket from idea to closed.",
+    highlights: [
+      "A setup wizard that interviews you about the project, and a starter backlog generated from those answers.",
+      "The four roles: an orchestrator that plans and delegates, plus developer, reviewer and researcher agents that do the work in their own fresh contexts.",
+      "Portable session state, so a new chat can pick up exactly where the last one stopped.",
+      "A local ticket store with fields that mirror Jira's, so moving to Jira later loses nothing.",
+    ],
+  },
 ];
 
 const PS = "font-family:'Press Start 2P',monospace;";
@@ -109,8 +221,11 @@ const cards = RELEASES.map((r, i) => {
   const latest = i === 0;
   const accent = latest ? "#ff9a1f" : "#b07fff";
   const items = r.highlights.map(h =>
-    `<li style="font-size:20px; line-height:1.4; color:#9fb4d8; margin:0 0 8px; list-style:none; position:relative; padding-left:22px;">
-       <span style="position:absolute; left:0; color:${accent};">▚</span>${esc(h)}</li>`).join("");
+    `<li style="font-size:20px; line-height:1.45; color:#9fb4d8; margin:0 0 12px; list-style:none; position:relative; padding-left:24px;">
+       <span style="position:absolute; left:0; top:1px; color:${accent};">▚</span>${esc(h)}</li>`).join("");
+  const summary = r.summary
+    ? `<p style="font-size:21px; line-height:1.4; color:#cfe3ff; margin:0 0 16px; padding-left:14px; border-left:3px solid ${accent};">${esc(r.summary)}</p>`
+    : "";
   return `
   <article style="border:2px solid ${latest ? "#ff9a1f" : "#1d2740"}; background:linear-gradient(180deg,rgba(13,18,32,.92),rgba(8,11,20,.92)); padding:20px 22px 22px; margin-bottom:20px; box-shadow:${latest ? "0 0 26px rgba(255,154,31,.14)" : "inset 0 0 40px rgba(176,127,255,.05)"};">
     <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
@@ -119,6 +234,7 @@ const cards = RELEASES.map((r, i) => {
       <span style="font-size:19px; color:#e9f1ff;">${esc(r.tag)}</span>
       <span style="font-size:18px; color:#5a6f9c; margin-left:auto;">${esc(r.date)}</span>
     </div>
+    ${summary}
     <ul style="margin:0; padding:0;">${items}</ul>
   </article>`;
 }).join("");
@@ -133,6 +249,10 @@ document.getElementById("app").innerHTML = `
     <header style="text-align:center; padding:30px 0 24px;">
       <h1 style="${PS} font-size:clamp(22px,5vw,40px); margin:0; letter-spacing:2px; color:#ff9a1f; text-shadow:3px 3px 0 #7a3d00, 0 0 22px rgba(255,154,31,.5); -webkit-text-stroke:1px #ffd39a;">RELEASE NOTES</h1>
       <p style="${PS} font-size:clamp(8px,1.5vw,11px); color:#b07fff; letter-spacing:2px; margin:16px 0 0;">H I V E M I N D&nbsp;&nbsp;·&nbsp;&nbsp;T H E&nbsp;&nbsp;H I S T O R Y</p>
+      <p style="font-size:21px; line-height:1.4; color:#9fb4d8; max-width:660px; margin:20px auto 0;">
+        Every version, newest first — what changed and why it mattered.
+        Written to be readable without knowing the codebase.
+      </p>
     </header>
 
     <div style="height:2px; background:repeating-linear-gradient(90deg,#ff9a1f 0 14px,transparent 14px 22px); margin-bottom:26px;"></div>
@@ -140,7 +260,7 @@ document.getElementById("app").innerHTML = `
     ${cards}
 
     <div style="text-align:center; margin-top:30px; border-top:2px solid #1d2740; padding-top:22px;">
-      <p style="font-size:19px; color:#5a6f9c; margin:0;">The full canonical changelog lives in
+      <p style="font-size:19px; line-height:1.4; color:#5a6f9c; margin:0 auto; max-width:640px;">This page is the readable mirror. The canonical record, with ticket numbers and file-level detail, is
         <a href="https://github.com/HexingBot/hivemind/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">CHANGELOG.md</a>.</p>
     </div>
   </div>`;
