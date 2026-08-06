@@ -11195,6 +11195,8 @@ var require_gray_matter = __commonJS({
 // src/mcp-server.js
 var mcp_server_exports = {};
 __export(mcp_server_exports, {
+  checkBundleFreshness: () => checkBundleFreshness,
+  computeBuildStamp: () => computeBuildStamp,
   createServer: () => createServer,
   main: () => main,
   recordTaskGraphNode: () => recordTaskGraphNode,
@@ -11206,6 +11208,7 @@ var import_promises3 = require("node:fs/promises");
 var import_node_path7 = require("node:path");
 var import_node_url = require("node:url");
 var import_node_child_process = require("node:child_process");
+var import_node_crypto2 = require("node:crypto");
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -26892,7 +26895,45 @@ function verifyLinkedCommits(repoRoot, shas) {
     missing
   };
 }
-function createServer({ repoRoot, brain = null, recordNode: recordNode2 = recordNode }) {
+async function computeBuildStamp(filePath) {
+  const bytes = await (0, import_promises3.readFile)(filePath);
+  return { path: filePath, sha256: (0, import_node_crypto2.createHash)("sha256").update(bytes).digest("hex") };
+}
+async function checkBundleFreshness(buildStamp) {
+  if (!buildStamp) {
+    return {
+      checked: false,
+      reason: "no-build-stamp",
+      stale: null,
+      path: null
+    };
+  }
+  let current;
+  try {
+    current = await computeBuildStamp(buildStamp.path);
+  } catch (err) {
+    return {
+      checked: false,
+      reason: err && err.code === "ENOENT" ? "bundle-missing" : "read-error",
+      stale: null,
+      path: buildStamp.path
+    };
+  }
+  return {
+    checked: true,
+    reason: null,
+    stale: current.sha256 !== buildStamp.sha256,
+    path: buildStamp.path,
+    loaded_sha256: buildStamp.sha256,
+    current_sha256: current.sha256
+  };
+}
+function createServer({
+  repoRoot,
+  brain = null,
+  recordNode: recordNode2 = recordNode,
+  buildStamp = null
+}) {
   const server = new McpServer({
     name: "hivemind-tasks",
     version: "0.1.0"
@@ -27141,14 +27182,27 @@ function createServer({ repoRoot, brain = null, recordNode: recordNode2 = record
       return ok({ query, source: "projection", nodes: [] });
     }
   );
+  server.registerTool(
+    "mcp_build_status",
+    {
+      description: "Reveal whether THIS MCP server process is running a stale bundle: compares a sha256 of dist/mcp-server.cjs hashed once at server startup against a fresh hash of the same file read right now. { checked: true, stale: true } means the committed bundle has changed since this process started \u2014 any guard added or changed since then is NOT executing in this process; restart the MCP server (reconnect the session) before trusting its behavior. { checked: true, stale: false } means this process matches the current committed bundle. { checked: false, reason } (e.g. 'no-build-stamp' when the server was started via createServer() directly rather than as the real dist/mcp-server.cjs entrypoint, or 'bundle-missing' / 'read-error') means the check could not run at all \u2014 treat as inconclusive, never as evidence of freshness. Scope: this can only ever be true of THIS long-lived process; direct src/ importers (the test suite, bin/ CLIs, the wargame harness) always execute current code on every run and are never stale in this sense.",
+      inputSchema: {}
+    },
+    async () => ok(await checkBundleFreshness(buildStamp))
+  );
   return server;
 }
+var __entryFilePath = import_meta.url ? (0, import_node_url.fileURLToPath)(import_meta.url) : typeof __filename !== "undefined" ? __filename : null;
 async function main() {
   const repoRoot = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const server = createServer({ repoRoot });
+  const buildStamp = __entryFilePath ? await computeBuildStamp(__entryFilePath).catch(() => null) : null;
+  const server = createServer({ repoRoot, buildStamp });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(`hivemind-tasks MCP server on stdio (repoRoot=${repoRoot})`);
+  if (buildStamp) {
+    console.error(`hivemind-tasks MCP server loaded bundle sha256=${buildStamp.sha256} (${buildStamp.path})`);
+  }
 }
 var __isEntryScript = import_meta.url ? Boolean(process.argv[1]) && import_meta.url === (0, import_node_url.pathToFileURL)(process.argv[1]).href : typeof require !== "undefined" && typeof module !== "undefined" && require.main === module;
 if (__isEntryScript) {
@@ -27159,6 +27213,8 @@ if (__isEntryScript) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  checkBundleFreshness,
+  computeBuildStamp,
   createServer,
   main,
   recordTaskGraphNode,

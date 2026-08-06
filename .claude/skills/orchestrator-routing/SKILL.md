@@ -1148,6 +1148,52 @@ of the bundle's `workflow_step` enum.
 
 ## Ticket-update protocol
 
+### MCP server staleness after a rebuild (TASK-204)
+
+`src/mcp-server.js` is bundled into `dist/mcp-server.cjs` and runs as a
+**long-lived stdio process** — `.mcp.json` spawns it once per Claude Code
+session, not once per tool call. A guard added to `src/task-store.js` or
+`src/close-guard.js`, rebuilt into the bundle, and committed is **not
+executing** in any MCP server process that started before the rebuild — the
+process keeps running the bytes it loaded at connect time until it is
+restarted, even though the file on disk has since changed. This was
+confirmed twice, empirically, before the fix below landed: TASK-200 closed
+with no pre-existing reviewer comment 9.5 hours after that evidence rule
+shipped, and TASK-201's comment sanitizer did not run on a comment appended
+after its rebuild, leaving stray characters on disk that only a downstream
+sensor caught.
+
+**Scope boundary (stated precisely — do not overstate this):** this
+staleness is possible in exactly one place, this long-lived MCP server
+process. Direct `src/` importers — the test suite, `bin/` CLIs, the wargame
+harness — each read/import the file fresh at their own process start or
+import time, every single run, so they always execute current code and are
+never stale in this sense. A green `npm test` / `npm run test:all` run is
+unaffected by this note and remains trustworthy evidence.
+
+**The fix is mechanical, not procedural** — a documented restart step alone
+already failed to prevent both incidents above. `main()` (`src/mcp-server.js`)
+snapshots a sha256 of the exact file this process loaded, once, before the
+server ever connects, and closes the `mcp_build_status` tool over that
+frozen snapshot. **What compares it, and when:** calling `mcp_build_status`
+(no arguments) re-hashes the SAME path on demand and reports `stale: true`
+the moment the two hashes diverge — i.e. the moment a rebuild has landed a
+bundle this process never loaded. `checked: false` (never a false "fresh")
+covers the two cases where no comparison could be made: `reason:
+'no-build-stamp'` (no snapshot to compare — the common case for every test
+in this repo, which calls `createServer({ repoRoot })` directly rather than
+running the real entrypoint) and `reason: 'bundle-missing'` / `'read-error'`
+(the snapshotted path could not be re-read).
+
+**Operational response:** after any rebuild (`npm run build:plugin`) that
+touches `src/task-store.js`, `src/close-guard.js`, or `src/mcp-server.js`
+itself, call `mcp_build_status` before relying on any guard behavior that
+landed this session. `stale: true` means restart the MCP server (reconnect
+the session) before trusting it; `checked: false` means the check could not
+run at all — treat as inconclusive, never as evidence of freshness. This is
+deliberately not hot-reload — the goal is making the discrepancy visible,
+not making it impossible.
+
 **Route every ticket write through the MCP task-store tools** (`mcp__plugin_hivemind_hivemind-tasks__*`,
 backed by `src/task-store.js` / `src/mcp-server.js`), not direct `Edit` on
 `tasks/<KEY>.json`. The MCP tools and the kanban board's guarded status

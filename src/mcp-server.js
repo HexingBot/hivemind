@@ -37,8 +37,9 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -60,6 +61,51 @@ import {
 } from './knowledge-graph.js';
 import { neighborsCanonicalFirst, recordNode as _recordNode } from './graph-sync.js';
 import { taskKeyToNodeId } from './graph-freshness.js';
+
+// TASK-204 — MCP SERVER STALENESS IS DETECTABLE, NOT SILENT.
+//
+// THE PROBLEM: this file is bundled into dist/mcp-server.cjs and run as a
+// LONG-LIVED stdio process (.mcp.json spawns `node dist/mcp-server.cjs` once
+// per Claude Code session). A guard added to src/task-store.js or
+// src/close-guard.js, rebuilt into the bundle, and committed is NOT executing
+// in any MCP server process that started before the rebuild — the process
+// keeps running the bytes it loaded at connect time until it is restarted,
+// even though the file on disk has since changed. Confirmed twice
+// empirically before this ticket (TASK-200's close-evidence guard, TASK-201's
+// comment sanitizer) — see the TASK-204 ticket for both incidents.
+//
+// SCOPE BOUNDARY (documented precisely, so this note does not overstate):
+// this staleness is possible in EXACTLY ONE place — this long-lived MCP
+// server process. Direct src/ importers (the test suite, bin/ CLIs, the
+// wargame harness) each read/import the file fresh at their own process
+// start or import time, every single run, so they always execute current
+// code and are NEVER stale in this sense. A green `npm test` / `npm run
+// test:all` run is unaffected by this note and remains trustworthy evidence
+// — do not read this as a reason to distrust test runs.
+//
+// THE MECHANISM (mechanical, not procedural — a documented restart step
+// alone already failed to prevent both incidents above): main() snapshots a
+// sha256 of the exact file THIS process loaded (computeBuildStamp, called
+// once, before the server ever connects) and closes the `mcp_build_status`
+// tool over that frozen snapshot. Calling that tool re-hashes the SAME path
+// right now (checkBundleFreshness) and reports `stale: true` the moment the
+// two hashes diverge, i.e. the moment a rebuild has landed a bundle this
+// process never loaded. It surfaces in two places: (1) the tool's own
+// response, callable by any MCP client at any time; (2) a one-line stderr
+// log of the loaded hash at server startup, for an operator scanning logs
+// without calling the tool. See the orchestrator-routing SKILL.md's
+// "MCP server staleness after a rebuild" section for the operational
+// response (restart the MCP server / reconnect the session) once `stale:
+// true` is observed. This is deliberately NOT hot-reload — the goal is
+// making the discrepancy visible, not making it impossible.
+//
+// `checked: false` (Empty-result contract, TASK-192) covers both legitimate
+// no-signal cases without collapsing into a false "fresh": `reason:
+// 'no-build-stamp'` (createServer was invoked without a buildStamp — e.g.
+// every test in this repo, which calls createServer({ repoRoot }) directly
+// rather than running as the real dist/mcp-server.cjs entrypoint) and
+// `reason: 'bundle-missing'` / `'read-error'` (the snapshotted path could not
+// be re-read). Both mean "could not verify", never "verified fresh".
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
@@ -310,13 +356,78 @@ export function verifyLinkedCommits(repoRoot, shas) {
 }
 
 /**
- * Build and return a configured McpServer with all seven task-store tools plus
- * kb_lookup (TASK-106) registered, each closing over `repoRoot`. Throwing
- * handlers surface to the client as { isError: true } (the SDK converts a
- * thrown error), which keeps state uncorrupted on bad input rather than
- * silently succeeding.
+ * TASK-204 — snapshot the CURRENT bytes of `filePath` as a sha256 hex digest.
+ * Pure, no caching: two calls against a file that changed on disk in between
+ * return two different digests. main() calls this exactly ONCE, at server
+ * startup (before the bundle can possibly have been rebuilt again), and the
+ * result is what `mcp_build_status` later diffs a fresh re-read against.
+ *
+ * @returns {Promise<{path: string, sha256: string}>}
  */
-export function createServer({ repoRoot, brain = null, recordNode = _recordNode }) {
+export async function computeBuildStamp(filePath) {
+  const bytes = await readFile(filePath);
+  return { path: filePath, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+
+/**
+ * TASK-204 — the mechanical comparison behind `mcp_build_status`. Re-hashes
+ * `buildStamp.path` RIGHT NOW and compares against the sha256 recorded at
+ * server startup. Never throws.
+ *
+ * Empty-result contract (TASK-192): `checked: false` always carries a
+ * `reason` distinguishing "no signal to compare" (`'no-build-stamp'` — this
+ * server was started via createServer() without a buildStamp, e.g. every
+ * test in this repo) from "had a signal, couldn't re-read it"
+ * (`'bundle-missing'` / `'read-error'`) — neither is ever reported as
+ * `stale: false`, which would silently read as "verified fresh".
+ *
+ * @returns {Promise<{checked: boolean, reason: string|null, stale: boolean|null, path: string|null, loaded_sha256?: string, current_sha256?: string}>}
+ */
+export async function checkBundleFreshness(buildStamp) {
+  if (!buildStamp) {
+    return {
+      checked: false, reason: 'no-build-stamp', stale: null, path: null,
+    };
+  }
+  let current;
+  try {
+    current = await computeBuildStamp(buildStamp.path);
+  } catch (err) {
+    return {
+      checked: false,
+      reason: err && err.code === 'ENOENT' ? 'bundle-missing' : 'read-error',
+      stale: null,
+      path: buildStamp.path,
+    };
+  }
+  return {
+    checked: true,
+    reason: null,
+    stale: current.sha256 !== buildStamp.sha256,
+    path: buildStamp.path,
+    loaded_sha256: buildStamp.sha256,
+    current_sha256: current.sha256,
+  };
+}
+
+/**
+ * Build and return a configured McpServer with all task-store tools plus
+ * kb_lookup (TASK-106), kb_graph_query (TASK-168), and mcp_build_status
+ * (TASK-204) registered, each closing over `repoRoot`. Throwing handlers
+ * surface to the client as { isError: true } (the SDK converts a thrown
+ * error), which keeps state uncorrupted on bad input rather than silently
+ * succeeding.
+ *
+ * `buildStamp` (TASK-204, default null): the frozen `computeBuildStamp()`
+ * snapshot of the file this PROCESS actually loaded, taken once by main()
+ * before this factory is called. Tests and any other direct caller of
+ * createServer() omit it — `mcp_build_status` then reports
+ * `{ checked: false, reason: 'no-build-stamp' }` rather than fabricating a
+ * fresh/stale verdict it has no basis for.
+ */
+export function createServer({
+  repoRoot, brain = null, recordNode = _recordNode, buildStamp = null,
+}) {
   const server = new McpServer({
     name: 'hivemind-tasks',
     version: '0.1.0',
@@ -787,8 +898,51 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
     },
   );
 
+  // TASK-204 — makes running-process bundle staleness detectable rather than
+  // silent. See the top-of-file "MCP SERVER STALENESS IS DETECTABLE" comment
+  // for the full mechanism and scope-boundary statement.
+  server.registerTool(
+    'mcp_build_status',
+    {
+      description:
+        'Reveal whether THIS MCP server process is running a stale bundle: '
+        + 'compares a sha256 of dist/mcp-server.cjs hashed once at server '
+        + 'startup against a fresh hash of the same file read right now. '
+        + '{ checked: true, stale: true } means the committed bundle has '
+        + 'changed since this process started — any guard added or changed '
+        + 'since then is NOT executing in this process; restart the MCP '
+        + 'server (reconnect the session) before trusting its behavior. '
+        + '{ checked: true, stale: false } means this process matches the '
+        + 'current committed bundle. { checked: false, reason } (e.g. '
+        + "'no-build-stamp' when the server was started via createServer() "
+        + "directly rather than as the real dist/mcp-server.cjs entrypoint, "
+        + "or 'bundle-missing' / 'read-error') means the check could not "
+        + 'run at all — treat as inconclusive, never as evidence of '
+        + 'freshness. Scope: this can only ever be true of THIS long-lived '
+        + 'process; direct src/ importers (the test suite, bin/ CLIs, the '
+        + 'wargame harness) always execute current code on every run and '
+        + 'are never stale in this sense.',
+      inputSchema: {},
+    },
+    async () => ok(await checkBundleFreshness(buildStamp)),
+  );
+
   return server;
 }
+
+// TASK-204 — resolves to the path of the file currently executing, used by
+// main() to snapshot "what bundle is actually loaded" (computeBuildStamp).
+// Mirrors the dual ESM/CJS split immediately below: import.meta.url is
+// truthy under raw ESM execution (fileURLToPath resolves it to a real path);
+// the esbuild CJS bundle — the only real entrypoint per .mcp.json — makes
+// import.meta an empty object (falsy .url), so the ternary short-circuits to
+// Node's implicit `__filename` binding, always present in a CJS module scope
+// (the `typeof` guard makes this safe under raw ESM too, where `__filename`
+// is not declared at all: `typeof` never throws on an undeclared identifier,
+// unlike a bare reference to it would).
+const __entryFilePath = import.meta.url
+  ? fileURLToPath(import.meta.url)
+  : (typeof __filename !== 'undefined' ? __filename : null);
 
 /**
  * Entrypoint: bind repoRoot to CLAUDE_PROJECT_DIR (the user's repo, injected by
@@ -797,11 +951,26 @@ export function createServer({ repoRoot, brain = null, recordNode = _recordNode 
  */
 export async function main() {
   const repoRoot = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const server = createServer({ repoRoot });
+  // TASK-204 — snapshot the bundle THIS process actually loaded, before the
+  // server ever connects, so mcp_build_status has a frozen baseline to diff
+  // a later re-read of the same path against. Advisory only: a hash failure
+  // (unresolvable entry path, unreadable file) degrades to buildStamp: null
+  // rather than blocking startup — mcp_build_status then reports
+  // { checked: false, reason: 'no-build-stamp' }.
+  const buildStamp = __entryFilePath
+    ? await computeBuildStamp(__entryFilePath).catch(() => null)
+    : null;
+  const server = createServer({ repoRoot, buildStamp });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stderr only — stdout is the JSON-RPC channel.
   console.error(`hivemind-tasks MCP server on stdio (repoRoot=${repoRoot})`);
+  if (buildStamp) {
+    // TASK-204 — second surface (the tool response is the first): an
+    // operator scanning process logs can see the loaded bundle's identity
+    // without ever calling mcp_build_status.
+    console.error(`hivemind-tasks MCP server loaded bundle sha256=${buildStamp.sha256} (${buildStamp.path})`);
+  }
 }
 
 // Dual ESM/CJS entrypoint guard (mirrors bin/init.js). Under raw Node ESM,
