@@ -117,18 +117,31 @@
 //        - `err.worktreeRegistration` — `'registered' | 'deregistered' |
 //          'unknown'`, from `probeWorktreeRegistered` (a `git worktree list
 //          --porcelain` re-read, the same ground truth `findWorktreeEntry`
-//          already uses). `'unknown'` only when that re-read itself fails —
-//          this is the module invariant's three-valued shape (success /
-//          documented-negative / could-not-answer), but applied at THIS call
-//          site as a recorded field rather than a second throw, so the
-//          original `E_GIT_FAILED` (the actual failure the caller asked
-//          about) is never masked by a secondary probe failure.
-//        - `err.worktreeDirectoryExists` — boolean, from `existsSync` on
-//          `worktreePath`. Known limitation, stated rather than hidden:
-//          `existsSync` itself collapses a permission-denied `stat` and a
-//          genuine absence to the same `false` — there is no throw-worthy
-//          "unknown" state available from this specific Node API, so this
-//          field is boolean-only, unlike the registration field above.
+//          already uses). `'unknown'` when that re-read itself fails (a
+//          throw, caught at the call site — the module invariant's
+//          three-valued shape, success / documented-negative /
+//          could-not-answer, applied here as a recorded field rather than a
+//          second throw, so the original `E_GIT_FAILED` the caller asked
+//          about is never masked by a secondary probe failure), AND
+//          (TASK-206 fix round, MEDIUM-1) when the re-read succeeds but
+//          `worktreePath` itself could not be canonicalized for comparison —
+//          an uncanonicalized "no match" against git's own canonical-form
+//          paths is not proof of absence, and reading it as `'deregistered'`
+//          would be exactly the benign-fold defect this fix round exists to
+//          close, one field over.
+//        - `err.worktreeDirectory` — `'present' | 'absent' | 'unknown'`,
+//          from `lstatSync` on `worktreePath` (TASK-206 fix round, HIGH-1 —
+//          NOT `existsSync`: this module's own house rule at the
+//          node_modules guard below already bans `stat`/`existsSync`
+//          because they FOLLOW a symlink, and `existsSync` also collapses
+//          every non-ENOENT error — EPERM, EBUSY, ENOTDIR, ELOOP — to the
+//          same `false` as a genuine absence, which is the identical
+//          fs-read collapse the node_modules guard's own comment already
+//          names and fixes 70 lines below; reusing that same ENOENT-vs-
+//          anything-else split here instead of re-committing it). `'absent'`
+//          only on `ENOENT`; any other lstat failure is `'unknown'`, with
+//          the failing `e.code` folded into the thrown message the same way
+//          a registration-probe failure already is.
 //        - `err.nodeModulesSever` — `'severed' | 'absent' | 'left-in-place'`,
 //          already known deterministically from the disposal-ordering guard
 //          above (by the time `git worktree remove` is even invoked, the
@@ -167,7 +180,7 @@
 // outcome has re-introduced this bug. Do not add one.
 
 import { spawnSync } from 'node:child_process';
-import { realpathSync, lstatSync, rmSync, existsSync } from 'node:fs';
+import { realpathSync, lstatSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 // TASK-197 fix round — MEDIUM-2: imports the data-only
@@ -433,23 +446,47 @@ function findWorktreeEntry(repoRoot, worktreePath, label) {
  * fresh `git worktree list --porcelain` re-read (the same ground truth
  * `findWorktreeEntry` uses) — called AFTER a failed `git worktree remove` to
  * make that failure's post-conditions legible (TASK-206) instead of forcing
- * the caller to infer them. Goes through `runGitOrThrow` — one of the
- * module invariant's three sanctioned shapes — because there is no benign
- * "no" answer to fall back to here: if git itself cannot even list
- * worktrees, that is a distinct, more severe anomaly than "not registered",
- * and must not be silently folded into either registered or deregistered.
- * The caller (removeMergedWorktree) catches this throw and records it as a
- * third, honest `'unknown'` state on the composite error rather than letting
- * it replace or mask the original `E_GIT_FAILED` it was trying to enrich.
+ * the caller to infer them. The list re-read goes through `runGitOrThrow` —
+ * one of the module invariant's three sanctioned shapes — because there is
+ * no benign "no" answer to fall back to here: if git itself cannot even
+ * list worktrees, that is a distinct, more severe anomaly than "not
+ * registered", and must not be silently folded into either registered or
+ * deregistered. The caller (removeMergedWorktree) catches this throw and
+ * records it as a third, honest `'unknown'` state on the composite error
+ * rather than letting it replace or mask the original `E_GIT_FAILED` it was
+ * trying to enrich.
  *
- * @returns {'registered' | 'deregistered'}
+ * A SECOND, independent source of `'unknown'` (TASK-206 fix round,
+ * MEDIUM-1): even when the list re-read succeeds, "no entry matched" is only
+ * trustworthy proof of "deregistered" if `worktreePath` itself canonicalized
+ * successfully. `normalizeForCompare` silently falls back to the raw,
+ * possibly non-canonical string (an 8.3 short form, a backslash path, a case
+ * variant) whenever `realpathSync.native` fails on its input — e.g. because
+ * the directory was just removed, which is exactly the situation this probe
+ * runs in. Comparing that raw fallback against git's own canonical-form
+ * paths can under-match even for a worktree git still has registered, which
+ * would silently render as the BENIGN `'deregistered'` reading — the same
+ * fs-read-collapse defect this fix round closes for `worktreeDirectory`,
+ * one field over. `findWorktreeEntry`'s earlier, successful match (at the
+ * top of `removeMergedWorktree`) does not help here: canonicalization was
+ * available THEN because the directory still existed; it may not be
+ * available NOW, after a `git worktree remove` that may have partially
+ * completed.
+ *
+ * @returns {'registered' | 'deregistered' | 'unknown'}
  */
 function probeWorktreeRegistered(repoRoot, worktreePath, label) {
   const listOut = runGitOrThrow(repoRoot, ['worktree', 'list', '--porcelain'], label);
   const worktrees = parseWorktreeList(listOut);
   const target = normalizeForCompare(worktreePath);
   const found = worktrees.some((wt) => normalizeForCompare(wt.path) === target);
-  return found ? 'registered' : 'deregistered';
+  if (found) return 'registered';
+  try {
+    realpathSync.native(worktreePath);
+    return 'deregistered';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /**
@@ -758,8 +795,8 @@ export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}
  * carries legible post-conditions rather than leaving the caller to infer
  * them (TASK-206 — see the module doc comment's "POST-CONDITION LEGIBILITY
  * ON E_GIT_FAILED" section): `err.worktreeRegistration`
- * (`'registered' | 'deregistered' | 'unknown'`), `err.worktreeDirectoryExists`
- * (boolean), and `err.nodeModulesSever`
+ * (`'registered' | 'deregistered' | 'unknown'`), `err.worktreeDirectory`
+ * (`'present' | 'absent' | 'unknown'`), and `err.nodeModulesSever`
  * (`'severed' | 'absent' | 'left-in-place'`). No retry is attempted on this
  * failure — deliberate, see the same doc comment section.
  *
@@ -909,35 +946,62 @@ export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBra
     let worktreeRegistration = 'unknown';
     let registrationProbeFailure = null;
     try {
+      // probeWorktreeRegistered is itself three-valued (TASK-206 fix round,
+      // MEDIUM-1) — it can return 'unknown' directly (an uncanonicalizable
+      // worktreePath, no throw involved) as well as throw (git itself
+      // cannot answer, caught below).
       worktreeRegistration = probeWorktreeRegistered(repoRoot, worktreePath, 'removeMergedWorktree');
     } catch (probeErr) {
-      // The probe itself is three-valued and throws on "could not answer"
-      // (module invariant) — caught here deliberately so a SECOND git
-      // failure while merely trying to describe the FIRST one never masks
-      // or replaces the original E_GIT_FAILED this block is building.
-      // 'unknown' stays the recorded value; the probe's own message is
-      // folded into this error's text so the reason is not lost.
+      // The list re-read is one of the module invariant's sanctioned shapes
+      // and throws on "could not answer" — caught here deliberately so a
+      // SECOND git failure while merely trying to describe the FIRST one
+      // never masks or replaces the original E_GIT_FAILED this block is
+      // building. 'unknown' stays the recorded value; the probe's own
+      // message is folded into this error's text so the reason is not lost.
       registrationProbeFailure = probeErr.message;
     }
 
-    // existsSync collapses a permission-denied stat and a genuine absence to
-    // the same `false` (documented Node behavior) — there is no throw-worthy
-    // "unknown" state available from this specific API, so this field stays
-    // boolean-only, unlike worktreeRegistration above.
-    const worktreeDirectoryExists = existsSync(worktreePath);
+    // lstatSync, NOT existsSync/statSync (TASK-206 fix round, HIGH-1) — see
+    // the module doc comment's "POST-CONDITION LEGIBILITY ON E_GIT_FAILED"
+    // section for why: existsSync collapses every non-ENOENT lstat failure
+    // (EPERM, EBUSY, ENOTDIR, ELOOP, a disconnected UNC path — all plausible
+    // on the exact Windows handle/AV-contention box this ticket's incident
+    // occurred on) to the same `false` as a genuine absence, which would
+    // silently render as "no longer exists on disk" — a statement of fact
+    // this module cannot actually back up. Three-valued instead, mirroring
+    // worktreeRegistration: 'present' / 'absent' (ENOENT only) / 'unknown'
+    // (anything else, with the failing e.code carried into the message).
+    let worktreeDirectory;
+    let directoryProbeFailure = null;
+    try {
+      lstatSync(worktreePath);
+      worktreeDirectory = 'present';
+    } catch (e) {
+      if (e.code === 'ENOENT') {
+        worktreeDirectory = 'absent';
+      } else {
+        worktreeDirectory = 'unknown';
+        directoryProbeFailure = e.code || e.message;
+      }
+    }
+
+    const registrationNote = worktreeRegistration === 'unknown'
+      ? (registrationProbeFailure
+        ? ` (registration re-check itself failed: ${registrationProbeFailure})`
+        : " (worktreePath could not be canonicalized to compare against git's reported paths)")
+      : '';
+    const directoryNote = directoryProbeFailure ? ` (lstat failed: ${directoryProbeFailure})` : '';
 
     const err = makeErr(
       'E_GIT_FAILED',
       `removeMergedWorktree: git worktree remove ${worktreePath} failed (exit ${removeResult.status}): ` +
       `${removeResult.stderr}. This may be a PARTIAL completion, not a no-op — post-conditions: worktree is ` +
-      `${worktreeRegistration} with git` +
-      (registrationProbeFailure ? ` (registration re-check itself failed: ${registrationProbeFailure})` : '') +
-      `; its directory ${worktreeDirectoryExists ? 'still exists' : 'no longer exists'} on disk; its ` +
-      `node_modules junction-sever step: ${nodeModulesSever}. No retry is attempted — see the module doc ` +
-      'comment for why.',
+      `${worktreeRegistration} with git${registrationNote}; its directory is ${worktreeDirectory}${directoryNote} ` +
+      `on disk; its node_modules junction-sever step: ${nodeModulesSever}. No retry is attempted — see the ` +
+      'module doc comment for why.',
     );
     err.worktreeRegistration = worktreeRegistration;
-    err.worktreeDirectoryExists = worktreeDirectoryExists;
+    err.worktreeDirectory = worktreeDirectory;
     err.nodeModulesSever = nodeModulesSever;
     throw err;
   }

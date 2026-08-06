@@ -583,20 +583,31 @@ worktree list` showed only the primary) and emptied its contents before the
 final root-directory unlink failed — a bare `E_GIT_FAILED` cannot be told
 apart from a no-op, and "no-op" is the wrong assumption here. When
 `removeMergedWorktree`'s final `git worktree remove` call fails, the thrown
-error now carries three fields so the caller reads the outcome instead of
-inferring it: `err.worktreeRegistration` (`'registered' | 'deregistered' |
-'unknown'` — `'unknown'` only if the post-failure re-check itself cannot
-answer), `err.worktreeDirectoryExists` (boolean), and `err.nodeModulesSever`
-(`'severed' | 'absent' | 'left-in-place'`, already known from the disposal
-guard above and reported here too since it is what made the incident
-diagnosable at all — knowing the sever ran before git failed is what let the
-Orchestrator conclude the primary checkout was safe without inspecting it by
-hand). **Sensor:** `tests/e2e/worktree-handback-partial-removal.spec.js`
-mocks `git worktree remove` failing after deregistration and locks both the
-field values and the "could not answer" `'unknown'` fallback; forcing a real
-held Windows handle on demand is impractical, so this reproduces the
-caller-visible contract the incident exposed, not the OS-level trigger
-itself.
+error carries three fields, **all three-valued** (fix round, HIGH-1 /
+MEDIUM-1 — an earlier version of this fix left two of them effectively
+two-valued and silently folded a "could not tell" case into the benign
+reading), so the caller reads the outcome instead of inferring it:
+`err.worktreeRegistration` (`'registered' | 'deregistered' | 'unknown'` —
+`'unknown'` if the post-failure re-check itself cannot answer, OR if
+`worktreePath` can no longer be canonicalized to compare reliably against
+git's own canonical-form paths, in which case a "no match" is not trustworthy
+proof of `'deregistered'`), `err.worktreeDirectory` (`'present' | 'absent' |
+'unknown'` — via `lstatSync`, never `existsSync`/`statSync`: those collapse
+every non-ENOENT failure, e.g. an EPERM on the exact kind of Windows
+handle-contention box this incident occurred on, to the same false-as-absent
+reading), and `err.nodeModulesSever` (`'severed' | 'absent' |
+'left-in-place'`, already known from the disposal guard above and reported
+here too since it is what made the incident diagnosable at all — knowing the
+sever ran before git failed is what let the Orchestrator conclude the primary
+checkout was safe without inspecting it by hand). See
+`src/worktree-handback.js`'s "POST-CONDITION LEGIBILITY ON E_GIT_FAILED" doc
+comment for the full per-field rationale — not restated here. **Sensor:**
+`tests/e2e/worktree-handback-partial-removal.spec.js` mocks `git worktree
+remove` failing after deregistration and locks all three fields' values and
+both independent `'unknown'` sources; forcing a real held Windows handle, or
+a real non-ENOENT lstat/realpath failure, on demand is impractical, so this
+reproduces the caller-visible contract the incident exposed, not the
+OS-level trigger itself.
 
 ### Residual: same-path collisions are made visible, not resolved
 
