@@ -8888,6 +8888,18 @@ function dropStaleSameOwnerEdges(owners, currentOwner) {
     return !(parsed.packId === current.packId && parsed.version !== current.version);
   });
 }
+function hasForeignOwner(owners, currentOwner) {
+  const list = Array.isArray(owners) ? owners : [];
+  if (list.length === 0) return false;
+  const current = parseOwnerEdge(currentOwner);
+  return list.some((o) => {
+    if (o === currentOwner) return false;
+    if (!current) return true;
+    const parsed = parseOwnerEdge(o);
+    if (!parsed) return true;
+    return parsed.packId !== current.packId;
+  });
+}
 
 // src/pack-apply.js
 var SKILL_ID_PREFIX = "skill:";
@@ -9966,14 +9978,6 @@ async function assimilateSkill(opts) {
     };
   }
   const fields = computeProvenanceFields(source, { origin, pin, spdx_id: license.spdx_id, now });
-  const ownedDir = (0, import_node_path8.join)(root, DEFAULT_STAGING_SUBDIR, resourceId);
-  (0, import_node_fs8.mkdirSync)((0, import_node_path8.dirname)(ownedDir), { recursive: true });
-  (0, import_node_fs8.rmSync)(ownedDir, { recursive: true, force: true });
-  (0, import_node_fs8.cpSync)(source, ownedDir, { recursive: true });
-  const ownedSkillPath = (0, import_node_path8.join)(ownedDir, SKILL_FILENAME3);
-  const original = (0, import_node_fs8.readFileSync)(ownedSkillPath, "utf8");
-  const { finalText, contentIntegrity } = rescopeWithContentIntegrity(original, fields, ownedDir);
-  (0, import_node_fs8.writeFileSync)(ownedSkillPath, finalText, "utf8");
   const id = `skill:${resourceId}`;
   let lock;
   try {
@@ -9985,7 +9989,31 @@ async function assimilateSkill(opts) {
   const priorEntry = lock.resources[id];
   const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
   const ownersWithoutStaleSelfEdges = dropStaleSameOwnerEdges(priorOwners, pack);
-  lock.resources[id] = {
+  const foreignCollision = Boolean(priorEntry) && hasForeignOwner(priorOwners, pack);
+  const requiredValue = priorEntry && priorEntry.required === "hard" ? "hard" : required;
+  const ownedDir = (0, import_node_path8.join)(root, DEFAULT_STAGING_SUBDIR, resourceId);
+  let contentIntegrity;
+  if (!foreignCollision) {
+    (0, import_node_fs8.mkdirSync)((0, import_node_path8.dirname)(ownedDir), { recursive: true });
+    (0, import_node_fs8.rmSync)(ownedDir, { recursive: true, force: true });
+    (0, import_node_fs8.cpSync)(source, ownedDir, { recursive: true });
+    const ownedSkillPath = (0, import_node_path8.join)(ownedDir, SKILL_FILENAME3);
+    const original = (0, import_node_fs8.readFileSync)(ownedSkillPath, "utf8");
+    const rescoped = rescopeWithContentIntegrity(original, fields, ownedDir);
+    (0, import_node_fs8.writeFileSync)(ownedSkillPath, rescoped.finalText, "utf8");
+    contentIntegrity = rescoped.contentIntegrity;
+  }
+  lock.resources[id] = foreignCollision ? {
+    // AC6 -- the shared staging/materialize dir (assimilated-skills/<id>/
+    // is BOTH this module's DEFAULT_STAGING_SUBDIR and
+    // src/pack-apply.js's DEFAULT_SOURCE_SUBDIR) was never touched above,
+    // so every OTHER field of the prior entry (kind, scope, installed_at,
+    // install_method, verified, ...) is carried forward unchanged too --
+    // only owners[] and required (never-loosen) are allowed to move.
+    ...priorEntry,
+    owners: ownersWithoutStaleSelfEdges,
+    required: requiredValue
+  } : {
     kind: "skill",
     origin: fields.origin,
     pin: fields.pin,
@@ -9993,25 +10021,30 @@ async function assimilateSkill(opts) {
     content_integrity: contentIntegrity,
     scope: "project",
     owners: ownersWithoutStaleSelfEdges,
-    required,
+    required: requiredValue,
     installed_at: fields.assimilated_at,
     install_method: "assimilated",
     verified: "unsigned"
   };
   addOwner(lock, id, pack);
   await writeLock(lockPath, lock);
+  const recordedEntry = lock.resources[id];
   return {
     ...base,
     status: "assimilated",
     path: ownedDir,
-    origin: fields.origin,
-    pin: fields.pin,
-    source_integrity: fields.source_integrity,
-    content_integrity: contentIntegrity,
-    assimilated_at: fields.assimilated_at,
-    owners: lock.resources[id].owners,
+    origin: recordedEntry.origin,
+    pin: recordedEntry.pin,
+    source_integrity: recordedEntry.source_integrity,
+    content_integrity: recordedEntry.content_integrity,
+    assimilated_at: recordedEntry.installed_at,
+    owners: recordedEntry.owners,
     scan,
-    reviewer: reviewerVerdict
+    reviewer: reviewerVerdict,
+    ...foreignCollision ? {
+      ownership_joined_existing: true,
+      reason: `resourceId "${resourceId}" is already owned by a different pack; joined as an additional owner without altering its existing provenance (origin/pin/required) or staged content (assimilated-skills/${resourceId}/ left untouched)`
+    } : {}
   };
 }
 
