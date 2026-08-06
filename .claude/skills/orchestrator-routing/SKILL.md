@@ -563,6 +563,41 @@ clean (`E_WORKTREE_DIRTY`). Caveat: gitignored untracked content is invisible
 to this check (and to git's own removal machinery) and is silently discarded
 on removal — "never discards unique work" does not cover gitignored content.
 
+**Operational note — don't dispose immediately after a long in-worktree test
+run (TASK-206).** Observed live during TASK-198's own close-gate
+verification: `npm run test:all` ran inside a worktree (188 files, 105.89s),
+and the very next `removeMergedWorktree` call threw `E_GIT_FAILED`
+("Permission denied" unlinking the worktree root) — a lingering Windows
+directory handle from the test run was still held seconds later. Before
+disposing of a worktree that just ran a long test/build inside it: make sure
+no process's cwd is still inside that worktree, and give a moment for handles
+to settle before calling `removeMergedWorktree`. **Do not retry the removal
+on failure** — a retry that succeeds on attempt two is a retry that raced
+something, and this repo's house style is to keep that loud, not paper over
+it (see `src/worktree-handback.js`'s "POST-CONDITION LEGIBILITY ON
+E_GIT_FAILED" doc comment).
+
+`git worktree remove` can also **partially complete** before failing: the
+same incident showed git had already deregistered the worktree (`git
+worktree list` showed only the primary) and emptied its contents before the
+final root-directory unlink failed — a bare `E_GIT_FAILED` cannot be told
+apart from a no-op, and "no-op" is the wrong assumption here. When
+`removeMergedWorktree`'s final `git worktree remove` call fails, the thrown
+error now carries three fields so the caller reads the outcome instead of
+inferring it: `err.worktreeRegistration` (`'registered' | 'deregistered' |
+'unknown'` — `'unknown'` only if the post-failure re-check itself cannot
+answer), `err.worktreeDirectoryExists` (boolean), and `err.nodeModulesSever`
+(`'severed' | 'absent' | 'left-in-place'`, already known from the disposal
+guard above and reported here too since it is what made the incident
+diagnosable at all — knowing the sever ran before git failed is what let the
+Orchestrator conclude the primary checkout was safe without inspecting it by
+hand). **Sensor:** `tests/e2e/worktree-handback-partial-removal.spec.js`
+mocks `git worktree remove` failing after deregistration and locks both the
+field values and the "could not answer" `'unknown'` fallback; forcing a real
+held Windows handle on demand is impractical, so this reproduces the
+caller-visible contract the incident exposed, not the OS-level trigger
+itself.
+
 ### Residual: same-path collisions are made visible, not resolved
 
 Worktree isolation converts what TASK-191 left as a silent overwrite into a

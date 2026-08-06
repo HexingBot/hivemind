@@ -96,6 +96,51 @@
 //      this is accepted as residual rather than fixed by descending into
 //      every entry on every disposal.
 //
+//      POST-CONDITION LEGIBILITY ON `E_GIT_FAILED` (TASK-206): observed live
+//      during TASK-198's own close-gate verification — `git worktree remove`
+//      threw `E_GIT_FAILED` (Windows "Permission denied" unlinking the
+//      worktree root, seconds after a long in-worktree `npm run test:all`
+//      run left a directory handle open) AFTER it had already deregistered
+//      the worktree from `git worktree list` and emptied its contents; only
+//      the final root-directory unlink failed. A caller receiving a bare
+//      `E_GIT_FAILED` cannot tell that "mostly happened" apart from "did
+//      nothing" — the natural assumption for a typed error from a
+//      destructive operation is no-op, and that assumption is wrong in this
+//      case. Deliberately NOT fixed with a retry: retrying a destructive git
+//      operation on "permission denied" would paper over the one signal that
+//      says a live process still holds the tree, and a retry that succeeds
+//      on attempt two is a retry that raced something — this must stay
+//      loud, not quietly self-heal. Instead, a failed `git worktree remove`
+//      now probes its own aftermath before throwing and attaches three
+//      fields to the thrown error so the caller reads the outcome instead of
+//      inferring it:
+//        - `err.worktreeRegistration` — `'registered' | 'deregistered' |
+//          'unknown'`, from `probeWorktreeRegistered` (a `git worktree list
+//          --porcelain` re-read, the same ground truth `findWorktreeEntry`
+//          already uses). `'unknown'` only when that re-read itself fails —
+//          this is the module invariant's three-valued shape (success /
+//          documented-negative / could-not-answer), but applied at THIS call
+//          site as a recorded field rather than a second throw, so the
+//          original `E_GIT_FAILED` (the actual failure the caller asked
+//          about) is never masked by a secondary probe failure.
+//        - `err.worktreeDirectoryExists` — boolean, from `existsSync` on
+//          `worktreePath`. Known limitation, stated rather than hidden:
+//          `existsSync` itself collapses a permission-denied `stat` and a
+//          genuine absence to the same `false` — there is no throw-worthy
+//          "unknown" state available from this specific Node API, so this
+//          field is boolean-only, unlike the registration field above.
+//        - `err.nodeModulesSever` — `'severed' | 'absent' | 'left-in-place'`,
+//          already known deterministically from the disposal-ordering guard
+//          above (by the time `git worktree remove` is even invoked, the
+//          sever step has already either run successfully, found nothing to
+//          sever, or thrown its own typed error) — reported here too because
+//          it is exactly what made the real TASK-206 incident diagnosable at
+//          all: knowing the sever had already run before git failed is what
+//          let the Orchestrator conclude the primary checkout was safe
+//          without inspecting it by hand.
+//      See `probeWorktreeRegistered` below for the probe itself, and
+//      `removeMergedWorktree`'s final block for where these are assembled.
+//
 // MODULE INVARIANT (TASK-195 fix round 3): no raw `git()` result may be read
 // as a state assertion — i.e. no call site may collapse a `status` field to
 // a bare "did the checked-for state hold" boolean. Four consecutive review
@@ -122,7 +167,7 @@
 // outcome has re-introduced this bug. Do not add one.
 
 import { spawnSync } from 'node:child_process';
-import { realpathSync, lstatSync, rmSync } from 'node:fs';
+import { realpathSync, lstatSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 // TASK-197 fix round — MEDIUM-2: imports the data-only
@@ -381,6 +426,30 @@ function findWorktreeEntry(repoRoot, worktreePath, label) {
     );
   }
   return entry;
+}
+
+/**
+ * Whether `worktreePath` is still registered with git at `repoRoot`, per a
+ * fresh `git worktree list --porcelain` re-read (the same ground truth
+ * `findWorktreeEntry` uses) — called AFTER a failed `git worktree remove` to
+ * make that failure's post-conditions legible (TASK-206) instead of forcing
+ * the caller to infer them. Goes through `runGitOrThrow` — one of the
+ * module invariant's three sanctioned shapes — because there is no benign
+ * "no" answer to fall back to here: if git itself cannot even list
+ * worktrees, that is a distinct, more severe anomaly than "not registered",
+ * and must not be silently folded into either registered or deregistered.
+ * The caller (removeMergedWorktree) catches this throw and records it as a
+ * third, honest `'unknown'` state on the composite error rather than letting
+ * it replace or mask the original `E_GIT_FAILED` it was trying to enrich.
+ *
+ * @returns {'registered' | 'deregistered'}
+ */
+function probeWorktreeRegistered(repoRoot, worktreePath, label) {
+  const listOut = runGitOrThrow(repoRoot, ['worktree', 'list', '--porcelain'], label);
+  const worktrees = parseWorktreeList(listOut);
+  const target = normalizeForCompare(worktreePath);
+  const found = worktrees.some((wt) => normalizeForCompare(wt.path) === target);
+  return found ? 'registered' : 'deregistered';
 }
 
 /**
@@ -685,6 +754,15 @@ export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}
  * runs — see the module doc comment's "DISPOSAL-TIME node_modules GUARD"
  * for why this must happen unconditionally, not as an opt-in.
  *
+ * If the final `git worktree remove` itself fails, the thrown `E_GIT_FAILED`
+ * carries legible post-conditions rather than leaving the caller to infer
+ * them (TASK-206 — see the module doc comment's "POST-CONDITION LEGIBILITY
+ * ON E_GIT_FAILED" section): `err.worktreeRegistration`
+ * (`'registered' | 'deregistered' | 'unknown'`), `err.worktreeDirectoryExists`
+ * (boolean), and `err.nodeModulesSever`
+ * (`'severed' | 'absent' | 'left-in-place'`). No retry is attempted on this
+ * failure — deliberate, see the same doc comment section.
+ *
  * @param {{ repoRoot: string, worktreePath: string, branch: string, targetBranch: string }} opts
  * @returns {void}
  */
@@ -801,5 +879,66 @@ export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBra
     }
   }
 
-  runGitOrThrow(repoRoot, ['worktree', 'remove', worktreePath], 'removeMergedWorktree');
+  // Known, deterministic at this point in control flow (TASK-206) — by the
+  // time execution reaches here, the sever step above has already either
+  // unlinked a symlink/junction successfully (any failure there already
+  // threw E_NODE_MODULES_UNLINK_FAILED), found nothing to sever (ENOENT), or
+  // found a real, non-link node_modules it deliberately left alone. Recorded
+  // now so it can be attached to a later E_GIT_FAILED below without
+  // re-deriving it — this is exactly what made the real TASK-206 incident
+  // diagnosable at all: knowing the sever had already run before git failed
+  // is what let the Orchestrator conclude the primary checkout was safe.
+  const nodeModulesSever = !nodeModulesLstat
+    ? 'absent'
+    : nodeModulesLstat.isSymbolicLink() ? 'severed' : 'left-in-place';
+
+  const removeResult = git(repoRoot, ['worktree', 'remove', worktreePath]);
+  if (removeResult.status !== 0) {
+    // TASK-206 — a failed `git worktree remove` can be a PARTIAL completion
+    // (observed live: git had already deregistered the worktree and emptied
+    // its contents, and only the final root-directory unlink failed with
+    // "Permission denied" — a lingering Windows directory handle seconds
+    // after a long in-worktree test run). A bare E_GIT_FAILED cannot be told
+    // apart from a no-op, and a caller's natural assumption for a typed
+    // error from a destructive operation is no-op — wrong here. Probe the
+    // aftermath before throwing so the caller reads the outcome instead of
+    // inferring it. See the module doc comment's "POST-CONDITION LEGIBILITY
+    // ON E_GIT_FAILED" section for the field shape and why no retry is
+    // introduced (a retry that succeeds on attempt two is a retry that raced
+    // something — this must stay loud, not quietly self-heal).
+    let worktreeRegistration = 'unknown';
+    let registrationProbeFailure = null;
+    try {
+      worktreeRegistration = probeWorktreeRegistered(repoRoot, worktreePath, 'removeMergedWorktree');
+    } catch (probeErr) {
+      // The probe itself is three-valued and throws on "could not answer"
+      // (module invariant) — caught here deliberately so a SECOND git
+      // failure while merely trying to describe the FIRST one never masks
+      // or replaces the original E_GIT_FAILED this block is building.
+      // 'unknown' stays the recorded value; the probe's own message is
+      // folded into this error's text so the reason is not lost.
+      registrationProbeFailure = probeErr.message;
+    }
+
+    // existsSync collapses a permission-denied stat and a genuine absence to
+    // the same `false` (documented Node behavior) — there is no throw-worthy
+    // "unknown" state available from this specific API, so this field stays
+    // boolean-only, unlike worktreeRegistration above.
+    const worktreeDirectoryExists = existsSync(worktreePath);
+
+    const err = makeErr(
+      'E_GIT_FAILED',
+      `removeMergedWorktree: git worktree remove ${worktreePath} failed (exit ${removeResult.status}): ` +
+      `${removeResult.stderr}. This may be a PARTIAL completion, not a no-op — post-conditions: worktree is ` +
+      `${worktreeRegistration} with git` +
+      (registrationProbeFailure ? ` (registration re-check itself failed: ${registrationProbeFailure})` : '') +
+      `; its directory ${worktreeDirectoryExists ? 'still exists' : 'no longer exists'} on disk; its ` +
+      `node_modules junction-sever step: ${nodeModulesSever}. No retry is attempted — see the module doc ` +
+      'comment for why.',
+    );
+    err.worktreeRegistration = worktreeRegistration;
+    err.worktreeDirectoryExists = worktreeDirectoryExists;
+    err.nodeModulesSever = nodeModulesSever;
+    throw err;
+  }
 }
