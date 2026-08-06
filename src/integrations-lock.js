@@ -146,3 +146,129 @@ export function isOrphaned(lock, id) {
   const entry = getEntryOrThrow(lock, id);
   return Array.isArray(entry.owners) && entry.owners.length === 0;
 }
+
+// ---------------------------------------------------------------------------
+// TASK-202 — pack-id parsing + same-pack stale-version edge hygiene.
+//
+// Owner edges are ALWAYS composed as `${descriptor.id}@${descriptor.version}`
+// (src/pack-orchestrator.js's `owner` default). parseOwnerEdge below is the
+// ONE place in the codebase that parses that shape back apart — so a future
+// change to the composition format has exactly one parser to update, never
+// several independently-drifting copies.
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse an owner edge string into its pack-id and version. Uses the LAST '@'
+ * (not the first) — well-defined for the documented `id@version` shape even
+ * if a pack id itself ever contained '@' (descriptor ids are free-form
+ * strings; nothing in src/pack-descriptor.js's schema forbids it), since a
+ * VERSION containing '@' is not a documented shape at all.
+ *
+ * Malformed input — no '@' at all, an empty id before it, or an empty
+ * version after it — returns `null` rather than guessing a split. Every
+ * caller below treats `null` as "cannot be attributed to any pack-id, leave
+ * it alone" — never as "assume packId === owner" or any other guess. Fail
+ * safe over guessing: this repo has already lost owner edges once to an
+ * over-eager normalization (TASK-200's reset-and-re-add bug), and a wrong
+ * guess here would risk the same class of loss in the opposite direction —
+ * silently coalescing two UNRELATED owners because a malformed string
+ * happened to parse the same way.
+ *
+ * @param {string} owner
+ * @returns {{ packId: string, version: string } | null}
+ */
+export function parseOwnerEdge(owner) {
+  if (typeof owner !== 'string') return null;
+  const at = owner.lastIndexOf('@');
+  // at === -1: no '@' at all. at === 0: empty id (owner starts with '@').
+  // at === owner.length - 1: empty version (owner ends with '@').
+  if (at <= 0 || at === owner.length - 1) return null;
+  return { packId: owner.slice(0, at), version: owner.slice(at + 1) };
+}
+
+/**
+ * Drop any PRIOR owner edge that parses to the SAME packId as `currentOwner`
+ * but a DIFFERENT version — the phantom same-pack stale-version edge a
+ * version-bumped re-materialize would otherwise leave behind forever, since
+ * preserve-and-union (TASK-200) deliberately never resets owners[] wholesale
+ * and nothing else ever clears these. Called by
+ * src/pack-apply.js#executeInstall BEFORE addOwner unions the current run's
+ * edge in.
+ *
+ * An edge identical to `currentOwner` itself is kept (not stale — it's the
+ * exact edge about to be re-added anyway; addOwner's own idempotency handles
+ * the no-op). An edge that fails to parse, or whose packId differs from
+ * `currentOwner`'s, is left completely untouched — this function only ever
+ * removes a same-packId/different-version pair, nothing else. A malformed
+ * `currentOwner` (parseOwnerEdge returns null) is a no-op — nothing can be
+ * attributed to it, so nothing is dropped.
+ *
+ * @param {string[]} owners - prior owners[] (never mutated — returns a new array).
+ * @param {string} currentOwner - this run's owner edge, about to be addOwner'd.
+ * @returns {string[]}
+ */
+export function dropStaleSameOwnerEdges(owners, currentOwner) {
+  const list = Array.isArray(owners) ? owners : [];
+  const current = parseOwnerEdge(currentOwner);
+  if (!current) return list.slice();
+  return list.filter((o) => {
+    if (o === currentOwner) return true;
+    const parsed = parseOwnerEdge(o);
+    if (!parsed) return true;
+    return !(parsed.packId === current.packId && parsed.version !== current.version);
+  });
+}
+
+/**
+ * TASK-202 AC3 — the mechanical SENSOR for the condition dropStaleSameOwnerEdges
+ * exists to prevent: an owners[] array carrying two or more edges that parse
+ * to the SAME packId with DIFFERENT versions (a stranded phantom edge from a
+ * version bump that never got cleared — whether by a regression in this
+ * write path, or a lockfile written/hand-edited outside it entirely). Pure,
+ * no I/O.
+ *
+ * A malformed edge (parseOwnerEdge returns null) is excluded from grouping —
+ * it cannot be attributed to any packId, so it can neither trigger nor mask
+ * a finding.
+ *
+ * @param {string[]} owners
+ * @returns {string[]} the distinct packIds with more than one version present
+ *   (empty ⇒ hygienic).
+ */
+export function findDuplicatePackIdOwners(owners) {
+  const versionsByPackId = new Map();
+  for (const o of Array.isArray(owners) ? owners : []) {
+    const parsed = parseOwnerEdge(o);
+    if (!parsed) continue;
+    if (!versionsByPackId.has(parsed.packId)) versionsByPackId.set(parsed.packId, new Set());
+    versionsByPackId.get(parsed.packId).add(parsed.version);
+  }
+  const dupes = [];
+  for (const [packId, versions] of versionsByPackId) {
+    if (versions.size > 1) dupes.push(packId);
+  }
+  return dupes;
+}
+
+/**
+ * TASK-202 AC3 — scans every resource in a full lock payload for the
+ * findDuplicatePackIdOwners condition. Returns one `{ id, packIds }` entry
+ * per offending resource (empty ⇒ the whole lockfile is hygienic). Pure, no
+ * I/O — the live-repo sensor in tests/integrations-lock.spec.js owns reading
+ * integrations.lock.json off disk and calling this, mirroring
+ * tests/graph-freshness.spec.js's own reads-the-repo's-own-committed-files
+ * precedent.
+ *
+ * @param {object} lock - { schema_version, resources } (or any object
+ *   carrying a `resources` map of the same shape).
+ * @returns {{ id: string, packIds: string[] }[]}
+ */
+export function findLockResourcesWithDuplicatePackIdOwners(lock) {
+  const resources = (lock && lock.resources) || {};
+  const offenders = [];
+  for (const [id, entry] of Object.entries(resources)) {
+    const dupes = findDuplicatePackIdOwners(entry && entry.owners);
+    if (dupes.length > 0) offenders.push({ id, packIds: dupes });
+  }
+  return offenders;
+}

@@ -1041,3 +1041,151 @@ describe('TASK-200 — owner-edge clobber: a re-materialize through executeInsta
     expect(entryAfterRemove.owners).toEqual(['design-power@0.1.0']);
   });
 });
+
+// TASK-202 — from TASK-200's gating review (MEDIUM-1): preserve-and-union
+// (the TASK-200 fix, immediately above) correctly stops a re-materialize
+// from dropping a SIBLING pack's owner edge, but it introduced no mechanism
+// to drop a pack's OWN stale version-suffixed edge when that SAME pack bumps
+// its descriptor version while still wanting the resource. The old buggy
+// reset used to clean these up incidentally; preserve-and-union does not, so
+// they now accumulate monotonically and the resource can become permanently
+// un-removable. Fix: dropStaleSameOwnerEdges (src/integrations-lock.js)
+// removes any prior edge sharing the current owner's pack-id but a different
+// version, applied inside executeInstall just before the union.
+describe('TASK-202 — same-pack stale-version owner edges must not survive a re-materialize', () => {
+  it('RED-LOCK (AC1): full strand — watch bumps its own version, replaces, then BOTH owning packs remove; a phantom watch@1.0.0 edge must not survive and strand the live dir', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-202-phantom-edge-strand');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch v1\nStale project-pinned copy.\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch v2\nCurrent plugin copy.\n');
+
+    const liveDir = join(root, '.claude', 'skills', 'watch');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Watch v1\nStale project-pinned copy.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    // Prior owners: a sibling pack (design-power) plus watch's OWN prior
+    // identity (watch@1.0.0) -- unlike TASK-200's fixtures, which deliberately
+    // held watch's own version constant to isolate the cross-pack clobber,
+    // THIS fixture bumps watch's own descriptor version (1.0.0 -> 2.0.0) to
+    // reproduce the same-pack strand the ticket describes.
+    seedLock(lockPath, {
+      'skill:watch': makeEntry({ pin: '1.0.0', owners: ['design-power@0.1.0', 'watch@1.0.0'], required: 'soft' }),
+    });
+
+    // Step 1: watch bumps its own descriptor version and re-materializes the
+    // same resource via the TASK-182 plugin-wins replace path -- this run's
+    // owner identity is "watch@2.0.0", one version ahead of the prior edge.
+    const replacePlan = {
+      install: [],
+      remove: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+        from: '1.0.0',
+        to: '2.0.0',
+      }],
+      report: [],
+    };
+    await applyPlan({
+      plan: replacePlan, lockPath, root, owner: 'watch@2.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    // Step 2: BOTH owning packs now remove -- design-power under its
+    // unchanged identity, then watch under the NEW identity it just
+    // installed under ("watch@2.0.0", the same string addOwner recorded).
+    const removePlan = (entry) => ({
+      install: [],
+      remove: [{ id: 'skill:watch', entry }],
+      replace: [],
+      report: [],
+    });
+    await applyPlan({ plan: removePlan({ required: 'soft' }), lockPath, root, owner: 'design-power@0.1.0' });
+    await applyPlan({ plan: removePlan({ required: 'soft' }), lockPath, root, owner: 'watch@2.0.0' });
+
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:watch'];
+    // Both actual owners have now removed. If a phantom "watch@1.0.0" edge
+    // survived the replace (the bug), the resource looks perpetually owned
+    // and neither the lock entry nor the live dir is ever cleared -- no
+    // reconcile flow can reach it again, since watch@1.0.0 is a version that
+    // no longer exists to remove it. Fixed behavior: fully orphaned, entry
+    // and live dir both gone.
+    expect(entry).toBeUndefined();
+    expect(existsSync(liveDir)).toBe(false);
+  });
+
+  it('AC2 (replace path): a version-bumped re-materialize leaves exactly one edge for the bumping pack; the sibling pack edge is untouched', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-202-replace-exactly-one-edge');
+    const projectSourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(projectSourceRoot, 'watch', '# Watch v1\n');
+    const pluginSourceRoot = join(root, 'plugin-owned');
+    writeSkillSource(pluginSourceRoot, 'watch', '# Watch v2\n');
+
+    const liveDir = join(root, '.claude', 'skills', 'watch');
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(join(liveDir, 'SKILL.md'), '# Watch v1\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {
+      'skill:watch': makeEntry({ pin: '1.0.0', owners: ['design-power@0.1.0', 'watch@1.0.0'], required: 'soft' }),
+    });
+
+    const plan = {
+      install: [],
+      remove: [],
+      replace: [{
+        id: 'skill:watch',
+        resource: { id: 'watch', kind: 'skill', origin: 'x', pin: '2.0.0', scope: 'project', required: 'soft' },
+        from: '1.0.0',
+        to: '2.0.0',
+      }],
+      report: [],
+    };
+    await applyPlan({
+      plan, lockPath, root, owner: 'watch@2.0.0',
+      sourceRoot: projectSourceRoot,
+      sourceRoots: [pluginSourceRoot],
+    });
+
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:watch'];
+    // Exactly one edge for watch (the NEW version, watch@1.0.0 dropped as
+    // stale) -- and the sibling's edge is completely untouched.
+    expect(entry.owners).toEqual(['design-power@0.1.0', 'watch@2.0.0']);
+  });
+
+  it('AC2 (install path): a version-bumped re-materialize on the staged-but-not-live install path also drops only the same-pack stale edge', async () => {
+    const { applyPlan } = await import(PROD.packApply);
+
+    const root = makeTmpDir('pa-202-install-exactly-one-edge');
+    const sourceRoot = join(root, 'assimilated-skills');
+    writeSkillSource(sourceRoot, 'shared', '# Shared\nOwned copy.\n');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedLock(lockPath, {
+      'skill:shared': makeEntry({ pin: 'v1', owners: ['design-power@0.1.0', 'watch@1.0.0'], required: 'soft' }),
+    });
+
+    const plan = {
+      install: [{
+        id: 'skill:shared',
+        resource: { id: 'shared', kind: 'skill', origin: 'x', pin: 'v1', scope: 'project', required: 'soft' },
+      }],
+      remove: [],
+      replace: [],
+      report: [],
+    };
+
+    // watch re-installs the same resource under a bumped identity.
+    await applyPlan({ plan, lockPath, root, owner: 'watch@2.0.0', sourceRoot });
+
+    const onDisk = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = onDisk.resources['skill:shared'];
+    expect(entry.owners).toEqual(['design-power@0.1.0', 'watch@2.0.0']);
+  });
+});

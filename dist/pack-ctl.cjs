@@ -8871,6 +8871,23 @@ function isOrphaned(lock, id) {
   const entry = getEntryOrThrow(lock, id);
   return Array.isArray(entry.owners) && entry.owners.length === 0;
 }
+function parseOwnerEdge(owner) {
+  if (typeof owner !== "string") return null;
+  const at = owner.lastIndexOf("@");
+  if (at <= 0 || at === owner.length - 1) return null;
+  return { packId: owner.slice(0, at), version: owner.slice(at + 1) };
+}
+function dropStaleSameOwnerEdges(owners, currentOwner) {
+  const list = Array.isArray(owners) ? owners : [];
+  const current = parseOwnerEdge(currentOwner);
+  if (!current) return list.slice();
+  return list.filter((o) => {
+    if (o === currentOwner) return true;
+    const parsed = parseOwnerEdge(o);
+    if (!parsed) return true;
+    return !(parsed.packId === current.packId && parsed.version !== current.version);
+  });
+}
 
 // src/pack-apply.js
 var SKILL_ID_PREFIX = "skill:";
@@ -9011,6 +9028,7 @@ function executeInstall(lock, op, {
   (0, import_node_fs4.rmSync)(liveDir, { recursive: true, force: true });
   (0, import_node_fs4.cpSync)(sourceDir, liveDir, { recursive: true });
   const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
+  const ownersWithoutStaleSelfEdges = dropStaleSameOwnerEdges(priorOwners, owner);
   lock.resources[id] = {
     kind: "skill",
     origin: resource.origin,
@@ -9022,7 +9040,7 @@ function executeInstall(lock, op, {
     // pre-TASK-142 behavior of hashing what was just copied.
     ...hasStageTimeBaseline ? { source_integrity: priorEntry.source_integrity, content_integrity: priorEntry.content_integrity } : { integrity: `sha256:${hashDir(liveDir)}` },
     scope: resource.scope,
-    owners: priorOwners,
+    owners: ownersWithoutStaleSelfEdges,
     required: resource.required,
     installed_at: (/* @__PURE__ */ new Date()).toISOString(),
     install_method: "assimilated",

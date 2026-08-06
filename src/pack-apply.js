@@ -66,7 +66,9 @@ import {
 import { join, dirname, relative, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 
-import { readLock, writeLock, addOwner, dropOwner, isOrphaned } from './integrations-lock.js';
+import {
+  readLock, writeLock, addOwner, dropOwner, isOrphaned, dropStaleSameOwnerEdges,
+} from './integrations-lock.js';
 
 const SKILL_ID_PREFIX = 'skill:';
 const DEFAULT_SOURCE_SUBDIR = 'assimilated-skills';
@@ -450,10 +452,22 @@ function executeInstall(lock, op, {
   // Fix: PRESERVE prior owners across the reset and union the current run's
   // owner in via addOwner below, rather than resetting. Checked before
   // choosing this over an explicit reset-with-proof:
-  //   - dropOwner/isOrphaned (src/integrations-lock.js) are the only other
-  //     readers of owners[]; both operate on whatever the array holds at
-  //     call time with exact-string membership/emptiness checks -- neither
-  //     assumes or requires a fresh reset here.
+  //   - every reader/writer of owners[] elsewhere in the codebase, corrected
+  //     per TASK-202's review (this survey previously undercounted them):
+  //       * dropOwner/isOrphaned (src/integrations-lock.js) -- exact-string
+  //         membership/emptiness checks; neither assumes or requires a fresh
+  //         reset here.
+  //       * src/pack-reconcile.js's plan() -- an INLINED owners-empty check
+  //         (not a call to isOrphaned) that decides orphan-removal
+  //         candidacy; same "whatever the array holds" read, no reset
+  //         assumption.
+  //       * src/assimilate.js#assimilateSkill -- WRITES `owners: []` then
+  //         immediately calls addOwner for the assimilating pack. This is a
+  //         narrower, KNOWN-safe case of the same reset pattern this fix
+  //         removes here (a fresh resourceId being assimilated for the first
+  //         time has no prior entry to clobber) -- tracked separately as
+  //         TASK-203, out of scope for this fix.
+  //     None of the above assumes or requires a reset at THIS call site.
   //   - executeRemove's "still-owned resource is never deleted" guarantee
   //     (isOrphaned, re-derived from the CURRENT on-disk lock) is exactly
   //     the guarantee a reset BREAKS: a dropped sibling edge would make
@@ -464,7 +478,16 @@ function executeInstall(lock, op, {
   //     live is simply two packs declaring the same resource id, which nothing
   //     in src/pack-descriptor.js's schema forbids -- so "no sibling edge can
   //     exist at this point" cannot be proven in general.
+  //
+  // TASK-202 -- preserve-and-union alone left a DIFFERENT gap: nothing ever
+  // dropped THIS SAME PACK's own stale version-suffixed edge when it bumps
+  // its own descriptor version while re-wanting the same resource (the old
+  // buggy reset cleaned these up incidentally; preserve-and-union does not).
+  // dropStaleSameOwnerEdges (src/integrations-lock.js) removes exactly that
+  // one class of edge -- same packId as `owner`, different version -- and
+  // nothing else, before the union below.
   const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
+  const ownersWithoutStaleSelfEdges = dropStaleSameOwnerEdges(priorOwners, owner);
   lock.resources[id] = {
     kind: 'skill',
     origin: resource.origin,
@@ -478,7 +501,7 @@ function executeInstall(lock, op, {
       ? { source_integrity: priorEntry.source_integrity, content_integrity: priorEntry.content_integrity }
       : { integrity: `sha256:${hashDir(liveDir)}` }),
     scope: resource.scope,
-    owners: priorOwners,
+    owners: ownersWithoutStaleSelfEdges,
     required: resource.required,
     installed_at: new Date().toISOString(),
     install_method: 'assimilated',

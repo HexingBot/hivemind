@@ -259,3 +259,156 @@ describe('AC4 — last-owner drop leaves entry present, orphaned', () => {
     expect(isOrphaned(lock, 'mcp:firecrawl')).toBe(true);
   });
 });
+
+// ===========================================================================
+// TASK-202 AC5 — parseOwnerEdge: the ONE named place pack-id parsing lives.
+// Assumption stated in the function's own doc comment: owner strings are
+// `${descriptor.id}@${descriptor.version}` (src/pack-orchestrator.js). A
+// malformed owner string (no '@', empty id, empty version) deliberately
+// returns null rather than guessing a split -- fail-safe over guessing.
+// ===========================================================================
+describe('TASK-202 AC5 — parseOwnerEdge: pack-id parsing, one named place', () => {
+  it('splits a well-formed owner edge on the LAST @', async () => {
+    const { parseOwnerEdge } = await import(PROD.integrationsLock);
+    expect(parseOwnerEdge('watch@2.0.0')).toEqual({ packId: 'watch', version: '2.0.0' });
+  });
+
+  it('uses the LAST @ even when the pack id itself contains one', async () => {
+    const { parseOwnerEdge } = await import(PROD.integrationsLock);
+    expect(parseOwnerEdge('scope@pack@1.0.0')).toEqual({ packId: 'scope@pack', version: '1.0.0' });
+  });
+
+  it('returns null for a string with no @ at all', async () => {
+    const { parseOwnerEdge } = await import(PROD.integrationsLock);
+    expect(parseOwnerEdge('watch')).toBeNull();
+  });
+
+  it('returns null for an empty pack id (owner starts with @)', async () => {
+    const { parseOwnerEdge } = await import(PROD.integrationsLock);
+    expect(parseOwnerEdge('@1.0.0')).toBeNull();
+  });
+
+  it('returns null for an empty version (owner ends with @)', async () => {
+    const { parseOwnerEdge } = await import(PROD.integrationsLock);
+    expect(parseOwnerEdge('watch@')).toBeNull();
+  });
+
+  it('returns null for a non-string input', async () => {
+    const { parseOwnerEdge } = await import(PROD.integrationsLock);
+    expect(parseOwnerEdge(undefined)).toBeNull();
+    expect(parseOwnerEdge(null)).toBeNull();
+    expect(parseOwnerEdge(42)).toBeNull();
+  });
+});
+
+// ===========================================================================
+// TASK-202 AC2 — dropStaleSameOwnerEdges: unit coverage on the pure helper
+// itself (the e2e strand-level proof lives in tests/e2e/pack-apply.spec.js's
+// TASK-202 describe block, exercised through applyPlan).
+// ===========================================================================
+describe('TASK-202 AC2 — dropStaleSameOwnerEdges: same-packId/different-version edges are dropped, nothing else is', () => {
+  it('drops a prior edge sharing the current owner\'s packId but a different version', async () => {
+    const { dropStaleSameOwnerEdges } = await import(PROD.integrationsLock);
+    const result = dropStaleSameOwnerEdges(['design-power@0.1.0', 'watch@1.0.0'], 'watch@2.0.0');
+    expect(result).toEqual(['design-power@0.1.0']);
+  });
+
+  it('keeps an edge that already exactly equals the current owner (not stale)', async () => {
+    const { dropStaleSameOwnerEdges } = await import(PROD.integrationsLock);
+    const result = dropStaleSameOwnerEdges(['design-power@0.1.0', 'watch@1.0.0'], 'watch@1.0.0');
+    expect(result).toEqual(['design-power@0.1.0', 'watch@1.0.0']);
+  });
+
+  it('leaves a malformed prior edge untouched rather than guessing it is stale', async () => {
+    const { dropStaleSameOwnerEdges } = await import(PROD.integrationsLock);
+    const result = dropStaleSameOwnerEdges(['not-a-valid-edge', 'watch@1.0.0'], 'watch@2.0.0');
+    expect(result).toEqual(['not-a-valid-edge']);
+  });
+
+  it('is a no-op (returns a copy of owners unchanged) when currentOwner itself is malformed', async () => {
+    const { dropStaleSameOwnerEdges } = await import(PROD.integrationsLock);
+    const owners = ['design-power@0.1.0', 'watch@1.0.0'];
+    const result = dropStaleSameOwnerEdges(owners, 'not-a-valid-edge');
+    expect(result).toEqual(owners);
+    expect(result).not.toBe(owners); // never mutates/aliases the input array
+  });
+
+  it('never drops a sibling pack\'s edge, only the same-packId stale one', async () => {
+    const { dropStaleSameOwnerEdges } = await import(PROD.integrationsLock);
+    const result = dropStaleSameOwnerEdges(
+      ['design-power@0.1.0', 'other-pack@3.0.0', 'watch@1.0.0'],
+      'watch@2.0.0',
+    );
+    expect(result).toEqual(['design-power@0.1.0', 'other-pack@3.0.0']);
+  });
+});
+
+// ===========================================================================
+// TASK-202 AC3 — findDuplicatePackIdOwners / findLockResourcesWithDuplicatePackIdOwners:
+// the mechanical sensor for the phantom-edge condition itself. Unit tests
+// here PLANT the condition to prove the sensor is non-vacuous (it genuinely
+// fails when the condition is present); the live-repo assertion below is the
+// permanent sensor that actually runs in npm test/test:all.
+// ===========================================================================
+describe('TASK-202 AC3 — findDuplicatePackIdOwners: mechanical sensor for the condition itself', () => {
+  it('PLANTED FAILURE: flags a packId with two different versions represented', async () => {
+    const { findDuplicatePackIdOwners } = await import(PROD.integrationsLock);
+    const dupes = findDuplicatePackIdOwners(['design-power@0.1.0', 'watch@1.0.0', 'watch@2.0.0']);
+    expect(dupes).toEqual(['watch']);
+  });
+
+  it('reports hygienic (empty) when every packId has at most one version', async () => {
+    const { findDuplicatePackIdOwners } = await import(PROD.integrationsLock);
+    expect(findDuplicatePackIdOwners(['design-power@0.1.0', 'watch@2.0.0'])).toEqual([]);
+  });
+
+  it('does not flag the SAME edge repeated (identical packId AND version)', async () => {
+    const { findDuplicatePackIdOwners } = await import(PROD.integrationsLock);
+    expect(findDuplicatePackIdOwners(['watch@1.0.0', 'watch@1.0.0'])).toEqual([]);
+  });
+
+  it('excludes malformed edges from grouping -- they neither trigger nor mask a finding', async () => {
+    const { findDuplicatePackIdOwners } = await import(PROD.integrationsLock);
+    expect(findDuplicatePackIdOwners(['not-a-valid-edge', 'watch@1.0.0'])).toEqual([]);
+  });
+});
+
+describe('TASK-202 AC3 — findLockResourcesWithDuplicatePackIdOwners: PLANTED FAILURE proves the resource-level scan is non-vacuous', () => {
+  it('names the offending resource id and its duplicated packId(s)', async () => {
+    const { findLockResourcesWithDuplicatePackIdOwners } = await import(PROD.integrationsLock);
+    const lock = makeLock({
+      'skill:watch': makeEntry(['design-power@0.1.0', 'watch@1.0.0', 'watch@2.0.0']),
+      'skill:clean': makeEntry(['design-power@0.1.0']),
+    });
+    const offenders = findLockResourcesWithDuplicatePackIdOwners(lock);
+    expect(offenders).toEqual([{ id: 'skill:watch', packIds: ['watch'] }]);
+  });
+
+  it('returns empty for a fully hygienic lock', async () => {
+    const { findLockResourcesWithDuplicatePackIdOwners } = await import(PROD.integrationsLock);
+    const lock = makeLock({
+      'skill:a': makeEntry(['design-power@0.1.0']),
+      'skill:b': makeEntry(['watch@2.0.0']),
+    });
+    expect(findLockResourcesWithDuplicatePackIdOwners(lock)).toEqual([]);
+  });
+});
+
+// ===========================================================================
+// TASK-202 AC3 — permanent live-repo sensor. Reads the repo's own committed
+// integrations.lock.json (sync fs read, no mkdtemp/process I/O -- same
+// fast-tier precedent as tests/graph-freshness.spec.js and
+// tests/use-case-policy.spec.js) and fails naming any resource that carries
+// the phantom-edge condition. Runs automatically in both `npm test` and
+// `npm run test:all` -- "so a regression is caught mechanically rather than
+// by inspection" (AC3's own wording).
+// ===========================================================================
+describe('TASK-202 AC3 — live-repo sensor: no resource in integrations.lock.json carries duplicate-packId owner edges', () => {
+  it('no_resource_has_two_owner_edges_for_the_same_pack_id_at_different_versions', async () => {
+    const { findLockResourcesWithDuplicatePackIdOwners } = await import(PROD.integrationsLock);
+    const lockPath = join(REPO_ROOT, 'integrations.lock.json');
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const offenders = findLockResourcesWithDuplicatePackIdOwners(lock);
+    expect(offenders, JSON.stringify(offenders)).toEqual([]);
+  });
+});
