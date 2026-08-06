@@ -93,7 +93,9 @@ import { existsSync, mkdirSync, rmSync, cpSync, readFileSync, writeFileSync, rea
 import { join, dirname, relative, sep } from 'node:path';
 
 import { detectLicense, classifyLicense } from './license-detect.js';
-import { readLock, writeLock, addOwner } from './integrations-lock.js';
+import {
+  readLock, writeLock, addOwner, dropStaleSameOwnerEdges,
+} from './integrations-lock.js';
 import { hashDir, hashOwnedSkillDir, PROVENANCE_HEADING } from './pack-apply.js';
 import { scanSkillContent } from './skill-scan.js';
 
@@ -583,6 +585,28 @@ export async function assimilateSkill(opts) {
     if (err.code !== 'ENOENT') throw err;
     lock = { schema_version: 1, resources: {} };
   }
+  // TASK-203 (from TASK-200's reviewer, which went looking for siblings of
+  // that ticket's defect) -- this used to hard-reset owners to [] here,
+  // relying on the addOwner call below to re-add ONLY the assimilating pack.
+  // Any owner edge already recorded on this resourceId by a DIFFERENT pack
+  // was silently dropped -- the exact pattern TASK-200 fixed in
+  // src/pack-apply.js#executeInstall, but in the DATA-LOSS direction: once a
+  // sibling's edge is dropped here, that sibling's resource looks unowned,
+  // and its own later remove deletes a resource the sibling still wants.
+  // Unlike executeInstall's re-materialize path, assimilateSkill is a
+  // human-gated adoption of a (possibly third-party) resourceId, so the
+  // "no prior entry to clobber" assumption that made a fresh resourceId case
+  // safe does NOT extend to a resourceId that collides with one a pack
+  // already owns -- nothing in src/pack-descriptor.js's schema forbids that
+  // collision. Fix: preserve-and-union, exactly like executeInstall -- seed
+  // from the prior entry's owners (dropping only a stale same-pack/
+  // different-version edge via dropStaleSameOwnerEdges, TASK-202's helper),
+  // then addOwner unions the current pack's edge in below. Reuses the same
+  // TASK-202 machinery executeInstall uses rather than a second, divergent
+  // implementation of the same invariant.
+  const priorEntry = lock.resources[id];
+  const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
+  const ownersWithoutStaleSelfEdges = dropStaleSameOwnerEdges(priorOwners, pack);
   lock.resources[id] = {
     kind: 'skill',
     origin: fields.origin,
@@ -590,7 +614,7 @@ export async function assimilateSkill(opts) {
     source_integrity: fields.source_integrity,
     content_integrity: contentIntegrity,
     scope: 'project',
-    owners: [],
+    owners: ownersWithoutStaleSelfEdges,
     required,
     installed_at: fields.assimilated_at,
     install_method: 'assimilated',

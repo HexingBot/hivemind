@@ -9982,6 +9982,9 @@ async function assimilateSkill(opts) {
     if (err.code !== "ENOENT") throw err;
     lock = { schema_version: 1, resources: {} };
   }
+  const priorEntry = lock.resources[id];
+  const priorOwners = Array.isArray(priorEntry && priorEntry.owners) ? priorEntry.owners : [];
+  const ownersWithoutStaleSelfEdges = dropStaleSameOwnerEdges(priorOwners, pack);
   lock.resources[id] = {
     kind: "skill",
     origin: fields.origin,
@@ -9989,7 +9992,7 @@ async function assimilateSkill(opts) {
     source_integrity: fields.source_integrity,
     content_integrity: contentIntegrity,
     scope: "project",
-    owners: [],
+    owners: ownersWithoutStaleSelfEdges,
     required,
     installed_at: fields.assimilated_at,
     install_method: "assimilated",

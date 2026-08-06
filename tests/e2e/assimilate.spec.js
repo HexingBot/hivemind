@@ -1350,3 +1350,124 @@ describe('TASK-142 HIGH FIX -- a decoy content_integrity-looking line in the ski
     expect(readFileSync(liveSkillPath, 'utf8')).toContain(`- content_integrity: ${assimilated.content_integrity}`);
   });
 });
+
+// TASK-203 (from TASK-200's reviewer, which went looking for siblings of the
+// defect it was reviewing rather than stopping at the one in scope) --
+// assimilateSkill wrote `owners: []` and then called addOwner for ONLY the
+// assimilating pack, character-for-character the pattern TASK-200 removed
+// from src/pack-apply.js#executeInstall. Worse direction than TASK-200's:
+// this one fails toward DELETION -- once a sibling pack's edge is dropped
+// here, that sibling's resource looks unowned, and the sibling's own later
+// remove deletes a resource it still wants. Fix mirrors TASK-200/202:
+// preserve-and-union via dropStaleSameOwnerEdges, never a hard reset.
+function seedPriorLockEntry(lockPath, id, owners) {
+  const lock = {
+    schema_version: 1,
+    resources: {
+      [id]: {
+        kind: 'skill',
+        origin: 'github.com/example/prior-owner',
+        pin: 'prior-pin',
+        integrity: 'sha256:' + 'a'.repeat(64),
+        scope: 'project',
+        owners,
+        required: 'soft',
+        installed_at: '2026-07-01T00:00:00Z',
+        install_method: 'reconcile-apply',
+        verified: 'unsigned',
+      },
+    },
+  };
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2), 'utf8');
+}
+
+describe('TASK-203 — assimilateSkill must preserve a sibling pack\'s owner edge, never reset owners to []', () => {
+  const ASSIMILATING_PACK = 'third-party-assimilate@1.0.0';
+
+  it('RED-LOCK (AC1/AC2): re-assimilating a resourceId already owned by another pack must not drop that pack\'s owner edge', async () => {
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const root = makeTmpDir('asm-203-clobber');
+    const lockPath = join(root, 'integrations.lock.json');
+    // A resource id already owned by a DIFFERENT pack (e.g. a built-in pack
+    // that installed via the reconciler) -- the realistic collision this
+    // ticket names: assimilation adopts THIRD-PARTY ids, unbounded by the
+    // built-in descriptors' disjoint id space.
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK]);
+
+    const result = await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: ASSIMILATING_PACK,
+      decision: 'approve',
+      // TASK-140 — default-deny gate: an explicit safe verdict is required.
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    expect(result.status).toBe('assimilated');
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entry = lock.resources['skill:permissive-skill'];
+    expect(entry).toBeDefined();
+    // The pre-existing sibling pack's edge must SURVIVE the re-assimilation
+    // -- this is the exact clobber TASK-200 fixed in executeInstall.
+    expect(entry.owners).toContain(PACK);
+    expect(entry.owners).toContain(ASSIMILATING_PACK);
+    expect(result.owners).toEqual(entry.owners);
+  });
+
+  it('AC3: after re-assimilation by another pack, a resource still owned by the prior pack is NOT removable as an orphan', async () => {
+    // Proves the DOWNSTREAM CONSEQUENCE the field exists to produce, not just
+    // the array contents -- the same shape as TASK-200's AC3 spec.
+    // executeRemove promises "a still-owned resource is never deleted"
+    // (re-derived from the CURRENT on-disk lock via dropOwner/isOrphaned). If
+    // the re-assimilate silently dropped the prior pack's edge, this step
+    // would see an apparently-unowned resource and delete it -- exactly the
+    // unrecoverable failure this ticket describes: pack A's resource looks
+    // unowned, and the assimilating pack's later remove deletes a resource
+    // pack A still wants.
+    const { assimilateSkill } = await import(PROD.assimilate);
+    const { applyPlan } = await import(PROD.packApply);
+    const root = makeTmpDir('asm-203-orphan');
+    const lockPath = join(root, 'integrations.lock.json');
+    seedPriorLockEntry(lockPath, 'skill:permissive-skill', [PACK]);
+
+    await assimilateSkill({
+      source: PERMISSIVE_FIXTURE,
+      resourceId: 'permissive-skill',
+      pack: ASSIMILATING_PACK,
+      decision: 'approve',
+      reviewerVerdict: { verdict: 'safe', reasoning: 'no risky patterns' },
+      origin: 'github.com/example/permissive-skill',
+      pin: 'abc123',
+      root,
+      now: FIXED_NOW,
+    });
+
+    const lockAfterAssimilate = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entryAfterAssimilate = lockAfterAssimilate.resources['skill:permissive-skill'];
+
+    // The assimilating pack itself later drops the resource -- a real
+    // executeRemove op via applyPlan, re-deriving orphan status from the
+    // CURRENT on-disk lock (never a stale snapshot).
+    await applyPlan({
+      plan: {
+        install: [],
+        remove: [{ id: 'skill:permissive-skill', entry: entryAfterAssimilate }],
+        replace: [],
+        report: [],
+      },
+      lockPath,
+      root,
+      owner: ASSIMILATING_PACK,
+    });
+
+    // Still owned by PACK -> must NOT have been deleted.
+    const lockAfterRemove = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const entryAfterRemove = lockAfterRemove.resources['skill:permissive-skill'];
+    expect(entryAfterRemove).toBeDefined();
+    expect(entryAfterRemove.owners).toEqual([PACK]);
+  });
+});

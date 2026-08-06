@@ -461,12 +461,11 @@ function executeInstall(lock, op, {
   //         (not a call to isOrphaned) that decides orphan-removal
   //         candidacy; same "whatever the array holds" read, no reset
   //         assumption.
-  //       * src/assimilate.js#assimilateSkill -- WRITES `owners: []` then
-  //         immediately calls addOwner for the assimilating pack. This is a
-  //         narrower, KNOWN-safe case of the same reset pattern this fix
-  //         removes here (a fresh resourceId being assimilated for the first
-  //         time has no prior entry to clobber) -- tracked separately as
-  //         TASK-203, out of scope for this fix.
+  //       * src/assimilate.js#assimilateSkill -- used to WRITE `owners: []`
+  //         then immediately call addOwner for the assimilating pack, the
+  //         same reset pattern this fix removes here. Tracked separately as
+  //         TASK-203 (out of scope for THIS fix) and now itself fixed with
+  //         the same preserve-and-union approach, reusing dropStaleSameOwnerEdges.
   //     None of the above assumes or requires a reset at THIS call site.
   //   - executeRemove's "still-owned resource is never deleted" guarantee
   //     (isOrphaned, re-derived from the CURRENT on-disk lock) is exactly
