@@ -44,10 +44,25 @@ entries, never touches anything else in `settings.json`). Watch for a short tran
 session's start, e.g. `hivemind: repaired 3 stale context-monitor paths in .claude/settings.json...`
 — that confirms it ran. No note means nothing was stale.
 
-If you want the repair to happen immediately, without waiting for your next session, run:
+> **Timing note:** that note lands *during* `SessionStart`, after Claude Code has already read
+> `settings.json` for that session — so the statusline itself realistically catches up starting the
+> session *after* the one where the note appears. Seeing the note but the statusline bar still
+> looking wrong in the *same* session is expected, not a second failure; give it one more session
+> start (or use the manual command below to force it before continuing).
+
+If you want the repair to happen immediately, without waiting for your next session: **note that
+`${CLAUDE_PLUGIN_ROOT}` is only set when Claude Code itself spawns a plugin hook — it is not set in
+your own shell**, so `node ${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs` typed directly will fail
+with a "Cannot find module" error. Resolve the real install path first, then run the script from
+there (run both from your project directory; this is plain `node`, no bash-specific syntax, so it
+works the same from PowerShell or cmd — just substitute the value from step 1 into step 2):
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs
+# 1. Find your current install path (installPath for hivemind@hivemind-marketplace):
+node -e "const p=require('os').homedir()+'/.claude/plugins/installed_plugins.json';const d=JSON.parse(require('fs').readFileSync(p,'utf8'));console.log((d.plugins['hivemind@hivemind-marketplace']||[])[0]?.installPath)"
+
+# 2. Run repin.mjs from that path (replace <installPath> with step 1's output):
+node "<installPath>/context-monitor/repin.mjs"
 ```
 
 **You do not need to re-run `/hivemind:init-project`** to fix any of this. That command bootstraps

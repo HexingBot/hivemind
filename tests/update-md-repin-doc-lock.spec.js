@@ -8,6 +8,18 @@
 // command, so a future edit can't silently drop the fix back to the
 // misleading state.
 //
+// Fix round (REQUEST-CHANGES) — HIGH-3: the ORIGINAL manual command,
+// `node ${CLAUDE_PLUGIN_ROOT}/context-monitor/repin.mjs`, fails with
+// "Cannot find module" when run in a plain shell — CLAUDE_PLUGIN_ROOT is only
+// set when Claude Code itself spawns a plugin hook, never in a user's own
+// shell (confirmed empirically: `env | grep -i claude` in a plain Bash tool
+// shell does not list it). The doc now resolves the real install path from
+// ~/.claude/plugins/installed_plugins.json first. This lock guards that the
+// doc gives a RESOLVABLE command, not the broken one, as ITS instruction (the
+// broken form may still appear in the doc's own explanation of why it's
+// broken — the lock below checks for the working replacement, not for the
+// absence of the broken string).
+//
 // commands/ has no dev-repo/plugin-root parity split (unlike agents/skills —
 // confirmed: no .claude/commands/ directory exists), so there is exactly one
 // copy to lock, not two.
@@ -34,8 +46,13 @@ describe('commands/update.md documents the context-monitor self-heal path (TASK-
     expect(content).toMatch(/not.*expanded.*settings\.json|settings\.json.*not.*expanded/is);
   });
 
-  it('gives the manual force-it-now command', () => {
-    expect(content).toMatch(/node \$\{CLAUDE_PLUGIN_ROOT\}\/context-monitor\/repin\.mjs/);
+  it('warns that CLAUDE_PLUGIN_ROOT is unset in a plain shell (why the naive command fails)', () => {
+    expect(content).toMatch(/CLAUDE_PLUGIN_ROOT.*(?:is not set|not set|is only set).*(?:shell|hook)/is);
+  });
+
+  it('gives a RESOLVABLE manual force-it-now command (installed_plugins.json + node "<installPath>/context-monitor/repin.mjs"), not just the broken ${CLAUDE_PLUGIN_ROOT} form', () => {
+    expect(content).toMatch(/installed_plugins\.json/);
+    expect(content).toMatch(/node "<installPath>\/context-monitor\/repin\.mjs"/);
   });
 
   it('still tells the user they do not need to re-run init-project, with the reasoning attached', () => {

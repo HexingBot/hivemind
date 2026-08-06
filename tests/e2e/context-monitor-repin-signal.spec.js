@@ -26,6 +26,16 @@
 // real Claude Code CLI and the plugin marketplace, which this repo's harness
 // cannot simulate. What's covered instead: 100% of the code this ticket
 // changed, exercised exactly as production invokes it.
+//
+// Fix round (REQUEST-CHANGES) — MEDIUM: the original version of this spec
+// asserted the repair only on settings.statusLine.command. A regression that
+// repaired the statusline and silently dropped hook repair entirely (the
+// live HIGH-1 defect: the CANONICAL nested hook shape was never even
+// visited) would have passed this spec green. Every command in the file is
+// now asserted individually, repairedCount is asserted exactly, and the
+// fixture uses the CANONICAL nested shape (hooks/hooks.json's own format —
+// see TASK-210's authoritative finding that this, not the legacy flat shape,
+// is what Claude Code actually requires).
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -52,7 +62,39 @@ const REMOVED_VERSION_DIR = join(
   'context-monitor',
 );
 
-function writeStaleSettings(claudeDir, staleCmDir) {
+/** Canonical NESTED shape — matches hooks/hooks.json's own format (TASK-210). */
+function writeStaleSettingsNested(claudeDir, staleCmDir) {
+  mkdirSync(claudeDir, { recursive: true });
+  const settings = {
+    statusLine: {
+      type: 'command',
+      command: `node "${join(staleCmDir, 'statusline.mjs')}"`,
+    },
+    hooks: {
+      Stop: [
+        {
+          hooks: [
+            { type: 'command', command: `node "${join(staleCmDir, 'stop-hook.mjs')}"` },
+          ],
+        },
+      ],
+      SessionStart: [
+        {
+          matcher: 'clear|compact',
+          hooks: [
+            { type: 'command', command: `node "${join(staleCmDir, 'session-start.mjs')}"` },
+          ],
+        },
+      ],
+    },
+  };
+  const settingsPath = join(claudeDir, 'settings.json');
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+  return settingsPath;
+}
+
+/** Legacy FLAT shape — command directly on the array element. */
+function writeStaleSettingsFlat(claudeDir, staleCmDir) {
   mkdirSync(claudeDir, { recursive: true });
   const settings = {
     statusLine: {
@@ -77,54 +119,84 @@ function writeStaleSettings(claudeDir, staleCmDir) {
   return settingsPath;
 }
 
+function runRepin(repoDir) {
+  return spawnSync('node', [REPIN_SCRIPT], {
+    input: JSON.stringify({ cwd: repoDir }),
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: REPO_ROOT },
+  });
+}
+
 describe('TASK-209 AC1/AC2/AC6 — repin.mjs reports a stale-path repair, not just heals it silently', () => {
   it('sanity: the stale directory used in this test genuinely does not exist on disk', () => {
     expect(existsSync(REMOVED_VERSION_DIR)).toBe(false);
   });
 
-  it('a real repin.mjs subprocess repairs the path AND emits a hookSpecificOutput.additionalContext note', () => {
-    const repoDir = makeTmpDir('repin-signal');
+  it('a real repin.mjs subprocess repairs EVERY command (statusLine + BOTH nested hooks) AND emits an honest additionalContext note', () => {
+    const repoDir = makeTmpDir('repin-signal-nested');
     const claudeDir = join(repoDir, '.claude');
-    const settingsPath = writeStaleSettings(claudeDir, REMOVED_VERSION_DIR);
+    const settingsPath = writeStaleSettingsNested(claudeDir, REMOVED_VERSION_DIR);
 
-    const result = spawnSync('node', [REPIN_SCRIPT], {
-      input: JSON.stringify({ cwd: repoDir }),
-      encoding: 'utf8',
-      timeout: 10_000,
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: REPO_ROOT },
-    });
+    const result = runRepin(repoDir);
 
     expect(result.status).toBe(0);
 
-    // The path must actually be repaired on disk (pre-existing heal behavior —
-    // this part already worked before this ticket).
+    // MEDIUM fix — assert every command in the file individually, not just
+    // statusLine. This is what would have caught HIGH-1 (nested hooks
+    // silently unrepaired while statusLine quietly got fixed).
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     expect(settings.statusLine.command).toContain(ACTUAL_CM_DIR);
     expect(settings.statusLine.command).not.toContain(REMOVED_VERSION_DIR);
+    expect(settings.hooks.Stop[0].hooks[0].command).toContain(ACTUAL_CM_DIR);
+    expect(settings.hooks.Stop[0].hooks[0].command).not.toContain(REMOVED_VERSION_DIR);
+    expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(ACTUAL_CM_DIR);
+    expect(settings.hooks.SessionStart[0].hooks[0].command).not.toContain(REMOVED_VERSION_DIR);
+    // matcher and shape (nested, not flattened) survive repair untouched.
+    expect(settings.hooks.SessionStart[0].matcher).toBe('clear|compact');
+    expect(Array.isArray(settings.hooks.SessionStart[0].hooks)).toBe(true);
 
-    // The repair must not be silent: stdout must carry a SessionStart
-    // hookSpecificOutput envelope describing what happened. This is the part
-    // that reproduces the break — before this ticket's fix, stdout is empty.
+    // The repair must not be silent, and must not over-claim: stdout must
+    // carry a SessionStart hookSpecificOutput envelope naming the repair.
     expect(result.stdout.trim().length, 'repin.mjs must print something when it repairs a stale path').toBeGreaterThan(0);
 
     const parsed = JSON.parse(result.stdout);
     expect(parsed.hookSpecificOutput).toBeDefined();
     expect(parsed.hookSpecificOutput.hookEventName).toBe('SessionStart');
-    expect(parsed.hookSpecificOutput.additionalContext).toMatch(/repair/i);
-    expect(parsed.hookSpecificOutput.additionalContext).toMatch(/stale/i);
+    const msg = parsed.hookSpecificOutput.additionalContext;
+    expect(msg).toMatch(/repair/i);
+    expect(msg).toMatch(/stale/i);
+    // Every one of the 3 commands in the file was actually fixed, so the
+    // message may honestly say "no action needed" (HIGH-2's own honesty gate).
+    expect(msg).toMatch(/3 stale/);
+    expect(msg).toMatch(/no action needed/i);
+  });
+
+  it('a real repin.mjs subprocess also repairs the legacy flat hook shape (no regression)', () => {
+    const repoDir = makeTmpDir('repin-signal-flat');
+    const claudeDir = join(repoDir, '.claude');
+    const settingsPath = writeStaleSettingsFlat(claudeDir, REMOVED_VERSION_DIR);
+
+    const result = runRepin(repoDir);
+
+    expect(result.status).toBe(0);
+
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    expect(settings.statusLine.command).toContain(ACTUAL_CM_DIR);
+    expect(settings.hooks.Stop[0].command).toContain(ACTUAL_CM_DIR);
+    expect(settings.hooks.SessionStart[0].command).toContain(ACTUAL_CM_DIR);
+
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.hookSpecificOutput.additionalContext).toMatch(/3 stale/);
+    expect(parsed.hookSpecificOutput.additionalContext).toMatch(/no action needed/i);
   });
 
   it('a real repin.mjs subprocess prints nothing when paths are already current (idempotent, still quiet on no-op)', () => {
     const repoDir = makeTmpDir('repin-signal-noop');
     const claudeDir = join(repoDir, '.claude');
-    writeStaleSettings(claudeDir, ACTUAL_CM_DIR);
+    writeStaleSettingsNested(claudeDir, ACTUAL_CM_DIR);
 
-    const result = spawnSync('node', [REPIN_SCRIPT], {
-      input: JSON.stringify({ cwd: repoDir }),
-      encoding: 'utf8',
-      timeout: 10_000,
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: REPO_ROOT },
-    });
+    const result = runRepin(repoDir);
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('');
