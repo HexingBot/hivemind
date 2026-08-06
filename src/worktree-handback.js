@@ -228,11 +228,13 @@ import { ENTRYPOINT_NAMES } from '../scripts/entrypoint-names.mjs';
  * The set of generated bundle paths (repo-root-relative, forward-slash,
  * matching `git diff --name-only` output on every platform) this module
  * refuses to silently textually-merge. Derived directly from
- * scripts/build-plugin.mjs's ENTRYPOINT_NAMES — the same export
- * tests/e2e/dist-parity.spec.js already imports — so there is exactly one
- * list of "what dist/ contains" in this repo, not a second copy that can
- * drift (TASK-197 AC4; this repo has been bitten by exactly that class of
- * duplication before).
+ * scripts/entrypoint-names.mjs's ENTRYPOINT_NAMES — a zero-import data
+ * module both this file and tests/e2e/dist-parity.spec.js import (TASK-197
+ * fix round, MEDIUM-2: NOT scripts/build-plugin.mjs, which top-level-imports
+ * esbuild, a devDependency absent from a real plugin install) — so there is
+ * exactly one list of "what dist/ contains" in this repo, not a second copy
+ * that can drift (TASK-197 AC4; this repo has been bitten by exactly that
+ * class of duplication before).
  *
  * @returns {string[]}
  */
@@ -445,6 +447,21 @@ function detectGeneratedArtifactCollision(repoRoot, branch, label) {
     );
   }
   const mergeBase = mergeBaseOut.stdout.trim();
+  // Same class as the HIGH above (TASK-197 fix round): exit 0 with EMPTY
+  // stdout is not reachable against real git (a real base is always
+  // printed on exit 0), but silently proceeding on it would issue
+  // `git diff --name-only ..HEAD` — a malformed-but-git-accepted range that
+  // resolves to `HEAD..HEAD` and yields an empty diff, folding this
+  // unexpected outcome into "no collision" exactly like the exit-code bug
+  // just fixed. Distinguished in the message from the exit-1 "no common
+  // ancestor" case above, which is a legitimate, expected empty result.
+  if (!mergeBase) {
+    throw makeErr(
+      'E_GIT_FAILED',
+      `${label}: git merge-base HEAD ${branch} exited 0 (success) but printed no base — not the documented ` +
+      'exit-1 "no common ancestor" case; treating this as "no collision" would issue a malformed HEAD..HEAD diff',
+    );
+  }
 
   const targetChanged = new Set(
     runGitOrThrow(repoRoot, ['diff', '--name-only', `${mergeBase}..HEAD`], label)
