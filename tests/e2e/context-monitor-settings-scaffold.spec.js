@@ -1,12 +1,15 @@
 // tests/e2e/context-monitor-settings-scaffold.spec.js
 // TASK-008 AC4 — init/scaffold wiring for .claude/settings.json.
+// TASK-210 — updated to the documented NESTED hook shape.
 //
 // The init-project scaffold must write/merge the consuming project's
 // .claude/settings.json with:
 //   - statusLine entry: { type: 'command', command: 'node <ABS>/context-monitor/statusline.mjs' }
-//   - Stop hook entry: { type: 'command', command: 'node <ABS>/context-monitor/stop-hook.mjs' }
+//     (statusLine is a different, flat, genuinely-honoured shape — unaffected.)
+//   - Stop hook entry: { hooks: [{ type: 'command', command: 'node <ABS>/context-monitor/stop-hook.mjs' }] }
+//     (no matcher key — Stop does not support one)
 //   - SessionStart hook entry with matcher 'clear|compact':
-//       { type: 'command', command: 'node <ABS>/context-monitor/session-start.mjs' }
+//       { matcher: 'clear|compact', hooks: [{ type: 'command', command: 'node <ABS>/context-monitor/session-start.mjs' }] }
 //
 // where <ABS> is the plugin root resolved at init time (literal absolute path,
 // NOT ${CLAUDE_PLUGIN_ROOT}).
@@ -79,34 +82,40 @@ describe('AC4a — fresh scaffold: settings.json written when none exists', () =
     // hooks must be an object
     expect(settings.hooks, 'settings.json must have hooks').toBeDefined();
 
-    // Stop hook
+    // Stop hook — TASK-210: entries use the documented NESTED shape
+    // ({ hooks: [{ type, command }] }), not a flat { type, command }.
     const stopHooks = settings.hooks.Stop;
     expect(Array.isArray(stopHooks), 'hooks.Stop must be an array').toBe(true);
-    const stopHook = stopHooks.find(
-      (h) => h && h.type === 'command' && /stop-hook\.mjs/.test(h.command),
+    const stopHookGroup = stopHooks.find(
+      (h) => h && Array.isArray(h.hooks) && h.hooks.some((hh) => /stop-hook\.mjs/.test(hh.command)),
     );
     expect(
-      stopHook,
-      'hooks.Stop must contain a command entry for stop-hook.mjs',
+      stopHookGroup,
+      'hooks.Stop must contain a nested command entry for stop-hook.mjs',
     ).toBeDefined();
+    expect(stopHookGroup.matcher, 'Stop does not support matcher').toBeUndefined();
+    const stopHook = stopHookGroup.hooks.find((hh) => /stop-hook\.mjs/.test(hh.command));
+    expect(stopHook.type).toBe('command');
     expect(stopHook.command).toMatch(/^node /);
     expect(stopHook.command).not.toContain('${CLAUDE_PLUGIN_ROOT}');
 
     // SessionStart hook
     const sessionStartHooks = settings.hooks.SessionStart;
     expect(Array.isArray(sessionStartHooks), 'hooks.SessionStart must be an array').toBe(true);
-    const sessionStartHook = sessionStartHooks.find(
-      (h) => h && h.type === 'command' && /session-start\.mjs/.test(h.command),
+    const sessionStartGroup = sessionStartHooks.find(
+      (h) => h && Array.isArray(h.hooks) && h.hooks.some((hh) => /session-start\.mjs/.test(hh.command)),
     );
     expect(
-      sessionStartHook,
-      'hooks.SessionStart must contain a command entry for session-start.mjs',
+      sessionStartGroup,
+      'hooks.SessionStart must contain a nested command entry for session-start.mjs',
     ).toBeDefined();
+    const sessionStartHook = sessionStartGroup.hooks.find((hh) => /session-start\.mjs/.test(hh.command));
+    expect(sessionStartHook.type).toBe('command');
     expect(sessionStartHook.command).toMatch(/^node /);
     expect(sessionStartHook.command).not.toContain('${CLAUDE_PLUGIN_ROOT}');
     // Matcher must be 'clear|compact'
     expect(
-      sessionStartHook.matcher,
+      sessionStartGroup.matcher,
       'SessionStart hook must have matcher "clear|compact"',
     ).toBe('clear|compact');
   });
@@ -138,17 +147,21 @@ describe('AC4a — fresh scaffold: settings.json written when none exists', () =
       `statusLine script must exist at ${statusLinePath}`,
     ).toBe(true);
 
-    for (const hook of settings.hooks.Stop) {
-      if (/stop-hook\.mjs/.test(hook.command)) {
-        const p = extractPath(hook.command);
-        expect(existsSync(p), `stop-hook.mjs must exist at ${p}`).toBe(true);
+    for (const group of settings.hooks.Stop) {
+      for (const hook of group.hooks || []) {
+        if (/stop-hook\.mjs/.test(hook.command)) {
+          const p = extractPath(hook.command);
+          expect(existsSync(p), `stop-hook.mjs must exist at ${p}`).toBe(true);
+        }
       }
     }
 
-    for (const hook of settings.hooks.SessionStart) {
-      if (/session-start\.mjs/.test(hook.command)) {
-        const p = extractPath(hook.command);
-        expect(existsSync(p), `session-start.mjs must exist at ${p}`).toBe(true);
+    for (const group of settings.hooks.SessionStart) {
+      for (const hook of group.hooks || []) {
+        if (/session-start\.mjs/.test(hook.command)) {
+          const p = extractPath(hook.command);
+          expect(existsSync(p), `session-start.mjs must exist at ${p}`).toBe(true);
+        }
       }
     }
   });
@@ -254,8 +267,12 @@ describe('AC4b — merge: preserves pre-existing settings.json content', () => {
       'pre-existing Stop hook must be preserved after merge',
     ).toBeDefined();
 
-    // Our stop-hook.mjs entry must also be present.
-    const ourStopHook = stopHooks.find((h) => /stop-hook\.mjs/.test(h.command));
+    // Our stop-hook.mjs entry must also be present, in the nested shape
+    // (TASK-210) — the command lives inside entry.hooks[], not directly on
+    // the array element.
+    const ourStopHook = stopHooks.find(
+      (h) => Array.isArray(h.hooks) && h.hooks.some((hh) => /stop-hook\.mjs/.test(hh.command)),
+    );
     expect(
       ourStopHook,
       'our stop-hook.mjs entry must be added to hooks.Stop',
@@ -287,7 +304,7 @@ describe('AC4b — merge: preserves pre-existing settings.json content', () => {
       readFileSync(join(repoDir, '.claude', 'settings.json'), 'utf8'),
     );
     const stopCountAfterFirst = settingsAfterFirst.hooks.Stop.filter(
-      (h) => /stop-hook\.mjs/.test(h.command),
+      (h) => Array.isArray(h.hooks) && h.hooks.some((hh) => /stop-hook\.mjs/.test(hh.command)),
     ).length;
     expect(stopCountAfterFirst).toBe(1);
 
@@ -305,7 +322,7 @@ describe('AC4b — merge: preserves pre-existing settings.json content', () => {
       readFileSync(join(repoDir, '.claude', 'settings.json'), 'utf8'),
     );
     const stopCountAfterSecond = settingsAfterSecond.hooks.Stop.filter(
-      (h) => /stop-hook\.mjs/.test(h.command),
+      (h) => Array.isArray(h.hooks) && h.hooks.some((hh) => /stop-hook\.mjs/.test(hh.command)),
     ).length;
     expect(
       stopCountAfterSecond,
