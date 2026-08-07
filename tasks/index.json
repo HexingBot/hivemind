@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T17:10:14.127Z",
+  "generated_at": "2026-08-07T00:04:36.464Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1150,13 +1150,13 @@
     {
       "key": "TASK-197",
       "title": "Worktree handback textually merges generated artifacts, producing silently-wrong bundles",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-198",
       "title": "Isolated worktrees are not usable working environments: stale base ref and a shadowing empty node_modules",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -1180,24 +1180,60 @@
     {
       "key": "TASK-202",
       "title": "Phantom same-pack version edges make a lock resource permanently un-removable",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
       "key": "TASK-203",
       "title": "assimilateSkill clobbers sibling-pack owner edges — the same defect TASK-200 fixed, in the data-loss direction",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
       "key": "TASK-204",
       "title": "A guard shipped to the primitive is inert until the MCP server restarts, and nothing signals it",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-205",
       "title": "reconcile-apply's ok predicate compares id-blind sums, so a surplus can mask a shortfall",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-206",
+      "title": "removeMergedWorktree's E_GIT_FAILED cannot distinguish \"nothing happened\" from \"mostly happened\"",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-207",
+      "title": "A colliding assimilated resourceId clobbers a sibling pack's provenance and downgrades its required:hard removal brake",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-208",
+      "title": "Nothing derives the documented MCP tool list from createServer, so byte-parity keeps both copies wrong in lockstep",
+      "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-209",
+      "title": "A plugin update silently breaks every already-initialized project: settings.json bakes a version-pinned absolute plugin path and nothing re-points it",
+      "status": "done",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-210",
+      "title": "The context-monitor hooks written into every consumer settings.json use an invalid schema and have never fired",
+      "status": "in_review",
+      "priority": "critical"
+    },
+    {
+      "key": "TASK-211",
+      "title": "Generalize worktree-handback's invariant from a banned-API list to a class rule, and make normalizeForCompare's degradation non-silent",
       "status": "todo",
       "priority": "medium"
     }

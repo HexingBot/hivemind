@@ -1430,6 +1430,18 @@
       "label": "The documented UAT recording convention no longer produces a comment the loop-mode gate accepts"
     },
     {
+      "id": "task-197",
+      "type": "task",
+      "ref": "tasks/TASK-197.json",
+      "label": "Worktree handback textually merges generated artifacts, producing silently-wrong bundles"
+    },
+    {
+      "id": "task-198",
+      "type": "task",
+      "ref": "tasks/TASK-198.json",
+      "label": "Isolated worktrees are not usable working environments: stale base ref and a shadowing empty node_modules"
+    },
+    {
       "id": "task-199",
       "type": "task",
       "ref": "tasks/TASK-199.json",
@@ -1446,6 +1458,54 @@
       "type": "task",
       "ref": "tasks/TASK-201.json",
       "label": "Invisible Unicode-tag characters persist into ticket comments, unlike intake values"
+    },
+    {
+      "id": "task-202",
+      "type": "task",
+      "ref": "tasks/TASK-202.json",
+      "label": "Phantom same-pack version edges make a lock resource permanently un-removable"
+    },
+    {
+      "id": "task-203",
+      "type": "task",
+      "ref": "tasks/TASK-203.json",
+      "label": "assimilateSkill clobbers sibling-pack owner edges — the same defect TASK-200 fixed, in the data-loss direction"
+    },
+    {
+      "id": "task-204",
+      "type": "task",
+      "ref": "tasks/TASK-204.json",
+      "label": "A guard shipped to the primitive is inert until the MCP server restarts, and nothing signals it"
+    },
+    {
+      "id": "task-205",
+      "type": "task",
+      "ref": "tasks/TASK-205.json",
+      "label": "reconcile-apply's ok predicate compares id-blind sums, so a surplus can mask a shortfall"
+    },
+    {
+      "id": "task-206",
+      "type": "task",
+      "ref": "tasks/TASK-206.json",
+      "label": "removeMergedWorktree's E_GIT_FAILED cannot distinguish \"nothing happened\" from \"mostly happened\""
+    },
+    {
+      "id": "task-207",
+      "type": "task",
+      "ref": "tasks/TASK-207.json",
+      "label": "A colliding assimilated resourceId clobbers a sibling pack's provenance and downgrades its required:hard removal brake"
+    },
+    {
+      "id": "task-208",
+      "type": "task",
+      "ref": "tasks/TASK-208.json",
+      "label": "Nothing derives the documented MCP tool list from createServer, so byte-parity keeps both copies wrong in lockstep"
+    },
+    {
+      "id": "task-209",
+      "type": "task",
+      "ref": "tasks/TASK-209.json",
+      "label": "A plugin update silently breaks every already-initialized project: settings.json bakes a version-pinned absolute plugin path and nothing re-points it"
     }
   ],
   "edges": [

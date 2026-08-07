@@ -1,0 +1,33 @@
+{
+  "key": "TASK-211",
+  "title": "Generalize worktree-handback's invariant from a banned-API list to a class rule, and make normalizeForCompare's degradation non-silent",
+  "description": "From TASK-206's gating reviewer, which had by then read `src/worktree-handback.js`'s MODULE INVARIANT across three consecutive tickets and was asked directly whether pinning the module to `tdd` was a sufficient control. It said no, with a diagnosis worth acting on.\n\n**The observation.** The module has taken **three consecutive HIGH findings in the same family** — TASK-197, TASK-198, TASK-206. The invariant text exists specifically to prevent that family. It is not working.\n\n**The diagnosis.** The invariant is written as a rule about **one API**: no raw `git()` result may be read as a state assertion, no collapsing `status` to a bare boolean. But none of the three HIGHs came in through that API:\n\n- **TASK-198** — a bare `catch` on `lstatSync`. An fs error.\n- **TASK-206 round 1a** — `existsSync`. An fs error again.\n- **TASK-206 round 1b** — `normalizeForCompare` silently falling back to a raw string. **Not an error at all — a degraded value.**\n\nThe module's own fix comment already stated it: *\"that invariant was scoped to `git()` results; this reads an `fs` result instead, which is how it slipped past.\"* That diagnosis was written a ticket ago, was correct, and was never generalized — so the next author reached for a different API with the same shape, exactly as predicted. **The text is being read as a list of banned APIs rather than as a class rule. Each fix closes one API and leaves the class open.**\n\n**Why the `tdd` pin is not the control.** TASK-206 round 1 *had* a sensor, and the sensor locked the defect in: it asserted the two-valued field and passed, because it was written against the implemented outcome space by the author whose model of that outcome space was the thing that was wrong. **Tests-first does not fix an incomplete enumeration of outcomes; it tests the incomplete enumeration earlier.** What caught it, twice, was a reviewer enumerating outcomes per read. The pin stays (it is cheap and raises the evidence bar) but must not be mistaken for the control.\n\n**The two pieces of work.**\n\n**1 — Restate the invariant by class.** Lead with the class rule: any operation in this module with three possible outcomes (yes / no / could-not-answer) must preserve all three, and the could-not-answer case may never render as the benign one. Then list `git()` `.status`, fs errors (ENOENT vs everything else), and silently-degrading comparisons as three **known instances**, explicitly marked non-exhaustive. Cheap, and it targets the observed failure mode directly.\n\n**2 — Make `normalizeForCompare`'s degradation structural, not remembered.** This is the substantive half. That function is now the most dangerous in the module: on `realpathSync.native` failure it silently returns a lower-fidelity value, with no signal at the call site, across six-plus call sites — each one a place this class can recur. TASK-206's MEDIUM-1 fix patched exactly one of them by re-deriving canonicalizability at that call site; correct locally, but it leaves the trap armed everywhere else.\n\nReturning `{ form, canonical }` — or adding a `tryCanonicalize` that returns `null` — makes it **structurally impossible to compare-and-conclude without deciding what an uncanonicalized comparison means.** That is the point: it converts the invariant from a rule people must remember into a shape the code enforces, which is the only version of this that stops recurring.\n\n**3 — A hand-off line, optional but cheap.** For every new outcome-bearing read (git, fs, *or* comparison), the Developer states in the hand-off which of the three values each branch produces. That is the reviewer question that caught this twice; making it a Developer-side item moves it upstream.\n\n**Recorded for balance:** TASK-206's fix round was the first time an author generalized the class *themselves* — its MEDIUM-1 comment names the defect as \"the same fs-read-collapse defect this fix round closes for `worktreeDirectory`, one field over\" and fixes it unprompted. The recurrence is real; so is the convergence. This ticket is meant to finish that convergence, not to litigate the recurrence.",
+  "acceptance_criteria": [
+    "The MODULE INVARIANT text leads with the class rule - any three-outcome operation must preserve all three, and could-not-answer may never render as benign - with git .status, fs errors, and silently-degrading comparisons listed as known, explicitly non-exhaustive instances.",
+    "normalizeForCompare no longer degrades silently: its return shape makes an uncanonicalized comparison impossible to perform without deciding what it means. State the chosen shape and why.",
+    "Every existing call site of normalizeForCompare is audited and updated, not just the ones that currently look risky. Report the full list and what each now does on the uncanonicalizable path - TASK-206 patched exactly one call site, and the point of this ticket is that the other five-plus are still armed.",
+    "A failing spec first reproduces at least one currently-silent degradation at a call site TASK-206 did not patch. Capture the red-run output verbatim.",
+    "A sensor covers the new shape and fails if the degradation is made silent again. Prove it non-vacuous.",
+    "The invariant text change is mirrored wherever it is restated - the module doc, the function and probe JSDoc, both skills/orchestrator-routing/SKILL.md copies byte-identical - since TASK-206 established that every restatement is a lockstep-edit site.",
+    "npm run test:all is green; dist rebuilt and committed if bundled source changes, with dist-parity passing."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "worktree-isolation",
+    "invariant",
+    "review-followup",
+    "recurring-defect-class"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-06T23:34:16.608Z",
+  "updated_at": "2026-08-06T23:34:16.608Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

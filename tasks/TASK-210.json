@@ -1,0 +1,35 @@
+{
+  "key": "TASK-210",
+  "title": "The context-monitor hooks written into every consumer settings.json use an invalid schema and have never fired",
+  "description": "**Found while reviewing TASK-209, escalated as a research question, and now confirmed against the official Claude Code documentation and against this repo's own code.**\n\n**The defect.** `buildContextMonitorEntries` (`src/claude-settings.js`) produces hook entries in a **flat** shape — `command` sitting directly on the array element, with **no inner `hooks` array**. Verified by executing it:\n\n```\nstopHook          -> { \"type\": \"command\", \"command\": \"node \\\"...\\\\stop-hook.mjs\\\"\" }\nsessionStartHook  -> { \"type\": \"command\", \"matcher\": \"clear|compact\", \"command\": \"node \\\"...\\\\session-start.mjs\\\"\" }\n```\n\n`writeClaudeSettings` merges those straight into the consumer project's `.claude/settings.json`.\n\n**That shape is a schema error.** The official hooks reference requires the nested form and states it explicitly: *\"Hooks array is required: You cannot place a handler directly on the matcher group. Handlers must nest inside the `hooks` array.\"* The canonical shape is:\n\n```json\n{ \"hooks\": { \"SessionStart\": [ { \"matcher\": \"...\", \"hooks\": [ { \"type\": \"command\", \"command\": \"...\" } ] } ] } }\n```\n\n**The plugin's own `hooks/hooks.json` already uses the correct nested shape** — so the two files disagree with each other, and only the plugin-side one is valid. The docs confirm both files share one schema (*\"Copy the `hooks` object from your `.claude/settings.json`... since the format is the same\"*), so there is no separate project-level dialect that would excuse the flat form.\n\n**Consequence.** The context-monitor `Stop` and `SessionStart` hooks written into consumer projects have **most likely never executed**, since TASK-008/TASK-009 (June 2026). Everything that depends on them — context auto-flush, the HANDOFF.md snapshot on compact/clear — has been inert in every consumer install. The statusline is unaffected: `statusLine.command` is a different settings key with a different shape and is genuinely honoured.\n\n**It fails silently.** Per the docs, an invalid entry is rejected or stripped with no warning unless the user runs `claude doctor` or `/hooks`. Nothing in the framework checks. This is why it went six weeks unnoticed and why it was misattributed to stale paths.\n\n**Relationship to TASK-209 — read this before starting.** TASK-209 was raised from a human report of \"the plugin address is hardcoded to an old version and stops being found after an update.\" Stale paths are real and `context-monitor/repin.mjs` does repair them, but the reviewer proved `repin.mjs` is **also blind to the nested shape** (it only walks `hooks[event][i].command`). So the two defects interlock: the entries are written in a shape that never fires, and the repair walks only that same never-firing shape. **Fixing the schema without fixing `repin.mjs`'s traversal would leave freshly-valid entries un-repairable on the next update, and fixing the traversal without the schema would repair entries that still never fire.** Coordinate with TASK-209 rather than racing it.\n\n**Do not assume the fix is only a shape change.** Any project initialized before this ticket carries invalid entries on disk. A corrected writer helps new projects; existing ones need migration, and `--apply-settings` will not do it — its `hasStopHook`/`hasSessionStartHook` presence checks match the *stale/invalid* entry and skip the append (verified empirically during the TASK-209 review: it printed `already up-to-date (no write needed)` against a fully stale file).\n\n**Verify the premise yourself before building.** This is a documentation-derived conclusion about another product's behaviour. Confirm empirically — write both shapes into a real project settings file, run `/hooks` and `claude doctor`, and record what each reports. If the flat shape turns out to be honoured after all, say so plainly and close this as invalid; that outcome is just as valuable and far cheaper than a wrong migration.",
+  "acceptance_criteria": [
+    "The premise is verified empirically rather than inherited from documentation: both hook shapes are written into a real project settings file and the actual behaviour is recorded - whether each appears in /hooks, whether claude doctor reports a validation error, and whether the hook executes. State the evidence plainly, and if the flat shape is honoured after all, close this ticket as invalid rather than building on a wrong premise.",
+    "A failing spec first reproduces the defect at the level the fix will address - buildContextMonitorEntries emits a shape that does not match the documented nested schema. Capture the red-run output verbatim.",
+    "Hook entries written into a consumer .claude/settings.json use the documented nested shape, matching what the plugin's own hooks/hooks.json already uses, with matcher handled correctly per event (SessionStart supports it; Stop does not).",
+    "Projects initialized before this fix are migrated, not just newly-created ones. --apply-settings does not currently repair them because its presence checks match the invalid entry and skip the append - state what mechanism performs the migration and how a user who reads nothing gets it.",
+    "The migration is idempotent and never clobbers unrelated user content: a spec must prove an unrelated pre-existing hook and an unrelated pre-existing setting survive untouched, and that running it twice changes nothing the second time.",
+    "Coordinated with TASK-209's repin.mjs traversal so the two fixes compose: entries end up in a shape that both fires AND can be re-pointed when the plugin updates. State explicitly how the two interact.",
+    "A sensor pins the emitted shape against the documented schema so a future edit cannot silently regress to a non-firing form. Prove it non-vacuous by showing it red on the flat shape.",
+    "npm run test:all is green; dist rebuilt and committed if bundled source changes, with dist-parity passing."
+  ],
+  "status": "in_review",
+  "priority": "critical",
+  "labels": [
+    "plugin-install",
+    "silent-failure",
+    "schema",
+    "hooks",
+    "human-reported"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-06T23:33:41.799Z",
+  "updated_at": "2026-08-07T00:02:48.753Z",
+  "jira_key": null,
+  "verification_tier": "tdd",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
