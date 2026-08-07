@@ -291,31 +291,62 @@ This directory is created on demand (no pre-requisite setup).
 ## 7. Settings.json Scaffold (init-project)
 
 The `init-project` scaffold writes/merges `.claude/settings.json` with these
-entries (deep-merge, never clobbers pre-existing keys or hooks):
+entries (deep-merge, never clobbers pre-existing keys or hooks). **The
+hooks.Stop/SessionStart entries use the documented NESTED shape** (TASK-210)
+— the command lives inside a `hooks: [...]` array, never directly on the
+matcher-group element. Per the official hooks reference: "You cannot place a
+handler directly on the matcher group. Handlers must nest inside the hooks
+array." A flat `{ "type": "command", "command": ... }` sitting directly on
+the array element is invalid settings — `claude doctor` rejects it
+(`hooks.Stop.0.hooks: Expected array, but received undefined`) and the hook
+never fires. `statusLine` is a *different*, unrelated settings key with a
+different (flat, genuinely-honoured) shape — it is not part of the hooks
+schema and stays flat.
 
+<!-- SETTINGS-SCAFFOLD-EXAMPLE:START -->
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "node <ABSOLUTE_PLUGIN_ROOT>/context-monitor/statusline.mjs"
+    "command": "node \"<ABSOLUTE_PLUGIN_ROOT>/context-monitor/statusline.mjs\""
   },
   "hooks": {
     "Stop": [
       {
-        "type": "command",
-        "command": "node <ABSOLUTE_PLUGIN_ROOT>/context-monitor/stop-hook.mjs"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"<ABSOLUTE_PLUGIN_ROOT>/context-monitor/stop-hook.mjs\""
+          }
+        ]
       }
     ],
     "SessionStart": [
       {
-        "type": "command",
         "matcher": "clear|compact",
-        "command": "node <ABSOLUTE_PLUGIN_ROOT>/context-monitor/session-start.mjs"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"<ABSOLUTE_PLUGIN_ROOT>/context-monitor/session-start.mjs\""
+          }
+        ]
       }
     ]
   }
 }
 ```
+<!-- SETTINGS-SCAFFOLD-EXAMPLE:END -->
+
+Note `Stop` carries no `matcher` key at all — Stop does not support one.
+`SessionStart` does, and keeps `matcher: "clear|compact"`.
+
+Projects initialized before this fix carry the old flat shape on disk. They
+are migrated automatically, with no user action required, by
+`context-monitor/settings-migrate.mjs` — a plugin-level `SessionStart` hook
+(registered in `hooks/hooks.json` alongside `repin.mjs`) that rewrites any
+legacy flat entry to the nested shape in place on the very next session. See
+`src/claude-settings.js`'s `migrateContextMonitorShape` / `mergeContextMonitorSettings`
+for the pure migration logic.
 
 `<ABSOLUTE_PLUGIN_ROOT>` is resolved at init time from:
 ```js

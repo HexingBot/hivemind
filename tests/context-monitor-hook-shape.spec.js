@@ -27,6 +27,7 @@ import {
   mergeContextMonitorSettings,
   migrateContextMonitorShape,
 } from '../src/claude-settings.js';
+import { collectFormatViolations } from './helpers/hookShapeViolations.js';
 
 const FAKE_ROOT = '/fake/plugin/root';
 const entries = buildContextMonitorEntries(FAKE_ROOT);
@@ -57,6 +58,21 @@ describe('AC2/AC7 — buildContextMonitorEntries emits the documented nested sha
     // of the hooks schema at all. Must NOT be nested.
     expect(entries.statusLine.command).toMatch(/statusline\.mjs/);
     expect(entries.statusLine.hooks).toBeUndefined();
+  });
+
+  // TASK-210 fix round (LOW-5) — reuse the SAME validator hooks/hooks.json's
+  // own regression sensor uses (tests/plugin-hooks-format.spec.js), rather
+  // than hand-rolling a second one for the identical schema. Its non-vacuity
+  // against the flat shape is already proven there; this just points it at
+  // buildContextMonitorEntries's output wrapped in a synthetic hooks doc.
+  it('produces zero violations against collectFormatViolations (the hooks/hooks.json validator)', () => {
+    const syntheticDoc = {
+      hooks: {
+        Stop: [entries.stopHook],
+        SessionStart: [entries.sessionStartHook],
+      },
+    };
+    expect(collectFormatViolations(syntheticDoc)).toEqual([]);
   });
 });
 
@@ -186,7 +202,14 @@ describe('AC4/AC5 — mergeContextMonitorSettings migrates legacy flat entries i
 // plugin-level migration hook (context-monitor/settings-migrate.mjs).
 // Composes with repin.mjs: repin.mjs repairs stale PATHS regardless of shape
 // (already updated for TASK-209 to traverse both); this function repairs
-// SHAPE only and never touches the path or injects new entries.
+// SHAPE (flat -> nested) and never injects new entries into a project that
+// had none. TASK-210 fix round (LOW-4) — it does NOT leave the path
+// untouched: a flat->nested migration rebuilds the command from the CURRENT
+// plugin root (the same `entries` a fresh write would use), so a migrated
+// entry is also path-current the moment it's migrated. That is deliberate
+// (it is why no hook-ordering leaves a half-migrated stale entry behind) —
+// only an ALREADY-NESTED entry (untouched by this function at all) can still
+// carry a stale path, which is exactly the case repin.mjs's traversal covers.
 // ---------------------------------------------------------------------------
 
 describe('AC6 — migrateContextMonitorShape is heal-only (never injects)', () => {

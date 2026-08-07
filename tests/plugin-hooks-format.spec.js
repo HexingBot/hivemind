@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { REPO_ROOT } from './helpers/repoRoot.js';
+import { collectFormatViolations } from './helpers/hookShapeViolations.js';
 
 const HOOKS_JSON_PATH = join(REPO_ROOT, 'hooks', 'hooks.json');
 
@@ -38,60 +39,11 @@ const OLD_FLAT_SHAPE = {
   ],
 };
 
-// Applies every structural assertion from the AC to a parsed hooks.json
-// document. Returns a list of violation messages (empty = valid).
-function collectFormatViolations(doc) {
-  const violations = [];
-
-  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
-    violations.push('document root must be an object');
-    return violations;
-  }
-
-  const hooksRecord = doc.hooks;
-  if (hooksRecord === undefined) {
-    violations.push('missing top-level "hooks" key');
-    return violations;
-  }
-  if (typeof hooksRecord !== 'object' || hooksRecord === null || Array.isArray(hooksRecord)) {
-    violations.push('top-level "hooks" must be a plain object (record), not undefined/array');
-    return violations;
-  }
-
-  for (const [eventName, eventValue] of Object.entries(hooksRecord)) {
-    if (!Array.isArray(eventValue)) {
-      violations.push(`hooks.${eventName} must be an array`);
-      continue;
-    }
-    for (const [i, entry] of eventValue.entries()) {
-      const label = `hooks.${eventName}[${i}]`;
-
-      // Regression guard: no flat top-level command/type sibling of matcher.
-      if (typeof entry?.command === 'string') {
-        violations.push(`${label} has a flat top-level "command" sibling of "matcher" (old buggy shape)`);
-      }
-      if (typeof entry?.type === 'string') {
-        violations.push(`${label} has a flat top-level "type" sibling of "matcher" (old buggy shape)`);
-      }
-
-      if (!Array.isArray(entry?.hooks)) {
-        violations.push(`${label} must have a nested "hooks" array`);
-        continue;
-      }
-      for (const [j, nested] of entry.hooks.entries()) {
-        const nestedLabel = `${label}.hooks[${j}]`;
-        if (typeof nested?.type !== 'string') {
-          violations.push(`${nestedLabel}.type must be a string`);
-        }
-        if (typeof nested?.command !== 'string') {
-          violations.push(`${nestedLabel}.command must be a string`);
-        }
-      }
-    }
-  }
-
-  return violations;
-}
+// collectFormatViolations (the AC's structural validator) now lives in
+// tests/helpers/hookShapeViolations.js (TASK-210 fix round, LOW-5) so
+// tests/context-monitor-hook-shape.spec.js (TASK-210) can reuse the same
+// validator against buildContextMonitorEntries's output instead of
+// hand-rolling a second one for the identical schema.
 
 describe('hooks/hooks.json canonical nested format (TASK-138 regression sensor)', () => {
   const raw = readFileSync(HOOKS_JSON_PATH, 'utf8');

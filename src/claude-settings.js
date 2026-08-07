@@ -11,24 +11,15 @@
 //     skill for the authoritative rationale).
 //
 // TASK-209 — why the version-pinned absolute path is not eliminated outright:
-//   A stable-launcher indirection (a small script whose OWN path never moves,
-//   committed into the consumer project, which resolves the CURRENT plugin
-//   root at RUN time — e.g. from ~/.claude/plugins/installed_plugins.json, or
-//   via src/plugin-root.js's multi-source resolver — then execs the real
-//   script) would end the version-pinning class completely. It was
-//   deliberately NOT built here: the observable failure this ticket exists to
-//   close (a stale path silently doing nothing after `/plugin update`) is
-//   already closed by context-monitor/repin.mjs, a PLUGIN-level SessionStart
-//   hook — plugin-level hook paths DO expand ${CLAUDE_PLUGIN_ROOT}, so
-//   repin.mjs itself is never stale — that self-heals BEFORE the user can
-//   observe a broken statusline/hook, on the very next session. Adding a
-//   second indirection layer on top of an already-shipped, already-tested
-//   self-heal mechanism would be net-new surface (a launcher script materialized
-//   into every consumer project, a second path-resolution algorithm to keep
-//   correct across Windows/POSIX) for no coverage the self-heal doesn't
-//   already provide. If repin.mjs is ever found to miss a real window (e.g. a
-//   session that never restarts across an update), the launcher approach
-//   above is the next escalation — not a rewrite of this file.
+//   See context-monitor/repin.mjs's own header comment ("TASK-209 AC4
+//   rationale, RESTATED after the fix round") for the current, accurate
+//   account of what repin.mjs's path self-heal does and does not close. The
+//   original claim here — that the stale-path failure was "already closed" by
+//   repin.mjs alone — was retracted after TASK-210's own finding that a FLAT
+//   shape entry (see buildContextMonitorEntries below) never fires at all,
+//   independent of whether its path is current; repairing a path that was
+//   never going to execute repairs nothing observable. TASK-210 closes the
+//   shape half (this file); repin.mjs closes the path half (both required).
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -251,11 +242,14 @@ export function mergeContextMonitorSettings(existing, entries) {
  *
  * Composition with repin.mjs (TASK-209): repin.mjs repairs stale PATHS
  * regardless of shape (it already traverses both flat and nested for that);
- * this function repairs SHAPE only and never touches the command's path
- * (whatever path is currently present is preserved verbatim by
- * reconcileHookArray leaving already-nested entries untouched — the only
- * case that rewrites the command at all is a flat->nested migration, which
- * always uses the CURRENT plugin root via `entries`, same as a fresh write).
+ * this function repairs SHAPE (flat -> nested). It does NOT leave the path
+ * untouched in the migrating case: the one case that rewrites a command at
+ * all — a flat->nested migration — always rebuilds it from the CURRENT
+ * plugin root via `entries`, same as a fresh write, so a migrated entry is
+ * also path-current the instant it's migrated. An ALREADY-NESTED entry is
+ * left completely alone by this function (reconcileHookArray's no-rewrite
+ * branch) and can still carry a stale path — that residual case is exactly
+ * what repin.mjs's traversal exists to cover.
  * Both hooks are independently idempotent and safe to run every session; see
  * context-monitor/settings-migrate.mjs for the disk-level orchestration
  * (including how it avoids clobbering a concurrent repin.mjs write).

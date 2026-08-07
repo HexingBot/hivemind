@@ -87,31 +87,46 @@ function resolveProjectRoot() {
  * Read, migrate (shape only), and atomically write the project's
  * .claude/settings.json. Exported for e2e testing.
  *
+ * TASK-210 fix round (HIGH-1) — `readSettings` is an injectable seam (default:
+ * the real `readFileSync`) that ONLY the two settings.json reads go through.
+ * This exists so the write-race guard below can be exercised deterministically
+ * in a spec (a real filesystem race is too timing-sensitive to hit reliably
+ * in-process) by returning different bytes on the second call than the
+ * first, without mocking node:fs globally or touching the atomic-write path.
+ * Production callers never pass this — it always defaults to the real fs read.
+ *
  * @param {object} opts
  * @param {string} opts.projectRoot - absolute path to the consuming project root
  * @param {string} opts.pluginRoot  - absolute path to the CURRENT plugin root
- * @returns {{ wrote: boolean, path: string, migratedCount: number, skippedRace: boolean }}
+ * @param {(path: string, enc: string) => string} [opts.readSettings] - injectable
+ *   settings.json reader, defaults to the real `readFileSync`.
+ * @returns {{
+ *   wrote: boolean, path: string, migratedCount: number,
+ *   outcome: 'no-file'|'malformed'|'nothing-to-migrate'|'skipped-race'|'write-failed'|'migrated',
+ * }}
  */
-export function migrateSettingsFile({ projectRoot, pluginRoot }) {
+export function migrateSettingsFile({ projectRoot, pluginRoot, readSettings = readFileSync }) {
   const settingsPath = join(projectRoot, '.claude', 'settings.json');
 
   if (!existsSync(settingsPath)) {
-    return { wrote: false, path: settingsPath, migratedCount: 0, skippedRace: false };
+    return { wrote: false, path: settingsPath, migratedCount: 0, outcome: 'no-file' };
   }
 
   let before;
   let parsed;
   try {
-    before = readFileSync(settingsPath, 'utf8');
+    before = readSettings(settingsPath, 'utf8');
     parsed = JSON.parse(before);
   } catch {
-    return { wrote: false, path: settingsPath, migratedCount: 0, skippedRace: false };
+    // TASK-210 fix round (MEDIUM-1) — distinguish "nothing to do" from "the
+    // user's settings.json is broken and will never migrate this way".
+    return { wrote: false, path: settingsPath, migratedCount: 0, outcome: 'malformed' };
   }
 
   const entries = buildContextMonitorEntries(pluginRoot);
   const { settings, changed } = migrateContextMonitorShape(parsed, entries);
   if (!changed) {
-    return { wrote: false, path: settingsPath, migratedCount: 0, skippedRace: false };
+    return { wrote: false, path: settingsPath, migratedCount: 0, outcome: 'nothing-to-migrate' };
   }
 
   // Count how many entries were actually migrated (for the report message).
@@ -124,12 +139,12 @@ export function migrateSettingsFile({ projectRoot, pluginRoot }) {
   // clobbering it — the next session's run will re-attempt and converge.
   let nowRaw;
   try {
-    nowRaw = readFileSync(settingsPath, 'utf8');
+    nowRaw = readSettings(settingsPath, 'utf8');
   } catch {
-    return { wrote: false, path: settingsPath, migratedCount: 0, skippedRace: false };
+    return { wrote: false, path: settingsPath, migratedCount: 0, outcome: 'malformed' };
   }
   if (nowRaw !== before) {
-    return { wrote: false, path: settingsPath, migratedCount: 0, skippedRace: true };
+    return { wrote: false, path: settingsPath, migratedCount: 0, outcome: 'skipped-race' };
   }
 
   const serialized = JSON.stringify(settings, null, 2) + '\n';
@@ -145,10 +160,12 @@ export function migrateSettingsFile({ projectRoot, pluginRoot }) {
         unlinkSync(tmpPath);
       }
     } catch { /* ignore */ }
-    return { wrote: false, path: settingsPath, migratedCount: 0, skippedRace: false };
+    // TASK-210 fix round (MEDIUM-1) — a real write failure (EPERM, read-only
+    // dir, disk full) must be distinguishable from "nothing needed doing".
+    return { wrote: false, path: settingsPath, migratedCount: 0, outcome: 'write-failed' };
   }
 
-  return { wrote: true, path: settingsPath, migratedCount, skippedRace: false };
+  return { wrote: true, path: settingsPath, migratedCount, outcome: 'migrated' };
 }
 
 /**
@@ -166,6 +183,38 @@ export function buildMigrateReportMessage(migratedCount) {
     '.claude/settings.json to the schema-valid nested shape (TASK-210). They were ' +
     'written before this fix and had never fired — they now do. No action needed.'
   );
+}
+
+/**
+ * Build the SessionStart additionalContext note for a NON-SUCCESS outcome
+ * that must not be silently indistinguishable from "nothing needed doing"
+ * (TASK-210 fix round, MEDIUM-1 — the same silent-failure class this ticket
+ * exists to close). Only 'malformed' and 'write-failed' warrant surfacing:
+ * 'no-file' and 'nothing-to-migrate' are legitimate, common, and already
+ * quiet by design; 'skipped-race' self-heals next session and staying quiet
+ * avoids alarm fatigue on a routine, expected occurrence.
+ *
+ * @param {'malformed'|'write-failed'} outcome
+ * @returns {string|null} null if `outcome` does not warrant a note.
+ */
+export function buildMigrateWarningMessage(outcome) {
+  if (outcome === 'malformed') {
+    return (
+      'hivemind: could not migrate context-monitor hook entries in ' +
+      '.claude/settings.json — the file is not valid JSON. The context-monitor ' +
+      'Stop/SessionStart hooks may not be firing until this file is fixed by hand.'
+    );
+  }
+  if (outcome === 'write-failed') {
+    return (
+      'hivemind: found context-monitor hook entries in .claude/settings.json ' +
+      'that need migrating to the schema-valid nested shape, but the write failed ' +
+      '(permissions, read-only directory, or disk full). The context-monitor ' +
+      'Stop/SessionStart hooks are still not firing — check .claude/settings.json ' +
+      'is writable.'
+    );
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,11 +239,22 @@ if (__isMain) {
 
   try {
     const result = migrateSettingsFile({ projectRoot, pluginRoot });
+    let additionalContext = null;
     if (result.wrote && result.migratedCount > 0) {
+      additionalContext = buildMigrateReportMessage(result.migratedCount);
+    } else {
+      // TASK-210 fix round (MEDIUM-1) — surface the two non-success outcomes
+      // that are NOT self-evidently fine (malformed JSON / a real write
+      // failure), so they are never silently indistinguishable from "nothing
+      // needed doing". 'no-file', 'nothing-to-migrate', and 'skipped-race'
+      // stay quiet — see buildMigrateWarningMessage's doc for why.
+      additionalContext = buildMigrateWarningMessage(result.outcome);
+    }
+    if (additionalContext) {
       const response = {
         hookSpecificOutput: {
           hookEventName: 'SessionStart',
-          additionalContext: buildMigrateReportMessage(result.migratedCount),
+          additionalContext,
         },
       };
       process.stdout.write(JSON.stringify(response));

@@ -9,26 +9,35 @@
 //   (b) it is a no-op when entries are already nested (idempotency).
 //   (c) it never injects entries into a settings.json that has none (heal-only).
 //   (d) it never touches an unrelated hook or unrelated top-level setting.
-//   (e) it returns gracefully when settings.json is missing or malformed.
-//   (f) race guard: skips the write (no throw, no corruption) when the file
-//       changed on disk between its read and its write.
+//   (e) it returns gracefully when settings.json is missing or malformed,
+//       with an `outcome` discriminant that distinguishes "nothing to do"
+//       from "the file is broken and needs a human" (TASK-210 fix round,
+//       MEDIUM-1).
+//   (f) race guard: the write is ACTUALLY SKIPPED (not just "no throw") when
+//       the file changes on disk between the initial read and the pre-write
+//       re-read, via the injectable `readSettings` seam — deterministic,
+//       not a timing-dependent real race (TASK-210 fix round, HIGH-1).
+//
+// TASK-210 fix round (LOW-3) — static import (not a computed dynamic one):
+// __isMain guards the hook body so importing this module in tests is safe,
+// and a static specifier keeps this spec visible to `test:changed`'s import
+// graph for any future edit to settings-migrate.mjs alone.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
+import {
+  migrateSettingsFile,
+  buildMigrateReportMessage,
+  buildMigrateWarningMessage,
+} from '../../context-monitor/settings-migrate.mjs';
+import { REPO_ROOT } from '../helpers/repoRoot.js';
 
 afterAll(cleanupAll);
 
-const __thisDir = dirname(fileURLToPath(import.meta.url));
-const MIGRATE_URL = pathToFileURL(
-  join(__thisDir, '..', '..', 'context-monitor', 'settings-migrate.mjs'),
-).href;
-const FAKE_PLUGIN_ROOT = join(__thisDir, '..', '..');
-
-const { migrateSettingsFile, buildMigrateReportMessage } = await import(MIGRATE_URL);
+const FAKE_PLUGIN_ROOT = REPO_ROOT;
 
 function writeFlatSettings(claudeDir, extra = {}) {
   mkdirSync(claudeDir, { recursive: true });
@@ -67,6 +76,7 @@ describe('migrateSettingsFile — legacy flat -> nested shape rewrite', () => {
     const result = migrateSettingsFile({ projectRoot: repoDir, pluginRoot: FAKE_PLUGIN_ROOT });
 
     expect(result.wrote).toBe(true);
+    expect(result.outcome).toBe('migrated');
     expect(result.migratedCount).toBe(2);
 
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
@@ -87,7 +97,7 @@ describe('migrateSettingsFile — legacy flat -> nested shape rewrite', () => {
 // ---------------------------------------------------------------------------
 
 describe('migrateSettingsFile — idempotency: no write once already nested', () => {
-  it('returns wrote=false on a second run against already-migrated settings', () => {
+  it('returns wrote=false, outcome=nothing-to-migrate on a second run', () => {
     const repoDir = makeTmpDir('settings-migrate-idemp');
     const claudeDir = join(repoDir, '.claude');
     writeFlatSettings(claudeDir);
@@ -96,6 +106,7 @@ describe('migrateSettingsFile — idempotency: no write once already nested', ()
     const second = migrateSettingsFile({ projectRoot: repoDir, pluginRoot: FAKE_PLUGIN_ROOT });
 
     expect(second.wrote).toBe(false);
+    expect(second.outcome).toBe('nothing-to-migrate');
   });
 });
 
@@ -116,6 +127,7 @@ describe('migrateSettingsFile — heal-only: does not inject entries', () => {
     const result = migrateSettingsFile({ projectRoot: repoDir, pluginRoot: FAKE_PLUGIN_ROOT });
 
     expect(result.wrote).toBe(false);
+    expect(result.outcome).toBe('nothing-to-migrate');
     const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
     expect(after.statusLine).toBeUndefined();
     expect(after.hooks.SessionStart).toBeUndefined();
@@ -147,11 +159,11 @@ describe('migrateSettingsFile — preserves unrelated content', () => {
 });
 
 // ---------------------------------------------------------------------------
-// (e) safe no-op on missing/malformed settings.json
+// (e) missing/malformed settings.json — outcome discriminant (MEDIUM-1)
 // ---------------------------------------------------------------------------
 
-describe('migrateSettingsFile — safe no-op on missing/malformed settings.json', () => {
-  it('returns gracefully when .claude/settings.json does not exist', () => {
+describe('migrateSettingsFile — outcome discriminant on missing/malformed settings.json', () => {
+  it('returns outcome=no-file (legitimate, quiet) when .claude/settings.json does not exist', () => {
     const repoDir = makeTmpDir('settings-migrate-missing');
     let error;
     let result;
@@ -162,9 +174,11 @@ describe('migrateSettingsFile — safe no-op on missing/malformed settings.json'
     }
     expect(error).toBeUndefined();
     expect(result.wrote).toBe(false);
+    expect(result.outcome).toBe('no-file');
+    expect(buildMigrateWarningMessage(result.outcome)).toBeNull();
   });
 
-  it('returns gracefully when settings.json contains invalid JSON', () => {
+  it('returns outcome=malformed (must be surfaced, not silent) when settings.json contains invalid JSON', () => {
     const repoDir = makeTmpDir('settings-migrate-malformed');
     const claudeDir = join(repoDir, '.claude');
     mkdirSync(claudeDir, { recursive: true });
@@ -179,44 +193,56 @@ describe('migrateSettingsFile — safe no-op on missing/malformed settings.json'
     }
     expect(error).toBeUndefined();
     expect(result.wrote).toBe(false);
+    expect(result.outcome).toBe('malformed');
+    // MEDIUM-1: this outcome must NOT be silently indistinguishable from success.
+    expect(buildMigrateWarningMessage(result.outcome)).toMatch(/not valid JSON/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// (f) race guard: skips the write rather than clobbering a concurrent writer
+// (f) race guard — deterministically exercised via the injectable read seam
+// (TASK-210 fix round, HIGH-1)
 // ---------------------------------------------------------------------------
 
 describe('migrateSettingsFile — race guard composing with a concurrent writer (e.g. repin.mjs)', () => {
-  it('skips the write (no throw) when the file changed on disk after the initial read', async () => {
+  it('SKIPS the write and returns outcome=skipped-race when the second read differs from the first', () => {
     const repoDir = makeTmpDir('settings-migrate-race');
     const claudeDir = join(repoDir, '.claude');
     const settingsPath = writeFlatSettings(claudeDir);
+    const onDiskBefore = readFileSync(settingsPath, 'utf8');
 
-    // Simulate a concurrent writer (e.g. repin.mjs) by racing a second write
-    // in between migrateSettingsFile's initial read and its pre-write re-read.
-    // We can't inject a mid-function hook without changing the source, so we
-    // instead assert the DOCUMENTED contract directly: write a DIFFERENT file
-    // content right before invoking, confirming a subsequent invocation still
-    // succeeds cleanly against whatever is actually on disk (no corruption,
-    // no throw) — the concurrent-write race itself is a timing window too
-    // narrow to deterministically hit in-process; this proves the fallback
-    // path (re-read immediately before write) is at least reachable and safe.
-    const rewritten = JSON.parse(readFileSync(settingsPath, 'utf8'));
-    rewritten.statusLine = { type: 'command', command: 'node /concurrent/statusline.mjs' };
-    writeFileSync(settingsPath, JSON.stringify(rewritten, null, 2) + '\n', 'utf8');
+    // Concurrent writer's content — what repin.mjs (or another process) would
+    // have written between our initial read and our pre-write re-read.
+    const concurrentContent = JSON.stringify(
+      { ...JSON.parse(onDiskBefore), statusLine: { type: 'command', command: 'node /concurrent/statusline.mjs' } },
+      null,
+      2,
+    ) + '\n';
 
-    let error;
-    let result;
-    try {
-      result = migrateSettingsFile({ projectRoot: repoDir, pluginRoot: FAKE_PLUGIN_ROOT });
-    } catch (e) {
-      error = e;
-    }
+    let callCount = 0;
+    // Deterministically simulate the race: 1st call (the initial read) sees
+    // the real on-disk flat content; 2nd call (the pre-write re-read) sees
+    // the concurrent writer's content instead — exactly the condition the
+    // guard exists to detect.
+    const readSettings = (path, enc) => {
+      callCount += 1;
+      return callCount === 1 ? onDiskBefore : concurrentContent;
+    };
 
-    expect(error).toBeUndefined();
-    // Whatever happened, the concurrent writer's statusLine must survive.
-    const after = JSON.parse(readFileSync(settingsPath, 'utf8'));
-    expect(after.statusLine.command).toBe('node /concurrent/statusline.mjs');
-    expect(result).toBeDefined();
+    const result = migrateSettingsFile({
+      projectRoot: repoDir,
+      pluginRoot: FAKE_PLUGIN_ROOT,
+      readSettings,
+    });
+
+    expect(callCount, 'the seam must be called exactly twice (initial read + pre-write re-read)').toBe(2);
+    expect(result.wrote).toBe(false);
+    expect(result.outcome).toBe('skipped-race');
+
+    // The write must have been skipped entirely: the REAL on-disk file is
+    // untouched by migrateSettingsFile (still the original flat content —
+    // our injected readSettings never actually wrote anything, and the real
+    // fs.writeFileSync must not have been reached).
+    expect(readFileSync(settingsPath, 'utf8')).toBe(onDiskBefore);
   });
 });
