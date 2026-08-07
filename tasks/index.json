@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T00:04:36.464Z",
+  "generated_at": "2026-08-07T00:31:59.477Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1228,7 +1228,7 @@
     {
       "key": "TASK-210",
       "title": "The context-monitor hooks written into every consumer settings.json use an invalid schema and have never fired",
-      "status": "in_review",
+      "status": "done",
       "priority": "critical"
     },
     {

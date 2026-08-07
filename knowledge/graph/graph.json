@@ -1506,6 +1506,12 @@
       "type": "task",
       "ref": "tasks/TASK-209.json",
       "label": "A plugin update silently breaks every already-initialized project: settings.json bakes a version-pinned absolute plugin path and nothing re-points it"
+    },
+    {
+      "id": "task-210",
+      "type": "task",
+      "ref": "tasks/TASK-210.json",
+      "label": "The context-monitor hooks written into every consumer settings.json use an invalid schema and have never fired"
     }
   ],
   "edges": [
