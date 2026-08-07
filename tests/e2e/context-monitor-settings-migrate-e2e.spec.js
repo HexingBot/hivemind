@@ -246,3 +246,42 @@ describe('migrateSettingsFile — race guard composing with a concurrent writer 
     expect(readFileSync(settingsPath, 'utf8')).toBe(onDiskBefore);
   });
 });
+
+// ---------------------------------------------------------------------------
+// (g) write-failed outcome (release-gate follow-up) — the one previously
+// unspecced discriminant. `chmod` is a no-op on win32 directories, so a real
+// fs-permission failure can't be forced portably; reached instead via the
+// same injectable-seam pattern as the race guard (HIGH-1), which is cheap
+// and avoids building fs-permission machinery.
+// ---------------------------------------------------------------------------
+
+describe('migrateSettingsFile — write-failed outcome', () => {
+  it('the warning message names the write failure', () => {
+    expect(buildMigrateWarningMessage('write-failed')).toMatch(/write failed/);
+  });
+
+  it('returns outcome=write-failed when the injected writer throws, and leaves the on-disk file untouched', () => {
+    const repoDir = makeTmpDir('settings-migrate-write-failed');
+    const claudeDir = join(repoDir, '.claude');
+    const settingsPath = writeFlatSettings(claudeDir);
+    const onDiskBefore = readFileSync(settingsPath, 'utf8');
+
+    const writeSettings = () => {
+      throw new Error('EPERM: simulated write failure');
+    };
+
+    const result = migrateSettingsFile({
+      projectRoot: repoDir,
+      pluginRoot: FAKE_PLUGIN_ROOT,
+      writeSettings,
+    });
+
+    expect(result.wrote).toBe(false);
+    expect(result.outcome).toBe('write-failed');
+    // MEDIUM-1: must not be silently indistinguishable from success.
+    expect(buildMigrateWarningMessage(result.outcome)).toMatch(/write failed/);
+    // The real settings.json is untouched (the injected writer never
+    // actually wrote anything, and no partial/corrupt state was left behind).
+    expect(readFileSync(settingsPath, 'utf8')).toBe(onDiskBefore);
+  });
+});

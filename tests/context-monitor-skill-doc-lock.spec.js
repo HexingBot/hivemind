@@ -89,7 +89,7 @@ describe('TASK-210 HIGH-2 — SKILL.md §7 settings scaffold example vs buildCon
       return value;
     };
 
-    expect(normalize(doc.statusLine)).toEqual(normalize({ type: entries.statusLine.type, command: entries.statusLine.command }));
+    expect(normalize(doc.statusLine)).toEqual(normalize(entries.statusLine));
     expect(normalize(doc.hooks.Stop[0])).toEqual(normalize(entries.stopHook));
     expect(normalize(doc.hooks.SessionStart[0])).toEqual(normalize(entries.sessionStartHook));
   });

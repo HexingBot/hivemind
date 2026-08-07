@@ -95,17 +95,27 @@ function resolveProjectRoot() {
  * first, without mocking node:fs globally or touching the atomic-write path.
  * Production callers never pass this — it always defaults to the real fs read.
  *
+ * TASK-210 second fix round — `writeSettings` is the same pattern applied to
+ * the write side (default: the real `writeFileSync`), so a spec can reach
+ * the 'write-failed' outcome by injecting a throwing fake — cheaper and more
+ * portable than real fs-permission machinery (chmod is a no-op on win32
+ * directories, which is why that outcome was previously unspecced).
+ *
  * @param {object} opts
  * @param {string} opts.projectRoot - absolute path to the consuming project root
  * @param {string} opts.pluginRoot  - absolute path to the CURRENT plugin root
  * @param {(path: string, enc: string) => string} [opts.readSettings] - injectable
  *   settings.json reader, defaults to the real `readFileSync`.
+ * @param {(path: string, data: string, enc: string) => void} [opts.writeSettings] -
+ *   injectable tmp-file writer, defaults to the real `writeFileSync`.
  * @returns {{
  *   wrote: boolean, path: string, migratedCount: number,
  *   outcome: 'no-file'|'malformed'|'nothing-to-migrate'|'skipped-race'|'write-failed'|'migrated',
  * }}
  */
-export function migrateSettingsFile({ projectRoot, pluginRoot, readSettings = readFileSync }) {
+export function migrateSettingsFile({
+  projectRoot, pluginRoot, readSettings = readFileSync, writeSettings = writeFileSync,
+}) {
   const settingsPath = join(projectRoot, '.claude', 'settings.json');
 
   if (!existsSync(settingsPath)) {
@@ -152,7 +162,7 @@ export function migrateSettingsFile({ projectRoot, pluginRoot, readSettings = re
   mkdirSync(claudeDir, { recursive: true });
   const tmpPath = join(claudeDir, `.settings-migrate-${randomBytes(6).toString('hex')}.tmp`);
   try {
-    writeFileSync(tmpPath, serialized, 'utf8');
+    writeSettings(tmpPath, serialized, 'utf8');
     renameSync(tmpPath, settingsPath);
   } catch {
     try {
