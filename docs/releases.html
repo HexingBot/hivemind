@@ -33,6 +33,20 @@
 // CHANGELOG.md to match.
 const RELEASES = [
   {
+    v: "0.21.0", date: "2026-08-06", tag: "The hooks that never ran",
+    summary: "A user said the plugin stopped being found after an update. Following that report uncovered something bigger: the context-monitor hooks written into every project used a shape Claude Code rejects, so they had never run at all — since June.",
+    highlights: [
+      "The hook entries written into your project's settings file were malformed. Claude Code requires the command to sit inside a nested hooks list; we wrote it directly on the entry instead. Its own validator rejects that outright — so context auto-flush and the handoff snapshot have been silently dead in every install since June. Confirmed by running claude doctor against both shapes, not by reading the docs.",
+      "New projects now get the correct shape, and existing broken ones are repaired automatically by a hook that runs at session start. No command to remember, no release notes to read. It only ever touches its own entries — unrelated hooks and settings come back byte-identical.",
+      "The separate self-repair for stale paths after an update was only doing half its job: it fixed the statusline and silently skipped every hook, which is exactly why the problem seemed to keep coming back. It now handles both shapes, and its 'all clear' message is computed by an independent scan rather than by trusting the repair — so it can no longer report success over its own blind spot.",
+      "The manual repair command in the update docs did not actually run. It relied on a variable that only exists inside hook processes, never in a terminal. It now looks up where the plugin really lives.",
+      "Disposing an isolated worktree could delete the main checkout's dependency folder, by following the link between them. The link is now cut first — verified by reproducing the destruction without the fix and confirming the folder survives with it.",
+      "Handback used to merge rebuilt bundles as if they were ordinary text, splicing two different builds into one file that matched neither. It now refuses when both sides rebuilt the same file, turning a silent corruption into a visible stop.",
+      "Pack bookkeeping is honest in both directions: adopting a skill no longer deletes another pack's claim on it or quietly downgrades its 'do not remove' flag, and the installer's success check can no longer let a surplus in one place hide a failure in another.",
+      "New tool for asking whether the running server is still on current code — it loads from a version-pinned cache that a local rebuild never touches, so 'I rebuilt it' and 'the server is running it' are genuinely different questions.",
+    ],
+  },
+  {
     v: "0.20.0", date: "2026-08-04", tag: "Worktree isolation & ticket-integrity hardening",
     summary: "Agents that run at the same time stopped sharing one folder, and the rules that decide when a ticket may be closed got a lot harder to talk your way past.",
     highlights: [

@@ -8,6 +8,93 @@ The single source of version truth is `.claude-plugin/plugin.json`. Because the
 plugin installs from this repository's `main` branch via the marketplace, a
 release is the `main` HEAD at the tagged version.
 
+## [0.21.0] — 2026-08-06
+
+The headline is a six-week-old silent failure, found by pulling on a user
+report that "the plugin can't be found after an update". The context-monitor
+hooks written into every consumer project used a hook shape Claude Code
+rejects as invalid, so they had **never fired** — context auto-flush and the
+HANDOFF.md snapshot have been inert in every install since June. Verified
+with `claude doctor`, not inferred from docs.
+
+The rest of the release is hardening: a worktree-disposal data-loss path
+closed, generated artifacts no longer merged textually, and the pack layer's
+ownership bookkeeping made honest in both directions.
+
+### Fixed
+- **Context-monitor hooks never fired in any consumer project** (TASK-210) —
+  `buildContextMonitorEntries` emitted a *flat* hook entry (`command` directly
+  on the array element) where the documented schema requires a *nested* one
+  (`{ matcher?, hooks: [{ type, command }] }`). `claude doctor` rejects the
+  flat form outright: `hooks.Stop.0.hooks: Expected array, but received
+  undefined`. The writer now emits the nested shape, and a new plugin-level
+  `SessionStart` hook (`context-monitor/settings-migrate.mjs`) migrates
+  already-broken projects automatically, with no user action and no
+  release-notes reading required. Migration is heal-only, idempotent, and
+  leaves unrelated hooks and settings byte-identical.
+- **Stale plugin paths after an update were only half-repaired** (TASK-209) —
+  the existing self-heal (`context-monitor/repin.mjs`, shipped since
+  TASK-009) walked only the flat entry shape, so it repaired the statusline
+  and silently skipped every nested hook. That is the reported symptom: the
+  status bar returns after a restart, the hooks stay dead. It now traverses
+  both shapes for **path repair only**, never converting shape, and its
+  "all clear" message is computed by a *structurally independent* deep scan
+  rather than derived from what the repair pass visited — so it cannot report
+  success over its own blind spot. The manual repair command in
+  `commands/update.md` also did not run (`CLAUDE_PLUGIN_ROOT` is set only for
+  hook subprocesses, never in a user shell); it now resolves the install path
+  from `installed_plugins.json`.
+- **Worktree disposal destroyed the primary checkout's `node_modules`**
+  (TASK-198) — `git worktree remove` recursed through the `node_modules`
+  junction. The junction is now severed first; reproduced in both directions.
+  Three residual findings from that review — a bare `catch` failing open on a
+  non-ENOENT `lstat`, a nested-junction overclaim, and an empirically wrong
+  comment — are closed here rather than carried further.
+- **Handback merged generated artifacts textually** (TASK-197) — two branches
+  each regenerating `dist/*.cjs` merged with no conflict, splicing two builds
+  into one file that matched neither. Handback now **refuses** when both sides
+  modified the same generated path since diverging. The generated-path list is
+  derived from the build script's own entrypoints, via a new zero-import data
+  module so a runtime module no longer pulls a bundler into its import graph.
+- **Pack-layer ownership** (TASK-202, TASK-203, TASK-207) — same-pack stale
+  version edges no longer accumulate un-removably; `assimilateSkill` no longer
+  drops a sibling pack's owner edge (which failed toward *deletion* of a
+  resource another pack still wanted); and a colliding assimilated
+  `resourceId` no longer overwrites a sibling's provenance or downgrades its
+  `required: hard` removal brake.
+- **`reconcile-apply` could report success over a real failure** (TASK-205) —
+  the `ok` predicate compared id-blind sums, so a surplus in one bucket
+  offset a shortfall in another. It is now identity-aware per bucket. The fix
+  also removed a pre-existing *false alarm* when two packs desired the same
+  not-yet-live skill.
+- **A failed worktree removal was indistinguishable from a no-op** (TASK-206)
+  — the thrown error now carries three-valued post-conditions
+  (`present`/`absent`/`unknown`) for registration, directory and junction
+  sever, so a caller reads the outcome instead of inferring it.
+
+### Added
+- **MCP bundle-staleness detection** (TASK-204) — a new `mcp_build_status`
+  tool reports whether the running server's loaded bundle still matches the
+  repo's committed one. Two independent legs: `self_stale` (did my own path
+  mutate) and `repo_divergent` (do my bytes differ from the repo's build) —
+  the second exists because the server loads from the *installed plugin
+  cache*, a version-pinned directory a local rebuild never touches. Documents
+  the consequence plainly: closing `repo_divergent` needs a plugin update, and
+  the work must be pushed to the marketplace remote first.
+- **Tool-documentation drift sensor** (TASK-208) — derives the documented tool
+  list from `createServer`'s real registrations rather than trusting prose,
+  and caught `mcp_build_status` as undocumented on its first run. Hardcoded
+  tool *counts* were removed from the docs entirely rather than policed — a
+  count rots by construction; the itemized list is authoritative.
+
+### Changed
+- **Release notes rewritten for readability** — every entry on
+  `docs/releases.html` now carries a plain-language summary of what the
+  release was *for*, above expanded detail. The oldest entries were single
+  fragments that told a reader nothing.
+- `worktree.baseRef: "head"` is set in this repo's `.claude/settings.json`, so
+  isolated worktrees branch from local HEAD rather than a stale remote.
+
 ## [0.20.0] — 2026-08-04
 
 Worktree isolation and ticket-integrity hardening release. The headline is
