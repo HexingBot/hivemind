@@ -1,0 +1,39 @@
+{
+  "key": "TASK-216",
+  "title": "Review completo siempre: retirar la rúbrica de profundidad y el nivel liviano",
+  "description": "Decisión humana del 2026-08-13, tomada al resolver una decisión abierta de TASK-212. El review completo pasa a ser el método único. Se retira la rúbrica que elegía entre liviano y completo, y se retira el nivel liviano.\n\nPOR QUÉ ES COHERENTE CON EL RESTO DEL CAMBIO. Estamos sacando el tdd porque no era el control real. El argumento que lo sostiene está escrito por el propio reviewer que gatea TASK-206 y citado textual en TASK-211: \"Tests-first no arregla una enumeración incompleta de outcomes; testea la enumeración incompleta más temprano. Lo que lo atrapó, dos veces, fue un reviewer enumerando outcomes por lectura.\" Si el reviewer es el control que de verdad funciona, debilitarlo con un modo liviano va en contra del diagnóstico. Este ticket alinea la política con lo que la evidencia del propio repo ya mostraba.\n\nQUÉ SE RETIRA, verificado por lectura:\n- skills/orchestrator-routing/SKILL.md:786-812, la sección entera de la rúbrica: la tabla liviano/completo, la lista de superficies que fuerzan completo, las definiciones concretas de \"superficie de seguridad\" y \"lógica core tdd\", y el protocolo del modo liviano. Las dos copias son byte-idénticas (verificado con diff).\n- .claude/agents/reviewer.md:42-46, sección \"Review depth (agility R2)\": los dos niveles y la regla de escalamiento de una sola vía. Idem la copia espejo agents/reviewer.md.\n- reviewer.md:18, el input donde el orquestador declara la profundidad calculada.\n- CLAUDE.md paso 6, la parte que obliga al orquestador a declarar el review_depth y los insumos de la rúbrica que lo produjeron.\n- CLAUDE.md paso 7, la parte que exige registrar la profundidad de review y sus insumos en el comentario de cierre.\n- tests/agility-doc-locks.spec.js:79-94, que fija que \"Core `tdd`-tier logic\" tenga definición concreta. Ese candado deja de tener objeto.\n\nQUÉ SOBREVIVE Y NO HAY QUE PERDER AL BORRAR. Dentro del protocolo liviano que se elimina hay una lista de cinco clases recurrentes de hallazgo grave (camino sin especificar, sensor vacío, dist desactualizado, deriva entre copias espejo, lavado de calibración). Esa lista es valiosa por sí misma y hoy vive únicamente ahí. Al retirar el modo liviano hay que reubicarla en el proceso completo, no dejarla caer con la sección.\n\nTampoco se toca el Tier-audit (E2) de reviewer.md:50, que ya es explícitamente ortogonal a la profundidad y corre en ambos niveles; su reescritura pertenece a TASK-212.\n\nCOSTO, DICHO DE FRENTE. Esto encarece cada ticket: todo review pasa a correr el proceso completo más el gate de calibración más el gate de observabilidad y minimalismo. Es un intercambio elegido a conciencia — se cambia velocidad por profundidad, en el mismo movimiento en que se saca el tdd para recuperar velocidad en el otro lado. El efecto neto sobre el tiempo por ticket hay que medirlo, no suponerlo.",
+  "acceptance_criteria": [
+    "La rúbrica de profundidad y el nivel liviano están retirados de los cinco lugares listados en la descripción (las dos copias de SKILL.md, las dos copias de reviewer.md, y CLAUDE.md pasos 6 y 7). No queda ninguna referencia colgada a review_depth, 'light' o 'full' que implique que sigue habiendo una eleccion.",
+    "La lista de las cinco clases recurrentes de hallazgo grave sobrevive dentro del proceso de review completo. Mostrar dónde quedó y verificar que no se perdió ninguna de las cinco.",
+    "El orquestador ya no calcula ni declara una profundidad al despachar al reviewer, y el reviewer ya no espera recibirla. El briefing y el archivo del agente concuerdan.",
+    "El comentario de cierre ya no exige registrar profundidad de review ni los insumos de la rúbrica.",
+    "tests/agility-doc-locks.spec.js actualizado: el candado sobre 'Core tdd-tier logic' se retira, y lo que quede del archivo sigue fijando algo real. Si el archivo queda sin objeto, se borra y se dice por qué.",
+    "El Tier-audit (E2) de reviewer.md sigue existiendo y sigue corriendo. No se lo llevó puesto el borrado de la sección vecina.",
+    "Todos los pares con copia espejo quedan byte-idénticos.",
+    "npm run test:all en verde, dist reconstruido y commiteado si cambió src/ o bin/, con dist-parity pasando."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "metodologia",
+    "review",
+    "decision-humana"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-13T23:57:23.641Z",
+      "body": "REVISIÓN INDEPENDIENTE (2026-08-13) — correcciones al alcance.\n\nEL RANGO CITADO ESTÁ MAL. La rúbrica es SKILL.md:772-829, no 786-812. Fuera del rango que cita el ticket quedan: el encabezado de la sección (772), el párrafo con la obligación de tres partes del orquestador (774-785), la regla de escalación de una sola vía (817-820) y todo el párrafo \"Orthogonal to the tier gate (E2)\" (822-829), escrito íntegramente en términos de review_depth.\n\nFALTAN DOS LUGARES. SKILL.md:198 y :210 son el equivalente en SKILL.md de los pasos 6 y 7 de CLAUDE.md que el ticket sí lista: obligan a declarar la profundidad al despachar al reviewer y a registrarla en el cierre. Falta también reviews/REVIEWER-CHECKLIST.md:84-87, que exige anotar la profundidad, registrar overrides y prohíbe bajarla — es checklist operativo, no archivo histórico.\n\nA6 RESUELTO, YA NO ES HUÉRFANO. El ticket dice \"no se toca el Tier-audit (E2), su reescritura pertenece a TASK-212\". Eso dejaba trabajo sin dueño: TASK-212 sólo se ocupaba de su disparador, y el encabezado de esa sección (\"orthogonal to depth, runs at both depths\") más su última oración están escritos en términos de la rúbrica que este ticket retira. Se resolvió creando TASK-218, que reescribe esa sección entera como auditoría de superficie peligrosa e incluye sacar esas dos frases. Este ticket sigue sin tocarla; TASK-218 es el dueño.\n\nLA LISTA DE LAS CINCO CLASES: EL TICKET SE EQUIVOCA. Dice \"hoy vive únicamente ahí\" y es falso. También está en .claude/agents/developer.md:99-105 (checklist pre-hand-off) y referenciada desde reviewer.md:40. Y las dos listas NO coinciden: la del reviewer dice \"vacuous sensor\", la del developer dice \"red-green plant\". Reubicarla sin decidir cuál es la canónica deja dos listas distintas de cinco elementos. Decidir eso es parte del AC2.\n\nAC5 SE SOLAPA CON TASK-212 AC7. Los dos reclaman tests/agility-doc-locks.spec.js citando sólo :79-94. El archivo tiene 202 líneas: también mueren :56-77 (la tabla de profundidad y el umbral de 150 líneas) y :99+ (\"never downgrade\"), mientras la mitad R3 del archivo sobrevive. O sea que la salida \"si el archivo queda sin objeto se borra\" no aplica: el archivo sobrevive parcialmente. Este ticket es el dueño del archivo; TASK-212 AC7 ya quedó apuntado acá."
+    }
+  ],
+  "created_at": "2026-08-13T22:52:09.515Z",
+  "updated_at": "2026-08-13T23:57:23.641Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

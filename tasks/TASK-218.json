@@ -1,0 +1,37 @@
+{
+  "key": "TASK-218",
+  "title": "Reemplazar la señal de tier por una auditoría de superficie peligrosa, para no perder la protección que hoy da checkTierContentMismatch",
+  "description": "Sale de la revisión independiente del 2026-08-13 (hallazgo ALTO A8) y de la decisión del humano de buscarle reemplazo en vez de dejarla ir.\n\nEL PROBLEMA. Hoy src/task-store.js:872 (checkTierContentMismatch) avisa cuando un ticket cuyo título o descripción menciona un cambio de schema se declara con un tier más liviano que tdd. TASK-212 AC5 proponía reescribirlo para que dispare sólo con uat-only, y lo describía como un cambio de umbral. No lo es. Con tests-after pasando a ser el tier por defecto de todo el trabajo real, un cambio de schema declarado tests-after deja de producir señal alguna. La protección no se recalibra: desaparece.\n\nPOR QUÉ NO ALCANZA CON AJUSTAR EL UMBRAL. La señal vieja funcionaba porque el tier era un proxy del cuidado aplicado: tdd estaba reservado para schema, parseo, seguridad y mutación de estado, así que un tier liviano sobre ese contenido era una contradicción detectable. Con dos tiers ese proxy pierde toda la información. Cualquier regla que siga mirando el tier va a ser ruido o silencio, no señal.\n\nEL REEMPLAZO. Dejar de mirar el tier y mirar la propiedad que de verdad importa: que el trabajo sobre superficie peligrosa tenga nombrado el daño que evita. Eso es exactamente la regla 2 de TASK-213 (\"cada test nuevo nombra el daño que evita\"), aplicada como gate sobre la clase peligrosa en vez de como buena práctica general. Dos piezas:\n\nPIEZA 1 — Aviso al crear el ticket. checkTierContentMismatch sobrevive pero cambia de objeto: sigue detectando por texto que el ticket toca superficie peligrosa, y en vez de opinar sobre el tier avisa que los criterios de aceptación tienen que nombrar el daño concreto, porque el reviewer lo va a auditar. Sigue siendo advisory y nunca bloquea, igual que hoy. Probablemente convenga renombrarlo, porque ya no habla de tiers.\n\nPIEZA 2 — Gate en el reviewer. Cuando el diff toca superficie peligrosa, el reviewer exige que los tests que la cubren nombren el daño que evitan; si no lo hacen, es hallazgo grave. Acá está el gate con dientes, y va en el reviewer a propósito: el argumento que sostiene todo este cambio de metodología, escrito por el reviewer que gatea TASK-206 y citado en TASK-211, es que lo que atrapó el defecto dos veces fue un reviewer enumerando resultados por lectura, no un test escrito antes.\n\nESTO LE DA DUEÑO A DOS COSAS HUÉRFANAS.\n\n(a) TASK-212 AC5 (reescribir checkTierContentMismatch al umbral uat-only) queda anulado y reemplazado por este ticket. Coordinar para que TASK-212 no lo haga por su lado.\n\n(b) La revisión marcó (hallazgo A6) que .claude/agents/reviewer.md:48-50, la sección \"Tier-audit (E2)\", queda sin dueño: TASK-216 la excluye por nombre y TASK-212 sólo se ocupa de su disparador. Esa sección hoy dispara cuando un ticket uat-only o tests-after toca lógica, mutación de estado, parseo o schema — o sea, ya está mirando la superficie correcta con el criterio equivocado (el tier). La pieza 2 de este ticket ES su reescritura. El nombre \"Tier-audit\" deja de aplicar. Además su encabezado dice \"orthogonal to depth, runs at both depths\" y su última oración habla de que la rúbrica de profundidad nunca la anula: con TASK-216 retirando la rúbrica, esas dos frases quedan colgadas y hay que sacarlas acá.\n\nQUÉ CUENTA COMO SUPERFICIE PELIGROSA. Hay que definirlo explícitamente, no heredarlo por costumbre. El punto de partida son las categorías que CLAUDE.md reservaba para tdd (lógica sensible a seguridad, parseo, cambios de schema o de schema de estado, mutación de estado con riesgo real de borde) y las que ya lista reviewer.md:50. Ojo con una asimetría conocida: la detección por texto al crear el ticket es un keyword match con falsos positivos medidos y aceptados (el comentario en src/task-store.js:841-857 documenta 2 de 191 tickets, ambos falsos positivos por negación), mientras que la detección en el reviewer es sobre archivos tocados de verdad. Son dos detecciones distintas sobre la misma clase; que no se contradigan.",
+  "acceptance_criteria": [
+    "Está definido y documentado qué cuenta como superficie peligrosa, con criterio concreto, y dónde vive esa definición para que no se duplique entre el detector de texto y el gate del reviewer.",
+    "checkTierContentMismatch sigue existiendo pero ya no opina sobre el tier: detecta superficie peligrosa por texto y avisa que los criterios de aceptación deben nombrar el daño. Sigue siendo advisory y nunca bloquea. Si se renombra, todos los llamadores y tests quedan al día.",
+    "El reviewer exige que los tests que cubren superficie peligrosa nombren el daño que evitan, y la ausencia es un hallazgo grave. Está escrito en las dos copias de reviewer.md.",
+    "La sección Tier-audit (E2) de reviewer.md:48-50 quedó reescrita como esta auditoría: ya no dispara por tier, el nombre refleja lo que hace, y se removieron las dos frases que dependían de la rúbrica de profundidad que retira TASK-216.",
+    "Se demuestra que la protección NO se perdió: tomar un caso que hoy dispara el aviso viejo (un ticket que menciona cambio de schema con tier liviano) y mostrar que bajo el mecanismo nuevo sigue habiendo señal, indicando cuál y en qué momento del ciclo aparece.",
+    "Se demuestra también el caso que hoy NO se detecta y ahora sí: un cambio de schema declarado tests-after, que con el umbral propuesto en TASK-212 AC5 habría quedado en silencio total.",
+    "TASK-212 AC5 quedó anulado por escrito en ese ticket, y no se hizo por duplicado.",
+    "El caso de control de tests/e2e/ac-fidelity-probes.spec.js:144 está actualizado al criterio nuevo, y el sensor demuestra que puede fallar de verdad.",
+    "Los pares con copia espejo quedan byte-idénticos. npm run test:all en verde, dist reconstruido y commiteado si cambió src/ o bin/."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "metodologia",
+    "review",
+    "proteccion-perdida",
+    "decision-humana"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-213"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-13T23:56:43.758Z",
+  "updated_at": "2026-08-13T23:56:43.758Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

@@ -1,0 +1,42 @@
+{
+  "key": "TASK-215",
+  "title": "Limpiar la suite: revisar los 106 archivos e2e y borrar los que no cubren ningún caso de uso real",
+  "description": "Decisión humana del 2026-08-13, parte cuatro. El humano eligió explícitamente \"frenamos crecimiento y limpiamos\" — las reglas nuevas frenan lo que entra, este ticket saca lo que ya está.\n\nPOR QUÉ EL FOCO ES e2e Y NO LA SUITE ENTERA. El tier rápido son ~7 segundos de reloj; no es el cuello de botella. Los 106 archivos bajo tests/e2e/ sí lo son: hacen I/O real a disco (mkdtemp) y levantan procesos. Ahí es donde \"entorpece el deploy\" muerde de verdad. Números actuales: 94 archivos en el tier rápido + 106 en e2e = 200 archivos, para 205 tickets cerrados. La suite creció 1:1 con el trabajo hecho en vez de con la superficie del producto — ese es el diagnóstico entero en un número.\n\nEL CRITERIO YA EXISTE Y ESTÁ BIEN, SÓLO ESTÁ APLICADO A UN SOLO DIRECTORIO. CLAUDE.md dice sobre tests/use-cases/: \"Los tickets modifican tests/use-cases/ SÓLO cuando cambia un caso de uso primario. La acumulación de specs por ticket no está permitida — el tamaño de la suite sigue la superficie del producto, no la cantidad de tickets.\" Eso es exactamente la regla correcta. Este ticket la extiende al resto de la suite.\n\nREGLA DE RETIRO. Un test es candidato a borrar si no cubre ninguna de estas tres cosas: (a) un criterio de aceptación vivo, (b) un daño concreto y nombrable a los datos, (c) un caso de uso de tests/use-cases/USE-CASES.md. Candidato significa candidato: nada se borra sin que quede escrito cuál de los tres criterios falló.\n\nRIESGO, DICHO DE FRENTE. Borrar tests es la parte con riesgo real de todo el cambio. Un test que parece redundante puede ser el único que cubre un camino de error. Por eso: nada se borra por parecer redundante, sólo por fallar los tres criterios de forma explícita y registrada. Y la suite completa tiene que quedar verde antes y después, con los conteos de ambos momentos anotados.\n\nORDEN. Va último a propósito. Las reglas nuevas tienen que estar en pie antes de limpiar, o se limpia contra un criterio que todavía no existe.",
+  "acceptance_criteria": [
+    "Los 106 archivos bajo tests/e2e/ están clasificados uno por uno contra los tres criterios de retiro (criterio de aceptación vivo, daño nombrable a los datos, caso de uso de USE-CASES.md). El resultado es una lista completa, ningún archivo queda sin clasificar.",
+    "Cada archivo borrado tiene registrado cuál de los tres criterios falló. No se borra nada por 'parece redundante' ni por criterio implícito.",
+    "La regla de retiro quedó documentada en CLAUDE.md como política permanente, extendiendo al resto de la suite el criterio que hoy sólo rige para tests/use-cases/.",
+    "npm run test:all en verde ANTES y DESPUÉS, con la cantidad de archivos y de tests anotada en ambos momentos y la diferencia explicada.",
+    "Se reporta el cambio de tiempo de reloj de la suite e2e antes y después, medido, no estimado.",
+    "Ningún caso de uso de tests/use-cases/USE-CASES.md quedó sin cobertura: el meta-spec tests/use-case-policy.spec.js sigue en verde.",
+    "Si algún archivo quedó dudoso, no se borra: se reporta al humano con el motivo de la duda."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "metodologia",
+    "limpieza",
+    "e2e",
+    "decision-humana"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-212",
+    "TASK-213"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-13T23:58:19.538Z",
+      "body": "REVISIÓN INDEPENDIENTE (2026-08-13) — una advertencia sobre el criterio de verde.\n\nLOS TRES CRITERIOS DE RETIRO SON JUICIOS SIN SENSOR. En particular el criterio (b), \"daño concreto y nombrable a los datos\", es el mismo juicio que TASK-213 regla 2 pide aplicar a futuro; aplicarlo hacia atrás sobre 106 archivos no tiene forma de auditarse salvo releyéndolos. Eso no invalida el ticket, pero significa que la calidad del resultado depende enteramente del cuidado de quien lo ejecute, sin red.\n\nY LA RED QUE EL TICKET PROPONE NO ATRAPA LO QUE IMPORTA. El AC4 pide npm run test:all en verde antes y después. Por definición, la suite verde no puede detectar el borrado del único test que cubría un camino de error: al borrarlo, la suite queda verde igual. Es el modo de falla exacto que este ticket introduce, y el criterio de verde es ciego a él.\n\nReforzar antes de despachar. Dos ideas, ninguna elegida: exigir que por cada archivo borrado se nombre qué otro test cubre el mismo camino (y si no hay ninguno, que eso sea justamente el argumento de que el camino no importa, dicho explícitamente); o hacer el borrado en tandas chicas y reversibles en vez de una pasada.\n\nNÚMEROS. La revisión recalculó los del ticket y confirmó 94 specs en el tier rápido + 106 en tests/e2e/ = 200 archivos, y 205 tickets cerrados. Correcto. Con deriva menor en dos números que este ticket no usa: los bloques it() del tier rápido son 1155 (no 1131) y \"vacuous\" aparece 192 veces (no 179). No cambian el argumento."
+    }
+  ],
+  "created_at": "2026-08-13T20:27:33.251Z",
+  "updated_at": "2026-08-13T23:58:19.538Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

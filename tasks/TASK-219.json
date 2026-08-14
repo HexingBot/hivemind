@@ -1,0 +1,34 @@
+{
+  "key": "TASK-219",
+  "title": "Persistir el resultado de todo subagente con un hook SubagentStop, para que no dependa de que el orquestador esté vivo para relayarlo",
+  "description": "Problema traído por el humano el 2026-08-13 (\"los agentes terminan y se quedan en idle y no reportan\") y observado en vivo el mismo día: durante la revisión independiente de TASK-212..217, el agente revisor terminó su trabajo, mandó una notificación de que estaba libre, y no entregó nada. Hubo que ir a pedirle el reporte a mano. No era un reviewer — era un subagente cualquiera.\n\nTASK-217 ataca el caso del reviewer. Este ticket ataca el caso general, que es distinto y no queda cubierto por aquel.\n\nLA CAUSA, verificada. El mensaje final de un subagente es su valor de retorno y se entrega al contexto del padre. Si el padre ya cerró turno, si el chat muere o si el contexto compacta mal, se evapora. El registro durable que existe (subagent_results en el bundle de sesión) lo escribe el ORQUESTADOR después de leer el reporte: es un cache que se escribe tarde y sin garantía de que llegue a escribirse. Los números: 205 tickets cerrados, 25 resultados de subagente guardados entre los dos bundles — cerca del 88% del trabajo de subagentes no dejó rastro. Y el commit b325c6e dice literalmente \"pause session - 193 done, two reviews lost in flight\".\n\nEL MECANISMO EXISTE Y ESTÁ DOCUMENTADO EN ESTE REPO. skills/claude-code-context-monitor/SKILL.md:84 lista el evento SubagentStop, que dispara cuando un subagente termina y admite bloqueo con exit 2. La entrada que recibe un hook está en SKILL.md:62 y :104: session_id, transcript_path, cwd, hook_event_name, y OPCIONALMENTE agent_id y agent_type. transcript_path es la pieza clave — es el transcript completo del subagente, en disco, sin depender de que nadie lo relaye.\n\nLa capacidad de bloquear con exit 2 es lo que convierte \"acordate de reportar\" en \"está reportado o el subagente no terminó\". Evaluar si conviene usarla o si alcanza con persistir y seguir.\n\nDÓNDE SE INSTALA, concreto. src/claude-settings.js ya escribe y fusiona .claude/settings.json con hooks: hoy emite hooks.Stop y hooks.SessionStart (líneas 96-101) en la forma anidada { matcher?, hooks: [{ type, command }] } que TASK-210 dejó como canónica. Ojo con dos detalles que ese módulo ya resolvió y hay que respetar: la línea 7 dice que nunca pisa hooks preexistentes, sólo agrega; y las líneas 71-73 avisan que no todos los eventos admiten matcher (SessionStart sí, Stop no). Hay que averiguar y documentar si SubagentStop lo admite, no suponerlo.\n\nDOS COSAS QUE HAY QUE VERIFICAR ANTES DE DISEÑAR, no asumir:\n\n1. agent_id y agent_type figuran como OPCIONALES en la documentación del propio repo. Si no vienen siempre, el hook no puede dar por hecho que sabe qué subagente terminó, y hay que resolver cómo se atribuye el resultado a un ticket. Comprobar contra el comportamiento real antes de diseñar alrededor de esos campos.\n\n2. El .claude/settings.json de ESTE repo no tiene ninguna clave hooks. O sea que el framework le emite hooks de context-monitor a los proyectos consumidores pero no los corre sobre sí mismo. Averiguar si eso es intencional o un hueco, porque determina si el hook nuevo alcanza a este repo o sólo a los consumidores.\n\nRELACIÓN CON TASK-217, para no duplicar ni fusionar mal. Son dos problemas que se parecen y no son el mismo:\n- Durabilidad (este ticket): que el resultado exista aunque nadie lo relaye. Un hook SubagentStop lo resuelve para TODOS los subagentes sin darle herramientas de escritura a ninguno.\n- Autoría (TASK-217): que el veredicto del reviewer lo escriba el reviewer y no el orquestador con sus propias palabras. Es un problema de fabricación de veredictos, no de pérdida.\nEste ticket NO cierra el de autoría. Pero si aterriza primero puede cambiar cuál es el mecanismo correcto para TASK-217, que quedó marcado como \"no arrancar\" hasta tener uno nuevo — así que conviene hacer este antes.\n\nFUERA DE ALCANCE: notificarle al humano cuando un subagente termina. Es útil y es otra capa; si este ticket deja el resultado en disco, la notificación se puede construir encima después.",
+  "acceptance_criteria": [
+    "Está verificado y documentado, contra el comportamiento real y no contra la documentación, qué campos entrega SubagentStop en este entorno: si agent_id y agent_type vienen siempre o no, y si el evento admite matcher.",
+    "Cuando un subagente termina, su resultado queda en disco sin que el orquestador intervenga. Demostrarlo con un subagente real que termine sin que nadie relaye nada, y mostrar el archivo resultante.",
+    "Está resuelto y documentado cómo se atribuye un resultado persistido al ticket que lo originó, incluido el caso en que agent_id no venga.",
+    "El hook se emite desde src/claude-settings.js siguiendo la forma anidada ya canonizada en las líneas 96-101, y respeta la regla de no pisar hooks preexistentes de la línea 7. Probarlo contra un settings.json que ya tenga hooks propios.",
+    "Está decidido y registrado si se usa el bloqueo con exit 2 (el subagente no termina sin registro) o sólo se persiste, con el motivo de la elección.",
+    "Está resuelto si este repo corre el hook sobre sí mismo o sólo lo emite a consumidores, y si hoy no lo corre, si eso es intencional. Registrar la respuesta.",
+    "El registro nuevo no duplica ni contradice subagent_results del bundle de sesión: decir cómo conviven, o si uno reemplaza al otro.",
+    "npm run test:all en verde, dist reconstruido y commiteado si cambió src/ o bin/, con dist-parity pasando."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "agentes",
+    "durabilidad",
+    "hooks",
+    "decision-humana"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-08-14T00:00:31.179Z",
+  "updated_at": "2026-08-14T00:00:31.179Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

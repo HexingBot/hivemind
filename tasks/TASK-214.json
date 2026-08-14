@@ -1,0 +1,39 @@
+{
+  "key": "TASK-214",
+  "title": "UAT en paralelo y siempre visible: que el humano pueda ver qué está pasando en cualquier momento, no sólo al final",
+  "description": "Decisión humana del 2026-08-13, parte tres del cambio de metodología. Dos cambios que van juntos.\n\nCAMBIO 1 — El UAT deja de ser exclusivo de uat-only.\nHoy el UAT es obligatorio para uat-only y opcional para tests-after \"cuando los criterios describen comportamiento observable\" (CLAUDE.md paso 4). Pasa a correr siempre que el ticket cambie algo que una persona pueda ver, en paralelo con los tests, no después. Uno cubre lo visible, el otro cubre que no se rompa más adelante. Son controles distintos y ninguno reemplaza al otro.\n\nCAMBIO 2 — Siempre tiene que haber algo para mirar.\nPrincipio del humano, textual: mientras hivemind trabaja, tiene que poder preguntar \"dónde puedo ver lo que estamos haciendo\" y que haya una respuesta real — artefactos para mirar, o al menos las cosas que ya están hechas. Rápido, constante y a demanda.\n\nHoy eso no se cumple. Entre que arranca un ticket y que cierra, lo único que existe es texto en el chat, y si el chat muere no queda nada. Hay evidencia dura: el commit b325c6e dice \"pause session - 193 done, two reviews lost in flight\", y de 205 tickets cerrados sólo hay 25 resultados de subagente guardados en los dos bundles de sesión — cerca del 88% del trabajo de subagentes no dejó rastro.\n\nYa existe una pieza aprovechable: el tablero kanban local (/hivemind:task-status, src/task-board.js) que sirve las tareas del store con drag-and-drop. Es el candidato natural a \"dónde mirar\", pero hoy sólo muestra tickets, no lo que está pasando ahora mismo.\n\nEste ticket define el mínimo: que en cualquier momento el humano tenga un lugar concreto al que ir, y que ese lugar refleje el trabajo en vuelo, no sólo lo cerrado. \"Todavía no hay nada para mostrar\" se trata como un hueco a tapar, no como un estado normal.\n\nNOTA DE ALCANCE. Hay un problema relacionado pero distinto que NO se resuelve acá: el reviewer no tiene ninguna herramienta de escritura (sus tools son Read, Grep, Glob y Bash de sólo lectura), así que su veredicto sólo existe como texto devuelto al orquestador y se pierde si el chat muere. Eso es una capacidad faltante, no un tema de visibilidad, y va en su propio ticket.",
+  "acceptance_criteria": [
+    "CLAUDE.md y las dos copias de SKILL.md documentan que el UAT corre siempre que el ticket cambie algo observable por una persona, en paralelo con los tests, y que UAT y tests son controles distintos donde ninguno reemplaza al otro.",
+    "Está definido y documentado qué cuenta como 'observable por una persona', con criterio suficientemente concreto como para que dos sesiones distintas lleguen a la misma respuesta sobre el mismo ticket.",
+    "Mientras un ticket está en vuelo existe al menos un lugar concreto al que el humano puede ir a mirar, y ese lugar refleja el estado actual del trabajo, no sólo los tickets ya cerrados. Decir cuál es ese lugar y por qué se eligió.",
+    "El orquestador puede responder 'dónde puedo ver lo que estamos haciendo' con una ruta o URL concreta en cualquier momento del ciclo, incluso antes de que haya un solo commit.",
+    "Se demuestra con un recorrido real: arrancar un ticket, y en tres momentos distintos del ciclo mostrar qué había para mirar en cada uno.",
+    "Los pares con copia espejo quedan byte-idénticos.",
+    "npm run test:all en verde, dist reconstruido y commiteado si cambió src/ o bin/."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "metodologia",
+    "uat",
+    "visibilidad",
+    "decision-humana"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-13T23:57:56.720Z",
+      "body": "REVISIÓN INDEPENDIENTE (2026-08-13) — dos huecos y una advertencia.\n\nNO TOCA EL ÚNICO MECANISMO QUE IMPONE EL UAT. El enforcement real vive en src/close-guard.js (checkUatGuard y hasExplicitHumanVerdictMarker) y está atado a verification_tier === 'uat-only'. Este ticket no menciona close-guard.js en ninguna parte. Combinado con TASK-212, que hace de tests-after el default de todo el trabajo real, el efecto es doble: la obligación nueva (UAT siempre que haya algo observable) queda documentada sin ningún sensor que la imponga, mientras el enforcement que sí existe cubre un conjunto de tickets que se achica. Hay que decidir explícitamente si la obligación nueva se impone en código o se acepta como convención, y decirlo, no dejarlo implicado.\n\nSE SOLAPA CON TASK-213 Y NINGUNO DE LOS DOS LO DICE. La regla 1 de TASK-213 pide una \"lista de casos observables\" derivada de los criterios de aceptación, escrita por el orquestador antes de despachar al developer, con forma \"hacé X, tiene que pasar Y\". El script de UAT de este ticket es una lista derivada de los criterios de aceptación, presentada al humano, con forma \"run/do X, expect Y\". Es la misma forma, de la misma fuente, con el mismo propósito. O son el mismo artefacto en dos momentos del ciclo, o son dos listas paralelas que alguien va a tener que mantener sincronizadas. Decidir cuál de las dos cosas es, y escribirlo en ambos tickets.\n\nLOS CRITERIOS DE ACEPTACIÓN SON EL PUNTO MÁS DÉBIL DE LOS SEIS TICKETS. AC3, AC4 y AC5 están redactados como narración: \"existe al menos un lugar concreto\", \"el orquestador puede responder\", \"mostrar qué había para mirar en tres momentos\". Dos sesiones distintas pueden dar respuestas diferentes y las dos pasarían. Y AC2 pide un criterio de \"observable por una persona\" lo bastante concreto para que dos sesiones coincidan, sin proponer cómo comprobar esa propiedad — es autorreferente. Este es el ticket con más riesgo de cerrarse por acuerdo tácito. Endurecer los criterios antes de despacharlo."
+    }
+  ],
+  "created_at": "2026-08-13T20:27:09.743Z",
+  "updated_at": "2026-08-13T23:57:56.720Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}

@@ -1,0 +1,39 @@
+{
+  "key": "TASK-213",
+  "title": "Tres reglas para que los tests dejen de ser vacíos: casos desde el ticket, cada test nombra el daño que evita, y tope por ticket",
+  "description": "Decisión humana del 2026-08-13, parte dos del cambio de metodología. Sacar el tdd por sí solo no arregla nada: el defecto real no es cuándo se escribe el test, es quién lo escribe y contra qué modelo. Un test escrito por el mismo agente que escribió la implementación, mirando su propio código, confirma lo que ese agente creyó — no lo que el usuario necesita. Ahí nacen los tests vacíos.\n\nREGLA 1 — Los casos salen del ticket, no del código.\nAntes de programar, se escribe una lista corta en texto plano de \"hacé X, tiene que pasar Y\", derivada de los criterios de aceptación en términos que una persona pueda observar. La escribe el orquestador, no el developer. No es código, es una lista. El developer la recibe en el briefing y programa contra ella.\nAnti-lavado: si el developer necesita cambiar un caso de esa lista para que pase, eso NO se resuelve en silencio — escala al humano. O cambió el requerimiento, o la implementación está mal. Este control reemplaza a la corrida en rojo del tdd y es más fuerte, porque es estructural en vez de evidencial: no depende de que alguien capture y adjunte una prueba.\n\nREGLA 2 — Cada test nuevo nombra el daño que evita.\nUna línea, en el propio test o en el hand-off: \"esto evita que se guarde un estado a medias\". Si no podés escribir esa línea, el test no va. Esto reemplaza al tdd para las cosas delicadas (datos que se corrompen, parseo, seguridad, mutación de estado): no necesitan un tier propio, necesitan que el daño esté nombrado.\n\nREGLA 3 — Tope por ticket.\nLos tests nuevos no pueden superar la cantidad de criterios de aceptación del ticket. Pasarse requiere justificación explícita en el hand-off. Hoy developer.md:95 ya tiene un \"New-test budget\" cualitativo (\"cada spec nuevo debe codificar un criterio de aceptación o una regresión real\") y reviewer.md:36 marca los specs redundantes como LOW. Esto no crea la regla, la vuelve contable — y hay que decidir si el hallazgo por pasarse sigue siendo LOW o sube, dado que la acumulación es justamente el problema que estamos atacando.\n\nDónde vive: CLAUDE.md, las dos copias de skills/orchestrator-routing/SKILL.md, y developer.md y reviewer.md con sus espejos en agents/. Toda edición de un archivo con copia espejo tiene que dejar el par byte-idéntico (tests/agents-parity.spec.js).",
+  "acceptance_criteria": [
+    "La regla 1 está documentada en CLAUDE.md y en las dos copias de SKILL.md: el orquestador deriva la lista de casos observables desde los criterios de aceptación ANTES de despachar al developer, y la lista viaja en el briefing.",
+    "El developer no puede cambiar un caso de esa lista en silencio: está documentado en developer.md que un caso que no pasa se escala al orquestador, y reviewer.md trata un caso modificado sin escalamiento como hallazgo HIGH.",
+    "La regla 2 está en developer.md: cada test nuevo nombra en una línea el daño concreto que evita, y el hallazgo por un test sin esa línea está definido con su severidad.",
+    "La regla 3 está en developer.md y reviewer.md con el tope numérico (tests nuevos <= cantidad de criterios de aceptación) y la vía de justificación para pasarse. La severidad del hallazgo por pasarse sin justificar está decidida y registrada.",
+    "El New-test budget que ya existe en developer.md:95 quedó integrado con la regla 3, no duplicado al lado.",
+    "Todos los pares con copia espejo (.claude/agents/ vs agents/, .claude/skills/ vs skills/) quedan byte-idénticos.",
+    "Existe al menos un sensor que falla si alguna de las tres reglas se borra de la documentación, y se demostró que ese sensor puede fallar de verdad.",
+    "npm run test:all en verde."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "metodologia",
+    "tests-vacios",
+    "decision-humana"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-08-13T23:58:09.783Z",
+      "body": "REVISIÓN INDEPENDIENTE (2026-08-13).\n\nSE SOLAPA CON TASK-214 Y NINGUNO DE LOS DOS LO DICE. La \"lista de casos observables\" de la regla 1 (derivada de los criterios de aceptación, escrita por el orquestador antes de despachar, con forma \"hacé X, tiene que pasar Y\") y el script de UAT de TASK-214 (derivado de los criterios de aceptación, presentado al humano, con forma \"run/do X, expect Y\") son la misma forma de la misma fuente. O son el mismo artefacto en dos momentos del ciclo, o son dos listas paralelas que hay que mantener sincronizadas. Decidir cuál y escribirlo en los dos tickets. Si son el mismo, este ticket debería decir explícitamente que la lista que produce ES lo que después se presenta como UAT.\n\nLA REGLA 2 AHORA TIENE UN CONSUMIDOR CON DIENTES. Se creó TASK-218 (reemplazo de la protección que se perdía al retirar el aviso de tier), y su gate depende directamente de esta regla: cuando el diff toca superficie peligrosa, el reviewer exige que los tests que la cubren nombren el daño que evitan. O sea que la regla 2 deja de ser sólo buena práctica y pasa a ser la propiedad sobre la que se apoya un gate. TASK-218 declaró depends_on de este ticket. Redactar la regla 2 con esa carga en mente: tiene que ser lo bastante precisa como para que un reviewer pueda decir objetivamente si un test la cumple o no.\n\nDEPENDENCIAS. Este ticket quedó con depends_on vacío, igual que 212, 214, 216 y 217, y los cinco editan CLAUDE.md, developer.md, reviewer.md y las dos copias de SKILL.md. Con la disciplina de copias byte-idénticas, dos en paralelo se pisan. Serializar al despachar."
+    }
+  ],
+  "created_at": "2026-08-13T20:26:38.406Z",
+  "updated_at": "2026-08-13T23:58:09.783Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T1"
+}
