@@ -8,6 +8,63 @@ The single source of version truth is `.claude-plugin/plugin.json`. Because the
 plugin installs from this repository's `main` branch via the marketplace, a
 release is the `main` HEAD at the tagged version.
 
+## [0.22.0] — 2026-08-15
+
+A subagent finishes, reports that it is free, and delivers nothing. That was a
+user report; during this release's own work it reproduced twice, live, on the
+very subagent sent to research the fix. A subagent's result now survives on
+disk whether or not anyone is alive to relay it.
+
+The investigation also corrected three claims this repository had been
+carrying about how hooks behave — all of them traceable to a single
+unqualified sentence in its own documentation, none of them ever tested.
+
+### Added
+- **Subagent results are persisted by a `SubagentStop` hook** (TASK-219) — a
+  new plugin-level hook (`hooks/persist-subagent.mjs`, wired in
+  `hooks/hooks.json`) appends every subagent's result to a JSONL log beside
+  the active session bundle, with no orchestrator involvement. The
+  `SubagentStop` payload carries `last_assistant_message` — the subagent's
+  final answer, verbatim — so nothing needs to parse a transcript. This makes
+  the hook strictly *more* reliable than a subagent's own reporting: it
+  captures the result even when the agent never routes it anywhere, which is
+  exactly the observed failure. Pure logic lives in `src/subagent-log.js`; the
+  hook script always exits 0.
+- **Attribution to the originating ticket** — the hook resolves the active
+  ticket itself (pointer → bundle → `active_task`), so a record is filed
+  against real work without any naming convention to comply with.
+
+### Fixed
+- **Documented hook-payload behavior now matches reality** (TASK-219) —
+  `skills/claude-code-context-monitor/SKILL.md` described `agent_id`/
+  `agent_type` as "optionally" present, in one unqualified sentence that was
+  the repository's only definition of a hook payload and had never been
+  verified. Against 26 real payloads: `agent_id` is always present and
+  non-empty; `agent_type`'s *key* is always present but its *value* can be
+  empty; and `agent_type` returns the spawn's `name` when one is given, not
+  the subagent type. The event table gains a `Matcher?` column with ~24 rows
+  marked `Unverified` rather than guessed.
+- **`SubagentStop` matcher semantics** (TASK-219) — a matcher *is* honored and
+  matches against `agent_type`, but **fails open when `agent_type` is empty**.
+  It is therefore unreliable in both directions — it misses agents spawned
+  with a custom `name` and over-fires on agents with no type — which is why
+  the shipped hook registers no matcher at all.
+- **Hook events fire per turn, not per subagent lifetime** (TASK-219) — the
+  same subagent accumulates a `SubagentStop` per turn under a stable
+  `agent_id`. Documented in `state/README.md`, since a reader assuming one
+  record per subagent would misread the log.
+
+### Notes
+- The `SubagentStop` hook ships in the plugin manifest, so it reaches this
+  repository and every consumer without re-running init — but an installed
+  plugin loads from the marketplace cache, which updates from the **remote**.
+  The hook is inert until this release is published and the plugin updated;
+  this is the same topology caveat that applies to the MCP server bundle.
+- `exit 2` blocking was deliberately **not** used. On `SubagentStop` it does
+  not create the missing record — it keeps the subagent running instead of
+  finishing, making the very problem worse. The hook always exits 0 and
+  reports failures on stderr.
+
 ## [0.21.0] — 2026-08-06
 
 The headline is a six-week-old silent failure, found by pulling on a user
