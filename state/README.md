@@ -58,8 +58,64 @@ That four-step sequence is the **RESUME-FIRST contract** enshrined in `CLAUDE.md
 | `transcript.ref.json` | optional | paths + sha256 of Claude Code's native transcript files; written when `snapshot_transcript=true` |
 | `transcript.snapshot/` | optional | actual copies of the referenced transcript files; written on every `pause` and `end` when opted in |
 | `artifacts/` | optional | catch-all for files the orchestrator wants to keep with the session |
+| `subagent-log.jsonl` | optional | raw, append-only record of every subagent result, written by the `SubagentStop` hook (see "Subagent result persistence" below); absent until the first subagent finishes while a bundle is active |
 
 The two `schema_version` numbers (pointer/bundle state at `2`, manifest at `1`) track independent dimensions on purpose; see the comment block in `src/schemas.js`.
+
+## Subagent result persistence (`SubagentStop` hook, TASK-219)
+
+Every subagent's result is written to disk by a `SubagentStop` hook
+(`hooks/persist-subagent.mjs`, pure logic in `src/subagent-log.js`) — this
+does **not** depend on the orchestrator being alive to relay the result. The
+hook fires on every subagent completion, reads the SubagentStop payload from
+stdin, and appends one JSON record per line to
+`state/sessions/<active_session_id>/subagent-log.jsonl` (falling back to
+`state/subagent-log.jsonl` when there is no resolvable active bundle).
+
+Each record: `captured_at`, `session_id` (the harness session id — NOT the
+bundle id above), `agent_id`, `agent_type`, `ticket`, `last_assistant_message`
+(the subagent's final answer, verbatim — no transcript parsing needed),
+`agent_transcript_path`, `cwd`, `hook_event_name`.
+
+**Attribution (AC3):** the hook resolves the originating ticket itself,
+independent of the payload — it reads the pointer (`state/session.json`),
+follows it to the active bundle, and takes `loop_state.current_ticket`. If
+there is no active session, the pointer/bundle can't be read, or
+`loop_state.current_ticket` is absent, the record is still written with
+`ticket: null`. Losing attribution is never a reason to lose the record.
+
+**Blocking vs. persisting only (AC5):** the hook always exits `0`, no matter
+what happens internally; any error goes to stderr, never to the exit code. A
+`SubagentStop` hook's exit-2 "block" mechanism does not make the missing
+record appear — it makes the subagent keep running instead of finishing,
+which actively defeats the purpose of this hook (the subagent's turn never
+completes, so nothing gets persisted anyway, and the subagent burns more
+turns for no benefit). Decided by the human; not exit-2, ever.
+
+**Does this repo run the hook on itself (AC6)?** Yes and no, by layer. This
+repo already runs plugin-level hooks — the two `SessionStart` entries in
+`hooks/hooks.json` (`repin.mjs`, `settings-migrate.mjs`) — and neither
+`.claude/settings.json` nor `.claude/settings.local.json` in this repo
+declares its own `hooks` key that would compete with them. So the new
+`SubagentStop` entry in `hooks/hooks.json` reaches this repo through the
+same plugin channel, in principle. The caveat: an **installed** plugin loads
+from the marketplace cache, which only updates from the git **remote** — so
+this change does not actually run in this repo's own live sessions until the
+plugin is published/updated and the cache picks it up. Same topology caveat
+as the MCP-server staleness note elsewhere in this codebase; not something
+this ticket can close by itself.
+
+**How this coexists with the bundle's `subagent_results` (AC7):** they are
+not the same thing and neither replaces the other.
+`subagent-log.jsonl` is the **raw, append-only, machine-written** source of
+truth for "what did every subagent actually return" — every subagent, every
+field, `last_assistant_message` in full, no size cap. The bundle's
+`subagent_results` (see the "Compaction" section above — capped at 15
+entries, ~1000-char summaries) stays the **orchestrator's curated index**:
+a short, human-authored gist for fast session recall, not a durable
+archive. If a `subagent_results` entry rotates out of the bundle (or was
+never written because the orchestrator wasn't around to relay it),
+`subagent-log.jsonl` is where the full record still lives.
 
 ## Compaction (bundle hygiene — TASK-103, extended by TASK-110)
 

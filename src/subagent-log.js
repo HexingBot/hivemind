@@ -1,0 +1,113 @@
+// src/subagent-log.js
+// TASK-219 — pure, testable core for the SubagentStop persistence hook.
+//
+// WHY: the SubagentStop payload (see hooks/persist-subagent.mjs) carries
+// last_assistant_message VERBATIM — the subagent's final answer, served in
+// full, no transcript parsing required. Today that value only survives if
+// the ORCHESTRATOR is alive to relay it into the session bundle's
+// subagent_results (capped at 15 entries, ~1000 chars each — a curated
+// index, not a durable record; see state/README.md's "Compaction" section
+// and this file's AC7 note below). This module builds a full, uncapped,
+// append-only record of every subagent's result, independent of whether
+// the orchestrator ever reads the hook payload back.
+//
+// AC7 (how the two logs coexist): this log is the RAW, machine-written,
+// append-only source of truth for "what did each subagent return" — every
+// entry, full last_assistant_message, no cap, no curation. The bundle's
+// subagent_results stays the orchestrator's CURATED summary (bounded,
+// human-authored gist) for quick session recall. Neither replaces the
+// other; a missing/rotated bundle entry can always be recovered from this
+// log by session_id + agent_id.
+//
+// Never throws: every exported function is designed to degrade to a safe
+// default (null / best-effort record) rather than propagate an exception,
+// because the hook that calls this module must always exit 0 (AC5 — see
+// hooks/persist-subagent.mjs's header for the exit-2-vs-persist decision).
+
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/**
+ * Build the durable log record for one SubagentStop event.
+ *
+ * Tolerates a malformed/partial payload (missing fields, wrong types) — a
+ * field that isn't present or isn't a string is recorded as null rather
+ * than throwing or omitting the record entirely. Losing the record because
+ * one field was odd would defeat the ticket's whole point (AC2).
+ *
+ * @param {*} payload - parsed SubagentStop hook JSON (may be malformed/partial)
+ * @param {{ activeTicket?: string|null }} [opts]
+ * @returns {object} the JSONL record to append
+ */
+export function buildSubagentRecord(payload, { activeTicket = null } = {}) {
+  const p = (payload && typeof payload === 'object') ? payload : {};
+  const str = (v) => (typeof v === 'string' ? v : null);
+
+  return {
+    captured_at: new Date().toISOString(),
+    session_id: str(p.session_id),
+    agent_id: str(p.agent_id),
+    agent_type: str(p.agent_type),
+    ticket: activeTicket ?? null,
+    last_assistant_message: str(p.last_assistant_message),
+    agent_transcript_path: str(p.agent_transcript_path),
+    cwd: str(p.cwd),
+    hook_event_name: str(p.hook_event_name),
+  };
+}
+
+/**
+ * Resolve the ticket the orchestrator is currently driving, per the human's
+ * decision (AC3): follow the pointer -> bundle -> loop_state.current_ticket.
+ * Never throws — any failure (missing pointer, corrupt JSON, missing
+ * bundle, missing loop_state) resolves to null. A resolution failure is
+ * NEVER a reason to drop the subagent record itself; it only means the
+ * record is filed with ticket: null.
+ *
+ * @param {string} repoRoot
+ * @returns {string|null}
+ */
+export function resolveActiveTicket(repoRoot) {
+  try {
+    const pointerPath = join(repoRoot, 'state', 'session.json');
+    if (!existsSync(pointerPath)) return null;
+    const pointer = JSON.parse(readFileSync(pointerPath, 'utf8'));
+    const sessionId = pointer && pointer.active_session_id;
+    if (!sessionId || typeof sessionId !== 'string') return null;
+
+    const bundlePath = join(repoRoot, 'state', 'sessions', sessionId, 'session.json');
+    if (!existsSync(bundlePath)) return null;
+    const bundle = JSON.parse(readFileSync(bundlePath, 'utf8'));
+
+    const ticket = bundle && bundle.loop_state && bundle.loop_state.current_ticket;
+    return typeof ticket === 'string' ? ticket : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the destination JSONL log path (AC3 / hook plumbing).
+ * Preferred: alongside the active session bundle, so the raw record lives
+ * next to the session state it belongs to. Falls back to a repo-root-level
+ * log when there is no resolvable active bundle (no pointer, corrupt
+ * pointer, pointer with no active_session_id). Never throws.
+ *
+ * @param {string} repoRoot
+ * @returns {string} absolute path to the target .jsonl file
+ */
+export function resolveLogPath(repoRoot) {
+  try {
+    const pointerPath = join(repoRoot, 'state', 'session.json');
+    if (existsSync(pointerPath)) {
+      const pointer = JSON.parse(readFileSync(pointerPath, 'utf8'));
+      const sessionId = pointer && pointer.active_session_id;
+      if (sessionId && typeof sessionId === 'string') {
+        return join(repoRoot, 'state', 'sessions', sessionId, 'subagent-log.jsonl');
+      }
+    }
+  } catch {
+    // fall through to the repo-root fallback
+  }
+  return join(repoRoot, 'state', 'subagent-log.jsonl');
+}

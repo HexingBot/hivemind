@@ -19,6 +19,16 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/persist-subagent.mjs\""
+          }
+        ]
+      }
     ]
   }
 }
