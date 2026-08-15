@@ -70,6 +70,28 @@ describe('buildSubagentRecord (AC2/AC7 — the record must never be lost)', () =
     const record = buildSubagentRecord({ agent_id: 'a1' }, {});
     expect(record.ticket).toBeNull();
   });
+
+  it('normalizes an empty-string agent_type to null (real fixture: a SubagentStop with no matching SubagentStart)', () => {
+    // Real payload captured live during TASK-219's own investigation:
+    // agent_id present and non-empty, agent_type "" — a subagent that
+    // emitted SubagentStop with zero prior SubagentStart events. Reading ""
+    // back as a distinct, real agent_type would be wrong; it must read null.
+    const payload = {
+      session_id: 'e80d409a-62cb-481c-9d6b-d1b4a3fe41d5',
+      agent_id: 'a946acc6df5a7dc3a',
+      agent_type: '',
+      hook_event_name: 'SubagentStop',
+    };
+    const record = buildSubagentRecord(payload, {});
+    expect(record.agent_id).toBe('a946acc6df5a7dc3a');
+    expect(record.agent_type).toBeNull();
+  });
+
+  it('normalizes a whitespace-only string field to null, for any string field, not just agent_type', () => {
+    const record = buildSubagentRecord({ agent_type: '   ', last_assistant_message: '\t\n' }, {});
+    expect(record.agent_type).toBeNull();
+    expect(record.last_assistant_message).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

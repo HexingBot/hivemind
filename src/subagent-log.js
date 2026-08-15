@@ -41,7 +41,14 @@ import { join } from 'node:path';
  */
 export function buildSubagentRecord(payload, { activeTicket = null } = {}) {
   const p = (payload && typeof payload === 'object') ? payload : {};
-  const str = (v) => (typeof v === 'string' ? v : null);
+  // Empty-result contract (fix round, TASK-219 — same argument as the ticket
+  // attribution fix): an empty or whitespace-only string is not a value, it
+  // is the ABSENCE of one — treating it as one would let e.g. agent_type: ""
+  // (confirmed to occur in real payloads: a subagent that emitted a
+  // SubagentStop with no matching SubagentStart) read back as if "" were a
+  // real, distinct agent type instead of "unknown". Normalize to null so a
+  // reader can't mistake absence for a value.
+  const str = (v) => (typeof v === 'string' && v.trim().length > 0 ? v : null);
 
   return {
     captured_at: new Date().toISOString(),

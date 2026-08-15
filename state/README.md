@@ -64,18 +64,32 @@ The two `schema_version` numbers (pointer/bundle state at `2`, manifest at `1`) 
 
 ## Subagent result persistence (`SubagentStop` hook, TASK-219)
 
-Every subagent's result is written to disk by a `SubagentStop` hook
+Every subagent turn's result is written to disk by a `SubagentStop` hook
 (`hooks/persist-subagent.mjs`, pure logic in `src/subagent-log.js`) — this
 does **not** depend on the orchestrator being alive to relay the result. The
-hook fires on every subagent completion, reads the SubagentStop payload from
-stdin, and appends one JSON record per line to
+hook fires on every `SubagentStop` event, reads the payload from stdin, and
+appends one JSON record per line to
 `state/sessions/<active_session_id>/subagent-log.jsonl` (falling back to
 `state/subagent-log.jsonl` when there is no resolvable active bundle).
 
 Each record: `captured_at`, `session_id` (the harness session id — NOT the
 bundle id above), `agent_id`, `agent_type`, `ticket`, `last_assistant_message`
-(the subagent's final answer, verbatim — no transcript parsing needed),
-`agent_transcript_path`, `cwd`, `hook_event_name`.
+(the subagent's final answer for THAT turn, verbatim — no transcript parsing
+needed), `agent_transcript_path`, `cwd`, `hook_event_name`. Any string field
+that arrives empty or whitespace-only is normalized to `null` (observed in
+real payloads — `agent_type: ""` occurs) rather than recorded as if it were a
+real value.
+
+**Granularity: one record per TURN, not one per subagent (TASK-219 fix
+round, empirical against 18 captured payloads across 5 subagents)**.
+`SubagentStop` fires once per assistant turn a subagent completes, not once
+per subagent lifetime — a long-lived subagent that is messaged multiple
+times (e.g. a persistent teammate) produces multiple `SubagentStop` records,
+one per turn, all sharing the same `agent_id`. `agent_id` is stable across a
+given subagent's turns and is therefore the correlation key: to reconstruct
+"this subagent's full history," filter by `agent_id`; to get "this
+subagent's most recent result," take the last record for that `agent_id` by
+`captured_at`. Do not assume one line in this file == one subagent.
 
 **Attribution (AC3):** the hook resolves the originating ticket itself,
 independent of the payload — it reads the pointer (`state/session.json`),
@@ -133,8 +147,9 @@ this ticket can close by itself.
 **How this coexists with the bundle's `subagent_results` (AC7):** they are
 not the same thing and neither replaces the other.
 `subagent-log.jsonl` is the **raw, append-only, machine-written** source of
-truth for "what did every subagent actually return" — every subagent, every
-field, `last_assistant_message` in full, no size cap. The bundle's
+truth for "what did every subagent turn actually return" — every turn, every
+field, `last_assistant_message` in full, no size cap (see "Granularity"
+above — this is a per-turn log, not a per-subagent one). The bundle's
 `subagent_results` (see the "Compaction" section above — capped at 15
 entries, ~1000-char summaries) stays the **orchestrator's curated index**:
 a short, human-authored gist for fast session recall, not a durable
