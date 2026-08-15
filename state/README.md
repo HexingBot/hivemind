@@ -79,10 +79,35 @@ bundle id above), `agent_id`, `agent_type`, `ticket`, `last_assistant_message`
 
 **Attribution (AC3):** the hook resolves the originating ticket itself,
 independent of the payload — it reads the pointer (`state/session.json`),
-follows it to the active bundle, and takes `loop_state.current_ticket`. If
-there is no active session, the pointer/bundle can't be read, or
-`loop_state.current_ticket` is absent, the record is still written with
-`ticket: null`. Losing attribution is never a reason to lose the record.
+follows it to the active bundle, and applies this precedence:
+
+1. `active_task`, if it is a non-empty string — use it.
+2. else, only when `mode === 'loop'`, `loop_state.current_ticket`, if it is
+   a non-empty string — use it.
+3. else — `null`.
+
+**Why `active_task` comes first, and why `loop_state.current_ticket` is
+gated on loop mode** (fix round, found in live review): `active_task` is a
+**required** bundle field (`state/bundle.schema.json`) and is the field the
+RESUME-FIRST contract itself treats as authoritative (step 3 of the resume
+path above) — it stays current in both `harness` mode (the default,
+human-gated, one-step-at-a-time mode) and `loop` mode. `loop_state.current_ticket`
+is only ever refreshed by the autonomous drive loop
+(`src/loop-checkpoint.js`); in `harness` mode nothing updates it, so it can
+sit frozen on whatever ticket a *past* loop run last touched — including a
+ticket that has since closed. Reading it unconditionally whenever
+`active_task` is `null` (the normal state of a session at rest) would
+silently attribute fresh subagent results to a stale, possibly-closed
+ticket, which is *worse* than `ticket: null`: `null` honestly says
+"unknown," while a stale ticket key confidently asserts something false —
+exactly the "absence of evidence rendered as evidence" failure class
+`CLAUDE.md`'s Empty-result contract section exists to prevent. Gating step 2
+on `mode === 'loop'` confines `loop_state` reads to the one operating mode
+where the field is actually kept live.
+
+If there is no active session, the pointer/bundle can't be read, or neither
+source resolves, the record is still written with `ticket: null`. Losing
+attribution is never a reason to lose the record.
 
 **Blocking vs. persisting only (AC5):** the hook always exits `0`, no matter
 what happens internally; any error goes to stderr, never to the exit code. A

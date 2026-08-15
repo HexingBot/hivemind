@@ -123,7 +123,7 @@ describe('resolveActiveTicket (AC3 — attribution never blocks persistence)', (
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  it('returns loop_state.current_ticket when the pointer + bundle resolve correctly', () => {
+  it('returns active_task when the pointer + bundle resolve correctly (harness mode, the default)', () => {
     const repoRoot = makeRepo();
     const bundleDir = join(repoRoot, 'state', 'sessions', 'sess-abc');
     mkdirSync(bundleDir, { recursive: true });
@@ -134,14 +134,14 @@ describe('resolveActiveTicket (AC3 — attribution never blocks persistence)', (
     );
     writeFileSync(
       join(bundleDir, 'session.json'),
-      JSON.stringify({ loop_state: { current_ticket: 'TASK-219' } }),
+      JSON.stringify({ active_task: 'TASK-219' }),
       'utf8',
     );
     expect(resolveActiveTicket(repoRoot)).toBe('TASK-219');
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  it('returns null when the bundle exists but has no loop_state.current_ticket', () => {
+  it('returns null when the bundle exists but has neither active_task nor a live loop_state.current_ticket', () => {
     const repoRoot = makeRepo();
     const bundleDir = join(repoRoot, 'state', 'sessions', 'sess-abc');
     mkdirSync(bundleDir, { recursive: true });
@@ -152,6 +152,79 @@ describe('resolveActiveTicket (AC3 — attribution never blocks persistence)', (
     );
     writeFileSync(join(bundleDir, 'session.json'), JSON.stringify({ active_task: null }), 'utf8');
     expect(resolveActiveTicket(repoRoot)).toBeNull();
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // Precedence fix round: active_task vs. loop_state.current_ticket.
+  //
+  // Bug this reproduces (found in live review, TASK-219 fix round): the
+  // original implementation read loop_state.current_ticket unconditionally.
+  // loop_state is only ever refreshed by the autonomous drive loop
+  // (src/loop-checkpoint.js) — in harness mode (the default, and what was
+  // actually running) nothing updates it, so on a real repo it sat frozen
+  // on a ticket (TASK-197) that had since been closed, silently attributing
+  // fresh subagent results to a stale, already-done ticket. That is worse
+  // than ticket: null, which honestly says "unknown".
+  // -------------------------------------------------------------------------
+
+  it('active_task wins over loop_state.current_ticket when both are present and differ (reproduces the live defect)', () => {
+    const repoRoot = makeRepo();
+    const bundleDir = join(repoRoot, 'state', 'sessions', 'sess-abc');
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      join(repoRoot, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: 'sess-abc', updated_at: '2026-01-01T00:00:00.000Z' }),
+      'utf8',
+    );
+    // Exact real-world fixture: active_task is the live ticket, loop_state
+    // still carries a NINE-DAY-STALE, already-closed ticket from a past loop run.
+    writeFileSync(
+      join(bundleDir, 'session.json'),
+      JSON.stringify({
+        mode: 'harness',
+        active_task: 'TASK-219',
+        loop_state: { current_ticket: 'TASK-197', run_started_at: '2026-08-06T00:00:00.000Z' },
+      }),
+      'utf8',
+    );
+    expect(resolveActiveTicket(repoRoot)).toBe('TASK-219');
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('in harness mode, with active_task null, returns null even when loop_state.current_ticket is present (does NOT fall back to the stale value)', () => {
+    const repoRoot = makeRepo();
+    const bundleDir = join(repoRoot, 'state', 'sessions', 'sess-abc');
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      join(repoRoot, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: 'sess-abc', updated_at: '2026-01-01T00:00:00.000Z' }),
+      'utf8',
+    );
+    writeFileSync(
+      join(bundleDir, 'session.json'),
+      JSON.stringify({ mode: 'harness', active_task: null, loop_state: { current_ticket: 'TASK-197' } }),
+      'utf8',
+    );
+    expect(resolveActiveTicket(repoRoot)).toBeNull();
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('in loop mode, with active_task null, falls back to loop_state.current_ticket (the field is live in this mode)', () => {
+    const repoRoot = makeRepo();
+    const bundleDir = join(repoRoot, 'state', 'sessions', 'sess-abc');
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      join(repoRoot, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: 'sess-abc', updated_at: '2026-01-01T00:00:00.000Z' }),
+      'utf8',
+    );
+    writeFileSync(
+      join(bundleDir, 'session.json'),
+      JSON.stringify({ mode: 'loop', active_task: null, loop_state: { current_ticket: 'TASK-219' } }),
+      'utf8',
+    );
+    expect(resolveActiveTicket(repoRoot)).toBe('TASK-219');
     rmSync(repoRoot, { recursive: true, force: true });
   });
 });
