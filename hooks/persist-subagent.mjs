@@ -64,7 +64,17 @@ try {
   appendFileSync(logPath, JSON.stringify(record) + '\n', 'utf8');
 } catch (err) {
   // Never let a persistence failure block or fail the subagent (AC5).
-  process.stderr.write(`persist-subagent.mjs: ${err && err.stack ? err.stack : err}\n`);
+  // The stderr write itself is defense in depth (LOW-3, review fix round):
+  // on Windows, a closed pipe can make process.stderr.write throw. That
+  // would otherwise be the one residual path around the exit-0 guarantee —
+  // an uncaught exception at this point exits non-zero regardless of the
+  // process.exit(0) below, since it never runs.
+  try {
+    process.stderr.write(`persist-subagent.mjs: ${err && err.stack ? err.stack : err}\n`);
+  } catch {
+    // Nothing more can be done — even reporting the error failed. Fall
+    // through to process.exit(0) unconditionally; AC5 wins over visibility.
+  }
 }
 
 process.exit(0);

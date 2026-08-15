@@ -80,8 +80,9 @@ that arrives empty or whitespace-only is normalized to `null` (observed in
 real payloads — `agent_type: ""` occurs) rather than recorded as if it were a
 real value.
 
-**Granularity: one record per TURN, not one per subagent (TASK-219 fix
-round, empirical against 18 captured payloads across 5 subagents)**.
+**Granularity: one record per TURN, not one per subagent (TASK-219,
+structural finding — held across every probe round regardless of sample
+size, so it is the fact to design against, not a count worth citing here)**.
 `SubagentStop` fires once per assistant turn a subagent completes, not once
 per subagent lifetime — a long-lived subagent that is messaged multiple
 times (e.g. a persistent teammate) produces multiple `SubagentStop` records,

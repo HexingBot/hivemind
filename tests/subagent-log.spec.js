@@ -249,6 +249,29 @@ describe('resolveActiveTicket (AC3 — attribution never blocks persistence)', (
     expect(resolveActiveTicket(repoRoot)).toBe('TASK-219');
     rmSync(repoRoot, { recursive: true, force: true });
   });
+
+  it('treats a whitespace-only active_task as absent, not as a real ticket key (LOW-2, review fix round)', () => {
+    // resolveActiveTicket tolerates schema-invalid bundle state on purpose
+    // (that IS its job); its non-empty-string criterion must match
+    // buildSubagentRecord's str() exactly, or a whitespace-only active_task
+    // (schema-invalid, but still something this function must not choke on)
+    // would be recorded verbatim as if it were a real ticket key.
+    const repoRoot = makeRepo();
+    const bundleDir = join(repoRoot, 'state', 'sessions', 'sess-abc');
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      join(repoRoot, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: 'sess-abc', updated_at: '2026-01-01T00:00:00.000Z' }),
+      'utf8',
+    );
+    writeFileSync(
+      join(bundleDir, 'session.json'),
+      JSON.stringify({ mode: 'harness', active_task: '   ' }),
+      'utf8',
+    );
+    expect(resolveActiveTicket(repoRoot)).toBeNull();
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -16,8 +16,10 @@
 // entry, full last_assistant_message, no cap, no curation. The bundle's
 // subagent_results stays the orchestrator's CURATED summary (bounded,
 // human-authored gist) for quick session recall. Neither replaces the
-// other; a missing/rotated bundle entry can always be recovered from this
-// log by session_id + agent_id.
+// other; a missing/rotated bundle entry can be recovered from this log by
+// session_id + agent_id — though not "always": agent_id itself normalizes
+// to null (see str() below) when the payload didn't carry one, in which
+// case that entry isn't correlatable this way.
 //
 // Never throws: every exported function is designed to degrade to a safe
 // default (null / best-effort record) rather than propagate an exception,
@@ -26,6 +28,17 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+// Shared "is this a real, usable string" test — a value that is a string
+// but empty or whitespace-only is treated the same as absent everywhere in
+// this module (buildSubagentRecord's fields, resolveActiveTicket's
+// active_task/current_ticket reads). One criterion, one place, so the two
+// don't drift the way active_task's check once did (LOW-2, fix round: it
+// checked `.length > 0` without trimming, unlike every other string field
+// here — a whitespace-only active_task would have been recorded verbatim).
+function isNonEmptyString(v) {
+  return typeof v === 'string' && v.trim().length > 0;
+}
 
 /**
  * Build the durable log record for one SubagentStop event.
@@ -48,7 +61,7 @@ export function buildSubagentRecord(payload, { activeTicket = null } = {}) {
   // SubagentStop with no matching SubagentStart) read back as if "" were a
   // real, distinct agent type instead of "unknown". Normalize to null so a
   // reader can't mistake absence for a value.
-  const str = (v) => (typeof v === 'string' && v.trim().length > 0 ? v : null);
+  const str = (v) => (isNonEmptyString(v) ? v : null);
 
   return {
     captured_at: new Date().toISOString(),
@@ -112,13 +125,13 @@ export function resolveActiveTicket(repoRoot) {
     if (!existsSync(bundlePath)) return null;
     const bundle = JSON.parse(readFileSync(bundlePath, 'utf8'));
 
-    if (bundle && typeof bundle.active_task === 'string' && bundle.active_task.length > 0) {
+    if (bundle && isNonEmptyString(bundle.active_task)) {
       return bundle.active_task;
     }
 
     if (bundle && bundle.mode === 'loop') {
       const ticket = bundle.loop_state && bundle.loop_state.current_ticket;
-      if (typeof ticket === 'string' && ticket.length > 0) return ticket;
+      if (isNonEmptyString(ticket)) return ticket;
     }
 
     return null;

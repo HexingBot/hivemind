@@ -62,20 +62,29 @@ fields are: `session_id`, `transcript_path`, `cwd`, `permission_mode`,
 `hook_event_name`. No usage fields.
 
 `agent_id`/`agent_type` (TASK-219 empirical verification, Claude Code
-2.1.233, updated after a larger 18-payload/5-subagent sample in the fix
-round): `agent_id` was present and non-empty in every capture. `agent_type`
-was present and non-empty in every capture but one — a `SubagentStop` fired
-with `agent_type: ""` for a subagent that never emitted a matching
-`SubagentStart`. Both fields are for subagents spawned via the `Agent`/Task-
-spawn tool (both with and without an explicit `name`); not tested for forked
-sessions or workflow-originated agents, so treat as reliably *present* (key
-exists) for tool-spawned subagents specifically, but do NOT assume
-`agent_type`'s *value* is always a real, non-empty type — code reading it
-must handle `""` as equivalent to absent. `agent_type` returns the spawn's
-`name` when one was passed, and the `subagent_type` only when it wasn't — it
-is not a trustworthy role identifier on its own. See `src/subagent-log.js`
-(TASK-219) for a consumer that normalizes both fields (and every other
-string field) to `null` when empty, whitespace-only, or absent.
+2.1.233, refined across two probe rounds): `agent_id` was present and
+non-empty in every capture (26/26 in the latest sample). `agent_type` is NOT
+always non-empty — a `SubagentStop` can fire with `agent_type: ""`. The
+**stable, structural** finding (held across every probe round, independent
+of sample size — this is the fact to design against, not a raw count):
+every `SubagentStop` observed with an empty `agent_type` fired for an
+`agent_id` that never had a matching `SubagentStart`. A raw fraction (e.g.
+"N of M stops") is a moving target — the probe kept running and kept
+capturing after the finding was first made, so any specific count recorded
+here would already be stale by the time this file is read; if a count is
+useful context, scope and date it explicitly (e.g. "4 of 15 SubagentStop
+events in a 26-record sample captured 2026-08-15 during TASK-219") rather
+than stating it as a system constant. Both fields are for subagents spawned
+via the `Agent`/Task-spawn tool (both with and without an explicit `name`);
+not tested for forked sessions or workflow-originated agents, so treat
+`agent_id` as reliably *present* (key exists, non-empty) for tool-spawned
+subagents specifically, but do NOT assume `agent_type`'s *value* is always a
+real, non-empty type — code reading it must handle `""` as equivalent to
+absent. `agent_type` returns the spawn's `name` when one was passed, and the
+`subagent_type` only when it wasn't — it is not a trustworthy role
+identifier on its own. See `src/subagent-log.js` (TASK-219) for a consumer
+that normalizes both fields (and every other string field) to `null` when
+empty, whitespace-only, or absent.
 
 The complete hook-event catalogue with token-data verdict. **Matcher?**
 (added TASK-219) records only what has actually been checked against real
@@ -100,8 +109,8 @@ this codebase, not that it lacks one:
 | PostToolBatch       | after parallel batch resolves   | Yes        | No                  | Unverified |
 | **PreCompact**      | **before compaction**           | **Yes (exit 2)**| **No**         | Yes — `"auto"` / `"manual"` |
 | **PostCompact**     | **after compaction**            | **No**     | **No**              | Unverified |
-| SubagentStart       | subagent spawned                | No         | No                  | Unverified |
-| SubagentStop        | subagent finishes               | **Yes — deliberately NOT used** (TASK-219: exiting 2 keeps the subagent running instead of finishing, which cannot create the missing record and only makes the underlying problem worse; see `hooks/persist-subagent.mjs`, always exits 0) | No | Yes — matches against `agent_type` (TASK-219 empirical verification), but **fails open when `agent_type` is empty**: a matcher deliberately crafted to match nothing still fired for a payload where `agent_type` was `""` (18-payload sample, TASK-219 fix round) — a matcher is unreliable in both directions (misses agents spawned with a custom `name`, over-fires when `agent_type` is absent), reinforcing rather than weakening the decision not to use one here; the hivemind hook is registered with no matcher so it fires unconditionally |
+| SubagentStart       | subagent's turn begins (per-TURN, not per-lifetime — a long-lived subagent re-fires this on every continuation message it receives, TASK-219 empirical) | No | No | Unverified |
+| SubagentStop        | subagent's turn ends (per-TURN, not per-lifetime — same subagent, same `agent_id`, can accumulate many `SubagentStop` events across its life, TASK-219 empirical; see `state/README.md`'s "Granularity" note) | **Yes — deliberately NOT used** (TASK-219: exiting 2 keeps the subagent running instead of finishing, which cannot create the missing record and only makes the underlying problem worse; see `hooks/persist-subagent.mjs`, always exits 0) | No | Yes — matches against `agent_type` (TASK-219 empirical verification), but **fails open when `agent_type` is empty**: a matcher deliberately crafted to match nothing still fired for a payload where `agent_type` was `""` — a matcher is unreliable in both directions (misses agents spawned with a custom `name`, over-fires when `agent_type` is absent), reinforcing rather than weakening the decision not to use one here; the hivemind hook is registered with no matcher so it fires unconditionally |
 | TaskCreated/Completed| task lifecycle                 | Yes        | No                  | Unverified |
 | TeammateIdle        | team agent idle                 | Yes        | No                  | Unverified |
 | InstructionsLoaded  | CLAUDE.md loaded                | No         | No                  | Unverified |
