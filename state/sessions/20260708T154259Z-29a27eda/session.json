@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
-  "lifecycle_state": "active",
-  "updated_at": "2026-08-15T18:55:00.000Z",
+  "lifecycle_state": "paused",
+  "updated_at": "2026-08-15T19:35:45.921Z",
   "active_task": null,
   "workflow_step": "idle",
   "next_action": "NADA EN VUELO. Arbol limpio, main sincronizado con origin, v0.22.0 publicado. Tres cosas para elegir al retomar, en el orden que yo recomendaria: (1) TASK-217, que estaba marcado NO ARRANCAR por falta de mecanismo y AHORA LO TIENE — el hook de TASK-219 captura el veredicto del reviewer verbatim con su agent_id, sin darle herramientas de escritura y sin depender de su cooperacion, que es exactamente lo que fallo dos veces; hay que desmarcarlo y reescribir su solucion propuesta, porque la original (darle append_comment al reviewer) pertenece a la familia que acaba de fallar. (2) Verificar que el hook realmente dispara por el canal del plugin ahora que v0.22.0 esta publicado: hace falta /plugin update en un install existente y despues confirmar que aparece el JSONL; esto salda el unico pendiente declarado de TASK-219 (AC6). (3) Gate 5 con 9 borradores de conocimiento esperando batch. TRAMPA CONOCIDA, encontrada hoy y NO ticketeada: decisions del bundle esta en 15/15 y compact-bundle en el tope exacto es un NO-OP (devuelve archivedDecisions 0, compacted false), porque conserva las 15 mas recientes. O sea que la receta documentada de rotar-antes-de-agregar NO libera lugar en el tope, y la proxima decision que se escriba va a tirar E_BUNDLE_INVALID. Hay que resolver eso ANTES de registrar cualquier decision nueva. subagent_results esta en 13/15 y no corre riesgo todavia. DEUDA VIEJA sin tocar: la ronda 2 del wargame, y TASK-211 (invariante de worktree-handback). Los 5 tickets 212/213/214/216/217 siguen editando todos los mismos archivos sin declarar depends_on: SERIALIZAR al despachar, nunca dos en paralelo. TASK-214 sigue con criterios de aceptacion debiles, endurecerlos antes de despachar.",
