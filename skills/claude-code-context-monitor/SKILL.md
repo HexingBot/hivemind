@@ -59,39 +59,54 @@ display output.
 No hook event receives token counts or `used_percentage`. This is an open feature
 request (GitHub issue #11008, unimplemented as of June 2026). Hook common input
 fields are: `session_id`, `transcript_path`, `cwd`, `permission_mode`,
-`hook_event_name`, and optionally `agent_id`/`agent_type`. No usage fields.
+`hook_event_name`. No usage fields.
 
-The complete hook-event catalogue with token-data verdict:
+`agent_id`/`agent_type` (TASK-219 empirical verification, Claude Code
+2.1.233): observed present in 4/4 captures of `SubagentStart` and
+`SubagentStop`, all for subagents spawned via the `Agent`/Task-spawn tool
+(both with and without an explicit `name`). Not tested for forked sessions or
+workflow-originated agents, so treat as reliably present for tool-spawned
+subagents specifically, not as an unconditional guarantee across every
+possible agent-spawning path. `agent_type` returns the spawn's `name` when one
+was passed, and the `subagent_type` only when it wasn't — it is not a
+trustworthy role identifier on its own. See `src/subagent-log.js` (TASK-219)
+for a consumer that treats both fields as possibly-absent regardless.
 
-| Hook event          | Fires on                        | Can block? | Token/context data? |
-|---------------------|---------------------------------|------------|---------------------|
-| SessionStart        | startup, resume, clear, compact | No         | No                  |
-| Setup               | init, maintenance               | No         | No                  |
-| SessionEnd          | clear, resume, logout, other    | No         | No                  |
-| UserPromptSubmit    | every user prompt               | Yes (exit 2)| No                 |
-| UserPromptExpansion | slash-command expansion         | Yes        | No                  |
-| Stop                | Claude finishes a turn          | Yes (exit 2)| No                 |
-| StopFailure         | API error ends a turn           | No         | No                  |
-| PreToolUse          | before each tool call           | Yes        | No                  |
-| PermissionRequest   | permission dialog appears       | Yes        | No                  |
-| PermissionDenied    | tool denied by auto classifier  | No         | No                  |
-| PostToolUse         | after tool succeeds             | No*        | No                  |
-| PostToolUseFailure  | after tool fails                | No         | No                  |
-| PostToolBatch       | after parallel batch resolves   | Yes        | No                  |
-| **PreCompact**      | **before compaction**           | **Yes (exit 2)**| **No**         |
-| **PostCompact**     | **after compaction**            | **No**     | **No**              |
-| SubagentStart       | subagent spawned                | No         | No                  |
-| SubagentStop        | subagent finishes               | Yes        | No                  |
-| TaskCreated/Completed| task lifecycle                 | Yes        | No                  |
-| TeammateIdle        | team agent idle                 | Yes        | No                  |
-| InstructionsLoaded  | CLAUDE.md loaded                | No         | No                  |
-| ConfigChange        | settings file changes           | Yes        | No                  |
-| FileChanged         | watched file changes            | No         | No                  |
-| CwdChanged          | working dir changes             | No         | No                  |
-| WorktreeCreate/Remove| worktree lifecycle             | Yes/No     | No                  |
-| MessageDisplay      | assistant text displayed        | No         | No                  |
-| Notification        | system notification             | No         | No                  |
-| Elicitation/Result  | MCP elicitation                 | Yes        | No                  |
+The complete hook-event catalogue with token-data verdict. **Matcher?**
+(added TASK-219) records only what has actually been checked against real
+Claude Code behavior or is directly documented elsewhere in this file —
+`Unverified` means nobody has confirmed matcher support for that event in
+this codebase, not that it lacks one:
+
+| Hook event          | Fires on                        | Can block? | Token/context data? | Matcher? |
+|---------------------|---------------------------------|------------|---------------------|----------|
+| SessionStart        | startup, resume, clear, compact | No         | No                  | Yes — event-defined values (`startup\|resume\|clear\|compact`) |
+| Setup               | init, maintenance               | No         | No                  | Unverified |
+| SessionEnd          | clear, resume, logout, other    | No         | No                  | Unverified |
+| UserPromptSubmit    | every user prompt               | Yes (exit 2)| No                 | Unverified |
+| UserPromptExpansion | slash-command expansion         | Yes        | No                  | Unverified |
+| Stop                | Claude finishes a turn          | Yes (exit 2)| No                 | No — Stop does not support a matcher (§7) |
+| StopFailure         | API error ends a turn           | No         | No                  | Unverified |
+| PreToolUse          | before each tool call           | Yes        | No                  | Unverified |
+| PermissionRequest   | permission dialog appears       | Yes        | No                  | Unverified |
+| PermissionDenied    | tool denied by auto classifier  | No         | No                  | Unverified |
+| PostToolUse         | after tool succeeds             | No*        | No                  | Unverified |
+| PostToolUseFailure  | after tool fails                | No         | No                  | Unverified |
+| PostToolBatch       | after parallel batch resolves   | Yes        | No                  | Unverified |
+| **PreCompact**      | **before compaction**           | **Yes (exit 2)**| **No**         | Yes — `"auto"` / `"manual"` |
+| **PostCompact**     | **after compaction**            | **No**     | **No**              | Unverified |
+| SubagentStart       | subagent spawned                | No         | No                  | Unverified |
+| SubagentStop        | subagent finishes               | **Yes — deliberately NOT used** (TASK-219: exiting 2 keeps the subagent running instead of finishing, which cannot create the missing record and only makes the underlying problem worse; see `hooks/persist-subagent.mjs`, always exits 0) | No | Yes — matches against `agent_type` (TASK-219 empirical verification); the hivemind hook is registered with no matcher so it fires unconditionally |
+| TaskCreated/Completed| task lifecycle                 | Yes        | No                  | Unverified |
+| TeammateIdle        | team agent idle                 | Yes        | No                  | Unverified |
+| InstructionsLoaded  | CLAUDE.md loaded                | No         | No                  | Unverified |
+| ConfigChange        | settings file changes           | Yes        | No                  | Unverified |
+| FileChanged         | watched file changes            | No         | No                  | Unverified |
+| CwdChanged          | working dir changes             | No         | No                  | Unverified |
+| WorktreeCreate/Remove| worktree lifecycle             | Yes/No     | No                  | Unverified |
+| MessageDisplay      | assistant text displayed        | No         | No                  | Unverified |
+| Notification        | system notification             | No         | No                  | Unverified |
+| Elicitation/Result  | MCP elicitation                 | Yes        | No                  | Unverified |
 
 **PreCompact** fires with `matcher: "auto"` (automatic compaction) or
 `"manual"` (`/compact` command). Its payload is the common fields only — no
@@ -412,3 +427,8 @@ skill for the full rationale).
   - https://github.com/anthropics/claude-code/issues/13783
   - https://github.com/who96/claude-code-context-handoff
 - **Last verified:** 2026-06-17.
+- **TASK-219 update (2026-08-15):** `agent_id`/`agent_type` presence and the
+  SubagentStop matcher/block-vs-persist findings (§1b) are empirical, against
+  Claude Code 2.1.233, captured live via a real hook probe (not from docs) —
+  see `src/subagent-log.js` and `state/README.md`'s "Subagent result
+  persistence" section for the consumer built on these findings.
