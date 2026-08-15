@@ -176,6 +176,12 @@
       "label": "Drive the intake-improvement + kb-graph epics (TASK-165..174): mint-a-plan seeder, warn-but-allow intake checks, kb_graph_query on the merge seam with a total no-silent-drop contract, graph-freshness sensor + backfill, auto task-node on close via recordNode"
     },
     {
+      "id": "decision-20260815-subagentstop-hook-durability",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Persistir el resultado de todo subagente con un hook SubagentStop en el manifiesto del plugin, sin matcher y sin bloquear con exit 2, atribuyendo por active_task"
+    },
+    {
       "id": "ke-a-format-sensor-authoritative-schema",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/a-format-sensor-must-be-checked-against-the-authoritative-schema.md",
@@ -1512,6 +1518,12 @@
       "type": "task",
       "ref": "tasks/TASK-210.json",
       "label": "The context-monitor hooks written into every consumer settings.json use an invalid schema and have never fired"
+    },
+    {
+      "id": "task-219",
+      "type": "task",
+      "ref": "tasks/TASK-219.json",
+      "label": "Persistir el resultado de todo subagente con un hook SubagentStop, para que no dependa de que el orquestador esté vivo para relayarlo"
     }
   ],
   "edges": [
@@ -2068,6 +2080,11 @@
     {
       "from": "task-174",
       "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-219",
+      "to": "decision-20260815-subagentstop-hook-durability",
       "relation": "produced-by"
     }
   ]

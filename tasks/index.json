@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-14T00:00:43.679Z",
+  "generated_at": "2026-08-15T18:36:24.095Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1282,7 +1282,7 @@
     {
       "key": "TASK-219",
       "title": "Persistir el resultado de todo subagente con un hook SubagentStop, para que no dependa de que el orquestador esté vivo para relayarlo",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     }
   ]
