@@ -80,7 +80,7 @@ describe('MEDIUM-2 (TASK-198 deferral item 1) — removeMergedWorktree must not 
   it('refuses_with_a_typed_error_instead_of_treating_a_transient_lstat_failure_on_a_still_present_junction_as_absent', () => {
     const dir = makeTmpDir('wt-lstat-failopen');
     initRepo(dir);
-    writeFileSync(join(dir, '.gitignore'), 'node_modules/\n');
+    writeFileSync(join(dir, '.gitignore'), 'node_modules\n');
     git(dir, ['add', '.gitignore']);
     git(dir, ['commit', '-q', '-m', 'baseline']);
 

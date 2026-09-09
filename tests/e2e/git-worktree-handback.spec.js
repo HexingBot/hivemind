@@ -752,8 +752,14 @@ describe('HIGH (TASK-198 fix round) — removeMergedWorktree severs a node_modul
 
     // node_modules is gitignored — the exact condition that makes the
     // junction invisible to `git status --porcelain` and lets every existing
-    // guard pass on the happy path (per the reviewer's reproduction).
-    writeFileSync(join(dir, '.gitignore'), 'node_modules/\n');
+    // guard pass on the happy path (per the reviewer's reproduction). No
+    // trailing slash: a trailing-slash pattern matches directories only, and
+    // on POSIX the junction fixture below is created as a real symlink (a
+    // FILE from git's point of view, not a directory) — see TASK-226. The
+    // slash-less pattern matches both files and directories, so it still
+    // covers the Windows junction (a real directory there) without
+    // regressing the case this test exists to exercise.
+    writeFileSync(join(dir, '.gitignore'), 'node_modules\n');
     git(dir, ['add', '.gitignore']);
     git(dir, ['commit', '-q', '-m', 'baseline']);
 
@@ -803,7 +809,10 @@ describe('HIGH (TASK-198 fix round) — removeMergedWorktree severs a node_modul
     // primary path.
     const dir = makeTmpDir('wt-nm-junction-wrong-target');
     initRepo(dir);
-    writeFileSync(join(dir, '.gitignore'), 'node_modules/\n');
+    // No trailing slash — see TASK-226: a trailing-slash pattern matches
+    // directories only, and on POSIX the junction fixture below is a real
+    // symlink (a FILE from git's point of view), not a directory.
+    writeFileSync(join(dir, '.gitignore'), 'node_modules\n');
     git(dir, ['add', '.gitignore']);
     git(dir, ['commit', '-q', '-m', 'baseline']);
 
