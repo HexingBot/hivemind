@@ -519,6 +519,25 @@ export function hasCommentFromAuthor(task, author) {
 }
 
 /**
+ * TASK-221 — the single place the requires_uat default lives. Answers a
+ * question distinct from verification_tier (how much test rigor a ticket
+ * needs): does this ticket's acceptance criteria describe something a
+ * person can observe? true iff task.requires_uat is exactly boolean true;
+ * every other shape (absent field, false, null, a stray string/number from
+ * a malformed payload) returns false. DEFAULT WHEN ABSENT is false — an
+ * explicit 2026-09-09 human decision, not an inference: the ~206 tickets
+ * closed before this field existed carry no requires_uat at all, and a
+ * true default would retroactively brand all of them non-compliant (the
+ * mass-retrofit TASK-223 freezes as a baseline instead of migrating).
+ * TASK-220 (reviewer sensor gating) and TASK-222 (close-guard enforcement)
+ * both call this helper rather than re-deriving `=== true` independently,
+ * so the default is defined exactly once.
+ */
+export function requiresUat(task) {
+  return task != null && task.requires_uat === true;
+}
+
+/**
  * TASK-187 (A5) — thrown when a transition to 'done' is attempted from a
  * status other than one of DONE_PREDECESSOR_STATES, and no `exception`
  * escape hatch (see resolveCloseException below) was supplied. Replays probe
@@ -1354,6 +1373,7 @@ export async function createTask({
   labels = [],
   depends_on = [],
   verification_tier,
+  requires_uat,
   marker,
   source_tier,
   confidence,
@@ -1372,6 +1392,9 @@ export async function createTask({
     throw new Error(
       `invalid verification_tier "${verification_tier}" — must be one of ${VERIFICATION_TIERS.join(', ')}`,
     );
+  }
+  if (requires_uat !== undefined && typeof requires_uat !== 'boolean') {
+    throw new Error(`invalid requires_uat "${requires_uat}" — must be a boolean`);
   }
 
   const key = await deriveNextKey(repoRoot);
@@ -1394,6 +1417,7 @@ export async function createTask({
     updated_at: stamp,
     jira_key: null,
     ...(verification_tier !== undefined ? { verification_tier } : {}),
+    ...(requires_uat !== undefined ? { requires_uat } : {}),
     // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
     // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
     ...(marker !== undefined ? { marker } : {}),

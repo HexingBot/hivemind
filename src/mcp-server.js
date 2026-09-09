@@ -100,6 +100,10 @@ const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
 // go through this input schema, so historical 'tdd'-tier tickets on disk are
 // unaffected by narrowing this enum.
 const VERIFICATION_TIER = z.enum(['tests-after', 'uat-only']);
+// TASK-221 — distinct from VERIFICATION_TIER: does this ticket's acceptance
+// criteria describe something a person can observe? Default when absent is
+// false, defined once in src/task-store.js's requiresUat(task) helper.
+const REQUIRES_UAT = z.boolean();
 // TASK-188 AC4 — mirrors src/task-store.js's COMMENT_AUTHORS (itself a mirror
 // of tasks/schema.json's comments.items.properties.author enum). Rejects an
 // unknown author string at the MCP boundary with a friendly zod error before
@@ -539,12 +543,13 @@ export function createServer({
         labels: z.array(z.string()).optional(),
         depends_on: z.array(z.string()).optional(),
         verification_tier: VERIFICATION_TIER.optional(),
+        requires_uat: REQUIRES_UAT.optional(),
         marker: MARKER.optional(),
         source_tier: SOURCE_TIER.optional(),
         confidence: CONFIDENCE.optional(),
       },
     },
-    async ({ title, description, acceptance_criteria, priority, labels, depends_on, verification_tier, marker, source_tier, confidence }) =>
+    async ({ title, description, acceptance_criteria, priority, labels, depends_on, verification_tier, requires_uat, marker, source_tier, confidence }) =>
       ok(
         await createTask({
           repoRoot,
@@ -555,6 +560,7 @@ export function createServer({
           ...(labels !== undefined ? { labels } : {}),
           ...(depends_on !== undefined ? { depends_on } : {}),
           ...(verification_tier !== undefined ? { verification_tier } : {}),
+          ...(requires_uat !== undefined ? { requires_uat } : {}),
           ...(marker !== undefined ? { marker } : {}),
           ...(source_tier !== undefined ? { source_tier } : {}),
           ...(confidence !== undefined ? { confidence } : {}),

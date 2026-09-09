@@ -10201,6 +10201,11 @@ var schema_default = {
       enum: ["tdd", "tests-after", "uat-only"],
       description: `Governs how the ticket is verified. Absent means tests-after (backward-compatible default). tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT. "tdd" (tests-first, single-commit discipline) is WRITE-FROZEN: TASK-212 (2026-08-13 human decision) retired it and it can no longer be ASSIGNED to a ticket \u2014 that policy is enforced one layer up, by the two write surfaces (src/task-store.js's VERIFICATION_TIERS, src/mcp-server.js's zod VERIFICATION_TIER), not by this storage schema. This schema keeps accepting "tdd" only so the ~101 tickets (100 done + any still in-flight) that legitimately carry it as a historical record of how they were verified stay writable at all \u2014 appending a comment or transitioning status on one of them re-validates the WHOLE stored object against this enum, and a schema that rejected "tdd" would make that historical record permanently un-rewritable, which is not what 'kept as a historical record' (CLAUDE.md's Testing section) means. Never assign "tdd" to a new ticket \u2014 createTask and the MCP create_task tool reject it independently of this schema.`
     },
+    requires_uat: {
+      type: "boolean",
+      description: "TASK-221 \u2014 answers a question distinct from verification_tier: do this ticket's acceptance criteria describe something a person can observe (as opposed to how much test rigor the ticket needs). Assigned at Workflow step 1, same moment as verification_tier. true = the acceptance criteria describe human-observable behavior and a UAT script must be run before close; false = they do not. DEFAULT WHEN ABSENT: false \u2014 an explicit human decision (2026-09-09, TASK-221), not an inference: the ~206 tickets already closed before this field existed carry no requires_uat at all, and a true default would retroactively brand all of them non-compliant, which is precisely the mass-retrofit TASK-223 freezes as a baseline instead of migrating. Read this default from exactly one place: src/task-store.js's requiresUat(task) helper \u2014 TASK-220 (reviewer sensor gating) and TASK-222 (close-guard enforcement) both call it rather than re-deriving `=== true` independently.",
+      default: false
+    },
     marker: {
       type: "string",
       enum: ["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"],
@@ -10467,6 +10472,7 @@ async function createTask({
   labels = [],
   depends_on = [],
   verification_tier,
+  requires_uat,
   marker,
   source_tier,
   confidence,
@@ -10482,6 +10488,9 @@ async function createTask({
     throw new Error(
       `invalid verification_tier "${verification_tier}" \u2014 must be one of ${VERIFICATION_TIERS.join(", ")}`
     );
+  }
+  if (requires_uat !== void 0 && typeof requires_uat !== "boolean") {
+    throw new Error(`invalid requires_uat "${requires_uat}" \u2014 must be a boolean`);
   }
   const key = await deriveNextKey(repoRoot);
   const stamp = now();
@@ -10502,6 +10511,7 @@ async function createTask({
     updated_at: stamp,
     jira_key: null,
     ...verification_tier !== void 0 ? { verification_tier } : {},
+    ...requires_uat !== void 0 ? { requires_uat } : {},
     // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
     // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
     ...marker !== void 0 ? { marker } : {},
