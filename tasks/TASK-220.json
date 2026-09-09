@@ -11,7 +11,7 @@
     "Los candados documentales y sensores de paridad de agentes que hoy fijan el texto de reviewer.md quedan actualizados a lo que se escriba, no desactivados. npm test en verde.",
     "UAT: script de aceptacion derivado de estos criterios, corrido con el humano, con el veredicto registrado como comentario de autor uat en la convencion estricta."
   ],
-  "status": "todo",
+  "status": "blocked",
   "priority": "high",
   "labels": [
     "uat",
@@ -26,9 +26,16 @@
   ],
   "linked_commits": [],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "developer",
+      "at": "2026-09-09T22:02:20.112Z",
+      "body": "TEXTO PROPUESTO, listo y verificado, guardado aca para que no se pierda con la sesion. Reemplaza las DOS lineas viejas (24 y 25) por UNA sola bulleta, en las DOS copias de reviewer.md:\n\n   - **UAT-completeness check — triggered by `requires_uat: true`, never by `verification_tier` and never by whether a `uat` comment happens to exist (TASK-220):** whenever the ticket carries `requires_uat: true` (see `requiresUat()` in `src/task-store.js` for how the default resolves when the field is absent), verify that (a) a `uat` comment exists on the ticket, (b) its steps cover **every** acceptance criterion, and (c) all steps are marked PASS — regardless of tier, and regardless of whether the Developer's hand-off mentions UAT at all. A missing `uat` comment is itself the HIGH finding, the same severity as incomplete AC coverage or any FAIL step — its absence is exactly what this check exists to catch, not a condition that turns the check off. `uat-only` tickets add the same check for new specs (there are none to check) in place of the regression-lock review. When `requires_uat` is `false` — including when the field is absent, which resolves to `false` — this check does not run; a ticket in that state is not required to carry a `uat` comment.\n\nCubre AC1 (el disparador es requires_uat true, no el tier ni la existencia del comentario; desaparece el texto condicional viejo de la linea 25), AC2 (comentario ausente igual a HIGH explicito, misma severidad que hoy), AC3 (las tres condiciones: existe, cubre cada AC, todo PASS) y AC4 (requires_uat false o ausente no dispara, escrito explicitamente). Nombra requiresUat() de src/task-store.js:536 en vez de repetir la regla del default, para que haya un solo lugar de verdad.\n\nAUDITORIA DE CANDADOS (AC6), hecha: no hay ningun spec que fije el texto viejo de las lineas 24-25. tests/reviewer-gate-contract.spec.js ancla solo el bloque de Re-run verification del paso 2 por marcadores de inicio y fin, y la bulleta nueva cae dentro de ese rango sin tocar ninguno de los textos que ese spec revisa. El unico sensor que reacciona es tests/agents-parity.spec.js, que es paridad generica byte a byte — o sea que no hay ningun candado que actualizar a mano, solo hay que dejar las dos copias iguales.\n\nBLOQUEO: la escritura de .claude/agents/reviewer.md la rechaza el guard de rutas sensibles del harness, tanto desde el subagente developer como desde el orquestador. Es el mismo bloqueo que freno el espejo de SKILL.md en TASK-221 y que solo el humano puede levantar corriendo a mano:\n  cp agents/reviewer.md .claude/agents/reviewer.md\nPara no dejar npm test en rojo por paridad y no bloquear el resto de la cola, agents/reviewer.md se revirtio a su estado original. El texto de arriba es lo unico que hay que reaplicar a AMBAS copias cuando se levante el bloqueo."
+    }
+  ],
   "created_at": "2026-09-09T17:17:29.530Z",
-  "updated_at": "2026-09-09T17:17:29.530Z",
+  "updated_at": "2026-09-09T22:02:20.175Z",
   "jira_key": null,
-  "verification_tier": "uat-only"
+  "verification_tier": "uat-only",
+  "requires_uat": true
 }

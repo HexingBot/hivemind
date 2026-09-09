@@ -1548,6 +1548,12 @@
       "type": "task",
       "ref": "tasks/TASK-221.json",
       "label": "Campo requires_uat en el esquema del ticket y su asignacion en el paso 1 del workflow"
+    },
+    {
+      "id": "task-222",
+      "type": "task",
+      "ref": "tasks/TASK-222.json",
+      "label": "El guard de cierre pasa de tier uat-only a requires_uat, y la verificacion del UAT gana cobertura por criterio"
     }
   ],
   "edges": [
@@ -2118,6 +2124,11 @@
     },
     {
       "from": "task-221",
+      "to": "decision-20260909-requires-uat-separado-del-tier",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-222",
       "to": "decision-20260909-requires-uat-separado-del-tier",
       "relation": "produced-by"
     }

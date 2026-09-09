@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T21:56:39.794Z",
+  "generated_at": "2026-09-09T23:20:19.514Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1288,7 +1288,7 @@
     {
       "key": "TASK-220",
       "title": "El sensor de UAT del reviewer deja de ser condicional a que el comentario exista",
-      "status": "todo",
+      "status": "blocked",
       "priority": "high"
     },
     {
@@ -1300,13 +1300,13 @@
     {
       "key": "TASK-222",
       "title": "El guard de cierre pasa de tier uat-only a requires_uat, y la verificacion del UAT gana cobertura por criterio",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-223",
       "title": "Comando de auditoria del board: tickets en done sin UAT, con linea base congelada",
-      "status": "todo",
+      "status": "in_progress",
       "priority": "medium"
     },
     {
@@ -1324,7 +1324,7 @@
     {
       "key": "TASK-226",
       "title": "Arreglar el patron de gitignore con barra final en los fixtures e2e de worktree (3 tests rojos en Linux)",
-      "status": "todo",
+      "status": "in_review",
       "priority": "high"
     }
   ]
