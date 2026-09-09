@@ -38,7 +38,11 @@ const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 const MARKETPLACE_JSON = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
-const EXPECTED_VERSION = '0.21.0';
+// RELEASE-CUT OBLIGATION: this pin is a deliberate drift lock on the published
+// version — it must be bumped in the SAME commit as .claude-plugin/plugin.json
+// whenever a release is cut. v0.21.0's cut updated it; v0.22.0's did not, which
+// shipped this spec red (fixed 2026-09-09).
+const EXPECTED_VERSION = '0.22.0';
 const EXPECTED_MARKETPLACE_NAME = 'hivemind-marketplace';
 const EXPECTED_PLUGIN_NAME = 'hivemind';
 const EXPECTED_SOURCE = './';
@@ -59,7 +63,7 @@ describe('AC3 — plugin.json carries an explicit semver version (Q6 resolved)',
     ).toBe(true);
   });
 
-  it('plugin_json_has_version_exactly_0_1_1', () => {
+  it('plugin_json_has_version_exactly_the_pinned_published_version', () => {
     const manifest = readJson(PLUGIN_JSON);
     expect(
       manifest.version,
