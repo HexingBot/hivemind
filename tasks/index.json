@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T17:19:05.174Z",
+  "generated_at": "2026-09-09T19:33:51.368Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1240,7 +1240,7 @@
     {
       "key": "TASK-212",
       "title": "Retirar el tier tdd: dos tiers (tests-after por defecto, uat-only) y limpiar todo lo que existía sólo para el tdd",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {

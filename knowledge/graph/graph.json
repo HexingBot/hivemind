@@ -182,6 +182,12 @@
       "label": "Persistir el resultado de todo subagente con un hook SubagentStop en el manifiesto del plugin, sin matcher y sin bloquear con exit 2, atribuyendo por active_task"
     },
     {
+      "id": "decision-20260909-storage-schema-preserves-retired-tier",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "El schema de datos preserva el tier tdd retirado como valor write-frozen; la politica de asignacion vive en las capas de escritura"
+    },
+    {
       "id": "ke-a-format-sensor-authoritative-schema",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/a-format-sensor-must-be-checked-against-the-authoritative-schema.md",
@@ -1520,6 +1526,12 @@
       "label": "The context-monitor hooks written into every consumer settings.json use an invalid schema and have never fired"
     },
     {
+      "id": "task-212",
+      "type": "task",
+      "ref": "tasks/TASK-212.json",
+      "label": "Retirar el tier tdd: dos tiers y limpiar todo lo que existia solo para el tdd"
+    },
+    {
       "id": "task-219",
       "type": "task",
       "ref": "tasks/TASK-219.json",
@@ -2080,6 +2092,11 @@
     {
       "from": "task-174",
       "to": "decision-20260718-intake-kbgraph-epics-drive",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-212",
+      "to": "decision-20260909-storage-schema-preserves-retired-tier",
       "relation": "produced-by"
     },
     {
