@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T23:25:29.517Z",
+  "generated_at": "2026-09-09T23:33:16.866Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1306,7 +1306,7 @@
     {
       "key": "TASK-223",
       "title": "Comando de auditoria del board: tickets en done sin UAT, con linea base congelada",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "medium"
     },
     {
