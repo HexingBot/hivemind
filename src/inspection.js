@@ -11,6 +11,12 @@ import {
 import { join } from 'node:path';
 
 import { sweepAndRecover } from './recovery.js';
+// TASK-212 fix round (LOW) — read session.json through readBundleSession so
+// a bundle written before the tdd-tier retirement (workflow_step or
+// loop_state.phase still 'test') shows the migrated 'impl' value here too,
+// same as every other reader — this module previously read the file raw and
+// would have displayed the stale, pre-migration value.
+import { readBundleSession } from './bundle.js';
 
 /**
  * List all bundle directories under state/sessions/, newest-first.
@@ -54,9 +60,7 @@ export async function listSessions({ repoRoot }) {
     }
 
     try {
-      const bundleState = JSON.parse(
-        readFileSync(join(bundleDir, 'session.json'), 'utf8'),
-      );
+      const bundleState = readBundleSession(repoRoot, id);
       row.lifecycle_state = bundleState.lifecycle_state || null;
       row.active_task = 'active_task' in bundleState ? bundleState.active_task : null;
       row.workflow_step = bundleState.workflow_step || null;
@@ -105,7 +109,7 @@ export async function showSession({ repoRoot, id }) {
     throw makeErr('E_BUNDLE_MALFORMED',
       `showSession: ${sessionPath} missing even after the recovery sweep — no tmp was available to recover from`);
   }
-  const session_json = JSON.parse(readFileSync(sessionPath, 'utf8'));
+  const session_json = readBundleSession(repoRoot, id);
 
   const summaryPath = join(bundleDir, 'summary.md');
   let summary_md;

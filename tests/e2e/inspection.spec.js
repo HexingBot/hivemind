@@ -95,3 +95,39 @@ describe('AC7 — session.show is read-only', () => {
     expect(statSync(join(bundlePath(repoDir, idB), 'session.json')).mtimeMs).toBe(bBeforeMtime);
   });
 });
+
+// TASK-212 fix round (LOW) — listSessions/showSession now read through
+// readBundleSession, so a bundle written before the tdd-tier retirement
+// (workflow_step still the retired 'test' value on disk) displays the same
+// migrated 'impl' value every other reader sees, not the stale raw one.
+describe('TASK-212 fix round — inspection reads a legacy workflow_step "test" as migrated "impl"', () => {
+  it('session_list_shows_the_migrated_workflow_step_for_a_legacy_bundle', async () => {
+    const { listSessions } = await import(PROD.inspection);
+
+    const repoDir = makeTmpDir('af-inspect-legacy-list');
+    const id = '20260522T100000Z-dddddddd';
+    seedActiveBundle(bundlePath(repoDir, id), {
+      session_id: id,
+      created_at: '2026-05-22T10:00:00Z',
+      session_json_extra: { workflow_step: 'test' },
+    });
+
+    const rows = await listSessions({ repoRoot: repoDir });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].workflow_step).toBe('impl');
+  });
+
+  it('session_show_returns_the_migrated_workflow_step_for_a_legacy_bundle', async () => {
+    const { showSession } = await import(PROD.inspection);
+
+    const repoDir = makeTmpDir('af-inspect-legacy-show');
+    const id = '20260522T100000Z-eeeeeeee';
+    seedActiveBundle(bundlePath(repoDir, id), {
+      session_id: id,
+      session_json_extra: { workflow_step: 'test' },
+    });
+
+    const result = await showSession({ repoRoot: repoDir, id });
+    expect(result.session_json.workflow_step).toBe('impl');
+  });
+});

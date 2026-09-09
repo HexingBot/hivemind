@@ -92,7 +92,7 @@ The Orchestrator and the Developer/Reviewer subagents **must pick the command by
 
 | Situation | Command | What it runs |
 |---|---|---|
-| Writing code, TDD inner loop | `npm run test:watch` | only specs affected by each save (auto, via import graph) |
+| Writing code, red-green inner loop | `npm run test:watch` | only specs affected by each save (auto, via import graph) |
 | One-shot check of code you just edited | `npm run test:changed` | only specs related to your **uncommitted** changes |
 | Fast confidence / pre-deploy smoke | `npm test` | the whole fast tier (~2s test-execution; ~7s wall-clock) |
 | Iterating on one slow spec | `vitest run --config vitest.config.all.js tests/e2e/<file>` | that single e2e spec |
