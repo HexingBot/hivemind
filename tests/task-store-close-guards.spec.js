@@ -177,6 +177,179 @@ describe('AC1 — transitionStatus enforces the uat-only done-guard', () => {
 });
 
 // ===========================================================================
+// TASK-222 AC1/AC2/AC3/AC8 — checkUatGuard's trigger is the UNION of
+// verification_tier === 'uat-only' and requiresUat(task), not a replacement
+// of one signal by the other. See src/task-store.js's checkUatGuard doc
+// comment for the full design rationale.
+// ===========================================================================
+describe('TASK-222 AC1/AC2/AC3/AC8 — checkUatGuard triggers on requires_uat too, as a union with uat-only', () => {
+  it('AC1 — a tests-after ticket with requires_uat:true and no uat comment cannot transition to done', async () => {
+    const { transitionStatus, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-222-ac1-requires-uat-blocks');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-970': makeTask({
+          key: 'TASK-970',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          comments: [],
+        }),
+      },
+    });
+    // makeTask doesn't set requires_uat — patch it directly since the helper
+    // has no requires_uat param (schema-valid, optional boolean field).
+    const taskPath = join(repoDir, 'tasks', 'TASK-970.json');
+    const raw = JSON.parse(readFileSync(taskPath, 'utf8'));
+    raw.requires_uat = true;
+    writeFileSync(taskPath, JSON.stringify(raw, null, 2), 'utf8');
+    const before = readTaskFileBytes(repoDir, 'TASK-970');
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-970', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a tests-after ticket with requires_uat:true must be gated exactly like a uat-only '
+      + 'ticket, even though its tier is never "uat-only"').toBeInstanceOf(UatGuardError);
+    expect(caught.code).toBe('UAT_GUARD_REQUIRED');
+    expect(readTaskFileBytes(repoDir, 'TASK-970')).toBe(before);
+  });
+
+  it('AC2 — a uat-only ticket with requires_uat:false explicitly is still blocked without a uat comment (union, not replacement)', async () => {
+    const { transitionStatus, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-222-ac2-uatonly-requires-uat-false');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-971': makeTask({
+          key: 'TASK-971',
+          verification_tier: 'uat-only',
+          status: 'in_review',
+          comments: [],
+        }),
+      },
+    });
+    const taskPath = join(repoDir, 'tasks', 'TASK-971.json');
+    const raw = JSON.parse(readFileSync(taskPath, 'utf8'));
+    raw.requires_uat = false;
+    writeFileSync(taskPath, JSON.stringify(raw, null, 2), 'utf8');
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-971', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'requires_uat:false must not exempt a uat-only ticket — the trigger is `tier === '
+      + '"uat-only" || requiresUat(task)`, an OR, so uat-only alone still gates regardless of '
+      + 'requires_uat\'s value').toBeInstanceOf(UatGuardError);
+  });
+
+  it('AC8 — fails CLOSED, not open, when verification_tier is missing/malformed but requires_uat is true', async () => {
+    const { transitionStatus, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-222-ac8-fail-closed-malformed-tier');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-972': makeTask({
+          key: 'TASK-972',
+          status: 'in_review',
+          comments: [],
+          // verification_tier deliberately omitted below (makeTask spreads
+          // it in only `if verification_tier !== undefined`) — simulates a
+          // corrupt/legacy record with no recognizable tier at all.
+        }),
+      },
+    });
+    const taskPath = join(repoDir, 'tasks', 'TASK-972.json');
+    const raw = JSON.parse(readFileSync(taskPath, 'utf8'));
+    expect(raw.verification_tier).toBeUndefined();
+    raw.requires_uat = true;
+    writeFileSync(taskPath, JSON.stringify(raw, null, 2), 'utf8');
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-972', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a missing/unevaluable verification_tier must never silently grant a close — the OR '
+      + 'trigger still fires purely off requires_uat:true, failing CLOSED rather than open').toBeInstanceOf(UatGuardError);
+  });
+});
+
+// ===========================================================================
+// TASK-222 AC4/AC5/AC6 — hasRecordedUatVerdict (harness mode) gains a real
+// per-AC coverage check, closing the duplicate-numbering evasion (two step
+// blocks both labelled "1." satisfying a bare block-count floor) in harness
+// mode too, not just loop mode's strict grammar. See src/task-store.js's
+// hasRecordedUatVerdict doc comment for the mechanism and its documented
+// residual (a body with NO numbered structure at all still falls back to the
+// pre-existing light presence check).
+// ===========================================================================
+describe('TASK-222 AC4/AC5/AC6 — harness-mode checkUatGuard requires real per-AC step-number coverage', () => {
+  it('AC5 — duplicate step numbering (two blocks both labelled "1.") no longer satisfies a 2-AC ticket, even though it satisfies a bare count floor', async () => {
+    const { closeTask, UatGuardError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-222-ac5-duplicate-numbering');
+    const task = makeTask({
+      key: 'TASK-973',
+      verification_tier: 'uat-only',
+      status: 'in_review',
+      comments: [{
+        author: 'uat',
+        at: '2026-09-09T00:00:00Z',
+        body: '1. First AC checked, looks good. PASS\n1. Second AC checked too (mislabelled as 1 again), also good. PASS\n\nOverall: PASS',
+      }],
+    });
+    task.acceptance_criteria = ['First AC.', 'Second AC.'];
+    makeRepoSkeleton(repoDir, { tasks: { 'TASK-973': task } });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-973',
+        comment: { author: 'orchestrator', body: 'Closing.' },
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'two step blocks both labelled "1." for a 2-AC ticket must not satisfy the gate just '
+      + 'because the raw block COUNT (2) happens to match the AC count — the distinct LABEL numbers '
+      + '({1}) must cover {1, 2}, and they do not').toBeInstanceOf(UatGuardError);
+    expect(caught.code).toBe('UAT_GUARD_REQUIRED');
+  });
+
+  it('AC4/AC6 positive control — distinctly-numbered steps covering every AC still satisfy the gate', async () => {
+    const { closeTask } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-222-ac4-distinct-numbering-passes');
+    const task = makeTask({
+      key: 'TASK-974',
+      verification_tier: 'uat-only',
+      status: 'in_review',
+      comments: [{
+        author: 'uat',
+        at: '2026-09-09T00:00:00Z',
+        body: '1. First AC checked, looks good. PASS\n2. Second AC checked, also good. PASS\n\nOverall: PASS',
+      }],
+    });
+    task.acceptance_criteria = ['First AC.', 'Second AC.'];
+    makeRepoSkeleton(repoDir, { tasks: { 'TASK-974': task } });
+
+    await closeTask({
+      repoRoot: repoDir,
+      key: 'TASK-974',
+      comment: { author: 'orchestrator', body: 'Closing.' },
+    });
+    expect(readTaskFile(repoDir, 'TASK-974').status).toBe('done');
+  });
+});
+
+// ===========================================================================
 // AC3 — closeTask: single validate-then-atomic pass, all-or-nothing.
 // ===========================================================================
 describe('AC3 — closeTask applies transition + comment + commits + prs + index in one pass', () => {

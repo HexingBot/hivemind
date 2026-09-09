@@ -61,6 +61,12 @@ import { stripInvisibleChars } from './intake-sanitizer.js';
 // (and its own pointer.js/bundle.js/operating-mode.js dependencies) import
 // nothing from task-store.js — verified by grep, see the TASK-188 hand-off.
 import { loopModeCloseGuard } from './close-guard.js';
+// TASK-222 — reuse close-guard.js's numbered-step-block parser and its
+// numeric-coverage primitive for the harness-mode content check
+// (hasRecordedUatVerdict) instead of duplicating the parsing logic. Same
+// no-cycle guarantee as the loopModeCloseGuard import above: close-guard.js
+// imports nothing from task-store.js.
+import { parseUatBody, coversAllStepNumbers } from './close-guard.js';
 
 // Mirror of tasks/schema.json#/properties/status/enum. Hard-coded to avoid file
 // I/O on every call; keep in sync with tasks/schema.json (the source of truth).
@@ -969,6 +975,46 @@ const OVERALL_FAIL_RE = /overall(?:\s+result)?\s*:?\s*fail/i;
  * body names no verdict word, or the body records either FAIL shape — see
  * the doc comment above for why this is a lighter check than
  * close-guard.js's loop-mode Gate 2 marker.
+ *
+ * TASK-222 AC4/AC5/AC6 — layers a real per-AC COVERAGE requirement on top of
+ * the light content check above, reusing close-guard.js's numbered-step-block
+ * parser (parseUatBody) and its numeric-coverage primitive
+ * (coversAllStepNumbers) rather than duplicating that logic — the same
+ * mechanism loop mode's strict grammar uses, so the duplicate-numbering
+ * evasion (two blocks both labelled "1." satisfying a bare block-COUNT floor
+ * with only one AC actually addressed) is closed in harness mode too, not
+ * just loop mode: when the body carries recognized numbered step blocks,
+ * their OWN label numbers must cover every integer 1..N (N = task's
+ * acceptance_criteria.length).
+ *
+ * DELIBERATE DIFFERENCE FROM LOOP MODE (AC6 — documented, not inherited by
+ * omission): loop mode's evaluateStructuredStepVerdicts REQUIRES a numbered
+ * structure — a body with none is rejected outright by its own
+ * extraneousText/rawBlocks checks. Harness mode does NOT: when the body
+ * carries NO recognized numbered step-start line anywhere at all
+ * (parseUatBody's `recognizedStepCount === 0` — e.g. free-form prose like
+ * "All steps PASS." or a pre-convention body naming only one AC by number),
+ * this falls back to the light check above rather than rejecting. Rationale:
+ * harness mode's standing design assumption is that a human is genuinely
+ * present and trusted to have verified every AC even when the recorded body
+ * doesn't mechanically prove it per-AC; a false-deny here would cost the
+ * human a re-edit for zero benefit when there is no numbered structure to
+ * even check coverage against.
+ *
+ * HONEST RESIDUAL: a body with no numbered structure at all still passes on
+ * light presence alone, exactly as before this ticket — TASK-222 narrows this
+ * gap only for bodies that DO carry numbered structure, it does not close it
+ * entirely. Verified against the real corpus (see
+ * tests/uat-verdict-marker-compat.spec.js's TASK-222 documented-exception
+ * list): 5 of 46 real tickets with a uat comment flip from old=true to
+ * new=false under this coverage layer (TASK-052/053/054/055/068) — every one
+ * recognizes numbered step blocks that cover fewer than the ticket's full AC
+ * count (the recorded UAT script genuinely omitted a dedicated step for one
+ * or more ACs, typically a meta/process AC like "dist rebuilt, test:all
+ * green"). All five are already `status: "done"`; hasRecordedUatVerdict is
+ * only ever evaluated at close time and never re-validates an already-closed
+ * ticket, so this has zero real effect — same "zero real effect" precedent as
+ * the TASK-133 exception already documented in that spec for loop mode.
  */
 export function hasRecordedUatVerdict(task) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
@@ -978,23 +1024,61 @@ export function hasRecordedUatVerdict(task) {
   const body = String((last && last.body) || '').trim();
   if (body === '') return false;
   if (VERDICT_FAIL_RE.test(body) || OVERALL_FAIL_RE.test(body)) return false;
-  return UAT_VERDICT_WORD_RE.test(body);
+  if (!UAT_VERDICT_WORD_RE.test(body)) return false;
+
+  const { recognizedStepCount, stepNumbers } = parseUatBody(body);
+  if (recognizedStepCount === 0) return true; // no numbered structure at all — documented legacy fallback, see doc comment above
+  const requiredStepCount = Array.isArray(task && task.acceptance_criteria)
+    ? task.acceptance_criteria.length
+    : 0;
+  return coversAllStepNumbers(stepNumbers, requiredStepCount);
 }
 
 /**
- * TASK-082 (TASK-186 hardened) — a task whose verification_tier is
- * 'uat-only' may only reach 'done' once its most recent comment authored
- * 'uat' records a recognizable verdict (see hasRecordedUatVerdict).
- * Self-contained: reads only task.verification_tier + task.comments, no
- * bundle/session access. Throws UatGuardError; callers run this BEFORE any
- * mutation/write so a thrown guard leaves the task file untouched.
+ * TASK-082 (TASK-186 hardened; TASK-222 AC1 retargeted the trigger) — a task
+ * whose verification_tier is 'uat-only' OR whose requires_uat is true may
+ * only reach 'done' once its most recent comment authored 'uat' records a
+ * recognizable, AC-covering verdict (see hasRecordedUatVerdict).
+ *
+ * TASK-222 AC1/AC2/AC3 — the trigger is the UNION of the two signals, not a
+ * replacement of one by the other: `verification_tier === 'uat-only'` alone
+ * still gates a ticket regardless of requires_uat's value (AC2 — a uat-only
+ * ticket stays protected even when requires_uat is false/absent, e.g. every
+ * uat-only ticket closed before TASK-221 introduced the field), and
+ * `requiresUat(task)` alone also gates a ticket regardless of tier (AC1 — a
+ * 'tests-after' ticket with human-observable ACs, requires_uat: true, is now
+ * gated even though its tier was never 'uat-only'). A ticket that is neither
+ * (the common case — 'tests-after'/other tier with requires_uat false or
+ * absent) is untouched, exactly as before this ticket (AC3). Reads
+ * task.requires_uat via requiresUat() (src/task-store.js, TASK-221's single
+ * canonical default-read helper) rather than re-deriving the `=== true`
+ * check inline.
+ *
+ * TASK-222 AC8 (fail closed on an input this can't fully evaluate) — a task
+ * whose verification_tier is missing/malformed (e.g. a corrupt record with
+ * no recognizable tier at all) still gates correctly off requires_uat alone:
+ * the trigger is an OR, so an unevaluable/absent tier never silently grants a
+ * bypass as long as requires_uat is true. See
+ * tests/task-store-close-guards.spec.js's TASK-222 AC8 regression lock for
+ * the worked case (missing verification_tier + requires_uat: true still
+ * blocks close without a valid uat comment).
+ *
+ * Self-contained: reads only task.verification_tier + task.requires_uat +
+ * task.comments, no bundle/session access. Throws UatGuardError; callers run
+ * this BEFORE any mutation/write so a thrown guard leaves the task file
+ * untouched.
  */
 function checkUatGuard(task) {
-  if (task.verification_tier !== 'uat-only') return;
+  const isUatOnly = task.verification_tier === 'uat-only';
+  if (!isUatOnly && !requiresUat(task)) return;
   if (!hasRecordedUatVerdict(task)) {
+    const reason = isUatOnly
+      ? 'is verification_tier "uat-only"'
+      : 'has requires_uat: true';
     throw new UatGuardError(
-      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without its `
-        + 'most recent "uat" comment recording a recognizable verdict (a non-empty body naming a PASS result)',
+      `task ${task.key} ${reason} and cannot transition to "done" without its most recent "uat" `
+        + 'comment recording a recognizable, AC-covering verdict (a non-empty body naming a PASS '
+        + 'result, with no per-AC coverage gap when the body uses numbered steps)',
     );
   }
 }

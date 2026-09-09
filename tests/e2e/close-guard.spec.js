@@ -850,11 +850,25 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
 // already covered by the "positive control" test directly above this block
 // (same 2-step/2-AC shape) — not repeated here to keep the new-test budget
 // clean.
+//
+// TASK-222 AMENDMENT — R1 and R2's bodies each carry only ONE numbered step
+// for a 2-AC ticket (the xlsx AC's real crash is disclosed only in the
+// preamble/postscript, never given its own step at all). TASK-222 layered a
+// per-AC step-number coverage check onto checkUatGuard's harness-mode content
+// check (hasRecordedUatVerdict), which now ALSO rejects this exact shape —
+// and checkUatGuard runs BEFORE loopModeCloseGuard/Gate 2 in both
+// transitionStatus and closeTask, so R1/R2 are now caught by the EARLIER,
+// mode-independent gate (UatGuardError), never reaching Gate 2 at all. This
+// is a strictly earlier and stronger rejection of the same shape, not a
+// weakening — R1/R2 below are updated accordingly. R3 (unchanged, still
+// below) remains the test that isolates Gate 2's OWN preamble-rejection
+// defense in specific, because its body pads the step count to genuinely
+// cover both ACs (so the new coverage layer does not short-circuit it) while
+// still hiding the real crash outside the recognized step blocks.
 // ===========================================================================
 describe('TASK-186 fix round (HIGH) — R1/R2/R3: preamble/postscript/padded-step-count evasion no longer bypasses Gate 2', () => {
   it('R1 (preamble) — a crash disclosed only in text BEFORE the first recognized step is REJECTED (not closed)', async () => {
-    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
-    const { createTask } = await import(TASK_STORE_URL);
+    const { UatGuardError, createTask } = await import(TASK_STORE_URL);
     const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
     const t = await createTask({
       repoRoot: root, title: 'R1', description: 'd', priority: 'medium',
@@ -881,14 +895,17 @@ describe('TASK-186 fix round (HIGH) — R1/R2/R3: preamble/postscript/padded-ste
     } catch (err) {
       caught = err;
     }
+    // TASK-222 — this body has only ONE numbered step for a 2-AC ticket (the
+    // xlsx AC gets no dedicated step at all), so checkUatGuard's harness-mode
+    // per-AC coverage check now rejects it BEFORE Gate 2 ever runs — see the
+    // TASK-222 AMENDMENT comment above this describe block.
     expect(caught, 'a crash disclosed only in preamble text before the first recognized step must not '
-      + 'close the ticket').toBeInstanceOf(UatDelegationGuardError);
-    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+      + 'close the ticket').toBeInstanceOf(UatGuardError);
+    expect(caught && caught.code).toBe('UAT_GUARD_REQUIRED');
   });
 
   it('R2 (postscript) — the same crash disclosure placed AFTER "Overall result: PASS" is REJECTED (not closed)', async () => {
-    const { UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
-    const { createTask } = await import(TASK_STORE_URL);
+    const { UatGuardError, createTask } = await import(TASK_STORE_URL);
     const { root, sessionId } = makeRepoWithMode({ mode: 'harness' });
     const t = await createTask({
       repoRoot: root, title: 'R2', description: 'd', priority: 'medium',
@@ -915,9 +932,12 @@ describe('TASK-186 fix round (HIGH) — R1/R2/R3: preamble/postscript/padded-ste
     } catch (err) {
       caught = err;
     }
+    // TASK-222 — same reasoning as R1 above: only one numbered step for a
+    // 2-AC ticket, so the harness-mode coverage check in checkUatGuard now
+    // catches this before Gate 2 runs.
     expect(caught, 'a crash disclosed only in postscript text after the overall-result line must not '
-      + 'close the ticket').toBeInstanceOf(UatDelegationGuardError);
-    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+      + 'close the ticket').toBeInstanceOf(UatGuardError);
+    expect(caught && caught.code).toBe('UAT_GUARD_REQUIRED');
   });
 
   it('R3 (padded step count) — matching the AC count with clean per-step verdicts does not launder a crash disclosed only in the preamble', async () => {
@@ -1238,5 +1258,69 @@ describe('TASK-186 fix round (HIGH, third round) — E1/E2: trailing prose ON th
     expect(caught, 'a qualified "(deferred — ...)" aside appended directly onto the '
       + '"Overall result: PASS" line must not close the ticket').toBeInstanceOf(UatDelegationGuardError);
     expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+});
+
+// ===========================================================================
+// TASK-222 AC5 — the original step-count FLOOR (rawBlocks.length >=
+// requiredStepCount) let duplicate step numbering through: two blocks both
+// labelled "1." satisfy a 2-AC floor (count 2 >= 2) with only one AC actually
+// addressed. coversAllStepNumbers now requires the DISTINCT label numbers
+// {1, 2} to both appear — see src/close-guard.js's coversAllStepNumbers doc
+// comment for the full mechanism and its still-open content residual.
+// ===========================================================================
+describe('TASK-222 AC5 — duplicate step numbering no longer satisfies Gate 2 (was: count floor only)', () => {
+  it('loopModeCloseGuard: two step blocks both labelled "1." are REJECTED even though the block count matches the ticket\'s 2-AC fixture', async () => {
+    // Calls loopModeCloseGuard DIRECTLY (not through closeTask/checkUatGuard)
+    // to isolate Gate 2's own duplicate-numbering defense from
+    // checkUatGuard's separate TASK-222 harness-mode coverage check (see
+    // tests/task-store-close-guards.spec.js's own AC5 lock for that one) —
+    // both now independently reject this shape, defense-in-depth.
+    const { loopModeCloseGuard, UatDelegationGuardError } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    // makeTask/makeUatTask's fixture carries exactly 1 acceptance_criteria
+    // entry (see makeTask above) — override to 2 so a duplicate "1."/"1."
+    // pair is a genuine under-coverage case, not a false negative from a
+    // 1-AC fixture where a single "1." block already covers everything.
+    const task = { ...makeUatTask('TASK-975'), acceptance_criteria: ['CSV export works.', 'XLSX export works.'] };
+    task.comments = [{
+      author: 'uat',
+      at: '2026-09-09T00:00:00Z',
+      body: '1. Run the csv export, expect a CSV. Observed: file created. Verdict: PASS\n'
+        + '1. Run the xlsx export, expect an XLSX file (mislabelled as step 1 again). Observed: file created. Verdict: PASS\n\n'
+        + 'Overall result: PASS',
+    }];
+
+    let caught;
+    try {
+      await loopModeCloseGuard({ repoRoot: root, task });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'duplicate step numbering must not satisfy Gate 2 just because the raw block count '
+      + '(2) happens to match the AC count — the distinct LABEL numbers ({1}) do not cover {1, 2}')
+      .toBeInstanceOf(UatDelegationGuardError);
+    expect(caught && caught.code).toBe('LOOP_UAT_DELEGATION_REQUIRED');
+  });
+
+  it('positive control — distinctly-numbered steps ("1." and "2.") covering both ACs still satisfy Gate 2', async () => {
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { root } = makeRepoWithMode({
+      mode: 'loop',
+      loopAuth: { auto_close_on_green_review: true },
+    });
+    const task = { ...makeUatTask('TASK-976'), acceptance_criteria: ['CSV export works.', 'XLSX export works.'] };
+    task.comments = [{
+      author: 'uat',
+      at: '2026-09-09T00:01:00Z',
+      body: '1. Run the csv export, expect a CSV. Observed: file created. Verdict: PASS\n'
+        + '2. Run the xlsx export, expect an XLSX file. Observed: file created. Verdict: PASS\n\n'
+        + 'Overall result: PASS',
+    }];
+
+    await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
   });
 });

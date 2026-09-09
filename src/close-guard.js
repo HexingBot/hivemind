@@ -161,7 +161,10 @@ const FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
 // "Verdict = PASS" or "STEP 1 (...)" that the strict per-step regex already
 // rejected), so tightening it further cannot flip any of them from true to
 // false — there is nothing left to flip.
-const STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
+// TASK-222 — capturing group added (was `\d+`, non-capturing) so callers can
+// recover a recognized step block's OWN label number, not just detect that a
+// line starts one. `.test()` call sites are unaffected by adding a group.
+const STEP_START_RE = /^(?:step\s*)?(\d+)[.):]/i;
 const OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 const STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
 // TASK-186 fix round (third round) — the <overall-line> half of the grammar
@@ -211,13 +214,29 @@ const STRICT_OVERALL_RE = /^overall(?:\s+result)?\s*:\s*pass\.?$/i;
  * did, so a multi-line "overall" statement is rejected the same way a
  * postscript is: the grammar's <overall-line> is, by construction, a single
  * self-contained line.
+ *
+ * TASK-222 — `stepNumbers` is a new array, parallel to `blocks` (one entry
+ * per recognized step block, in order), holding each block's OWN label
+ * number as captured by STEP_START_RE's group (`"1."` -> 1, `"Step 2:"` -> 2,
+ * ...). This is what lets evaluateStructuredStepVerdicts (loop mode) and
+ * task-store.js's hasRecordedUatVerdict (harness mode) both check DISTINCT
+ * numeric coverage of 1..N instead of a bare block-count floor — closing the
+ * duplicate-numbering evasion (two blocks both labelled "1." satisfying a
+ * 2-AC floor with only one AC actually addressed). In the no-recognized-step
+ * fallback (`stepBoundaries.length === 0`), `stepNumbers` is `[1]` — an
+ * implicit label for the single whole-body block, matching this function's
+ * own pre-existing documented intent ("a reasonable fallback for a
+ * non-numbered single-verdict comment") for the 1-AC case; `recognizedStepCount`
+ * stays `0` in that branch (unchanged) so callers can still tell "genuinely
+ * no numbered structure" apart from "one block, explicitly labelled 1".
  */
-function parseUatBody(body) {
+export function parseUatBody(body) {
   const lines = String(body).split(/\r?\n/);
   const boundaries = [];
   lines.forEach((line, idx) => {
     const trimmed = line.trim();
-    if (STEP_START_RE.test(trimmed)) boundaries.push({ idx, type: 'step' });
+    const stepMatch = STEP_START_RE.exec(trimmed);
+    if (stepMatch) boundaries.push({ idx, type: 'step', num: Number(stepMatch[1]) });
     else if (OVERALL_LINE_RE.test(trimmed)) boundaries.push({ idx, type: 'overall' });
   });
   const stepBoundaries = boundaries.filter((b) => b.type === 'step');
@@ -232,6 +251,7 @@ function parseUatBody(body) {
       recognizedStepCount: 0,
       extraneousText: afterOverall.trim(),
       overallLine,
+      stepNumbers: [1],
     };
   }
 
@@ -248,7 +268,44 @@ function parseUatBody(body) {
     recognizedStepCount: stepBoundaries.length,
     extraneousText: [preamble, postscript].filter((s) => s.trim() !== '').join('\n'),
     overallLine,
+    stepNumbers: stepBoundaries.map((b) => b.num),
   };
+}
+
+/**
+ * TASK-222 (AC5) — the shared numeric-coverage primitive both
+ * evaluateStructuredStepVerdicts (loop mode) and task-store.js's
+ * hasRecordedUatVerdict (harness mode) call: true iff every integer from 1 to
+ * `requiredStepCount` appears at least once among `stepNumbers` (a block's
+ * OWN label number, from parseUatBody). This is a strictly stronger check
+ * than counting blocks (`stepNumbers.length >= requiredStepCount`), which is
+ * what the pre-TASK-222 code did and which is exactly what let duplicate
+ * numbering (two blocks both labelled "1.") satisfy a 2-AC floor with only
+ * one AC actually addressed — two blocks both labelled "1." produce
+ * `stepNumbers = [1, 1]`, `distinct = {1}`, which does NOT cover `{1, 2}`.
+ * `requiredStepCount` <= 0 or non-numeric means "nothing to require" (true) —
+ * matches the pre-existing floor check's behavior for a task with no
+ * acceptance_criteria recorded.
+ *
+ * HONEST RESIDUAL (unchanged by this ticket, stated here so it is not
+ * confused with what this DOES fix): this ties each covered AC INDEX to at
+ * least one step block's OWN label, not to that block's CONTENT — nothing
+ * here proves block "3." is actually ABOUT acceptance criterion 3, only that
+ * some block claims to be. A relabelled-but-content-mismatched block (e.g.
+ * block "3." actually describing AC1's scenario) still satisfies this check.
+ * Closing that would require semantic matching (LLM judgment or an explicit
+ * AC-reference syntax), a materially different and heavier mechanism this
+ * ticket does not add — see this file's module-level TASK-186 fix-round
+ * comments for the general reason a textual-convention check cannot prove
+ * meaning, only structure.
+ */
+export function coversAllStepNumbers(stepNumbers, requiredStepCount) {
+  if (typeof requiredStepCount !== 'number' || requiredStepCount <= 0) return true;
+  const distinct = new Set(Array.isArray(stepNumbers) ? stepNumbers : []);
+  for (let n = 1; n <= requiredStepCount; n += 1) {
+    if (!distinct.has(n)) return false;
+  }
+  return true;
 }
 
 /**
@@ -262,19 +319,23 @@ function parseUatBody(body) {
  *     overall-result line (TASK-186 fix round HIGH, second round — closes
  *     the preamble/postscript evasion where a real failure was disclosed
  *     only in text the old code discarded outright; see parseUatBody);
- *   - the recognized block count is >= `requiredStepCount` (TASK-186 fix
- *     round HIGH, second round — when the caller supplies the ticket's AC
- *     count, this closes the sibling evasion of simply omitting the failing
- *     AC's step rather than writing a qualified verdict for it; a step count
- *     that happens to match the AC count is NOT sufficient on its own — see
- *     the R3 regression lock in tests/e2e/close-guard.spec.js for why both
- *     checks are needed together. NOTE this is a FLOOR, not a coverage
- *     proof: nothing here ties a given step block to a specific AC, so
- *     duplicate step numbering — e.g. two blocks both labelled "1." — still
- *     satisfies a 2-AC floor with only one AC actually addressed. Not
- *     exploitable without full fabrication of every step's content, which
- *     loopModeUatCommentGuard already gates on the write side in loop mode;
- *     noted here so the floor is not misread as per-AC coverage.);
+ *   - the recognized step blocks' OWN label numbers cover every integer from
+ *     1 to `requiredStepCount` (coversAllStepNumbers, TASK-222 — supersedes
+ *     the original TASK-186 fix round HIGH/second-round check, which only
+ *     required the recognized block COUNT to be >= requiredStepCount; when
+ *     the caller supplies the ticket's AC count, this closes the sibling
+ *     evasion of simply omitting the failing AC's step rather than writing a
+ *     qualified verdict for it — see the R3 regression lock in
+ *     tests/e2e/close-guard.spec.js for why both this AND the
+ *     extraneous-text check are needed together. TASK-222 additionally
+ *     closes the DUPLICATE-numbering evasion the original count-only floor
+ *     left open: two blocks both labelled "1." used to satisfy a 2-AC floor
+ *     (count 2 >= 2) with only one AC actually addressed; coversAllStepNumbers
+ *     requires the DISTINCT labels {1, 2} to both appear, so that no longer
+ *     passes — see coversAllStepNumbers's own doc comment for the still-open
+ *     residual (a block's label number is checked, not its content's actual
+ *     subject) and tests/e2e/close-guard.spec.js's TASK-222 AC5 regression
+ *     lock for the worked duplicate-numbering example.);
  *   - EVERY recognized step block cleanly ends with "Verdict: PASS" (no
  *     qualifier, no missing label, no FAIL) — STRICT_STEP_VERDICT_RE,
  *     anchored at the end;
@@ -308,10 +369,14 @@ function parseUatBody(body) {
  * unchecked is content that is not itself a distinct grammar region at all.
  */
 function evaluateStructuredStepVerdicts(body, requiredStepCount) {
-  const { blocks: rawBlocks, extraneousText, overallLine } = parseUatBody(body);
+  const { blocks: rawBlocks, extraneousText, overallLine, stepNumbers } = parseUatBody(body);
   if (rawBlocks.length === 0) return false;
   if (extraneousText !== '') return false; // preamble/postscript evasion — reject outright
-  if (typeof requiredStepCount === 'number' && rawBlocks.length < requiredStepCount) return false;
+  // TASK-222 — numeric coverage of 1..requiredStepCount, not a bare count
+  // floor; see coversAllStepNumbers's doc comment for why this closes the
+  // duplicate-numbering evasion the old `rawBlocks.length < requiredStepCount`
+  // check left open.
+  if (!coversAllStepNumbers(stepNumbers, requiredStepCount)) return false;
   const blocks = rawBlocks.map((b) => b.replace(/\s+/g, ' ').trim());
   for (const block of blocks) {
     const m = STRICT_STEP_VERDICT_RE.exec(block);
@@ -332,9 +397,12 @@ function evaluateStructuredStepVerdicts(body, requiredStepCount) {
  * full <body> ::= <step-block>+ <overall-line> grammar (see the
  * STRICT_OVERALL_RE comment block above): (a) has no orchestrator-delegation
  * phrasing anywhere in the body, (b) carries no non-whitespace text outside
- * its recognized step blocks and the overall-result line, (c) recognizes at
- * least as many step blocks as the task has acceptance criteria (a floor,
- * not per-AC coverage — see evaluateStructuredStepVerdicts), (d) every
+ * its recognized step blocks and the overall-result line, (c) its recognized
+ * step blocks' OWN label numbers cover every AC index 1..N (TASK-222 —
+ * numeric coverage, no longer a bare count floor; see
+ * coversAllStepNumbers/evaluateStructuredStepVerdicts for what this closes
+ * and coversAllStepNumbers's doc comment for the still-open content residual),
+ * (d) every
  * recognized step in the body cleanly records "Verdict: PASS", and (e) the
  * overall-result line's own text is EXACTLY "Overall result: PASS" (or
  * "Overall: PASS"), nothing appended (see evaluateStructuredStepVerdicts) —

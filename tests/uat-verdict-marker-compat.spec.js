@@ -44,12 +44,19 @@
 // file is rewritten by this ticket. hasRecordedUatVerdict (task-store.js,
 // harness-mode gate) and hasExplicitHumanVerdictMarker (close-guard.js,
 // loop-mode Gate 2) both changed. Both changes are, for real on-disk data,
-// additive-only: no already-done ticket flips from gate-satisfying to
-// gate-denying.
+// additive-only for every ticket except a small, individually-documented
+// exception set: no already-done ticket flips from gate-satisfying to
+// gate-denying WITHOUT that flip being named, explained, and confirmed
+// zero-real-effect (already `status: "done"`, and these predicates are only
+// ever evaluated at close time — TASK-133 below for loop mode; TASK-222's
+// DOCUMENTED_COVERAGE_GAP_EXCEPTION_KEYS below for harness mode).
 //   - hasRecordedUatVerdict: old behavior was "does ANY author:'uat' comment
-//     exist" (always true once one exists). New behavior narrows to "does
-//     the LAST uat comment have a non-empty body naming a recognizable
-//     verdict word (PASS)". Proven below: true for all 45 real tickets.
+//     exist" (always true once one exists). New behavior (TASK-186) narrows
+//     to "does the LAST uat comment have a non-empty body naming a
+//     recognizable verdict word (PASS)", and (TASK-222) further narrows to
+//     "...AND, when the body uses numbered steps, do those steps' own label
+//     numbers cover every AC index 1..N". Proven below: true for all 46 real
+//     tickets except the 5 TASK-222 documented exceptions.
 //   - hasExplicitHumanVerdictMarker: old behavior is reimplemented verbatim
 //     below as oldHasExplicitHumanVerdictMarker (the pre-TASK-186
 //     token-scan). Proven below: NEW === OLD for 44 of the 45 real tickets'
@@ -121,6 +128,30 @@ const AUDITED_UAT_COMMENT_TICKET_COUNT = 45;
 // is already `status: "done"`, so this flip has no real effect.
 const DOCUMENTED_LEGACY_PATH_EXCEPTION_KEYS = ['TASK-133'];
 
+// TASK-222 AC4/AC5/AC6/AC7 — hasRecordedUatVerdict (harness mode) gained a
+// per-AC coverage layer on top of its pre-existing light presence check (see
+// its doc comment in src/task-store.js): when a uat comment's body carries
+// recognized numbered step blocks, their OWN label numbers must now cover
+// every AC index 1..N, not just meet a block-count floor. Run against the
+// full real corpus (AC7's mandated corpus check — see
+// tests/task-store-close-guards.spec.js's TASK-222 describe block for the
+// store-level regression locks), exactly 5 of 46 real tickets with a uat
+// comment flip from old=true to new=false: TASK-052, TASK-053, TASK-054,
+// TASK-055, TASK-068. Every one shares the same shape — the recorded UAT
+// script numbers fewer steps than the ticket's full AC count, because a
+// meta/process AC ("if a pure-logic helper is added it needs a regression
+// lock", "dist/ rebuilt and npm run test:all green at hand-off") was
+// satisfied but never given its own dedicated numbered step. This is exactly
+// the presence-vs-coverage gap TASK-222 exists to close — the pre-TASK-222
+// check never looked at step count or numbering at all, so it silently
+// accepted a body that (by the ticket's own recorded UAT script) demonstrably
+// covers fewer ACs than it claims. All five are already `status: "done"`;
+// hasRecordedUatVerdict is only ever evaluated at close time and never
+// re-validates an already-closed ticket, so — same "zero real effect"
+// precedent as the TASK-133 loop-mode exception above — this flip changes
+// nothing about those tickets' actual state.
+const DOCUMENTED_COVERAGE_GAP_EXCEPTION_KEYS = ['TASK-052', 'TASK-053', 'TASK-054', 'TASK-055', 'TASK-068'];
+
 function loadRealTicketsWithUatComment() {
   const tasksDir = join(REPO_ROOT, 'tasks');
   const files = readdirSync(tasksDir).filter((f) => TASK_FILENAME_RE.test(f));
@@ -139,8 +170,9 @@ describe('TASK-186 AC4 — real tasks/: no ticket with a pre-existing free-text 
     ).toBeGreaterThanOrEqual(AUDITED_UAT_COMMENT_TICKET_COUNT);
   });
 
-  it('harness-mode gate: hasRecordedUatVerdict is true for every real ticket with a uat comment (new content check, additive-only)', () => {
-    const tickets = loadRealTicketsWithUatComment();
+  it('harness-mode gate: hasRecordedUatVerdict is true for every real ticket with a uat comment except the TASK-222 documented coverage-gap exceptions', () => {
+    const tickets = loadRealTicketsWithUatComment()
+      .filter((t) => !DOCUMENTED_COVERAGE_GAP_EXCEPTION_KEYS.includes(t.key));
     const failing = tickets.filter((t) => !hasRecordedUatVerdict(t));
     expect(
       failing.map((t) => t.key),
@@ -150,6 +182,30 @@ describe('TASK-186 AC4 — real tasks/: no ticket with a pre-existing free-text 
           + 'recorded PASS verdict, or hasRecordedUatVerdict needs a documented legacy path.'
         : '',
     ).toEqual([]);
+  });
+
+  it('TASK-222 AC7 — the 5 documented coverage-gap exceptions flip old=true -> new=false, and are already `done` so the flip has no real effect', () => {
+    const tickets = loadRealTicketsWithUatComment()
+      .filter((t) => DOCUMENTED_COVERAGE_GAP_EXCEPTION_KEYS.includes(t.key));
+    expect(tickets.map((t) => t.key).sort()).toEqual([...DOCUMENTED_COVERAGE_GAP_EXCEPTION_KEYS].sort());
+    for (const t of tickets) {
+      expect(t.status, `${t.key} must already be "done" — an active/open ticket flipping to reject `
+        + 'would be a real regression, not a documented no-op exception').toBe('done');
+      // Confirm this is genuinely a NEW rejection (not already-false before
+      // TASK-222): the pre-TASK-222 check was pure presence/PASS-word/no-FAIL
+      // with no step-number awareness at all, reproduced verbatim here.
+      const comments = Array.isArray(t.comments) ? t.comments : [];
+      const uatComments = comments.filter((c) => c && c.author === 'uat');
+      const lastBody = String((uatComments[uatComments.length - 1] || {}).body || '').trim();
+      const oldWouldPass = lastBody !== ''
+        && !/verdict\s*:\s*fail/i.test(lastBody)
+        && !/overall(?:\s+result)?\s*:?\s*fail/i.test(lastBody)
+        && /\bpass\b/i.test(lastBody);
+      expect(oldWouldPass, `${t.key} was expected to satisfy the pre-TASK-222 presence-only check `
+        + '(that is WHY it is a documented flip, not an already-false case)').toBe(true);
+      expect(hasRecordedUatVerdict(t), `${t.key} was expected to be rejected by the new per-AC `
+        + 'coverage layer (its recorded UAT script numbers fewer steps than its full AC count)').toBe(false);
+    }
   });
 
   it('loop-mode Gate 2: hasExplicitHumanVerdictMarker (new) agrees exactly with the pre-TASK-186 logic (old) for every real uat comment except the one documented legacy-path exception', () => {
