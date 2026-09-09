@@ -1,0 +1,31 @@
+{
+  "key": "TASK-226",
+  "title": "Arreglar el patron de gitignore con barra final en los fixtures e2e de worktree (3 tests rojos en Linux)",
+  "description": "Defecto de PORTABILIDAD POSIX/Windows en los fixtures de tres tests e2e de worktree. Preexistente, diagnosticado y REPRODUCIDO EN VIVO el 2026-09-09 durante el gate de cierre de TASK-221; ajeno a ese ticket, por eso sale como ticket propio en vez de contrabandearse en su diff.\n\nSINTOMA. npm run test:all da 3 fallos en 2 archivos, con la suite verde en todo lo demas (204 archivos / 2357 tests, 2350 pasando):\n- tests/e2e/git-worktree-handback.spec.js, 2 casos del bloque \"HIGH (TASK-198 fix round)\".\n- tests/e2e/worktree-handback-lstat-failopen.spec.js, 1 caso del bloque \"MEDIUM-2 (TASK-198 deferral item 1)\".\nEl fallo se ve como \"expected E_WORKTREE_DIRTY to be E_NODE_MODULES_LSTAT_FAILED\" y como un removeMergedWorktree que tira \"working tree is dirty or unreadable\" donde el spec esperaba que no tirara.\n\nCAUSA RAIZ, reproducida con un repo desechable y no inferida. Los tres fixtures escriben su .gitignore con el patron node_modules CON BARRA FINAL. En git, un patron con barra final matchea SOLO directorios. Despues el fixture crea el node_modules del worktree con symlinkSync(..., 'junction'):\n- En Windows la junction ES un directorio real: el patron la matchea, queda ignorada, el worktree se ve limpio, y el spec llega al guard que realmente quiere probar.\n- En Linux el mismo symlinkSync produce un SYMLINK, que git ve como ARCHIVO, no como directorio. El patron con barra final no lo matchea, aparece como \"?? node_modules\", y removeMergedWorktree dispara su guard de arbol sucio (E_WORKTREE_DIRTY) ANTES de llegar al comportamiento bajo prueba.\nVerificacion directa: en el repo desechable, con \"node_modules/\" el git status del worktree devuelve \"?? node_modules\"; con \"node_modules\" sin barra devuelve vacio.\n\nCORRELACION EXACTA. grep encuentra el patron con barra final en exactamente 3 lugares y son exactamente 3 los tests que fallan:\n- tests/e2e/worktree-handback-lstat-failopen.spec.js:83\n- tests/e2e/git-worktree-handback.spec.js:756\n- tests/e2e/git-worktree-handback.spec.js:806\n\nEL ARREGLO. Quitar la barra final del patron en esos 3 lugares, para que matchee tanto el directorio (Windows) como el symlink (Linux). Es un arreglo de FIXTURE: no se toca src/worktree-handback.js ni el comportamiento de produccion, que no tienen ningun defecto aca. Confirmado por aislamiento: el ultimo commit que toco los dos specs y src/worktree-handback.js es de TASK-197/198/206, y ninguno entra en el rango del diff de TASK-221.\n\nPOR QUE IMPORTA MAS QUE UN ROJO COSMETICO. Es un sensor que NO ESTA MIDIENDO lo que dice medir. Los tres casos existen para probar guards de perdida de datos de TASK-198 (que removeMergedWorktree corte la junction antes de que git recurse a traves de ella y vacie el node_modules real del checkout primario). En Linux el guard bajo prueba NUNCA SE EJECUTA: el test corta antes, en un guard distinto. O sea que en Linux esos tres tests pasarian igual aunque el guard de TASK-198 estuviera roto — es de la familia del sensor vacuo, y ademas deja el gate de release rojo sin dueno, que es como se normaliza ignorar el rojo.\n\nRIESGO A VIGILAR AL ARREGLARLO. Quitar la barra final tambien hace que el patron matchee un ARCHIVO llamado node_modules en cualquier nivel. Para estos fixtures es lo deseado y es justamente el punto. Comprobar que el cambio no vuelve verde un test por ignorar de mas: el arreglo tiene que hacer que el test llegue al guard que queria probar, no que lo saltee por otro lado.",
+  "acceptance_criteria": [
+    "Los 3 lugares con el patron node_modules con barra final quedan corregidos: tests/e2e/worktree-handback-lstat-failopen.spec.js:83, tests/e2e/git-worktree-handback.spec.js:756 y tests/e2e/git-worktree-handback.spec.js:806.",
+    "Los 3 tests que hoy fallan en Linux pasan, y se demuestra que pasan porque el test ALCANZA el guard que queria probar y no porque lo saltee: se captura el codigo de error o el comportamiento efectivamente ejercitado en cada uno.",
+    "Se demuestra que los 3 tests NO eran vacuos despues del arreglo: rompiendo deliberadamente el guard de TASK-198 en src/worktree-handback.js, los 3 tests fallan; restaurando, vuelven a verde. La evidencia roja va verbatim en el hand-off.",
+    "src/worktree-handback.js queda byte-identico: el arreglo es exclusivamente de fixture, sin cambio de comportamiento de produccion.",
+    "npm run test:all en verde de punta a punta, 0 fallos, corrido en Linux.",
+    "El arreglo no rompe el caso Windows: se argumenta explicitamente por que el patron sin barra final sigue cubriendo la junction-como-directorio, ya que el patron sin barra matchea tanto directorios como archivos."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "e2e",
+    "fixtures",
+    "portabilidad",
+    "worktree"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-09T21:55:13.701Z",
+  "updated_at": "2026-09-09T21:55:13.701Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "requires_uat": false
+}

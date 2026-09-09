@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T19:33:51.368Z",
+  "generated_at": "2026-09-09T21:56:39.794Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1294,7 +1294,7 @@
     {
       "key": "TASK-221",
       "title": "Campo requires_uat en el esquema del ticket y su asignacion en el paso 1 del workflow",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -1320,6 +1320,12 @@
       "title": "Promover el gate de board a CI, bloqueante solo para tickets posteriores a la fecha de corte",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-226",
+      "title": "Arreglar el patron de gitignore con barra final en los fixtures e2e de worktree (3 tests rojos en Linux)",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

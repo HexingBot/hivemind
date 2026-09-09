@@ -24,6 +24,11 @@ logs/
 # migrate_v1/pause/resume/end events) and must travel with the bundle for
 # cross-machine portability per TASK-004 design.
 !state/sessions/**/lifecycle.log
+# Counter-example to the exception above: the TASK-219 SubagentStop log is
+# runtime TELEMETRY, not handoff state — it is append-only, grows per subagent
+# turn, and nothing in the resume contract reads it. It does not match *.log
+# (it is .jsonl), so it needs its own entry.
+state/sessions/**/subagent-log.jsonl
 
 # Language runtimes (added defensively; uncomment as stacks land)
 node_modules/

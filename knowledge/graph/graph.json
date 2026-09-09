@@ -182,6 +182,12 @@
       "label": "Persistir el resultado de todo subagente con un hook SubagentStop en el manifiesto del plugin, sin matcher y sin bloquear con exit 2, atribuyendo por active_task"
     },
     {
+      "id": "decision-20260909-requires-uat-separado-del-tier",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Separar la obligatoriedad del UAT del verification_tier con un campo requires_uat explicito, default false para el campo ausente"
+    },
+    {
       "id": "decision-20260909-storage-schema-preserves-retired-tier",
       "type": "decision",
       "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
@@ -1536,6 +1542,12 @@
       "type": "task",
       "ref": "tasks/TASK-219.json",
       "label": "Persistir el resultado de todo subagente con un hook SubagentStop, para que no dependa de que el orquestador esté vivo para relayarlo"
+    },
+    {
+      "id": "task-221",
+      "type": "task",
+      "ref": "tasks/TASK-221.json",
+      "label": "Campo requires_uat en el esquema del ticket y su asignacion en el paso 1 del workflow"
     }
   ],
   "edges": [
@@ -2102,6 +2114,11 @@
     {
       "from": "task-219",
       "to": "decision-20260815-subagentstop-hook-durability",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-221",
+      "to": "decision-20260909-requires-uat-separado-del-tier",
       "relation": "produced-by"
     }
   ]
