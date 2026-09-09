@@ -164,27 +164,21 @@ same workflow applies; only the I/O surface changes.
    `status: todo` task by scanning `tasks/index.json`). Extract title, description,
    acceptance criteria, and `depends_on`.
 2. **Plan.** Assign `verification_tier` at this step if the ticket does not already
-   carry one, biasing toward the **lightest defensible tier**: `tdd` is RESERVED
-   for security-sensitive logic, parsing, schema/state-schema changes, or state
-   mutation with real edge-risk; `tests-after` is the DEFAULT for behavior
-   provable by running the code with low edge-risk; `uat-only` for glue, config,
-   docs, or prototypes. (Absent `verification_tier` on an existing ticket still
-   defaults to `tdd` — this bias governs new assignment, not that fallback.) Use
-   `TaskCreate` to record the breakdown:
+   carry one, biasing toward the **lightest defensible tier**: `tests-after` is
+   the DEFAULT for behavior provable by running the code with low edge-risk,
+   including security-sensitive logic, parsing, and schema/state-schema changes;
+   `uat-only` for glue, config, docs, or prototypes. (TASK-212, 2026-08-13 human
+   decision, retired the `tdd` tier — tests-first as a ticket-ordering discipline
+   did not catch the failure modes it was meant to catch; absent `verification_tier`
+   on an existing ticket now defaults to `tests-after`.) Use `TaskCreate` to record
+   the breakdown:
    - Research tasks (one per unknown library/API/pattern).
-   - One test-writing task (`tdd` only) or one combined impl+lock task
-     (`tests-after`) or one impl task (`uat-only`).
+   - One combined impl+lock task (`tests-after`) or one impl task (`uat-only`).
    - One review task.
 3. **Spawn the Researcher** (if any unknowns exist). Pass the specific question and
    the ticket context. Wait for it to return — Researcher output will include a path
    to a new or updated skill in `.claude/skills/` when relevant.
 4. **Verify per tier.**
-   - `tdd` — Spawn the Developer **once**. Within that spawn: write failing tests
-     that encode the acceptance criteria, run them and capture the red run
-     verbatim as evidence, then implement until all tests are green, run the
-     per-ticket gate, and commit test(s) and implementation together in a single
-     commit (a separate `test:`-before-impl commit remains allowed but is no
-     longer required — see "Single developer spawn" below).
    - `tests-after` — Spawn the Developer in a single spawn: implement first, then
      add a minimal set of regression locks before hand-off. When the ACs describe
      human-observable behavior, the UAT step is also mandatory — run it after the
@@ -727,47 +721,25 @@ breaks real tickets or forces frequent frontmatter edits, eroding the safety win
 **Verdict: feasible as a `PROJECT.md`-derived, generated allowlist, not as a static
 one — worth a distinct follow-up ticket; not implemented here (analysis only).**
 
-## Single developer spawn, single-commit discipline (tdd tier)
+## Single developer spawn (TASK-212: tdd tier retired)
 
-Every ticket gets **one** Developer spawn regardless of tier. The earlier
-two-spawn protocol for `tdd` tickets (TEST mode, then a separate IMPL-mode
-spawn) is retired (agility review 2026-07-01, recommendation R1): each spawn
-paid full cold-context acquisition, roughly doubling Developer cost per `tdd`
-ticket.
-
-For `tdd` tickets, the single spawn originally also carried a two-commit
-discipline (a `test:` commit strictly before a separate impl commit) to keep
-tests-first provable without a second spawn. That commit-ordering ceremony is
-retired as of TASK-148 (further speed simplification): the tests-first proof
-is the **captured red-run evidence**, not commit ordering.
-
-1. Developer writes failing tests encoding every AC.
-2. Developer runs the tests and **captures the red output** (the actual
-   failing run) as evidence the tests fail for the right reason — included
-   verbatim in the hand-off. This capture, not commit ordering, is the
-   load-bearing tests-first proof.
-3. Developer implements until all tests pass and existing tests still pass.
-4. Developer runs the per-ticket gate (`npm run test:changed` plus `npm test`
-   (fast tier) plus named affected e2e specs).
-5. Developer commits the tests and the implementation together in a **single
-   commit** referencing the ticket key. A separate `test:`-before-impl commit
-   remains ALLOWED (e.g. when splitting is convenient) but is no longer
-   REQUIRED.
-
-**What the Reviewer verifies:** the captured red-run evidence is present in
-the hand-off and looks genuine (fails for the right reason, not a typo or
-import error). When the hand-off looks suspicious, the Reviewer independently
-reproduces the red state by reverting or stashing the implementation hunks of
-the committed diff (not by checking out a prior test-only commit — under the
-single-commit discipline there may not be one) and re-running the tests.
-Dropping the second spawn, and now the second commit, does not weaken the
-quality gate — historical HIGH findings were caught by fresh-context review,
-not by TEST/IMPL spawn or commit separation, and the reviewer remains the
-independent quality sensor.
+Every ticket gets **one** Developer spawn. Historical note: an earlier
+two-spawn protocol for the (now-retired) `tdd` tier (TEST mode, then a
+separate IMPL-mode spawn) was retired well before the tier itself (agility
+review 2026-07-01, recommendation R1) — each spawn paid full cold-context
+acquisition, roughly doubling Developer cost per ticket. TASK-212 (2026-08-13
+human decision) subsequently retired the `tdd` tier entirely, which retires
+the rest of that history along with it: the captured-red-run-evidence /
+single-commit machinery this section used to describe applied only to `tdd`
+tickets and no longer has anything to document.
 
 For `tests-after` and `uat-only` tickets the Developer is spawned in a **single
 spawn** — implement first, add regression locks (tests-after) or no specs
-(uat-only), then optionally run UAT.
+(uat-only), then optionally run UAT. See `agents/developer.md`'s "Red-green
+planting" section for the surviving per-test failure-proof discipline (every
+new test/spec/lock, not just regression locks, must be proved able to fail
+before it lands) — this is the part of the old tests-first protection that
+generalized rather than died.
 
 ## Review depth rubric (agility R2)
 
@@ -787,13 +759,14 @@ briefing, and (c) record the depth and its inputs in the close comment.
 | Depth | When |
 |---|---|
 | `light` | Changed lines are under 150 (added + removed, from `git diff --shortstat`) AND the diff touches none of the mandatory-FULL surfaces below. |
-| `full` | Changed lines are 150 or more, OR the diff touches any mandatory-FULL surface, OR core `tdd`-tier logic, OR the ticket is a release/milestone/publish gate. |
+| `full` | Changed lines are 150 or more, OR the diff touches any mandatory-FULL surface, OR the diff touches Core `tdd`-tier logic (historical trigger, frozen — see below), OR the ticket is a release/milestone/publish gate. |
 
 **Mandatory-FULL surfaces** (any one forces `full` regardless of line count):
 schema (`tasks/schema.json`, state/bundle schemas), security surface, shared
 state (`state/`, the session bundle, locks), packaging/dist (`dist/*.cjs`,
 build config), test infrastructure (`vitest.config*.js`, `tests/helpers/`),
-core `tdd`-tier logic, and release/milestone/publish gates.
+Core `tdd`-tier logic (historical trigger, frozen — see below), and
+release/milestone/publish gates.
 
 **Concrete surface definitions (MEDIUM-1, TASK-078):** two of the surfaces
 above are otherwise fuzzy enough that two sessions could compute different
@@ -803,8 +776,16 @@ depths from the same diff.
   boundaries, any path matching `/auth|security|lock|permission/`, the
   board-server route handlers (`src/task-board.js`), and the session-lock /
   close-guard modules (`src/session-lock.js`, `src/close-guard.js`).
-- **Core `tdd`-tier logic** — any diff touching a `src/` file that a
-  `tdd`-tier ticket created or last modified. When in doubt, choose `full`.
+- **Core `tdd`-tier logic** — HISTORICAL TRIGGER, FROZEN (TASK-212,
+  2026-08-13 human decision): the `tdd` verification tier was retired and can
+  no longer be assigned, so this trigger can never fire for a newly-assigned
+  ticket going forward — there is no such thing as a new `tdd`-tier ticket to
+  match against. It is preserved, unchanged, solely as the definition that
+  governed review depth for the roughly 101 tickets that carried tier `tdd`
+  before the retirement: any diff touching a `src/` file that one of those
+  ~101 historical `tdd`-tier tickets created or last modified still forces
+  `full`. When in doubt whether a touched `src/` file falls in that historical
+  set, choose `full`.
 
 **`light` protocol:** an AC-compliance check (restate the ACs and verify each
 against the diff), a re-run of the scaled per-ticket gate (the same
@@ -1109,14 +1090,16 @@ writer and a pure decision helper:
 - **`loop-ctl.cjs checkpoint --repo-root <repoRoot> --current-ticket <key> --phase <phase> [--iteration <n>] [--completed-this-run <n>] [--run-started-at <iso>]`**
   (wraps `writeLoopCheckpoint`) — call at **every** phase boundary: after
   ticket selection, **immediately before spawning the Developer subagent**
-  (phase `'test'` for tdd-tier tickets, `'impl'` for all other tiers — TASK-100,
-  mandatory), after the Developer subagent returns, after the Reviewer
-  subagent returns, and after ticket close. The pre-Developer-spawn write
-  closes the gap between the fetch-phase checkpoint and the Developer's
-  return — the longest phase in a ticket's lifecycle, where `test:`/impl
-  commits actually land; without it a mid-spawn crash resumes as
-  in_progress+`'fetch'` and `resumePoint` falsely returns `'reset'` even
-  though commits already landed. The checkpoint carries `current_ticket`,
+  (phase `'impl'` — TASK-100, mandatory; TASK-212 (2026-08-13 human decision)
+  retired both the `tdd` verification tier and the `'test'` loop phase that
+  existed only to checkpoint it, so `'impl'` is now the phase for every
+  ticket, not just non-tdd ones), after the Developer subagent returns, after
+  the Reviewer subagent returns, and after ticket close. The pre-Developer-spawn
+  write closes the gap between the fetch-phase checkpoint and the Developer's
+  return — the longest phase in a ticket's lifecycle, where impl commits
+  actually land; without it a mid-spawn crash resumes as in_progress+`'fetch'`
+  and `resumePoint` falsely returns `'reset'` even though commits already
+  landed. The checkpoint carries `current_ticket`,
   `phase`, `iteration`, `completed_this_run`, and `run_started_at`. `phase` is
   validated against `LOOP_PHASES` **before any I/O** (an invalid phase exits
   non-zero and touches nothing on disk); on success the fields are merged into
@@ -1379,7 +1362,7 @@ compose the three deterministic mutation-seam guards below; a direct hand
   in_review -> done` convention that implies a review step was reached; a
   `todo -> done` hop in one call is rejected with a typed
   `InvalidPredecessorStateError`, `code: 'E_INVALID_DONE_PREDECESSOR'`). A
-  `tdd` or `tests-after` ticket additionally cannot close without BOTH a
+  `tests-after` ticket additionally cannot close without BOTH a
   pre-existing reviewer-authored comment (`hasCommentFromAuthor`, evaluated
   against the ON-DISK task before the incoming closing comment is appended —
   same unfabricatable-within-one-call ordering as the uat-only guard) AND a
@@ -1390,9 +1373,12 @@ compose the three deterministic mutation-seam guards below; a direct hand
   idempotent re-close re-affirms a state already reached, not a new closure
   event) and apply ONLY to a fresh transition into `done` — an already-`done`
   ticket from before this ticket shipped is never retroactively re-validated
-  (verified against this repo's own ~189-ticket corpus: only 20 of 160
-  `tdd`/`tests-after` `done` tickets would satisfy the new evidence rule
-  today, confirming the rule could only ever be scoped to new transitions).
+  (verified against this repo's own ~189-ticket corpus at the time: only 20 of
+  160 tickets across what were then the `tdd`/`tests-after` tiers would have
+  satisfied the new evidence rule, confirming the rule could only ever be
+  scoped to new transitions; TASK-212, 2026-08-13, subsequently retired
+  `tdd` — see the "Historical note" in `agents/developer.md` — so today this
+  applies to the `tests-after` tier alone).
   An explicit, auditable escape hatch exists for legitimate exceptions (a
   won't-do closure, a documented recovery path): pass `exception: { reason,
   author? }` to `transition_status`/`close_task` — a non-empty `reason` is
@@ -1407,7 +1393,7 @@ compose the three deterministic mutation-seam guards below; a direct hand
 
 **On a clean review (closing a ticket)**, `close_task` alone is NOT the whole
 procedure (TASK-187/TASK-188) — `done` is reachable only from `in_review`
-and, for `tdd`/`tests-after` tiers, requires a pre-existing `reviewer`-
+and, for the `tests-after` tier, requires a pre-existing `reviewer`-
 authored comment plus a non-empty `linked_commits`. This is the documented
 sequence (also see Workflow steps 5-6 above, which this expands on) — a
 permanent lock (`tests/e2e/close-procedure-doc-lock.spec.js`) extracts these

@@ -38,11 +38,10 @@ When the Atlassian MCP server is configured, the Orchestrator switches to Jira a
 
 The Orchestrator must follow this loop for every unit of work:
 
-1. **Read the ticket.** Load the next `status: todo` task from `tasks/` (or, once Jira is wired up, from the Atlassian MCP server). Extract acceptance criteria. **Assign the `verification_tier` at this step** if the ticket does not already carry one, biasing toward the **lightest defensible tier**: `tdd` is RESERVED for security-sensitive logic, parsing, schema/state-schema changes, or state mutation with real edge-risk; `tests-after` is the DEFAULT for behavior that is provable by running the code with low edge-risk; `uat-only` for glue, config, docs, or prototypes. Record the chosen tier on the ticket. (Absent `verification_tier` on an already-existing ticket still defaults to `tdd` — see the Testing section's rubric; this bias governs new tier assignment, not that fallback.)
+1. **Read the ticket.** Load the next `status: todo` task from `tasks/` (or, once Jira is wired up, from the Atlassian MCP server). Extract acceptance criteria. **Assign the `verification_tier` at this step** if the ticket does not already carry one, biasing toward the **lightest defensible tier**: `tests-after` is the DEFAULT for behavior that is provable by running the code with low edge-risk — including security-sensitive logic, parsing, and schema/state-schema changes; `uat-only` for glue, config, docs, or prototypes. Record the chosen tier on the ticket. (TASK-212, 2026-08-13 human decision, retired the `tdd` tier — see the Testing section's rubric; absent `verification_tier` on an already-existing ticket now defaults to `tests-after`.)
 2. **Plan.** Decompose the ticket into research, implementation, and verification tasks. Record the plan as TODOs.
 3. **Research (if needed).** Spawn the `researcher` subagent for any unfamiliar library, API, or pattern. If the researcher discovers a new tech stack, it must produce an Agent Skill under `.claude/skills/<stack-name>/`.
-4. **Verify per tier.**
-   - `tdd` — Spawn the `developer` subagent **once**. Within that single spawn: write failing tests that encode each acceptance criterion, run them and capture the red output verbatim as evidence they fail for the right reason, then implement until the tests (and all existing tests) pass, run the per-ticket gate, and commit test(s) and implementation together in a **single commit** (a separate `test:`-before-impl commit remains allowed but is no longer required). The captured red-run evidence — not commit ordering — is the tests-first proof: the Reviewer verifies the evidence is present in the hand-off, and when the hand-off looks suspicious, reproduces the red state by reverting or stashing the implementation hunks of the committed diff (not by checking out a prior test-only commit) and re-running the tests.
+4. **Verify per tier.** (TASK-212, 2026-08-13 human decision, retired the `tdd` tier — tests-first as a ticket-ordering discipline did not catch the failure modes it was meant to catch; the ~101 tickets that ran as `tdd` before the retirement keep that tier value on disk as a historical record, but the tier can no longer be assigned.)
    - `tests-after` — Spawn the `developer` subagent in a single spawn: implement first, prove the behavior by running the code, then add a **minimal** set of regression locks before hand-off. When ACs describe human-observable behavior, also run the UAT step below after the regression locks land.
    - `uat-only` — Spawn the `developer` subagent for implementation only; no new specs are written. After implementation, run the UAT step below.
 
@@ -60,7 +59,7 @@ To self-drive this loop across multiple tickets toward a stated goal instead of 
 ## Repository Etiquette
 
 - Conventional Commits (`feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`).
-- One logical change per commit. Tests and implementation may share a commit when the test is a pure regression check for the same fix, or — for `tdd`-tier tickets under the single-commit discipline (Workflow step 4) — when the captured red-run evidence stands in for commit separation as the tests-first proof.
+- One logical change per commit. Tests and implementation may share a commit when the test is a pure regression check for the same fix.
 - Never commit secrets. `.env`, credentials, and tokens are out of scope.
 - Never use `--no-verify` or skip hooks.
 - Never force-push to `main` or any shared branch.
@@ -76,11 +75,12 @@ The suite is split into two tiers **by directory** (see `vitest.config.js` for t
 
 The `verification_tier` field on a ticket controls how the Developer verifies it. Assign the **lightest defensible tier**:
 
-- `tdd` — RESERVED for security-sensitive logic, parsing, schema/state-schema changes, or state mutation with real edge-risk. Tests-first, single-commit discipline: write failing tests, capture the red-run evidence, then implement — test(s) and implementation may land in one commit (see the orchestrator-routing skill's "Single developer spawn, single-commit discipline" section).
-- `tests-after` — the DEFAULT for behavior provable by running the code with low edge-risk. Implement first, then add a minimal set of regression locks.
+- `tests-after` — the DEFAULT for behavior provable by running the code with low edge-risk — including security-sensitive logic, parsing, and schema/state-schema changes. Implement first, then add a minimal set of regression locks.
 - `uat-only` — glue, config, docs, prototypes. No new specs; verified via conversational UAT (see the UAT step in Workflow step 4).
 
-Absent `verification_tier` defaults to `tdd` (backward-compatible) — unchanged; the lightest-defensible-tier bias above governs new tier assignment, not this fallback.
+Absent `verification_tier` defaults to `tests-after` (backward-compatible).
+
+**Retired tier — `tdd` (TASK-212, 2026-08-13 human decision).** A third tier, `tdd`, used to exist: tests-first, single-commit discipline (write failing tests, capture the red-run evidence, then implement). It is retired and can no longer be assigned to a ticket — the measured reason: tests-first as a ticket-ordering discipline did not catch the failure modes it was meant to catch (see TASK-211/TASK-212 for the argument). The ~101 tickets closed as `tdd` before the retirement keep that value on their task file as a historical record; it is never rewritten retroactively, and the value is rejected by the schema for any new write. What tests-first actually protected against — a test that cannot fail for the right reason — is still fully enforced and, since TASK-212, applies more broadly: see `agents/developer.md`'s "Red-green planting" section, which every new test/spec/lock must satisfy, not only `tdd`-tier work.
 
 ### New-test budget
 
@@ -153,7 +153,7 @@ Nothing keeps `knowledge/graph/graph.json` synced to `tasks/` except the manual 
 Each subagent declares its model in the `model:` frontmatter field of its agent definition file:
 
 - **reviewer** → `fable` — the independent quality gate runs on **Fable 5**, the most capable model, regardless of the session's main model, so the gate stays on the strongest available model and gains model-diversity from the Opus-run orchestrator. Pinned via `PROJECT.md`'s `agent_models` map (`node bin/init.js --apply-models`). (History: TASK-042 had retired the `fable` pin to `inherit` while Fable 5 was unavailable to this account; it is available again as of 2026-07-14, so the explicit pin was restored on human directive.)
-- **developer** → `sonnet` — high-volume role (spawned once per ticket; `tdd`-tier work uses a single-commit discipline where captured red-run evidence, not commit ordering, is the tests-first proof); Sonnet delivers strong coding capability at a lower cost tier.
+- **developer** → `sonnet` — high-volume role (spawned once per ticket; every new test/spec/lock must be red-green planted per `agents/developer.md`, not just `tests-after` regression locks); Sonnet delivers strong coding capability at a lower cost tier.
 - **researcher** → `sonnet` — also high-volume; Sonnet handles search synthesis and skill authoring well.
 - **orchestrator** — no agent file; it runs as the main session thread and inherits whatever model the session is started with (Opus 4.8 in production). TASK-032 removed the orchestrator agent file — the role is the session itself, equipped with the orchestrator-routing skill.
 
