@@ -170,7 +170,13 @@ same workflow applies; only the I/O surface changes.
    `uat-only` for glue, config, docs, or prototypes. (TASK-212, 2026-08-13 human
    decision, retired the `tdd` tier — tests-first as a ticket-ordering discipline
    did not catch the failure modes it was meant to catch; absent `verification_tier`
-   on an existing ticket now defaults to `tests-after`.) Use `TaskCreate` to record
+   on an existing ticket now defaults to `tests-after`.) **Also assign
+   `requires_uat` at this same step** (TASK-221) — a separate question from
+   `verification_tier`: does the ticket's acceptance criteria describe something
+   a person can observe? Set `requires_uat: true` if yes, `false` if no. Absent
+   defaults to `false` (backward-compatible; see `tasks/schema.json`'s
+   `requires_uat` description and `src/task-store.js`'s `requiresUat(task)`
+   helper, the single place that default is read from). Use `TaskCreate` to record
    the breakdown:
    - Research tasks (one per unknown library/API/pattern).
    - One combined impl+lock task (`tests-after`) or one impl task (`uat-only`).
