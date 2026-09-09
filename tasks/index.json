@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T23:42:16.797Z",
+  "generated_at": "2026-09-09T23:57:43.225Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1318,7 +1318,7 @@
     {
       "key": "TASK-225",
       "title": "Promover el gate de board a CI, bloqueante solo para tickets posteriores a la fecha de corte",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "medium"
     },
     {
