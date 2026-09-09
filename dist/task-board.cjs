@@ -8028,7 +8028,7 @@ var UatDelegationGuardError = class extends Error {
 };
 var DELEGATED_MARKER_RE = /verified by orchestrator at the human'?s request/i;
 var FAIL_VERDICT_RE = /\bfail(?:ed|ing|s)?\b/i;
-var STEP_START_RE = /^(?:step\s*)?\d+[.):]/i;
+var STEP_START_RE = /^(?:step\s*)?(\d+)[.):]/i;
 var OVERALL_LINE_RE = /^overall(?:\s+result)?\s*:/i;
 var STRICT_STEP_VERDICT_RE = /verdict\s*:\s*(pass|fail)\.?\s*$/i;
 var STRICT_OVERALL_RE = /^overall(?:\s+result)?\s*:\s*pass\.?$/i;
@@ -8037,7 +8037,8 @@ function parseUatBody(body) {
   const boundaries = [];
   lines.forEach((line, idx) => {
     const trimmed = line.trim();
-    if (STEP_START_RE.test(trimmed)) boundaries.push({ idx, type: "step" });
+    const stepMatch = STEP_START_RE.exec(trimmed);
+    if (stepMatch) boundaries.push({ idx, type: "step", num: Number(stepMatch[1]) });
     else if (OVERALL_LINE_RE.test(trimmed)) boundaries.push({ idx, type: "overall" });
   });
   const stepBoundaries = boundaries.filter((b) => b.type === "step");
@@ -8050,7 +8051,8 @@ function parseUatBody(body) {
       blocks: [lines.slice(0, end).join(" ")],
       recognizedStepCount: 0,
       extraneousText: afterOverall.trim(),
-      overallLine
+      overallLine,
+      stepNumbers: [1]
     };
   }
   const blocks = stepBoundaries.map((b) => {
@@ -8064,14 +8066,23 @@ function parseUatBody(body) {
     blocks,
     recognizedStepCount: stepBoundaries.length,
     extraneousText: [preamble, postscript].filter((s) => s.trim() !== "").join("\n"),
-    overallLine
+    overallLine,
+    stepNumbers: stepBoundaries.map((b) => b.num)
   };
 }
+function coversAllStepNumbers(stepNumbers, requiredStepCount) {
+  if (typeof requiredStepCount !== "number" || requiredStepCount <= 0) return true;
+  const distinct = new Set(Array.isArray(stepNumbers) ? stepNumbers : []);
+  for (let n = 1; n <= requiredStepCount; n += 1) {
+    if (!distinct.has(n)) return false;
+  }
+  return true;
+}
 function evaluateStructuredStepVerdicts(body, requiredStepCount) {
-  const { blocks: rawBlocks, extraneousText, overallLine } = parseUatBody(body);
+  const { blocks: rawBlocks, extraneousText, overallLine, stepNumbers } = parseUatBody(body);
   if (rawBlocks.length === 0) return false;
   if (extraneousText !== "") return false;
-  if (typeof requiredStepCount === "number" && rawBlocks.length < requiredStepCount) return false;
+  if (!coversAllStepNumbers(stepNumbers, requiredStepCount)) return false;
   const blocks = rawBlocks.map((b) => b.replace(/\s+/g, " ").trim());
   for (const block of blocks) {
     const m = STRICT_STEP_VERDICT_RE.exec(block);
@@ -8206,6 +8217,9 @@ function hasCommentFromAuthor(task, author) {
   const comments = Array.isArray(task && task.comments) ? task.comments : [];
   return comments.some((c) => c && c.author === author);
 }
+function requiresUat(task) {
+  return task != null && task.requires_uat === true;
+}
 var InvalidPredecessorStateError = class extends Error {
   constructor(message) {
     super(message);
@@ -8317,13 +8331,19 @@ function hasRecordedUatVerdict(task) {
   const body = String(last && last.body || "").trim();
   if (body === "") return false;
   if (VERDICT_FAIL_RE.test(body) || OVERALL_FAIL_RE.test(body)) return false;
-  return UAT_VERDICT_WORD_RE.test(body);
+  if (!UAT_VERDICT_WORD_RE.test(body)) return false;
+  const { recognizedStepCount, stepNumbers } = parseUatBody(body);
+  if (recognizedStepCount === 0) return true;
+  const requiredStepCount = Array.isArray(task && task.acceptance_criteria) ? task.acceptance_criteria.length : 0;
+  return coversAllStepNumbers(stepNumbers, requiredStepCount);
 }
 function checkUatGuard(task) {
-  if (task.verification_tier !== "uat-only") return;
+  const isUatOnly = task.verification_tier === "uat-only";
+  if (!isUatOnly && !requiresUat(task)) return;
   if (!hasRecordedUatVerdict(task)) {
+    const reason = isUatOnly ? 'is verification_tier "uat-only"' : "has requires_uat: true";
     throw new UatGuardError(
-      `task ${task.key} is verification_tier "uat-only" and cannot transition to "done" without its most recent "uat" comment recording a recognizable verdict (a non-empty body naming a PASS result)`
+      `task ${task.key} ${reason} and cannot transition to "done" without its most recent "uat" comment recording a recognizable, AC-covering verdict (a non-empty body naming a PASS result, with no per-AC coverage gap when the body uses numbered steps)`
     );
   }
 }
