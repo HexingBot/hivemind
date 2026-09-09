@@ -1,0 +1,33 @@
+{
+  "key": "TASK-221",
+  "title": "Campo requires_uat en el esquema del ticket y su asignacion en el paso 1 del workflow",
+  "description": "Sale del analisis adversarial de la propuesta de arreglo del UAT (2026-09-09). Hoy la obligatoriedad del UAT se deduce del verification_tier, y esa deduccion es la raiz de los otros dos problemas del conjunto.\n\nEL PROBLEMA. El tier responde una pregunta: cuanto rigor de tests necesita este ticket. Se lo esta usando ademas para responder otra distinta: hay aca algo que una persona pueda mirar. Un ticket tests-after con comportamiento observable necesita UAT, y CLAUDE.md paso 4 ya lo dice en prosa (cuando los criterios describen comportamiento observable). Pero ningun campo lo registra: ningun guard lo puede leer, ningun sensor lo puede verificar y ninguna auditoria lo puede contar. La condicion vive solo en el juicio del orquestador en el momento y se pierde apenas termina la sesion.\n\nEL ARREGLO. Un campo booleano explicito requires_uat en tasks/schema.json, asignado en el paso 1 del workflow junto con el verification_tier, respondiendo una pregunta simple y separada: los criterios de aceptacion de este ticket describen algo que una persona puede observar. Si la respuesta es si, requires_uat true.\n\nES LA BASE DE LOS OTROS DOS. TASK-220 lo lee para decidir si el reviewer corre el sensor; TASK-222 lo lee para decidir si el guard de cierre exige el UAT. Ninguno de los dos puede hacerse antes que este.\n\nORDEN, Y POR QUE DEPENDE DE TASK-212 Y NO AL REVES. TASK-212 (retiro del tier tdd) reescribe la rubrica de asignacion de tier del paso 1 de CLAUDE.md, que es exactamente el parrafo donde este ticket agrega la asignacion de requires_uat; y edita tasks/schema.json (el enum de verification_tier), que es exactamente el archivo donde este ticket agrega la propiedad. Haciendo TASK-212 primero, la politica de requires_uat se escribe UNA sola vez contra el mundo de dos tiers. Al reves habria que escribirla y despues reescribirla, y la version intermedia quedaria documentando un tier que el enum ya no acepta.\n\nDEFAULT: DECIDIR EXPLICITAMENTE dentro del ticket, no inferirlo. Recomendacion a evaluar: campo ausente igual a false, porque los 206 tickets ya cerrados no lo llevan y un default true los volveria retroactivamente incumplidores en masa, que es precisamente lo que TASK-223 congela como linea base en vez de migrar.\n\nNOTA DE ALCANCE. Al tocar tasks/schema.json el gate de este ticket es npm run test:all, no el gate por ticket. Nota adicional: createTask emite un aviso advisory de checkTierContentMismatch para este ticket, porque menciona un cambio de esquema declarandose tests-after. El aviso es correcto segun la regla vigente y queda desactualizado en cuanto TASK-212 retire el tdd; no bloquea nada.",
+  "acceptance_criteria": [
+    "tasks/schema.json declara requires_uat como booleano opcional con descripcion propia, y el esquema sigue con additionalProperties false sin invalidar ningun ticket existente.",
+    "El valor por defecto cuando el campo esta ausente esta decidido explicitamente, escrito en la descripcion del campo, y demostrado con un caso sobre un ticket real que no lo lleva.",
+    "CLAUDE.md paso 1 del Workflow instruye asignar requires_uat en el mismo momento que verification_tier, con el criterio escrito: true si los criterios de aceptacion describen comportamiento observable por una persona, false si no.",
+    "La misma instruccion queda en el paso 2 de skills/orchestrator-routing/SKILL.md y en su copia espejo, verificadas byte-identicas.",
+    "El campo es aceptado por createTask y por la herramienta MCP create_task sin rechazo de esquema, y sobrevive intacto a un round-trip de lectura y escritura de un ticket.",
+    "Los 206 tickets ya cerrados no se modifican: ninguno recibe el campo retroactivamente.",
+    "Locks de regresion minimos: al menos un caso de ticket con requires_uat true, uno con false y uno sin el campo, demostrando que los tres validan y que el default es el decidido.",
+    "npm run test:all en verde, dist reconstruido y commiteado si cambio src/ o bin/, y dist-parity pasando."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "uat",
+    "schema",
+    "metodologia"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-212"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-09T17:17:52.316Z",
+  "updated_at": "2026-09-09T17:17:52.316Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

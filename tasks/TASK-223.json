@@ -1,0 +1,33 @@
+{
+  "key": "TASK-223",
+  "title": "Comando de auditoria del board: tickets en done sin UAT, con linea base congelada",
+  "description": "Sale del analisis adversarial de la propuesta de arreglo del UAT (2026-09-09). Cerrar el agujero hacia adelante no dice nada sobre lo que ya esta cerrado, y lo que ya esta cerrado es la mayor parte del board.\n\nMEDIDO EL 2026-09-09 sobre tasks/: 214 tickets en total, 206 en done, y 161 de esos 206 sin ningun comentario de autor uat. Desglose por tier de esos 161: 100 tdd, 31 sin campo de tier (que por el default historico documentado son tdd), y 30 tests-after. Cero uat-only. Ese cero es el dato importante: el lado incondicional del sensor funciono siempre, y la deuda esta concentrada exactamente en los tiers a los que nunca se les exigio UAT.\n\nDECISION DE ALCANCE, TOMADA DE ENTRADA: los 161 NO SE MIGRAN. Nadie va a correr UAT retroactivo sobre trabajo cerrado hace meses, y pretender lo contrario produciria comentarios uat fabricados — que es peor que la ausencia, porque la ausencia por lo menos es honesta. Se congelan como linea base documentada con fecha de corte, y la auditoria los reporta como linea base, nunca como incumplimiento.\n\nQUE SE CONSTRUYE. Un comando que lee el board y lista los tickets en done sin UAT valido, separando dos grupos que nunca se mezclan en un solo numero: los cerrados antes de la fecha de corte (linea base congelada, informativos) y los cerrados despues (incumplimientos reales, accionables). Sin esa separacion el reporte nace con 161 hallazgos y se ignora el primer dia. Eso es fatiga de alarma, la misma trampa que el contrato de resultado vacio de CLAUDE.md advierte explicitamente al explicar por que el marcador de test:since no es un fallo duro.\n\nCONTRATO DE RESULTADO VACIO. El comando cae de lleno bajo esa regla: cero incumplimientos posteriores al corte tiene que poder distinguirse de que el comando no encontro tickets que examinar, y de que no pudo leer el board. Un cero calificado, nunca un exito sin calificar.",
+  "acceptance_criteria": [
+    "Existe un comando que lista los tickets en done sin un comentario uat que satisfaga la verificacion vigente, y corre sobre el board real de este repo.",
+    "La salida separa linea base congelada (cerrados antes de la fecha de corte) de incumplimientos accionables (cerrados despues), y nunca los suma en un unico numero.",
+    "La fecha de corte esta escrita explicitamente en el repo junto con su justificacion, no incrustada sin explicacion dentro del comando.",
+    "La linea base queda documentada con los numeros medidos y su desglose por tier, con la fecha de la medicion, de modo que un lector futuro pueda distinguir deuda historica de regresion nueva.",
+    "Ningun ticket cerrado se modifica: la auditoria es estrictamente de solo lectura sobre tasks/.",
+    "Contrato de resultado vacio cumplido: cero incumplimientos posteriores al corte se reporta calificado (cuantos tickets se examinaron y cuantos quedaron de cada lado del corte), y un fallo de lectura del board se distingue de un cero legitimo y sale con codigo no-cero.",
+    "Locks de regresion minimos: al menos un caso con un incumplimiento posterior al corte y uno sin ninguno, demostrando que las dos salidas difieren de verdad.",
+    "npm test en verde, mas los e2e afectados nombrados explicitamente al hacer la entrega."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "uat",
+    "auditoria",
+    "board"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-221"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-09T17:18:34.140Z",
+  "updated_at": "2026-09-09T17:18:34.140Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

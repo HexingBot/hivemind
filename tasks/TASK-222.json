@@ -1,0 +1,34 @@
+{
+  "key": "TASK-222",
+  "title": "El guard de cierre pasa de tier uat-only a requires_uat, y la verificacion del UAT gana cobertura por criterio",
+  "description": "Sale del analisis adversarial de la propuesta de arreglo del UAT (2026-09-09). Es el ticket de mayor riesgo del conjunto: toca el guard de cierre, que es superficie de mutacion de estado.\n\nDOS DEFECTOS, VERIFICADOS POR LECTURA de src/task-store.js.\n\n1. EL DISPARADOR ES EL TIER. checkUatGuard (linea 965) arranca con un return temprano si verification_tier no es exactamente uat-only. Un ticket tests-after con comportamiento observable — donde CLAUDE.md ya declara el UAT obligatorio — llega a done sin que el guard mire absolutamente nada. Pasa a disparar por requires_uat true, el campo que introduce TASK-221, con independencia del tier.\n\n2. LA VERIFICACION ES DE PRESENCIA, NO DE COBERTURA. hasRecordedUatVerdict (linea 946) toma el ultimo comentario de autor uat y pide tres cosas: cuerpo no vacio, que no matchee las expresiones de FAIL, y que matchee una palabra de veredicto PASS. No cuenta pasos, no los compara contra la cantidad de criterios de aceptacion y no verifica que cada criterio tenga cobertura. Es exactamente el patron que el contrato de resultado vacio de CLAUDE.md ya nombra por su nombre: un chequeo de presencia alimentando un gate de cierre. CLAUDE.md incluso lo declara en vuelo bajo TASK-186, pero lo que TASK-186 endurecio fue la gramatica estricta de src/close-guard.js, que corre SOLO en modo loop. En modo harness — el modo por defecto, con humano presente — el gate de cierre sigue siendo el chequeo liviano.\n\n3. EL PISO NO ES COBERTURA. La propia gramatica estricta declara su limite: el conteo de bloques de paso es un PISO, no cobertura por criterio. Nada ata un bloque a un criterio concreto, asi que dos bloques ambos rotulados 1. satisfacen un piso de 2 con un solo criterio realmente cubierto. Este ticket cierra tambien ese hueco.\n\nALCANCE Y RIESGO. Es camino de cierre y mutacion de estado. Un cambio que falle abierto convierte el gate en decoracion; uno que falle cerrado de mas bloquea cierres legitimos y termina desactivado. El rigor pedido es alto: correr la verificacion vieja y la nueva sobre el corpus real de tickets y reportar cuantos veredictos cambian de lado. Un cambio de lado inesperado es una falla del gate, no un detalle de implementacion.\n\nNOTA OPERATIVA. Al modificar src/task-store.js y reconstruir, el servidor MCP vivo sigue corriendo los bytes que cargo al conectarse (TASK-204). Consultar mcp_build_status despues del rebuild antes de confiar en el comportamiento nuevo del guard.",
+  "acceptance_criteria": [
+    "checkUatGuard dispara por requires_uat true en vez de por verification_tier igual a uat-only, demostrado con un ticket tests-after con requires_uat true que no puede transicionar a done sin un UAT valido.",
+    "Un ticket uat-only sigue sin poder cerrar sin UAT valido, cualquiera sea el valor de requires_uat. La proteccion existente no se pierde en el cambio.",
+    "Un ticket con requires_uat false y tier tests-after sigue cerrando sin UAT, exactamente igual que hoy.",
+    "La verificacion deja de ser de presencia: el cuerpo del comentario uat debe demostrar cobertura de CADA criterio de aceptacion, no solo alcanzar un piso de cantidad de bloques. El mecanismo elegido queda escrito, con su limite residual declarado explicitamente en vez de omitido.",
+    "El caso de numeracion duplicada (dos bloques ambos rotulados 1. satisfaciendo un piso de 2) queda cubierto, demostrado con un cuerpo que hoy pasa el gate y despues no.",
+    "Modo harness y modo loop quedan alineados en cobertura por criterio; si queda alguna diferencia es deliberada y esta escrita con su motivo, no heredada por omision.",
+    "Corpus real: se corre la verificacion vieja y la nueva sobre los 206 tickets cerrados y se reporta cuantos veredictos cambian de lado, con la lista completa. Cero cambios inesperados, y cada cambio que haya explicado uno por uno.",
+    "El guard falla cerrado ante una entrada que no puede evaluar, nunca abierto, demostrado con un caso.",
+    "npm run test:all en verde, dist reconstruido y commiteado, dist-parity pasando, y mcp_build_status consultado despues del rebuild para confirmar que el servidor MCP vivo no quedo con bytes viejos."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "uat",
+    "close-guard",
+    "state-mutation"
+  ],
+  "assignee": null,
+  "depends_on": [
+    "TASK-221"
+  ],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-09T17:18:16.152Z",
+  "updated_at": "2026-09-09T17:18:16.152Z",
+  "jira_key": null,
+  "verification_tier": "tests-after"
+}

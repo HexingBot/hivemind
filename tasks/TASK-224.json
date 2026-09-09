@@ -1,0 +1,29 @@
+{
+  "key": "TASK-224",
+  "title": "CI basico: npm test en push y test:all en pull request contra main, sin gate de board",
+  "description": "Sale del analisis adversarial de la propuesta de arreglo del UAT (2026-09-09). Todo el gate de verificacion de este repo corre hoy en la maquina de quien trabaja. No existe ningun .github/workflows: verificado, el directorio no existe. Nada impide que un commit llegue a main sin que la suite haya corrido nunca fuera de una sesion de agente, y todo el aparato de tiers, guards y sensores descansa sobre la premisa de que alguien corrio los tests.\n\nQUE SE CONSTRUYE. Lo minimo y aburrido, a proposito: un workflow que corra npm test (el tier rapido) en cada push, y npm run test:all (todo, incluido dist-parity y el suite de casos de uso) en cada pull request contra main.\n\nQUE NO SE CONSTRUYE, DELIBERADAMENTE: ningun gate de board. La auditoria de TASK-223 arranca con 161 tickets de deuda historica; enchufarla a CI dentro de este ticket volveria rojo el primer build y todos los siguientes. Un CI cronicamente rojo no es un control: es ruido que la gente aprende a ignorar y despues desactiva, con lo cual el control termina valiendo menos que no haberlo puesto. La promocion del gate de board a CI es TASK-225 y llega despues, ya con la linea base congelada y una fecha de corte que la vuelva accionable.\n\nSIN DEPENDENCIAS, Y ES EL UNICO. Es el unico ticket de este conjunto que no toca ningun archivo que editen TASK-212 ni los demas: crea .github/workflows desde cero. Se puede despachar en cualquier momento, incluso en paralelo con el resto, y conviene hacerlo temprano porque es lo que le da a todos los demas un lugar donde correr.\n\nTIER. Es configuracion, sin logica propia que testear, por eso uat-only. La verificacion real es verlo correr.",
+  "acceptance_criteria": [
+    "Existe .github/workflows con un workflow que corre npm test (tier rapido) en cada push.",
+    "El mismo workflow o un segundo corre npm run test:all en cada pull request contra main.",
+    "La version de node y el metodo de instalacion de dependencias coinciden con lo que el repo usa localmente; no se inventa una version distinta ni un gestor distinto.",
+    "No hay ningun gate de board en este ticket: el workflow no consulta tasks/ ni la auditoria de TASK-223. Se verifica por lectura del workflow.",
+    "El workflow se ve corriendo de verdad al menos una vez, con su resultado observado, y no unicamente commiteado.",
+    "Un fallo real de test produce un build rojo, demostrado, y no un verde por resultado vacio ni por un paso que se saltea en silencio.",
+    "UAT: script de aceptacion derivado de estos criterios, corrido con el humano, con el veredicto registrado como comentario de autor uat en la convencion estricta."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "ci",
+    "infraestructura"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-09T17:18:50.935Z",
+  "updated_at": "2026-09-09T17:18:50.935Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}
