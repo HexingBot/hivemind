@@ -13,6 +13,15 @@ UAT_BASELINE_CUTOFF_DATE = "2026-09-09"
 
 Run the audit with `npm run audit:uat` (or `node bin/audit-uat.js [--json]`).
 
+**TASK-225 — CI gate.** `npm run gate:uat` (`bin/ci-uat-gate.js`, wired into `.github/workflows/ci.yml`'s
+`uat-gate` job) promotes this same cutoff into a build-blocking check, scoped to only the
+tickets that actually needed a UAT verdict (`src/uat-gate.js`'s `needsUat` — the same
+`verification_tier === 'uat-only' || requiresUat(task)` union `checkUatGuard` enforces at
+close time). It reads `UAT_BASELINE_CUTOFF_DATE` from `src/uat-audit.js` too — there is no
+second cutoff constant. See `bin/ci-uat-gate.js`'s header for its three-outcome exit-code
+contract (`zero-examined` / `compliant` both exit `0` with a distinguishing marker,
+`violations` exits `2`, a board-read failure exits `1`).
+
 ## Why a cutoff, and why this date (TASK-223)
 
 TASK-223 grew out of an adversarial review of the UAT close-guard fix (2026-09-09):

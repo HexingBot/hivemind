@@ -4,13 +4,15 @@ name: CI
 # full test tier (including dist-parity and the use-case suite) on every pull
 # request targeting main.
 #
-# Deliberately NOT included: any gate on tasks/ or the TASK-223 ticket-debt
-# audit. TASK-223's audit starts at 161 tickets of pre-existing debt; wiring
-# it into CI here would turn the very first build (and every one after it)
-# red on day one. A chronically red CI stops being a control and becomes
-# noise people learn to ignore and then disable — which is worse than not
-# having the control at all. Promoting the board audit into a CI gate is a
-# separate, deliberate step: TASK-225.
+# TASK-224 deliberately did NOT include any gate on tasks/ or the TASK-223
+# ticket-debt audit: that audit starts at 161 tickets of pre-existing debt,
+# and wiring it into CI directly would have turned the very first build (and
+# every one after it) red on day one. A chronically red CI stops being a
+# control and becomes noise people learn to ignore and then disable — which
+# is worse than not having the control at all. TASK-225 (the `uat-gate` job
+# below) is that separate, deliberate promotion step, now that TASK-223 has
+# frozen the pre-existing debt as a documented baseline (docs/uat-baseline.md)
+# that never trips the gate.
 on:
   push:
   pull_request:
@@ -52,3 +54,31 @@ jobs:
       # including dist-parity and the use-case suite) reports its own exit
       # code untouched.
       - run: npm run test:all
+
+  uat-gate:
+    name: UAT board gate (npm run gate:uat)
+    # TASK-225 — deliberately UNCONDITIONAL (no `if:` on github.event_name),
+    # unlike `fast`/`full` above. GitHub treats a `skipped` required check as
+    # SATISFIED, not failed (a finding from TASK-224's review) — `fast` and
+    # `full` can each legitimately skip because between them every event this
+    # workflow triggers on (`push`, `pull_request`) is covered by exactly one
+    # of the two. This job instead covers a SINGLE build-blocking invariant
+    # that must hold on every event, so it runs on both rather than being
+    # split the same way; splitting it would recreate the exact skip-as-pass
+    # gap this comment is warning about. If you add branch protection rules
+    # for this repo, require this job's check by name and verify it never
+    # shows as "skipped" for any protected event.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # bin/ci-uat-gate.js's own exit code is the job's exit code: 0 for a
+      # qualified pass (ZERO_EXAMINED or COMPLIANT — see that file's header
+      # for why a zero-examined result is a marker, not a hard failure), 1
+      # for a board-read failure, 2 for a real post-cutoff violation. No
+      # continue-on-error, no `|| true`, no conditional skip.
+      - run: npm run gate:uat

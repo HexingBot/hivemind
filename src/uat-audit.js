@@ -45,22 +45,36 @@ function closedAtOf(task) {
  * Compute the UAT audit report over an already-loaded list of raw task
  * objects (the caller owns reading tasks/*.json — see bin/audit-uat.js).
  *
- * @param {{tasks: object[], cutoffDate?: string}} opts `cutoffDate` is an
- *   ISO calendar date (YYYY-MM-DD); defaults to UAT_BASELINE_CUTOFF_DATE.
- *   Injectable so tests can pin a cutoff independent of the frozen constant
- *   without touching the constant itself.
+ * @param {{tasks: object[], cutoffDate?: string, filterFn?: (task: object) => boolean}} opts
+ *   `cutoffDate` is an ISO calendar date (YYYY-MM-DD); defaults to
+ *   UAT_BASELINE_CUTOFF_DATE. Injectable so tests can pin a cutoff
+ *   independent of the frozen constant without touching the constant
+ *   itself. `filterFn` (TASK-225) narrows WHICH `status: "done"` tasks are
+ *   examined at all, applied before anything else below — the CLI's
+ *   unscoped `audit:uat` command (every done ticket, any tier) passes
+ *   nothing and keeps today's behavior unchanged (default: examine every
+ *   done ticket); the TASK-225 CI gate (src/uat-gate.js) passes the
+ *   checkUatGuard union rule (`verification_tier === 'uat-only' ||
+ *   requiresUat(task)`) so it only ever examines tickets that actually
+ *   needed a UAT verdict, per this ticket's AC1. One engine, two callers,
+ *   two scopes — not a duplicated audit.
  * @returns {{
  *   cutoff_date: string,
  *   total_tickets_on_board: number,
  *   examined_done_count: number,
+ *   post_cutoff_done_count: number,
  *   missing_uat_total: number,
  *   baseline: {count: number, by_tier: Record<string, number>, tickets: Array<{key: string, verification_tier: string, updated_at: string|null}>},
  *   actionable: {count: number, tickets: Array<{key: string, verification_tier: string, updated_at: string|null}>},
  * }}
  */
-export function computeUatAuditReport({ tasks, cutoffDate = UAT_BASELINE_CUTOFF_DATE } = {}) {
+export function computeUatAuditReport({
+  tasks,
+  cutoffDate = UAT_BASELINE_CUTOFF_DATE,
+  filterFn = () => true,
+} = {}) {
   const list = Array.isArray(tasks) ? tasks : [];
-  const done = list.filter((t) => t && t.status === 'done');
+  const done = list.filter((t) => t && t.status === 'done' && filterFn(t));
 
   // End-of-day instant for the cutoff CALENDAR date: a ticket closed at any
   // point during the cutoff date itself still counts as baseline (it was
@@ -69,20 +83,32 @@ export function computeUatAuditReport({ tasks, cutoffDate = UAT_BASELINE_CUTOFF_
   // cutoff" (AC2's "cerrados despues").
   const cutoffInstantMs = Date.parse(`${cutoffDate}T23:59:59.999Z`);
 
+  // Fail-closed instant check shared by both the "is this a finding at all"
+  // partition below AND (TASK-225) the raw post-cutoff population count,
+  // regardless of whether the task has a valid verdict — a single place for
+  // "was this closed after the cutoff", not two independently-drifting
+  // copies of the same Date.parse comparison.
+  function closedAfterCutoff(task) {
+    const closedAtMs = Date.parse(closedAtOf(task) ?? '');
+    return Number.isFinite(closedAtMs) && closedAtMs > cutoffInstantMs;
+  }
+
   const baselineTickets = [];
   const actionableTickets = [];
+  let postCutoffDoneCount = 0;
 
   for (const task of done) {
+    if (closedAfterCutoff(task)) postCutoffDoneCount += 1;
+
     if (hasRecordedUatVerdict(task)) continue; // has a valid verdict — not a finding at all
 
     const closedAt = closedAtOf(task);
-    const closedAtMs = closedAt === null ? NaN : Date.parse(closedAt);
     // Undated/unparseable closes fail closed toward the SAFE side (baseline,
     // not actionable) — an audit that can't prove a close happened after the
     // cutoff must never silently promote it to "regression". Real board data
     // never hits this branch (every done ticket has updated_at), but this is
     // the failure-mode this function is answerable for if that ever changes.
-    const isActionable = Number.isFinite(closedAtMs) && closedAtMs > cutoffInstantMs;
+    const isActionable = closedAfterCutoff(task);
 
     const entry = { key: task.key, verification_tier: tierKeyOf(task), updated_at: closedAt };
     (isActionable ? actionableTickets : baselineTickets).push(entry);
@@ -97,6 +123,13 @@ export function computeUatAuditReport({ tasks, cutoffDate = UAT_BASELINE_CUTOFF_
     cutoff_date: cutoffDate,
     total_tickets_on_board: list.length,
     examined_done_count: done.length,
+    // TASK-225 — the RAW post-cutoff population among the (possibly
+    // filterFn-narrowed) examined set, independent of verdict validity.
+    // Needed because "actionable.count === 0" is ambiguous on its own: it is
+    // true both when every post-cutoff ticket is compliant AND when there
+    // are zero post-cutoff tickets to examine at all — exactly the
+    // distinction src/uat-gate.js's empty-result contract depends on.
+    post_cutoff_done_count: postCutoffDoneCount,
     missing_uat_total: baselineTickets.length + actionableTickets.length,
     baseline: {
       count: baselineTickets.length,
