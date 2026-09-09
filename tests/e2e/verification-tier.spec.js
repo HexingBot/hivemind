@@ -1,14 +1,23 @@
 // tests/e2e/verification-tier.spec.js
 // TASK-028 — tiered verification policy + scaled per-ticket gate.
-// TASK-212 (2026-08-13 human decision) retired the 'tdd' tier; the enum here
-// covers the surviving two tiers plus the explicit-rejection lock for 'tdd'.
+// TASK-212 (2026-08-13 human decision) retired the 'tdd' tier as an
+// ASSIGNABLE tier — but TASK-212's own fix round (REQUEST-CHANGES HIGH)
+// re-split the enum: tasks/schema.json (the STORAGE schema) keeps accepting
+// "tdd" as a write-frozen historical value (~101 tickets legitimately carry
+// it; a schema that rejected it would make appendComment/transitionStatus on
+// any of them fail forever), while the two ASSIGNMENT surfaces
+// (src/task-store.js's VERIFICATION_TIERS, src/mcp-server.js's zod
+// VERIFICATION_TIER) still reject it for any NEW ticket. See L8 in
+// tests/verification-policy-docs.spec.js for the drift guard pinning this
+// split invariant.
 //
 // Acceptance criteria covered:
 //   AC1 — tasks/schema.json gains optional verification_tier enum
-//          [tests-after, uat-only]; absent is still valid; invalid value
-//          (including the retired 'tdd') is rejected; additionalProperties:
-//          false means the field MUST be declared in the schema or a file
-//          carrying it fails ajv validation (that is the current red state).
+//          [tdd, tests-after, uat-only] (tdd write-frozen/historical only);
+//          absent is still valid; an invalid value (anything NOT in that
+//          set) is rejected; additionalProperties: false means the field
+//          MUST be declared in the schema or a file carrying it fails ajv
+//          validation (that is the current red state).
 //   AC1 (createTask) — createTask persists verification_tier when given; omits
 //          it when not given; rejects an invalid tier value.
 //   AC5 (CLI) — bin/new-task.js --tier <value> lands in the created JSON;
@@ -145,20 +154,93 @@ describe('AC1 — schema: verification_tier field', () => {
     expect(ok, 'schema must reject verification_tier: "invalid-value"').toBe(false);
   });
 
-  // TASK-212 lock (AC1) — 'tdd' was retired (2026-08-13 human decision) and
-  // must no longer validate as a NEW verification_tier value, even though it
-  // remains a legal historical value on already-closed tasks written before
-  // the retirement (this schema-level check cannot and does not distinguish
-  // "new" from "historical" — see tasks/schema.json's verification_tier
-  // description for the accepted residual risk on mutating those tickets).
-  it('schema_rejects_the_retired_tdd_tier', () => {
+  // TASK-212 fix round (REQUEST-CHANGES HIGH) — the STORAGE schema keeps
+  // accepting the write-frozen historical value "tdd" on purpose: ~101
+  // tickets (100 done + any still in-flight, e.g. TASK-211 before its own
+  // re-tier) legitimately carry it, and appendComment/transitionStatus
+  // re-validate the WHOLE stored object against this schema on every write —
+  // a schema that rejected "tdd" would make those tickets permanently
+  // un-rewritable, which contradicts "kept as a historical record"
+  // (CLAUDE.md's Testing section). The policy that "tdd" can never be
+  // ASSIGNED to a new ticket is enforced one layer up (createTask's
+  // VERIFICATION_TIERS check and the MCP zod schema), NOT here — see the
+  // createTask/MCP group below and tests/verification-policy-docs.spec.js's
+  // L8 drift guard for that split invariant.
+  it('schema_accepts_the_write_frozen_historical_tdd_tier', () => {
     const schema = loadSchema();
     const ajv = makeAjv();
     const validate = ajv.compile(schema);
 
     const task = baseTask({ verification_tier: 'tdd' });
     const ok = validate(task);
-    expect(ok, 'schema must reject the retired verification_tier: "tdd"').toBe(false);
+    expect(
+      ok,
+      'the storage schema must still accept "tdd" as a historical value — errors: ' +
+        JSON.stringify(validate.errors),
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
+// TASK-212 fix round (REQUEST-CHANGES HIGH) — mutating an EXISTING ticket
+// that already carries verification_tier: "tdd" (a historical record from
+// before the retirement) must keep working. transitionStatus/appendComment
+// re-validate the WHOLE stored task object against tasks/schema.json on
+// every write, so if the schema ever again rejected "tdd" this is exactly
+// the write path that would start throwing for every one of the ~101
+// tickets that carry it (100 done + TASK-211, before its own re-tier —
+// verified live in this repo: appendComment/transitionStatus against
+// TASK-057 failed with "verification_tier must be equal to one of the
+// allowed values" before this fix round). THE lock that was missing.
+// ===========================================================================
+describe('TASK-212 fix round — mutating a preexisting "tdd"-tier ticket keeps working', () => {
+  function seedTddTicket(repoDir, overrides = {}) {
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-900': baseTask({
+          key: 'TASK-900',
+          status: 'todo',
+          verification_tier: 'tdd',
+          ...overrides,
+        }),
+      },
+    });
+  }
+
+  it('transitionStatus succeeds on a ticket with a preexisting "tdd" tier', async () => {
+    const { transitionStatus } = await import(PROD.taskStore);
+    const repoDir = makeTmpDir('af-vt-tdd-transition');
+    seedTddTicket(repoDir);
+
+    await transitionStatus({
+      repoRoot: repoDir,
+      key: 'TASK-900',
+      status: 'in_progress',
+      now: () => '2026-09-10T12:00:00Z',
+    });
+
+    const written = readTaskFile(repoDir, 'TASK-900');
+    expect(written.status).toBe('in_progress');
+    expect(written.verification_tier).toBe('tdd');
+  });
+
+  it('appendComment succeeds on a ticket with a preexisting "tdd" tier', async () => {
+    const { appendComment } = await import(PROD.taskStore);
+    const repoDir = makeTmpDir('af-vt-tdd-comment');
+    seedTddTicket(repoDir);
+
+    await appendComment({
+      repoRoot: repoDir,
+      key: 'TASK-900',
+      author: 'developer',
+      body: 'Still works after the fix round.',
+      now: () => '2026-09-10T12:00:00Z',
+    });
+
+    const written = readTaskFile(repoDir, 'TASK-900');
+    expect(written.comments.length).toBe(1);
+    expect(written.comments[0].body).toBe('Still works after the fix round.');
+    expect(written.verification_tier).toBe('tdd');
   });
 });
 
@@ -251,14 +333,15 @@ describe('AC1 — createTask: verification_tier field', () => {
     expect(indexAfter, 'tasks/index.json must not be written on a rejected tier').toBe(indexBefore);
   });
 
-  // TASK-212 lock (AC1) — createTask end-to-end must reject the retired
-  // 'tdd' tier for NEW tickets. Defense-in-depth: createTask's own
-  // VERIFICATION_TIERS check (src/task-store.js) throws first today, but the
-  // ajv schema check right below it would independently catch the same
-  // input if VERIFICATION_TIERS ever regressed alone (red-green-planted:
-  // confirmed this assertion stays green — for a different, still-correct
-  // reason — when VERIFICATION_TIERS alone is reverted to include 'tdd',
-  // and goes genuinely red only when the schema enum is ALSO reverted).
+  // TASK-212 lock (AC1), updated by TASK-212's own fix round (REQUEST-CHANGES
+  // HIGH) — createTask must reject 'tdd' for NEW tickets. This is now the
+  // ONLY layer that rejects it: the storage schema (tasks/schema.json) was
+  // reverted to ACCEPT "tdd" as a write-frozen historical value (see the
+  // schema test above), so createTask's own VERIFICATION_TIERS check
+  // (src/task-store.js) is the sole gate standing between this call and a
+  // successful write — red-green-planted against VERIFICATION_TIERS alone
+  // (reverting it to include 'tdd' now goes genuinely red immediately,
+  // unlike before the fix round when the schema layer used to mask it).
   it('createTask_rejects_the_retired_tdd_tier', async () => {
     const { createTask } = await import(PROD.taskStore);
 
@@ -382,5 +465,28 @@ describe('AC5 — MCP: create_task verification_tier round-trip', () => {
       readFileSync(join(repoRoot, 'tasks', `${created.key}.json`), 'utf8'),
     );
     expect(written.verification_tier).toBe('uat-only');
+  });
+
+  // TASK-212 fix round (REQUEST-CHANGES HIGH) — the MCP create_task tool
+  // end-to-end must reject "tdd" for a NEW ticket. Defense-in-depth, same
+  // masking shape as the createTask test above: the underlying createTask
+  // call's own VERIFICATION_TIERS check catches this today even if the
+  // zod VERIFICATION_TIER enum here regressed alone (red-green-planted:
+  // confirmed this assertion stays green — for the still-correct
+  // createTask reason — when the zod enum alone is reverted to include
+  // 'tdd', and goes genuinely red only when BOTH the zod enum AND
+  // src/task-store.js's VERIFICATION_TIERS are reverted together).
+  it('create_task_rejects_the_retired_tdd_tier', async () => {
+    const result = await client.callTool({
+      name: 'create_task',
+      arguments: {
+        title: 'MCP retired tier',
+        description: 'tdd was retired by TASK-212.',
+        acceptance_criteria: ['tier is rejected'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+      },
+    });
+    expect(result.isError, 'the MCP create_task tool must reject verification_tier: "tdd"').toBe(true);
   });
 });

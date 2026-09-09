@@ -34,8 +34,8 @@
     },
     "verification_tier": {
       "type": "string",
-      "enum": ["tests-after", "uat-only"],
-      "description": "Governs how the ticket is verified. Absent means tests-after (backward-compatible default). tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT. TASK-212 retired the 'tdd' tier (2026-08-13 human decision) — tickets closed before the retirement may still carry verification_tier: \"tdd\" on disk as a historical record and are not rewritten; this is a known, accepted case where a further write to one of those tickets (e.g. appending a comment) would fail schema validation, since ajv re-validates the whole stored object on every write."
+      "enum": ["tdd", "tests-after", "uat-only"],
+      "description": "Governs how the ticket is verified. Absent means tests-after (backward-compatible default). tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT. \"tdd\" (tests-first, single-commit discipline) is WRITE-FROZEN: TASK-212 (2026-08-13 human decision) retired it and it can no longer be ASSIGNED to a ticket — that policy is enforced one layer up, by the two write surfaces (src/task-store.js's VERIFICATION_TIERS, src/mcp-server.js's zod VERIFICATION_TIER), not by this storage schema. This schema keeps accepting \"tdd\" only so the ~101 tickets (100 done + any still in-flight) that legitimately carry it as a historical record of how they were verified stay writable at all — appending a comment or transitioning status on one of them re-validates the WHOLE stored object against this enum, and a schema that rejected \"tdd\" would make that historical record permanently un-rewritable, which is not what 'kept as a historical record' (CLAUDE.md's Testing section) means. Never assign \"tdd\" to a new ticket — createTask and the MCP create_task tool reject it independently of this schema."
     },
     "marker": {
       "type": "string",
