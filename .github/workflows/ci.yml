@@ -1,0 +1,54 @@
+name: CI
+
+# TASK-224 — minimal, boring CI: run the fast test tier on every push, and the
+# full test tier (including dist-parity and the use-case suite) on every pull
+# request targeting main.
+#
+# Deliberately NOT included: any gate on tasks/ or the TASK-223 ticket-debt
+# audit. TASK-223's audit starts at 161 tickets of pre-existing debt; wiring
+# it into CI here would turn the very first build (and every one after it)
+# red on day one. A chronically red CI stops being a control and becomes
+# noise people learn to ignore and then disable — which is worse than not
+# having the control at all. Promoting the board audit into a CI gate is a
+# separate, deliberate step: TASK-225.
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: Fast tier (npm test)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # No continue-on-error, no `|| true`, no conditional skip: vitest's own
+      # exit code is the job's exit code, so a real test failure is a red
+      # build (AC6), never a silent or vacuous green.
+      - run: npm test
+
+  full:
+    name: Full tier (npm run test:all)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # Same rule as the fast job: the full tier (fast + tests/e2e/**,
+      # including dist-parity and the use-case suite) reports its own exit
+      # code untouched.
+      - run: npm run test:all
