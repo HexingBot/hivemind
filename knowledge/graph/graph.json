@@ -1554,6 +1554,12 @@
       "type": "task",
       "ref": "tasks/TASK-222.json",
       "label": "El guard de cierre pasa de tier uat-only a requires_uat, y la verificacion del UAT gana cobertura por criterio"
+    },
+    {
+      "id": "task-226",
+      "type": "task",
+      "ref": "tasks/TASK-226.json",
+      "label": "Arreglar el patron de gitignore con barra final en los fixtures e2e de worktree"
     }
   ],
   "edges": [
@@ -2131,6 +2137,11 @@
       "from": "task-222",
       "to": "decision-20260909-requires-uat-separado-del-tier",
       "relation": "produced-by"
+    },
+    {
+      "from": "task-226",
+      "to": "decision-20260909-requires-uat-separado-del-tier",
+      "relation": "relates-to"
     }
   ]
 }
