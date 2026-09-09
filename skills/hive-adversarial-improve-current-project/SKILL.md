@@ -45,7 +45,7 @@ producing durable value:
    code *would* probably do) is not a hardening review — it is a brainstorm with role names, and it
    systematically misses the exact class of bug (a missed `await`, a regex that doesn't anchor, a
    gate that's wired to the wrong function) that only shows up when the real code runs.
-2. **Every gap becomes a `tdd` ticket, with the probe input as a replayable test fixture.** A
+2. **Every gap becomes a `tests-after` ticket, with the probe input as a replayable test fixture.** A
    finding that lives only in a chat transcript evaporates the moment the session ends. The
    acceptance criterion for that ticket is literally "replaying this exact input is now caught" —
    the probe artifact itself is the fixture the new test asserts against.
@@ -78,7 +78,7 @@ producing durable value:
 6. **Stop condition.** End the exercise when any of: a fixed round budget (N rounds) is spent, the
    seeded catalog is exhausted, or a time-box expires. Fix the stop condition before round 1, not
    after a convenient result appears.
-7. **Convert every gap into a `tdd` ticket.** The ticket's acceptance criterion is "replaying this
+7. **Convert every gap into a `tests-after` ticket.** The ticket's acceptance criterion is "replaying this
    exact input is now caught," and the probe artifact produced in step 4 is attached as the test
    fixture the new regression test asserts against (see rule 2).
 8. **Feed the round log back as detection signal.** New patterns discovered in step 5 become new

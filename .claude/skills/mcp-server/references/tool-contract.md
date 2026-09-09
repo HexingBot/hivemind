@@ -21,7 +21,7 @@ the table speak for itself.
 | `list_todos` | `{}` | `Task[]` (status==todo, numeric-key order) | `listTodos({repoRoot})` |
 | `list_ready` | `{}` | `Task[]` (todo with all deps done) | `listReady({repoRoot})` |
 | `get_task` | `{ key: string }` | `Task \| null` | read `tasks/<key>.json` |
-| `create_task` | `{ title, description, acceptance_criteria: string[], priority, labels?: string[], depends_on?: string[], verification_tier?: "tdd"\|"tests-after"\|"uat-only", marker?: string, source_tier?: "T1"\|"T2"\|"T3"\|"T4"\|"TX", confidence?: { source_credibility?, assertion_strength?, corroboration?, verification_status? } }` | `{ key, path }` | `createTask({repoRoot, …})` |
+| `create_task` | `{ title, description, acceptance_criteria: string[], priority, labels?: string[], depends_on?: string[], verification_tier?: "tests-after"\|"uat-only", marker?: string, source_tier?: "T1"\|"T2"\|"T3"\|"T4"\|"TX", confidence?: { source_credibility?, assertion_strength?, corroboration?, verification_status? } }` | `{ key, path }` | `createTask({repoRoot, …})` |
 | `transition_status` | `{ key: string, status: "todo"\|"in_progress"\|"in_review"\|"blocked"\|"done" }` | `{ ok: true }` | `transitionStatus({repoRoot, key, status, closeGuard: loopModeCloseGuard})` (TASK-082 — closeGuard wired through unconditionally; no-ops outside loop mode) |
 | `append_comment` | `{ key: string, author: string, body: string }` | `{ ok: true }` | `loopModeUatCommentGuard({repoRoot, author})` (TASK-108, no-op unless loop mode + author:'uat' + undelegated) then `appendComment({repoRoot, key, author, body})` |
 | `close_task` | `{ key: string, comment: { author: string, body: string }, linked_commits?: string[], linked_prs?: string[] }` | `{ ok: true }` | `closeTask({repoRoot, key, comment, linked_commits, linked_prs, closeGuard})` |
@@ -50,7 +50,7 @@ reveals whether this MCP server process is running a stale bundle.
   confidence?, now? })` → `Promise<{ key, path }>`.
   - Throws if `acceptance_criteria` is empty/not-array, if `priority` not in
     `low|medium|high|critical`, if `verification_tier` is provided and not in
-    `tdd|tests-after|uat-only`, or on schema-validation failure (message
+    `tests-after|uat-only`, or on schema-validation failure (message
     contains `task payload failed schema validation`).
   - `verification_tier`, `marker`, `source_tier`, `confidence` are Spine
     calibration fields (Phase 2): optional, omitted from the written task
@@ -149,7 +149,7 @@ manual try/catch needed unless you want to reshape the message.
 ```js
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
-const VERIFICATION_TIER = z.enum(['tdd', 'tests-after', 'uat-only']);
+const VERIFICATION_TIER = z.enum(['tests-after', 'uat-only']);
 const MARKER = z.enum(['[EXPLICIT]', '[INFERRED:strong]', '[INFERRED:weak]', '[INFERRED]', '[ASSUMED]', '[MISSING_INFO]']);
 const SOURCE_TIER = z.enum(['T1', 'T2', 'T3', 'T4', 'TX']);
 const CONFIDENCE = z.object({

@@ -31,7 +31,7 @@ review can be run and still produce zero durable value.
   subagent spawns — never a description of what the pipeline is supposed to do.
 - **Every gap is logged with the responsible gate, and becomes a ticket.** Naming the specific
   gate (a function, a regex, a reviewer step) that missed the probe is what makes the resulting
-  `tdd` ticket's fix targeted rather than a vague hardening pass.
+  `tests-after` ticket's fix targeted rather than a vague hardening pass.
 - **Many short rounds beat one long round.** A stop condition of "N short rounds, each with a fresh
   adaptation" surfaces more distinct gate weaknesses than a single long round spent on one probe.
 - **Human sign-off gates are reviewed too, not just automated scans.** For any step in the real

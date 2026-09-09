@@ -11,7 +11,7 @@ knowledge surface — `PROJECT.md`, the wisearcher brain graph (`kb_search`/`kb_
 body below refers to `context/<file>.md`, read the equivalent from that surface. Output goes to
 `implementation/COMPONENT_CATALOG.md`.
 
-**Gate:** required for **core** tickets (`verification_tier` tdd / tests-after), **skipped** for
+**Gate:** required for **core** tickets (`verification_tier` tests-after), **skipped** for
 `uat-only` glue — see `src/manifest-policy.js` (`requiresManifest`). Generate/update it BEFORE code;
 the reviewer treats a missing required manifest as a HIGH finding. Preserve epistemic markers
 (`[EXPLICIT]`/`[INFERRED:strong|weak]`/`[ASSUMED]`) and respect source tiers.

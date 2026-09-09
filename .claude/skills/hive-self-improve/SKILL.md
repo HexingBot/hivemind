@@ -59,9 +59,10 @@ producing durable value:
 2. **Every surviving finding becomes a ticket at the LIGHTEST defensible verification tier, with
    the evidence attached.** A finding that lives only in a chat transcript evaporates the moment the
    session ends. Most self-improve findings are `tests-after` (behavior provable by running the
-   code) or `uat-only` (docs, glue, ergonomics); reserve `tdd` for the rare finding that touches
-   schema, state mutation, or parsing (see this repo's verification-tier rubric). The concrete
-   evidence from rule 1 is what makes the ticket actionable rather than a vague "clean this up."
+   code, including schema/state-mutation/parsing findings) or `uat-only` (docs, glue, ergonomics) —
+   see this repo's verification-tier rubric; the `tdd` tier it once described is retired (TASK-212,
+   2026-08-13 human decision). The concrete evidence from rule 1 is what makes the ticket actionable
+   rather than a vague "clean this up."
 
 ## The 7-step protocol
 

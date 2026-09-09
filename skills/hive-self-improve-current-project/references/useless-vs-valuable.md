@@ -36,9 +36,10 @@ ship only cosmetic churn, which carries real regression risk for no real gain.
 - **It measurably reduces complexity or closes a real gap** — one call site instead of two, a
   deleted unused export, a newly-covered AC, a green doc-lock, a faster hot path — with the baseline
   from step 2 to prove the delta.
-- **It lands at the lightest defensible tier.** Most self-improve work is `tests-after` or
-  `uat-only`; only schema/state/parsing findings are `tdd`. Over-tiering a doc tidy to `tdd` wastes
-  the loop; under-tiering a state-mutation change skips real edge-risk.
+- **It lands at the lightest defensible tier.** Self-improve work is `tests-after` (including
+  schema/state/parsing findings — the `tdd` tier this rubric once reserved for them is retired,
+  TASK-212, 2026-08-13 human decision) or `uat-only`. Over-tiering a doc tidy to `tests-after`
+  wastes the loop; under-tiering a state-mutation change skips real edge-risk.
 - **The improvement is verified by re-running the baseline**, not asserted. Step 7's re-run is what
   turns "I cleaned this up" into "here is the same behavior in fewer lines / the newly-green sensor."
 - **Severity is honest.** Most quality findings are MEDIUM or LOW. Calling a cosmetic tidy MEDIUM is
