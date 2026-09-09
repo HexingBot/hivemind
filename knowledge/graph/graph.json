@@ -1556,6 +1556,12 @@
       "label": "El guard de cierre pasa de tier uat-only a requires_uat, y la verificacion del UAT gana cobertura por criterio"
     },
     {
+      "id": "task-223",
+      "type": "task",
+      "ref": "tasks/TASK-223.json",
+      "label": "Comando de auditoria del board: tickets en done sin UAT, con linea base congelada"
+    },
+    {
       "id": "task-226",
       "type": "task",
       "ref": "tasks/TASK-226.json",
@@ -2135,6 +2141,11 @@
     },
     {
       "from": "task-222",
+      "to": "decision-20260909-requires-uat-separado-del-tier",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-223",
       "to": "decision-20260909-requires-uat-separado-del-tier",
       "relation": "produced-by"
     },
