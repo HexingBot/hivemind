@@ -133,7 +133,9 @@ describe('AC1 — writeLoopCheckpoint writes the checkpoint to the bundle', () =
 
   it('writeLoopCheckpoint_maps_every_phase_to_a_legal_workflow_step_value_on_disk', async () => {
     const { writeLoopCheckpoint, LOOP_PHASES } = await import(CHECKPOINT_URL);
-    const WORKFLOW_STEP_ENUM = ['idle', 'fetch', 'research', 'test', 'impl', 'review', 'update'];
+    // TASK-212 (2026-08-13 human decision) retired the 'tdd' verification
+    // tier and, with it, the 'test' workflow_step/loop phase.
+    const WORKFLOW_STEP_ENUM = ['idle', 'fetch', 'research', 'impl', 'review', 'update'];
 
     for (const phase of Object.keys(LOOP_PHASES)) {
       const { root, id } = makeRepo({ sessionId: `20260701T09${String(Object.keys(LOOP_PHASES).indexOf(phase)).padStart(2, '0')}00Z-c0ffee0${Object.keys(LOOP_PHASES).indexOf(phase)}` });

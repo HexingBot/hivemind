@@ -141,21 +141,19 @@ describe('TASK-189 — AC-fidelity probes replayed as permanent regression specs
     expect(result.warnings[0]).toMatch(/schema/i);
   });
 
-  it('control — a schema-change ticket declared tdd carries NO warning', async () => {
-    const { createTask } = await loadStore();
-    const repoDir = makeTmpDir('acfid-p5-control');
-    makeRepoSkeleton(repoDir, {});
-
-    const result = await createTask({
-      repoRoot: repoDir,
-      title: 'schema change at tdd tier',
-      description: 'Change tasks/schema.json to add a new required field.',
-      acceptance_criteria: ['Schema updated.'],
-      priority: 'medium',
-      verification_tier: 'tdd',
-    });
-    expect(Object.prototype.hasOwnProperty.call(result, 'warnings')).toBe(false);
-  });
+  // TASK-212 (2026-08-13 human decision) retired the 'tdd' tier. The former
+  // "control — a schema-change ticket declared tdd carries NO warning" case
+  // lived here to prove checkTierContentMismatch's `verification_tier ===
+  // 'tdd'` exemption branch (src/task-store.js) — that branch is untouched
+  // (AC5 of this ticket was explicitly ANULADO; the threshold rewrite moved
+  // to TASK-218), but it is now DEAD for any newly-created ticket: createTask
+  // rejects verification_tier: 'tdd' outright (VERIFICATION_TIERS, AC1 of
+  // this ticket) before checkTierContentMismatch ever runs, so the control
+  // case this test proved can no longer be exercised through createTask.
+  // Deleted rather than adapted — it tested that specific now-unreachable
+  // machinery, not a general "no warning" example. The now-reachable
+  // rejection is covered by
+  // tests/e2e/verification-tier.spec.js's createTask_rejects_the_retired_tdd_tier.
 
   // ---------------------------------------------------------------- C2
   // (state/sessions/.../ac-fidelity-round3.mjs)

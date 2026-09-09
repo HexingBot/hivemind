@@ -214,11 +214,11 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     const created = parse(await client.callTool({
       name: 'create_task',
       arguments: {
-        title: 'tdd ticket in unauthorized loop mode',
+        title: 'tests-after ticket in unauthorized loop mode',
         description: 'blocked by the loop-mode close guard',
         acceptance_criteria: ['blocked'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
@@ -245,17 +245,17 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     const created = parse(await client.callTool({
       name: 'create_task',
       arguments: {
-        title: 'tdd ticket in authorized loop mode',
+        title: 'tests-after ticket in authorized loop mode',
         description: 'allowed to close',
         acceptance_criteria: ['closes normally'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
 
     // TASK-187 AC2/AC3 — done now requires a predecessor state implying
-    // review occurred (in_review) plus, for a tdd tier, a pre-existing
+    // review occurred (in_review) plus, for a tests-after tier, a pre-existing
     // reviewer comment AND a non-empty linked_commits. transition_status has
     // no linked_commits param (unlike close_task), so it is seeded directly
     // on the task file — this test's actual subject is the loop-mode close
@@ -290,13 +290,13 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         description: 'exercised end-to-end',
         acceptance_criteria: ['closes via close_task'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
 
     // TASK-187 AC2/AC3 — done requires a predecessor state implying review
-    // (in_review) plus, for a tdd tier, a pre-existing reviewer comment
+    // (in_review) plus, for a tests-after tier, a pre-existing reviewer comment
     // (linked_commits is supplied directly to close_task below, satisfying
     // that half of the evidence check).
     await client.callTool({ name: 'transition_status', arguments: { key, status: 'in_review' } });
@@ -337,7 +337,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         description: 'mid-validation failure',
         acceptance_criteria: ['no partial write'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
@@ -419,7 +419,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         description: 'blocked by the loop-mode close guard',
         acceptance_criteria: ['blocked'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
@@ -523,7 +523,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
   // fails because the call currently succeeds (the uat comment is written and
   // the ticket closes) instead of erroring.
   //
-  // tdd-tier fixtures are used throughout (not uat-only) so this guard is
+  // tests-after-tier fixtures are used throughout (not uat-only) so this guard is
   // isolated from the unrelated uat-only done-guard/Gate 2 checks exercised
   // above.
   // ---------------------------------------------------------------------------
@@ -536,12 +536,12 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
           description: 'exercised by the close_task uat-comment guard specs',
           acceptance_criteria: ['covered by TASK-163 specs'],
           priority: 'medium',
-          verification_tier: 'tdd',
+          verification_tier: 'tests-after',
         },
       }));
       const key = created.key;
       // TASK-187 AC2/AC3 — done now requires a predecessor state implying
-      // review (in_review) plus, for a tdd tier, a pre-existing reviewer
+      // review (in_review) plus, for a tests-after tier, a pre-existing reviewer
       // comment AND a non-empty linked_commits. This describe block's actual
       // subject is the loop-mode uat-comment write-channel guard, so the
       // fixture is pre-seeded to satisfy AC2/AC3 up front (linked_commits has
@@ -723,7 +723,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
         description: 'closed via close_task',
         acceptance_criteria: ['gets a graph node on close'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
@@ -760,7 +760,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
         description: 'closed twice',
         acceptance_criteria: ['no duplicate node'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
@@ -805,7 +805,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
         description: 'node already present',
         acceptance_criteria: ['no duplicate, no error'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
@@ -853,7 +853,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
         description: 'graph write fails, close must not',
         acceptance_criteria: ['close still succeeds'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;
@@ -894,7 +894,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
         description: 'canonical mirror fails, local write must not',
         acceptance_criteria: ['close still succeeds', 'local node still created'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'tests-after',
       },
     }));
     const key = created.key;

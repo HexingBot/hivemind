@@ -142,12 +142,12 @@ describe('AC1 — transitionStatus enforces the uat-only done-guard', () => {
   it('non_uat_only_tier_is_unaffected_by_the_uat_guard', async () => {
     const { transitionStatus } = await import('../src/task-store.js');
 
-    const repoDir = makeTmpDir('af-uatguard-tdd-tier');
+    const repoDir = makeTmpDir('af-uatguard-tests-after-tier');
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-203': makeTask({
           key: 'TASK-203',
-          verification_tier: 'tdd',
+          verification_tier: 'tests-after',
           status: 'in_review', // TASK-187 AC2
           comments: [{ author: 'reviewer', at: '2026-07-01T01:00:00Z', body: 'APPROVE.' }], // TASK-187 AC3
           linked_commits: ['abc1234'], // TASK-187 AC3
@@ -188,7 +188,7 @@ describe('AC3 — closeTask applies transition + comment + commits + prs + index
       tasks: {
         'TASK-205': makeTask({
           key: 'TASK-205',
-          verification_tier: 'tdd',
+          verification_tier: 'tests-after',
           status: 'in_review', // TASK-187 AC2
           comments: [{ author: 'reviewer', at: '2026-07-01T02:00:00Z', body: 'LGTM' }],
         }),
@@ -233,7 +233,7 @@ describe('AC3 — closeTask applies transition + comment + commits + prs + index
       tasks: {
         'TASK-206': makeTask({
           key: 'TASK-206',
-          verification_tier: 'tdd',
+          verification_tier: 'tests-after',
           status: 'in_review', // TASK-187 AC2 — isolates this test to the sha-format check
           comments: [{ author: 'reviewer', at: '2026-07-01T02:00:00Z', body: 'LGTM' }], // TASK-187 AC3
         }),
@@ -739,13 +739,13 @@ describe('TASK-188 — hasCommentFromAuthor: the seam TASK-187 consumes', () => 
 // adversarial probes as permanent regression specs, per the
 // hive-adversarial-improve protocol's replayable-fixture rule (AC7).
 //
-// A5 (AC2) — before this ticket, a tdd ticket created `status: todo` could be
+// A5 (AC2) — before this ticket, a tests-after ticket created `status: todo` could be
 // closed straight to `done` in a single closeTask call: never in_progress,
 // never in_review, no review of any kind. Nothing enforced that ANY
 // review-implying state was ever visited. Now CAUGHT:
 // InvalidPredecessorStateError.
 //
-// P9 (AC3) — before this ticket, a tdd ticket whose ACs demanded captured
+// P9 (AC3) — before this ticket, a tests-after ticket whose ACs demanded captured
 // red-run evidence could close with the 4-word comment "Done." and no
 // linked_commits — nothing mechanically related the AC's evidence promise to
 // a receipt. Now CAUGHT: CloseEvidenceError. Isolated from A5 by starting the
@@ -753,14 +753,14 @@ describe('TASK-188 — hasCommentFromAuthor: the seam TASK-187 consumes', () => 
 // satisfied), so this probe exercises the evidence check specifically.
 // ===========================================================================
 describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor state and evidence proportional to tier', () => {
-  it('A5 — a tdd ticket closed straight from todo to done in one hop (no in_progress, no in_review, no review at all) is REJECTED', async () => {
+  it('A5 — a tests-after ticket closed straight from todo to done in one hop (no in_progress, no in_review, no review at all) is REJECTED', async () => {
     const { closeTask, InvalidPredecessorStateError } = await import('../src/task-store.js');
 
     const repoDir = makeTmpDir('af-a5-todo-to-done');
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-950': makeTask({
-          key: 'TASK-950', verification_tier: 'tdd', status: 'todo', comments: [],
+          key: 'TASK-950', verification_tier: 'tests-after', status: 'todo', comments: [],
         }),
       },
     });
@@ -776,14 +776,14 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
     }
     expect(
       caught,
-      'a tdd ticket must not be closeable straight from todo — done is reachable only from a '
+      'a tests-after ticket must not be closeable straight from todo — done is reachable only from a '
         + 'predecessor state that implies a review occurred',
     ).toBeInstanceOf(InvalidPredecessorStateError);
     expect(caught.code).toBe('E_INVALID_DONE_PREDECESSOR');
     expect(readTaskFileBytes(repoDir, 'TASK-950')).toBe(before);
   });
 
-  it('P9 — a tdd ticket demanding captured red-run evidence closes with a four-word comment and no linked_commits: REJECTED for missing evidence', async () => {
+  it('P9 — a tests-after ticket demanding captured red-run evidence closes with a four-word comment and no linked_commits: REJECTED for missing evidence', async () => {
     const { closeTask, CloseEvidenceError } = await import('../src/task-store.js');
 
     const repoDir = makeTmpDir('af-p9-no-evidence');
@@ -792,7 +792,7 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
         // status is already 'in_review' so this isolates the EVIDENCE check
         // (AC3) from the predecessor-state check (AC2, covered by A5 above).
         'TASK-951': makeTask({
-          key: 'TASK-951', verification_tier: 'tdd', status: 'in_review', comments: [],
+          key: 'TASK-951', verification_tier: 'tests-after', status: 'in_review', comments: [],
         }),
       },
     });
@@ -808,7 +808,7 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
     }
     expect(
       caught,
-      'a tdd ticket must not close with zero evidence — no pre-existing reviewer comment, no linked_commits',
+      'a tests-after ticket must not close with zero evidence — no pre-existing reviewer comment, no linked_commits',
     ).toBeInstanceOf(CloseEvidenceError);
     expect(caught.code).toBe('E_CLOSE_EVIDENCE_REQUIRED');
     expect(readTaskFileBytes(repoDir, 'TASK-951')).toBe(before);
@@ -824,7 +824,7 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
       tasks: {
         'TASK-952': makeTask({
           key: 'TASK-952',
-          verification_tier: 'tdd',
+          verification_tier: 'tests-after',
           status: 'in_review',
           comments: [{ author: 'reviewer', at: '2026-08-02T00:00:00Z', body: 'APPROVE.' }],
         }),
@@ -851,7 +851,7 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-953': makeTask({
-          key: 'TASK-953', verification_tier: 'tdd', status: 'todo', comments: [],
+          key: 'TASK-953', verification_tier: 'tests-after', status: 'todo', comments: [],
         }),
       },
     });
@@ -878,7 +878,7 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-954': makeTask({
-          key: 'TASK-954', verification_tier: 'tdd', status: 'todo', comments: [],
+          key: 'TASK-954', verification_tier: 'tests-after', status: 'todo', comments: [],
         }),
       },
     });
@@ -913,7 +913,7 @@ describe('TASK-187 fix round LOW-1 — exception marker is only appended on an A
       tasks: {
         'TASK-960': makeTask({
           key: 'TASK-960',
-          verification_tier: 'tdd',
+          verification_tier: 'tests-after',
           status: 'done', // already done — both checks no-op here regardless of exception
           comments: [{ author: 'reviewer', at: '2026-08-01T00:00:00Z', body: 'APPROVE.' }],
           linked_commits: ['abc1234'],
@@ -944,7 +944,7 @@ describe('TASK-187 fix round LOW-1 — exception marker is only appended on an A
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-961': makeTask({
-          key: 'TASK-961', verification_tier: 'tdd', status: 'todo', comments: [],
+          key: 'TASK-961', verification_tier: 'tests-after', status: 'todo', comments: [],
         }),
       },
     });
@@ -969,7 +969,7 @@ describe('TASK-187 fix round LOW-1 — exception marker is only appended on an A
       tasks: {
         'TASK-962': makeTask({
           key: 'TASK-962',
-          verification_tier: 'tdd',
+          verification_tier: 'tests-after',
           status: 'done',
           comments: [{ author: 'reviewer', at: '2026-08-01T00:00:00Z', body: 'APPROVE.' }],
           linked_commits: ['abc1234'],
@@ -1010,7 +1010,7 @@ describe('TASK-187 fix round LOW-2 — exception.author rejects privileged roles
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-963': makeTask({
-          key: 'TASK-963', verification_tier: 'tdd', status: 'todo', comments: [],
+          key: 'TASK-963', verification_tier: 'tests-after', status: 'todo', comments: [],
         }),
       },
     });
@@ -1034,7 +1034,7 @@ describe('TASK-187 fix round LOW-2 — exception.author rejects privileged roles
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-964': makeTask({
-          key: 'TASK-964', verification_tier: 'tdd', status: 'todo', comments: [],
+          key: 'TASK-964', verification_tier: 'tests-after', status: 'todo', comments: [],
         }),
       },
     });
@@ -1058,7 +1058,7 @@ describe('TASK-187 fix round LOW-2 — exception.author rejects privileged roles
     makeRepoSkeleton(repoDir, {
       tasks: {
         'TASK-965': makeTask({
-          key: 'TASK-965', verification_tier: 'tdd', status: 'todo', comments: [],
+          key: 'TASK-965', verification_tier: 'tests-after', status: 'todo', comments: [],
         }),
       },
     });

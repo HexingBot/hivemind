@@ -105,7 +105,7 @@ function makeTask(key) {
     created_at: '2026-08-04T00:00:00Z',
     updated_at: '2026-08-04T00:00:00Z',
     jira_key: null,
-    verification_tier: 'tdd', // requires BOTH a reviewer comment and linked_commits — the strictest tier
+    verification_tier: 'tests-after', // requires BOTH a reviewer comment and linked_commits — the strictest tier (TASK-212 retired 'tdd')
   };
 }
 
@@ -142,7 +142,7 @@ describe('TASK-187 fix round — SKILL.md close procedure vs the live mutation-s
     expect(steps.map((s) => s.fn)).toEqual(['transition_status', 'append_comment', 'close_task']);
   });
 
-  it('the documented procedure, driven verbatim against the real guards, succeeds for a tdd ticket from todo', async () => {
+  it('the documented procedure, driven verbatim against the real guards, succeeds for a tests-after ticket from todo', async () => {
     const steps = extractCloseProcedureSteps();
     const repoDir = makeTmpDir('af-close-procedure-doc-lock-happy');
     makeRepoSkeleton(repoDir, { tasks: { 'TASK-971': makeTask('TASK-971') } });

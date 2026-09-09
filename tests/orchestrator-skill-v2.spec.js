@@ -161,28 +161,13 @@ describe('TASK-032 — orchestrator-routing skill carries the full operational m
     expect(/fresh context/i.test(text), 'skill must mention fresh context for subagents').toBe(true);
   });
 
-  it('documents_tdd_single_spawn_single_commit_discipline', () => {
-    const text = readSkill();
-    // TASK-148: the earlier two-commit discipline (test: commit strictly
-    // before impl commit) is retired in favor of a single commit; the
-    // captured red-run evidence is now the tests-first proof, not commit
-    // ordering. The skill must still mention the (now-optional) test: commit
-    // as an allowed-but-not-required split, plus the captured red-run
-    // evidence, plus the single-commit discipline itself.
-    expect(
-      /single commit|single-commit/i.test(text),
-      'skill must document the single-commit discipline',
-    ).toBe(true);
-    expect(
-      /red.run|red output/i.test(text),
-      'skill must document captured red-run evidence',
-    ).toBe(true);
-    expect(/test:.*commit/i.test(text), 'skill must still mention the (now-optional) test: commit').toBe(true);
-    expect(
-      /no longer required|remains allowed/i.test(text),
-      'skill must state the separate test:-before-impl commit is no longer required',
-    ).toBe(true);
-  });
+  // TASK-212 (2026-08-13 human decision) retired the 'tdd' tier, which
+  // retires the single-commit / captured-red-run-evidence discipline this
+  // test used to lock (it only ever applied to tdd tickets) — the section it
+  // pinned ("Single developer spawn, single-commit discipline (tdd tier)")
+  // no longer exists in SKILL.md; see the "Single developer spawn (TASK-212:
+  // tdd tier retired)" section that replaced it. Deleted rather than adapted:
+  // this test proved that specific now-dead machinery, not a general fact.
 
   it('documents_reviewer_isolation', () => {
     const text = readSkill();

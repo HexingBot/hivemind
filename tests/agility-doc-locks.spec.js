@@ -94,6 +94,29 @@ describe('R2 — review depth rubric: light/full depth table (SKILL.md)', () => 
       'core tdd-tier logic must have a concrete definition',
     ).toBe(true);
   });
+
+  // TASK-212 (2026-08-13 human decision) retired the `tdd` verification tier.
+  // Decision recorded on the ticket: the "Core `tdd`-tier logic" review-depth
+  // trigger is NOT deleted and NOT replaced by a new criterion (that broader
+  // rubric change is TASK-216's, landing after this ticket) — it is frozen as
+  // an explicitly historical marker, scoped to the ~101 tickets that carried
+  // tier `tdd` before the retirement, and can never fire for a newly-assigned
+  // ticket going forward.
+  it('core_tdd_logic_trigger_is_pinned_as_a_frozen_historical_marker_not_a_live_tier', () => {
+    const text = normalize(load(SKILL_PATH));
+    expect(
+      text.includes('HISTORICAL TRIGGER, FROZEN'),
+      'the Core `tdd`-tier logic definition must be explicitly marked as a frozen historical trigger',
+    ).toBe(true);
+    expect(
+      /101 (historical )?`?tdd`?-tier tickets|~101 tickets/.test(text) || text.includes('~101 historical'),
+      'the definition must scope itself to the ~101 historical tdd-tier tickets',
+    ).toBe(true);
+    expect(
+      text.includes('can never fire for a newly-assigned'),
+      'the definition must state it can never fire for a new ticket (the tdd tier no longer exists)',
+    ).toBe(true);
+  });
 });
 
 describe('R2 — one-way escalation: "Never downgrade" sentence pinned in both SKILL.md and reviewer.md', () => {

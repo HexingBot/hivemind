@@ -214,11 +214,17 @@ describe('AC4 (TASK-102) — routingBlockContent reflects the tier policy, menti
       'the generated block must not hard-code an unconditional "Tests first" step — the tier policy replaces it',
     ).toBe(false);
 
-    // The three tier names must all be present so the generated block matches
-    // the tier rubric (tdd / tests-after / uat-only), not just the tdd path.
-    expect(body).toMatch(/\btdd\b/);
+    // TASK-212 (2026-08-13 human decision) retired the `tdd` tier — the
+    // generated block ships to NEW consumer projects (bin/init.js), so it
+    // must reflect the current two-tier policy only; a dangling `tdd`
+    // reference here would mislead every project initialized after this
+    // ticket into thinking `tdd` is still assignable.
     expect(body).toMatch(/\btests-after\b/);
     expect(body).toMatch(/\buat-only\b/);
+    expect(
+      /\btdd\b/.test(body),
+      'the generated block must NOT mention the retired `tdd` tier — it is not a historical document',
+    ).toBe(false);
   });
 
   it('mentions_the_hivemind_loop_command', async () => {

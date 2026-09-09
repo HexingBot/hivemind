@@ -97,3 +97,74 @@ describe('AC1 — readBundleSession is unchanged (existing callers unaffected)',
     expect(caughtErr.code).toBe('ENOENT');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-212 — retired 'test' workflow_step/loop_state.phase migrates to 'impl'
+// on read, so a bundle written before the tdd-tier retirement keeps reading
+// (and, if written back, keeps validating) without manual intervention.
+// ---------------------------------------------------------------------------
+
+describe('TASK-212 — a pre-retirement bundle with workflow_step/phase "test" reads without throwing, mapped to "impl"', () => {
+  it('readBundleSession maps a legacy workflow_step: "test" to "impl"', async () => {
+    const { readBundleSession } = await import(BUNDLE_URL);
+    const root = makeTmpDir('af-bundle-legacy-test-step');
+    const bundleDir = join(root, 'state', 'sessions', SESSION_ID);
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      join(bundleDir, 'session.json'),
+      JSON.stringify({ session_id: SESSION_ID, mode: 'harness', workflow_step: 'test' }),
+      'utf8',
+    );
+
+    const result = readBundleSession(root, SESSION_ID);
+    expect(result.workflow_step).toBe('impl');
+  });
+
+  it('readBundleSession maps a legacy loop_state.phase: "test" to "impl", preserving sibling loop_state fields', async () => {
+    const { readBundleSession } = await import(BUNDLE_URL);
+    const root = makeTmpDir('af-bundle-legacy-test-phase');
+    const bundleDir = join(root, 'state', 'sessions', SESSION_ID);
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      join(bundleDir, 'session.json'),
+      JSON.stringify({
+        session_id: SESSION_ID,
+        mode: 'loop',
+        workflow_step: 'test',
+        loop_state: {
+          current_ticket: 'TASK-042', phase: 'test', iteration: 3, completed_this_run: 1,
+        },
+      }),
+      'utf8',
+    );
+
+    const result = readBundleSession(root, SESSION_ID);
+    expect(result.workflow_step).toBe('impl');
+    expect(result.loop_state.phase).toBe('impl');
+    // Sibling loop_state fields survive the migration untouched.
+    expect(result.loop_state.current_ticket).toBe('TASK-042');
+    expect(result.loop_state.iteration).toBe(3);
+    expect(result.loop_state.completed_this_run).toBe(1);
+  });
+
+  it('readBundleSession leaves a non-"test" workflow_step/phase untouched', async () => {
+    const { readBundleSession } = await import(BUNDLE_URL);
+    const root = makeTmpDir('af-bundle-non-legacy-step');
+    const bundleDir = join(root, 'state', 'sessions', SESSION_ID);
+    mkdirSync(bundleDir, { recursive: true });
+    writeFileSync(
+      join(bundleDir, 'session.json'),
+      JSON.stringify({
+        session_id: SESSION_ID,
+        mode: 'loop',
+        workflow_step: 'review',
+        loop_state: { current_ticket: 'TASK-042', phase: 'review' },
+      }),
+      'utf8',
+    );
+
+    const result = readBundleSession(root, SESSION_ID);
+    expect(result.workflow_step).toBe('review');
+    expect(result.loop_state.phase).toBe('review');
+  });
+});

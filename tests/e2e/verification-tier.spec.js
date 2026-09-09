@@ -1,12 +1,14 @@
 // tests/e2e/verification-tier.spec.js
 // TASK-028 — tiered verification policy + scaled per-ticket gate.
+// TASK-212 (2026-08-13 human decision) retired the 'tdd' tier; the enum here
+// covers the surviving two tiers plus the explicit-rejection lock for 'tdd'.
 //
 // Acceptance criteria covered:
 //   AC1 — tasks/schema.json gains optional verification_tier enum
-//          [tdd, tests-after, uat-only]; absent is still valid; invalid value
-//          is rejected; additionalProperties: false means the field MUST be
-//          declared in the schema or a file carrying it fails ajv validation
-//          (that is the current red state).
+//          [tests-after, uat-only]; absent is still valid; invalid value
+//          (including the retired 'tdd') is rejected; additionalProperties:
+//          false means the field MUST be declared in the schema or a file
+//          carrying it fails ajv validation (that is the current red state).
 //   AC1 (createTask) — createTask persists verification_tier when given; omits
 //          it when not given; rejects an invalid tier value.
 //   AC5 (CLI) — bin/new-task.js --tier <value> lands in the created JSON;
@@ -100,7 +102,7 @@ function parse(result) {
 // ===========================================================================
 describe('AC1 — schema: verification_tier field', () => {
   // Collapse: three near-identical per-enum tests -> one it.each (TASK-033 L7).
-  it.each(['tdd', 'tests-after', 'uat-only'])(
+  it.each(['tests-after', 'uat-only'])(
     'schema_accepts_a_task_with_a_valid_tier_%s',
     (tier) => {
       const schema = loadSchema();
@@ -118,7 +120,7 @@ describe('AC1 — schema: verification_tier field', () => {
   );
 
   it('schema_still_accepts_a_task_without_verification_tier', () => {
-    // Absent field must remain valid (backward-compatible, absent == tdd semantics).
+    // Absent field must remain valid (backward-compatible, absent == tests-after semantics).
     const schema = loadSchema();
     const ajv = makeAjv();
     const validate = ajv.compile(schema);
@@ -141,6 +143,22 @@ describe('AC1 — schema: verification_tier field', () => {
     const task = baseTask({ verification_tier: 'invalid-value' });
     const ok = validate(task);
     expect(ok, 'schema must reject verification_tier: "invalid-value"').toBe(false);
+  });
+
+  // TASK-212 lock (AC1) — 'tdd' was retired (2026-08-13 human decision) and
+  // must no longer validate as a NEW verification_tier value, even though it
+  // remains a legal historical value on already-closed tasks written before
+  // the retirement (this schema-level check cannot and does not distinguish
+  // "new" from "historical" — see tasks/schema.json's verification_tier
+  // description for the accepted residual risk on mutating those tickets).
+  it('schema_rejects_the_retired_tdd_tier', () => {
+    const schema = loadSchema();
+    const ajv = makeAjv();
+    const validate = ajv.compile(schema);
+
+    const task = baseTask({ verification_tier: 'tdd' });
+    const ok = validate(task);
+    expect(ok, 'schema must reject the retired verification_tier: "tdd"').toBe(false);
   });
 });
 
@@ -231,6 +249,33 @@ describe('AC1 — createTask: verification_tier field', () => {
     // index.json is byte-identical (or still absent if it was absent before).
     const indexAfter = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : null;
     expect(indexAfter, 'tasks/index.json must not be written on a rejected tier').toBe(indexBefore);
+  });
+
+  // TASK-212 lock (AC1) — createTask end-to-end must reject the retired
+  // 'tdd' tier for NEW tickets. Defense-in-depth: createTask's own
+  // VERIFICATION_TIERS check (src/task-store.js) throws first today, but the
+  // ajv schema check right below it would independently catch the same
+  // input if VERIFICATION_TIERS ever regressed alone (red-green-planted:
+  // confirmed this assertion stays green — for a different, still-correct
+  // reason — when VERIFICATION_TIERS alone is reverted to include 'tdd',
+  // and goes genuinely red only when the schema enum is ALSO reverted).
+  it('createTask_rejects_the_retired_tdd_tier', async () => {
+    const { createTask } = await import(PROD.taskStore);
+
+    const repoDir = makeTmpDir('af-vt-create-tdd-tier');
+    makeRepoSkeleton(repoDir, {});
+
+    await expect(
+      createTask({
+        repoRoot: repoDir,
+        title: 'Retired tier',
+        description: 'tdd was retired by TASK-212.',
+        acceptance_criteria: ['tier is rejected'],
+        priority: 'medium',
+        verification_tier: 'tdd',
+        now: () => '2026-09-10T12:00:00Z',
+      }),
+    ).rejects.toThrow(/tier/i);
   });
 });
 
@@ -327,7 +372,7 @@ describe('AC5 — MCP: create_task verification_tier round-trip', () => {
         description: 'Created via MCP with a tier.',
         acceptance_criteria: ['verification_tier persisted via MCP'],
         priority: 'medium',
-        verification_tier: 'tdd',
+        verification_tier: 'uat-only',
       },
     }));
     expect(created.key).toMatch(/^TASK-\d{3,}$/);
@@ -336,6 +381,6 @@ describe('AC5 — MCP: create_task verification_tier round-trip', () => {
     const written = JSON.parse(
       readFileSync(join(repoRoot, 'tasks', `${created.key}.json`), 'utf8'),
     );
-    expect(written.verification_tier).toBe('tdd');
+    expect(written.verification_tier).toBe('uat-only');
   });
 });

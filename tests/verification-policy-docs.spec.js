@@ -6,7 +6,12 @@
 //          contain the phrase "at least one test" (the Developer-must-turn-each
 //          mandate was tier-blind; it is replaced by the tier rubric).
 //   AC2 — CLAUDE.md Testing and Workflow sections must contain:
-//          (a) the three tier names (tdd, tests-after, uat-only),
+//          (a) the two LIVE tier names (tests-after, uat-only) — TASK-212
+//              (2026-08-13 human decision) retired the third tier, `tdd`; the
+//              section keeps mentioning `tdd` ONLY as an explicitly retired
+//              historical note, which this file separately pins so a future
+//              edit cannot silently re-promote it back to a live/assignable
+//              tier without this lock going red,
 //          (b) the scaled-gate rule: test:changed per ticket, test:all only at
 //              release/milestone/publish points (section-scoped, not whole-doc).
 //   AC3 — developer.md mentions the tier: TEST phase skipped for non-tdd tiers.
@@ -95,8 +100,7 @@ describe('AC1 — schema: acceptance_criteria description no longer mandates at-
 // AC2 — CLAUDE.md: Testing section contains tier names + scaled-gate rule
 // ===========================================================================
 describe('AC2 — CLAUDE.md: Testing section has tier rubric + scaled gate', () => {
-  it('testing_section_contains_all_three_tier_names', () => {
-    // RED: CLAUDE.md Testing section does not yet contain these tier names.
+  it('testing_section_contains_both_live_tier_names', () => {
     const text = loadFile('CLAUDE.md');
     const section = sliceSection(text, '## Testing');
     expect(
@@ -104,9 +108,27 @@ describe('AC2 — CLAUDE.md: Testing section has tier rubric + scaled gate', () 
       'CLAUDE.md must contain a "## Testing" section',
     ).not.toBeNull();
 
-    expect(section).toMatch(/\btdd\b/);
     expect(section).toMatch(/\btests-after\b/);
     expect(section).toMatch(/\buat-only\b/);
+  });
+
+  // TASK-212 (2026-08-13 human decision) retired the `tdd` tier. This lock
+  // replaces the old "three tier names" assertion: `tdd` must still be
+  // mentioned (as a historical/retired note — the ~101 tickets that used it
+  // are not rewritten), but MUST be marked explicitly retired, never left to
+  // read as a currently-assignable tier. If a future edit drops the
+  // "retired" framing while still naming `tdd`, this goes red.
+  it('testing_section_marks_tdd_as_retired_not_assignable', () => {
+    const text = loadFile('CLAUDE.md');
+    const section = sliceSection(text, '## Testing');
+    expect(section).not.toBeNull();
+
+    expect(section).toMatch(/\btdd\b/);
+    const retiredNearTdd = /retired[\s\S]{0,80}`tdd`|`tdd`[\s\S]{0,80}retired/i;
+    expect(
+      retiredNearTdd.test(section),
+      'CLAUDE.md Testing section must mark `tdd` as explicitly retired, not a currently-assignable tier',
+    ).toBe(true);
   });
 
   it('testing_section_names_scaled_gate_rule', () => {

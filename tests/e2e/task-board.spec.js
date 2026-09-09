@@ -435,7 +435,7 @@ describe('TASK-034 — createBoardServer HTTP surface', () => {
 // tools already reject it (deep-review R4: this was the third write path
 // that half-enforced TASK-082's guards — a board POST bypassed both).
 // ===========================================================================
-// TASK-187 AC3 — a 'tdd' tier now also requires a pre-existing
+// TASK-187 AC3 — a 'tests-after' tier now also requires a pre-existing
 // reviewer-authored comment AND a non-empty linked_commits before close;
 // this fixture seeds both so these board-endpoint specs keep isolating the
 // LOOP-MODE close guard (their actual subject) rather than tripping the new
@@ -456,7 +456,7 @@ const FIXTURE_TASK_IN_REVIEW = {
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
   jira_key: null,
-  verification_tier: 'tdd',
+  verification_tier: 'tests-after',
 };
 
 /** Seed a pointer + active bundle with the given mode/loop_auth under repoRoot. */

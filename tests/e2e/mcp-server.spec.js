@@ -146,7 +146,7 @@ describe('TASK-026 — MCP task-store server (in-memory round-trip)', () => {
     expect(todos.map((t) => t.key)).toContain(key);
 
     // TASK-187 AC2/AC3 — done now requires a predecessor state implying
-    // review (in_review) plus, for the default 'tdd' tier, a pre-existing
+    // review (in_review) plus, for the default 'tests-after' tier, a pre-existing
     // reviewer comment AND a non-empty linked_commits. This test's subject
     // is the round-trip mechanics, not review evidence, so the fixture is
     // advanced through the real state machine (transition_status has no

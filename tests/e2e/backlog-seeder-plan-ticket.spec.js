@@ -89,8 +89,9 @@ describe('AC1 — plan ticket minted from non-empty definition', () => {
     // 'uat-only' and labels: ['plan'] (merged with 'seed' by mintTicket into
     // ['seed', 'plan']), but until now no spec asserted either. The tier is
     // load-bearing: it gates the ticket's done-transition via the uat-only
-    // close guard (src/close-guard.js) — a silent regression to 'tdd' would
-    // block this ticket from ever closing via a normal uat comment.
+    // close guard (src/close-guard.js) — a silent regression to 'tests-after'
+    // (TASK-212 retired 'tdd'; 'tests-after' is now the only other tier)
+    // would block this ticket from ever closing via a normal uat comment.
     expect(plan.verification_tier).toBe('uat-only');
     expect(plan.labels).toEqual(['seed', 'plan']);
   });

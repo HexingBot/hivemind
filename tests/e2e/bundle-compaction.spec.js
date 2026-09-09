@@ -128,7 +128,9 @@ describe('AC1 — writeBundleSession validates against bundleStateSchema before 
       lifecycle_state: 'active',
       updated_at: new Date().toISOString(),
       active_task: 'TASK-004',
-      workflow_step: 'test',
+      // TASK-212 (2026-08-13 human decision) retired the 'tdd' tier and,
+      // with it, the 'test' workflow_step value.
+      workflow_step: 'impl',
       next_action: 'continue',
       handoff_summary: 'a short paragraph',
       open_questions: [],
@@ -209,7 +211,7 @@ describe('AC2 — compaction rotates older decisions/subagent_results to an arch
         handoff_summary: 'the current, single, latest handoff paragraph',
         mode: 'loop',
         loop_auth: { auto_close_on_green_review: true },
-        loop_state: { current_ticket: 'TASK-103', phase: 'test', iteration: 8 },
+        loop_state: { current_ticket: 'TASK-103', phase: 'impl', iteration: 8 },
       },
     });
 
@@ -228,7 +230,7 @@ describe('AC2 — compaction rotates older decisions/subagent_results to an arch
     expect(after.handoff_summary).toBe('the current, single, latest handoff paragraph');
     expect(after.mode).toBe('loop');
     expect(after.loop_auth).toEqual({ auto_close_on_green_review: true });
-    expect(after.loop_state).toEqual({ current_ticket: 'TASK-103', phase: 'test', iteration: 8 });
+    expect(after.loop_state).toEqual({ current_ticket: 'TASK-103', phase: 'impl', iteration: 8 });
 
     // No data loss: every archived entry is recoverable from archive.jsonl.
     const archivePath = bundleArchivePath(root, sessionId);
@@ -527,7 +529,7 @@ describe('TASK-110 AC2 — compactLoopState/compactBundleSession rotate loop_sta
       session_json_extra: {
         loop_state: {
           current_ticket: 'TASK-110',
-          phase: 'test',
+          phase: 'impl',
           iteration: 3,
           completed_this_run: 2,
           run_started_at: '2026-07-01T00:00:00Z',
@@ -545,7 +547,7 @@ describe('TASK-110 AC2 — compactLoopState/compactBundleSession rotate loop_sta
     expect(after.loop_state.beta_findings.length).toBe(MAX_BETA_FINDINGS);
     // resume-point / get-mode fields untouched by the rotation.
     expect(after.loop_state.current_ticket).toBe('TASK-110');
-    expect(after.loop_state.phase).toBe('test');
+    expect(after.loop_state.phase).toBe('impl');
     expect(after.loop_state.iteration).toBe(3);
     expect(after.loop_state.completed_this_run).toBe(2);
     expect(after.loop_state.run_started_at).toBe('2026-07-01T00:00:00Z');

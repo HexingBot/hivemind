@@ -97,7 +97,8 @@ const ASSIMILATE_CURRENT_PROJECT_SKILL = 'assimilate-current-project';
 // TASK-147 (renamed from wargame-a-component → hive-self-improve → hive-adversarial-improve): a durable
 // self-hardening capability skill (the 9-step component-hardening protocol that
 // stress-tests trust boundaries against hostile inputs and locks each gap as a
-// tdd regression fixture). A general capability skill authored by the team,
+// regression fixture — tests-after tier since TASK-212 retired 'tdd'). A general
+// capability skill authored by the team,
 // same pattern as graphify/mcp-server/hivemind-assimilate-skill.
 //
 // TASK-153 — FRAMEWORK-ONLY, not consumer-shipped: this skill targets the

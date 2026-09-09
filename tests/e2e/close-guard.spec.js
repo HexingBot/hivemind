@@ -125,7 +125,7 @@ function makeTask(key) {
     created_at: '2026-07-01T00:00:00Z',
     updated_at: '2026-07-01T00:00:00Z',
     jira_key: null,
-    verification_tier: 'tdd',
+    verification_tier: 'tests-after',
   };
 }
 
@@ -389,13 +389,13 @@ describe('AC4 (TASK-099) — loopModeCloseGuard Gate 2: uat-only delegation', ()
     await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
   });
 
-  it('does not apply Gate 2 to non-uat-only tickets (tdd-tier ticket with no uat comment closes normally once Gate 1 is satisfied)', async () => {
+  it('does not apply Gate 2 to non-uat-only tickets (tests-after-tier ticket with no uat comment closes normally once Gate 1 is satisfied)', async () => {
     const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
     const { root } = makeRepoWithMode({
       mode: 'loop',
       loopAuth: { auto_close_on_green_review: true },
     });
-    const task = makeTask('TASK-223'); // verification_tier: 'tdd', no comments
+    const task = makeTask('TASK-223'); // verification_tier: 'tests-after', no comments
 
     await expect(loopModeCloseGuard({ repoRoot: root, task })).resolves.not.toThrow();
   });

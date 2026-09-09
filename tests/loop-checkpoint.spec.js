@@ -11,7 +11,10 @@
 //
 // Also folds the TASK-071 core (workflow_step enum-validity for loop writes):
 // LOOP_PHASES maps every canonical phase name onto a value from the bundle
-// workflow_step enum ['idle','fetch','research','test','impl','review','update'].
+// workflow_step enum ['idle','fetch','research','impl','review','update']. TASK-212
+// (2026-08-13 human decision) retired the 'tdd' tier and, with it, the 'test'
+// phase that existed only to checkpoint it — removed from the enum, not left
+// inert.
 //
 // ACs covered:
 //   AC1/AC3 — LOOP_PHASES is the documented phase set, each mapping onto a
@@ -45,7 +48,7 @@ const CHECKPOINT_URL = pathToFileURL(join(__srcDir, 'loop-checkpoint.js')).href;
 
 const FAKE_ROOT = '/fake/root/that/does/not/exist';
 
-const WORKFLOW_STEP_ENUM = ['idle', 'fetch', 'research', 'test', 'impl', 'review', 'update'];
+const WORKFLOW_STEP_ENUM = ['idle', 'fetch', 'research', 'impl', 'review', 'update'];
 
 // ---------------------------------------------------------------------------
 // Module shape
@@ -76,12 +79,19 @@ describe('LOOP_PHASES maps every phase name onto a valid workflow_step enum valu
     }
   });
 
-  it('LOOP_PHASES covers at least fetch, research, test, impl, review, update', async () => {
+  it('LOOP_PHASES covers at least fetch, research, impl, review, update', async () => {
     const { LOOP_PHASES } = await import(CHECKPOINT_URL);
     const names = Object.keys(LOOP_PHASES);
-    for (const required of ['fetch', 'research', 'test', 'impl', 'review', 'update']) {
+    for (const required of ['fetch', 'research', 'impl', 'review', 'update']) {
       expect(names, `LOOP_PHASES must document a '${required}' phase`).toContain(required);
     }
+  });
+
+  // TASK-212 (2026-08-13 human decision) retired the 'tdd' verification tier
+  // and, with it, the 'test' phase — LOOP_PHASES must no longer document it.
+  it('LOOP_PHASES no longer documents the retired "test" phase', async () => {
+    const { LOOP_PHASES } = await import(CHECKPOINT_URL);
+    expect(Object.keys(LOOP_PHASES)).not.toContain('test');
   });
 });
 
@@ -286,7 +296,7 @@ describe('resumePoint — reset: inconsistent state', () => {
   it('resets when the recorded ticket is blocked', async () => {
     const { resumePoint } = await import(CHECKPOINT_URL);
     const bundle = bundleWith({
-      current_ticket: 'TASK-100', phase: 'test', iteration: 2, completed_this_run: 1,
+      current_ticket: 'TASK-100', phase: 'impl', iteration: 2, completed_this_run: 1,
     });
     const tasks = [task({ status: 'blocked' })];
     const result = resumePoint({ bundle, tasks });
@@ -355,29 +365,19 @@ describe('resumePoint — TASK-100 AC2: reset carries the run counters verbatim'
   });
 });
 
-// ---------------------------------------------------------------------------
-// TASK-100 AC4 — the new pre-Developer-spawn checkpoint cadence writes phase
-// 'test' for tdd-tier tickets (in addition to the existing 'impl' coverage).
-// resumePoint's existing PRE_COMMIT_PHASES logic already excludes 'test', so
-// this is a spec-coverage lock, not a behavior change.
-// ---------------------------------------------------------------------------
-
-describe('resumePoint — TASK-100 AC4: resumes at the "test" phase (tdd pre-spawn checkpoint)', () => {
-  it('resumes an in_progress ticket recorded at the test phase, carrying counters over', async () => {
-    const { resumePoint } = await import(CHECKPOINT_URL);
-    const bundle = bundleWith({
-      current_ticket: 'TASK-100', phase: 'test', iteration: 1, completed_this_run: 0, run_started_at: '2026-07-06T13:00:00Z',
-    });
-    const tasks = [task({ status: 'in_progress' })];
-    const result = resumePoint({ bundle, tasks });
-    expect(result.action).toBe('resume');
-    expect(result.ticket.key).toBe('TASK-100');
-    expect(result.phase).toBe('test');
-    expect(result.iteration).toBe(1);
-    expect(result.completed_this_run).toBe(0);
-    expect(result.run_started_at).toBe('2026-07-06T13:00:00Z');
-  });
-});
+// TASK-212 (2026-08-13 human decision) retired the 'tdd' verification tier
+// and, with it, the loop's 'test' phase — the former "TASK-100 AC4: resumes
+// at the 'test' phase (tdd pre-spawn checkpoint)" describe block lived here,
+// proving resumePoint's PRE_COMMIT_PHASES logic excludes the now-retired
+// 'test' phase specifically. Deleted rather than adapted: it tested that
+// specific now-dead machinery (a phase no ticket can ever be checkpointed at
+// again), not a general resume-at-a-post-commit-phase fact — that general
+// fact is still covered by the 'impl'/'review' resume specs above. The
+// SEPARATE, surviving concern — a bundle written BEFORE the retirement that
+// still carries phase: 'test' on disk must keep reading without throwing —
+// is covered by tests/e2e/bundle.spec.js's readBundleSession migration specs
+// (maps legacy 'test' to 'impl' before resumePoint or any other consumer
+// ever sees it).
 
 // ---------------------------------------------------------------------------
 // TASK-100 AC3 — ticketHasLandedCommits: pure helper the reset protocol uses

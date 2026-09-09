@@ -54,7 +54,9 @@ export function seedActiveBundle(bundleDir, overrides = {}) {
     lifecycle_state: 'active',
     updated_at: now,
     active_task: 'TASK-004',
-    workflow_step: 'test',
+    // TASK-212 (2026-08-13 human decision) retired the 'tdd' tier and, with
+    // it, the 'test' workflow_step value — 'impl' is the shared default now.
+    workflow_step: 'impl',
     next_action: 'continue working on the failing tests',
     handoff_summary: 'session was just started',
     open_questions: [],
