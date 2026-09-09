@@ -92,7 +92,14 @@ export const bundleStateSchema = {
     },
     workflow_step: {
       type: 'string',
-      enum: ['idle', 'fetch', 'research', 'test', 'impl', 'review', 'update'],
+      // TASK-212 (2026-08-13 human decision) retired the 'tdd' verification
+      // tier and, with it, the loop's 'test' phase (it existed solely to
+      // checkpoint the tdd-only tests-first spawn step — see
+      // src/loop-checkpoint.js's LOOP_PHASES). A bundle written before the
+      // retirement may still carry workflow_step: 'test' on disk; src/bundle.js's
+      // readBundleSession migrates that legacy value to 'impl' on read so it
+      // never fails this enum on a subsequent write.
+      enum: ['idle', 'fetch', 'research', 'impl', 'review', 'update'],
     },
     next_action: {
       type: ['string', 'null'],

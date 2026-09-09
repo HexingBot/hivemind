@@ -7888,7 +7888,14 @@ var bundleStateSchema = {
     },
     workflow_step: {
       type: "string",
-      enum: ["idle", "fetch", "research", "test", "impl", "review", "update"]
+      // TASK-212 (2026-08-13 human decision) retired the 'tdd' verification
+      // tier and, with it, the loop's 'test' phase (it existed solely to
+      // checkpoint the tdd-only tests-first spawn step — see
+      // src/loop-checkpoint.js's LOOP_PHASES). A bundle written before the
+      // retirement may still carry workflow_step: 'test' on disk; src/bundle.js's
+      // readBundleSession migrates that legacy value to 'impl' on read so it
+      // never fails this enum on a subsequent write.
+      enum: ["idle", "fetch", "research", "impl", "review", "update"]
     },
     next_action: {
       type: ["string", "null"],
@@ -10187,12 +10194,12 @@ var schema_default = {
         pattern: "\\S",
         description: "TASK-189 \u2014 must contain at least one non-whitespace character. Rejects empty strings and whitespace-only strings (mechanically detectable vacuity). Deliberately does NOT attempt to detect unfalsifiable-but-well-formed prose (e.g. 'It works correctly.') \u2014 see TASK-189's hand-off for why that judgement is left to review, not the schema."
       },
-      description: "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: tests for tdd, regression locks for tests-after, recorded UAT for uat-only."
+      description: "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: regression locks for tests-after, recorded UAT for uat-only."
     },
     verification_tier: {
       type: "string",
-      enum: ["tdd", "tests-after", "uat-only"],
-      description: "Governs how the ticket is verified. Absent means tdd (backward-compatible default). tdd = tests-first; tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT."
+      enum: ["tests-after", "uat-only"],
+      description: `Governs how the ticket is verified. Absent means tests-after (backward-compatible default). tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT. TASK-212 retired the 'tdd' tier (2026-08-13 human decision) \u2014 tickets closed before the retirement may still carry verification_tier: "tdd" on disk as a historical record and are not rewritten; this is a known, accepted case where a further write to one of those tickets (e.g. appending a comment) would fail schema validation, since ajv re-validates the whole stored object on every write.`
     },
     marker: {
       type: "string",
@@ -10450,7 +10457,7 @@ async function deriveNextKey(repoRoot) {
   const width = Math.max(3, String(next).length);
   return `TASK-${String(next).padStart(width, "0")}`;
 }
-var VERIFICATION_TIERS = ["tdd", "tests-after", "uat-only"];
+var VERIFICATION_TIERS = ["tests-after", "uat-only"];
 async function createTask({
   repoRoot,
   title,
@@ -11059,13 +11066,12 @@ function routingBlockContent() {
     "### Workflow loop (every unit of work)",
     "",
     "1. Read the next `status: todo` ticket, extract acceptance criteria, and",
-    "   assign its `verification_tier` (`tdd`, `tests-after`, or `uat-only`) if it",
-    "   does not already carry one.",
+    "   assign its `verification_tier` (`tests-after` or `uat-only`) if it does",
+    "   not already carry one.",
     "2. Plan: decompose into research / verification / implementation / review.",
     "3. Research (if needed): spawn the `researcher` for any unknown stack.",
-    "4. Verify per tier: `tdd` writes failing tests before any implementation",
-    "   lands; `tests-after` implements first, then adds a minimal set of",
-    "   regression locks; `uat-only` implements only and is verified by",
+    "4. Verify per tier: `tests-after` implements first, then adds a minimal set",
+    "   of regression locks; `uat-only` implements only and is verified by",
     "   conversational UAT with the human.",
     "5. Implement: the `developer` makes the tier's tests (if any) pass without",
     "   breaking existing ones.",

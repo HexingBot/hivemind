@@ -69,12 +69,39 @@ export function bundleArchivePath(repoRoot, sessionId) {
   return join(bundleDirFor(repoRoot, sessionId), 'archive.jsonl');
 }
 
+// TASK-212 (2026-08-13 human decision) retired the 'tdd' verification tier
+// and, with it, the loop's 'test' phase (it existed solely to checkpoint the
+// tdd-only tests-first spawn step — see src/loop-checkpoint.js's LOOP_PHASES
+// and src/schemas.js's workflow_step enum, both of which now omit 'test').
+// This is a live state-schema migration, not just a code change: a bundle
+// written before the retirement may still carry workflow_step: 'test' or
+// loop_state.phase: 'test' on disk, and reading it must never throw. Decision
+// (recorded here, not inferred): map 'test' to 'impl' on read — 'impl' is
+// where a tdd ticket's Developer spawn always continued past the tests-first
+// step, so it is the correct "next durable phase" to resume/checkpoint from.
+function migrateRetiredTestPhase(parsed) {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  if (parsed.workflow_step === 'test') {
+    parsed = { ...parsed, workflow_step: 'impl' };
+  }
+  if (parsed.loop_state && parsed.loop_state.phase === 'test') {
+    parsed = { ...parsed, loop_state: { ...parsed.loop_state, phase: 'impl' } };
+  }
+  return parsed;
+}
+
 /**
  * Read the bundle's session.json. Returns the parsed object.
+ *
+ * TASK-212 — migrates the retired 'test' workflow_step/loop_state.phase value
+ * to 'impl' on read (migrateRetiredTestPhase above) so a bundle written
+ * before the 'tdd' tier's retirement keeps reading — and, if re-written via
+ * writeBundleSession, keeps validating — without a human intervention.
  */
 export function readBundleSession(repoRoot, sessionId) {
   const p = bundleSessionPath(repoRoot, sessionId);
-  return JSON.parse(readFileSync(p, 'utf8'));
+  const parsed = JSON.parse(readFileSync(p, 'utf8'));
+  return migrateRetiredTestPhase(parsed);
 }
 
 function makeErr(code, message) {

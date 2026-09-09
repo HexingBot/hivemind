@@ -28,7 +28,8 @@
     },
     "workflow_step": {
       "type": "string",
-      "enum": ["idle", "fetch", "research", "test", "impl", "review", "update"]
+      "enum": ["idle", "fetch", "research", "impl", "review", "update"],
+      "description": "TASK-212 (2026-08-13 human decision) retired the 'tdd' verification tier and the loop's 'test' phase that existed solely to checkpoint it — removed from this enum, not left inert. A bundle written before the retirement may still carry 'test' on disk; src/bundle.js's readBundleSession migrates it to 'impl' on read."
     },
     "next_action": {
       "type": ["string", "null"],

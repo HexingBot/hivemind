@@ -20,15 +20,23 @@ import { readBundleSessionOrThrow, writeBundleSession } from './bundle.js';
 
 // ---------------------------------------------------------------------------
 // LOOP_PHASES — identity map onto the bundle's workflow_step enum
-// (['idle','fetch','research','test','impl','review','update']). Documents
-// which loop phase writes which workflow_step value; a future workflow_step
+// (['idle','fetch','research','impl','review','update']). Documents which
+// loop phase writes which workflow_step value; a future workflow_step
 // addition only needs to be added here and in state/bundle.schema.json.
+//
+// TASK-212 (2026-08-13 human decision) retired the 'tdd' verification tier
+// and, with it, the 'test' phase that used to checkpoint a tdd ticket's
+// tests-first Developer spawn step separately from 'impl' — removed here, not
+// left inert, since no ticket can ever reach it again. A bundle written
+// before the retirement may still carry loop_state.phase: 'test' /
+// workflow_step: 'test' on disk; src/bundle.js's readBundleSession migrates
+// that legacy value to 'impl' on read, so it is never passed back into
+// writeLoopCheckpoint's phase-validation check below unmapped.
 // ---------------------------------------------------------------------------
 export const LOOP_PHASES = Object.freeze({
   idle: 'idle',
   fetch: 'fetch',
   research: 'research',
-  test: 'test',
   impl: 'impl',
   review: 'review',
   update: 'update',

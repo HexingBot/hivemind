@@ -25465,12 +25465,12 @@ var schema_default = {
         pattern: "\\S",
         description: "TASK-189 \u2014 must contain at least one non-whitespace character. Rejects empty strings and whitespace-only strings (mechanically detectable vacuity). Deliberately does NOT attempt to detect unfalsifiable-but-well-formed prose (e.g. 'It works correctly.') \u2014 see TASK-189's hand-off for why that judgement is left to review, not the schema."
       },
-      description: "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: tests for tdd, regression locks for tests-after, recorded UAT for uat-only."
+      description: "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: regression locks for tests-after, recorded UAT for uat-only."
     },
     verification_tier: {
       type: "string",
-      enum: ["tdd", "tests-after", "uat-only"],
-      description: "Governs how the ticket is verified. Absent means tdd (backward-compatible default). tdd = tests-first; tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT."
+      enum: ["tests-after", "uat-only"],
+      description: `Governs how the ticket is verified. Absent means tests-after (backward-compatible default). tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT. TASK-212 retired the 'tdd' tier (2026-08-13 human decision) \u2014 tickets closed before the retirement may still carry verification_tier: "tdd" on disk as a historical record and are not rewritten; this is a known, accepted case where a further write to one of those tickets (e.g. appending a comment) would fail schema validation, since ajv re-validates the whole stored object on every write.`
     },
     marker: {
       type: "string",
@@ -25703,9 +25703,20 @@ function bundleDirFor(repoRoot, sessionId) {
 function bundleSessionPath(repoRoot, sessionId) {
   return (0, import_node_path3.join)(bundleDirFor(repoRoot, sessionId), "session.json");
 }
+function migrateRetiredTestPhase(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  if (parsed.workflow_step === "test") {
+    parsed = { ...parsed, workflow_step: "impl" };
+  }
+  if (parsed.loop_state && parsed.loop_state.phase === "test") {
+    parsed = { ...parsed, loop_state: { ...parsed.loop_state, phase: "impl" } };
+  }
+  return parsed;
+}
 function readBundleSession(repoRoot, sessionId) {
   const p = bundleSessionPath(repoRoot, sessionId);
-  return JSON.parse((0, import_node_fs3.readFileSync)(p, "utf8"));
+  const parsed = JSON.parse((0, import_node_fs3.readFileSync)(p, "utf8"));
+  return migrateRetiredTestPhase(parsed);
 }
 
 // src/operating-mode.js
@@ -26076,7 +26087,7 @@ var CloseEvidenceError = class extends Error {
   }
 };
 var DONE_PREDECESSOR_STATES = ["in_review"];
-var EVIDENCE_REQUIRED_TIERS = ["tdd", "tests-after"];
+var EVIDENCE_REQUIRED_TIERS = ["tests-after"];
 var CLOSE_EXCEPTION_MARKER = "[CLOSE-EXCEPTION]";
 var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
 function resolveCloseException(exception) {
@@ -26111,7 +26122,7 @@ function checkDonePredecessorState(task, resolvedException) {
 function checkCloseEvidence(task, linkedCommits, resolvedException) {
   if (resolvedException) return;
   if (task.status === "done") return;
-  const tier = task.verification_tier === void 0 ? "tdd" : task.verification_tier;
+  const tier = task.verification_tier === void 0 ? "tests-after" : task.verification_tier;
   if (!EVIDENCE_REQUIRED_TIERS.includes(tier)) return;
   const hasReviewer = hasCommentFromAuthor(task, "reviewer");
   const hasCommits = Array.isArray(linkedCommits) && linkedCommits.length > 0;
@@ -26336,7 +26347,7 @@ async function deriveNextKey(repoRoot) {
   const width = Math.max(3, String(next).length);
   return `TASK-${String(next).padStart(width, "0")}`;
 }
-var VERIFICATION_TIERS = ["tdd", "tests-after", "uat-only"];
+var VERIFICATION_TIERS = ["tests-after", "uat-only"];
 async function createTask({
   repoRoot,
   title,
@@ -26784,7 +26795,7 @@ function taskKeyToNodeId(key) {
 var import_meta = {};
 var PRIORITY = external_exports.enum(["low", "medium", "high", "critical"]);
 var STATUS = external_exports.enum(["todo", "in_progress", "in_review", "blocked", "done"]);
-var VERIFICATION_TIER = external_exports.enum(["tdd", "tests-after", "uat-only"]);
+var VERIFICATION_TIER = external_exports.enum(["tests-after", "uat-only"]);
 var COMMENT_AUTHOR = external_exports.enum(COMMENT_AUTHORS);
 var MARKER = external_exports.enum(["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"]);
 var SOURCE_TIER = external_exports.enum(["T1", "T2", "T3", "T4", "TX"]);
@@ -27045,7 +27056,7 @@ function createServer({
   server.registerTool(
     "transition_status",
     {
-      description: "Set a task status (todo|in_progress|in_review|blocked|done). (TASK-187) status:'done' now requires a valid predecessor state that implies a review occurred ('in_review') and, for tdd/tests-after tiers, a pre-existing reviewer comment plus a non-empty linked_commits \u2014 the compliant path is transitioning to 'in_review' when spawning the Reviewer, then append_comment ({ author: 'reviewer' }) recording the verdict, THEN close_task. `exception: { reason, author? }` is the documented, auditable escape hatch for a genuine exception (e.g. a won't-do closure) \u2014 never a routine substitute for the compliant path \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. (TASK-187 fix round MEDIUM-1) the exception does NOT work for verification_tier 'uat-only': the uat-only done-guard runs BEFORE the exception is considered and is never bypassed by it \u2014 a won't-do uat-only closure still needs its own recognizable 'uat'-authored verdict comment.",
+      description: "Set a task status (todo|in_progress|in_review|blocked|done). (TASK-187) status:'done' now requires a valid predecessor state that implies a review occurred ('in_review') and, for the 'tests-after' tier, a pre-existing reviewer comment plus a non-empty linked_commits \u2014 the compliant path is transitioning to 'in_review' when spawning the Reviewer, then append_comment ({ author: 'reviewer' }) recording the verdict, THEN close_task. `exception: { reason, author? }` is the documented, auditable escape hatch for a genuine exception (e.g. a won't-do closure) \u2014 never a routine substitute for the compliant path \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. (TASK-187 fix round MEDIUM-1) the exception does NOT work for verification_tier 'uat-only': the uat-only done-guard runs BEFORE the exception is considered and is never bypassed by it \u2014 a won't-do uat-only closure still needs its own recognizable 'uat'-authored verdict comment.",
       inputSchema: {
         key: external_exports.string().describe("Task key, e.g. TASK-026"),
         status: STATUS,
@@ -27089,7 +27100,7 @@ function createServer({
   server.registerTool(
     "close_task",
     {
-      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard, the loop-mode close guard, (TASK-163) the loop-mode uat-comment write guard on comment.author, (TASK-188) rejects comment.author 'reviewer', and (TASK-187) requires status 'in_review' plus, for tdd/tests-after tiers, a pre-existing reviewer comment and a non-empty linked_commits \u2014 the compliant path is transitioning to 'in_review' when spawning the Reviewer, then append_comment({ author: 'reviewer' }) recording the verdict, THEN close_task. `exception: { reason, author? }` is the documented, auditable escape hatch for a genuine exception (e.g. a won't-do closure) \u2014 never a routine substitute for the compliant path \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. (TASK-187 fix round MEDIUM-1) the exception does NOT work for verification_tier 'uat-only': the uat-only done-guard runs BEFORE the exception is considered and is never bypassed by it \u2014 a won't-do uat-only closure still needs its own recognizable 'uat'-authored verdict comment. Reports a best-effort, advisory-only linked_commits_verification (never blocks the close) \u2014 see the TASK-188 hand-off / tasks/schema.json.",
+      description: "Atomically close a task: transition to done, append the closing comment, and record linked_commits/linked_prs in a single validate-then-write pass (TASK-082). Enforces the uat-only done-guard, the loop-mode close guard, (TASK-163) the loop-mode uat-comment write guard on comment.author, (TASK-188) rejects comment.author 'reviewer', and (TASK-187) requires status 'in_review' plus, for the 'tests-after' tier, a pre-existing reviewer comment and a non-empty linked_commits \u2014 the compliant path is transitioning to 'in_review' when spawning the Reviewer, then append_comment({ author: 'reviewer' }) recording the verdict, THEN close_task. `exception: { reason, author? }` is the documented, auditable escape hatch for a genuine exception (e.g. a won't-do closure) \u2014 never a routine substitute for the compliant path \u2014 it records a separate '[CLOSE-EXCEPTION]'-prefixed comment rather than bypassing silently. (TASK-187 fix round MEDIUM-1) the exception does NOT work for verification_tier 'uat-only': the uat-only done-guard runs BEFORE the exception is considered and is never bypassed by it \u2014 a won't-do uat-only closure still needs its own recognizable 'uat'-authored verdict comment. Reports a best-effort, advisory-only linked_commits_verification (never blocks the close) \u2014 see the TASK-188 hand-off / tasks/schema.json.",
       inputSchema: {
         key: external_exports.string().describe("Task key, e.g. TASK-026"),
         comment: external_exports.object({ author: COMMENT_AUTHOR, body: external_exports.string() }),

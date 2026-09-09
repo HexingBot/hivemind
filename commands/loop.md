@@ -89,10 +89,12 @@ prior run of this session crashed mid-ticket:
 `loop-ctl.cjs checkpoint --repo-root <repoRoot> --current-ticket <key> --phase <phase> [--iteration <n>] [--completed-this-run <n>] [--run-started-at <iso>]`
 is the writer half of this contract: call it at **every** phase boundary —
 after ticket selection, **immediately before spawning the Developer subagent**
-(phase `test` for tdd-tier tickets, `impl` otherwise — TASK-100, mandatory,
-see Step 2 below), after the Developer subagent returns, after the Reviewer
-subagent returns, and after ticket close — passing `--phase` as one of
-the `LOOP_PHASES` keys (`idle`, `fetch`, `research`, `test`, `impl`, `review`,
+(phase `impl` — TASK-100, mandatory, see Step 2 below; TASK-212, 2026-08-13
+human decision, retired both the `tdd` verification tier and the `test` phase
+that existed only to checkpoint it, so `impl` is now the phase for every
+ticket, not just non-tdd ones), after the Developer subagent returns, after
+the Reviewer subagent returns, and after ticket close — passing `--phase` as
+one of the `LOOP_PHASES` keys (`idle`, `fetch`, `research`, `impl`, `review`,
 `update`). The subcommand maps `phase` onto the bundle's `workflow_step` enum
 via `LOOP_PHASES` and validates it before any I/O (an invalid phase exits
 non-zero and touches nothing on disk). This also documents the TASK-071 rule
@@ -127,13 +129,14 @@ while NOT goalSatisfied(tasks, goal)
   // A ready ticket was found — run the standard per-ticket workflow:
   1. Transition ticket to in_progress (transitionStatus)
      -> Renew the session lock (loop-ctl.cjs renew --repo-root <repoRoot>; if the JSON's `renewed` is false, re-acquire)
-  2. [MANDATORY, TASK-100] Checkpoint the session bundle at phase 'test' (tdd-tier
-     tickets) or 'impl' (all other tiers), current_ticket = this ticket, BEFORE
-     spawning the Developer. Without this write, a mid-spawn crash resumes as
+  2. [MANDATORY, TASK-100] Checkpoint the session bundle at phase 'impl'
+     (TASK-212 retired the 'tdd'-tier-only 'test' phase; every ticket now
+     checkpoints at 'impl'), current_ticket = this ticket, BEFORE spawning
+     the Developer. Without this write, a mid-spawn crash resumes as
      in_progress+'fetch' -> resumePoint returns 'reset' ("no durable work landed")
-     even though test:/impl commits already landed during that spawn — the
+     even though impl commits already landed during that spawn — the
      longest phase in a ticket's lifecycle. This checkpoint closes that gap.
-  3. Spawn the Developer subagent (IMPL or TDD per verification_tier)
+  3. Spawn the Developer subagent
      -> Renew the session lock
   4. Spawn the Reviewer subagent (fresh context, read-only)
      - On HIGH finding: loop back to Developer (max 2 retries); on third HIGH, surface and break

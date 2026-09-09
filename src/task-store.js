@@ -537,15 +537,16 @@ export class InvalidPredecessorStateError extends Error {
 }
 
 /**
- * TASK-187 (P9) — thrown when a 'tdd' or 'tests-after' ticket is closed
- * without BOTH a pre-existing reviewer-authored comment (hasCommentFromAuthor,
- * evaluated against the ON-DISK task, i.e. before the incoming closing
- * comment is appended — same ordering discipline as checkUatGuard) AND a
- * non-empty linked_commits, and no `exception` escape hatch was supplied.
- * Replays probe P9: a tdd ticket whose ACs demanded captured red-run
- * evidence closed with the 4-word comment "Done." and no linked_commits —
- * nothing mechanically related the AC's evidence promise to a receipt.
- * `.code` lets callers (and tests) distinguish this programmatically.
+ * TASK-187 (P9) — thrown when a 'tests-after' ticket is closed without BOTH
+ * a pre-existing reviewer-authored comment (hasCommentFromAuthor, evaluated
+ * against the ON-DISK task, i.e. before the incoming closing comment is
+ * appended — same ordering discipline as checkUatGuard) AND a non-empty
+ * linked_commits, and no `exception` escape hatch was supplied. Replays
+ * probe P9: a (then-tdd, now-retired-tier — TASK-212) ticket whose ACs
+ * demanded captured red-run evidence closed with the 4-word comment "Done."
+ * and no linked_commits — nothing mechanically related the AC's evidence
+ * promise to a receipt. `.code` lets callers (and tests) distinguish this
+ * programmatically.
  */
 export class CloseEvidenceError extends Error {
   constructor(message) {
@@ -560,17 +561,23 @@ export class CloseEvidenceError extends Error {
 // documented `todo -> in_progress -> in_review -> done` convention that
 // implies a review step was reached (CLAUDE.md Workflow step 6 spawns the
 // Reviewer subagent unconditionally, for every verification_tier — so this
-// is NOT scoped to tdd/tests-after the way the evidence check below is).
+// is NOT scoped to the EVIDENCE_REQUIRED_TIERS check below the way that one is).
 const DONE_PREDECESSOR_STATES = ['in_review'];
 
 // TASK-187 AC3 — tiers that require BOTH a reviewer comment and a non-empty
-// linked_commits before close. Mirrors CLAUDE.md's "at minimum, a tdd or
-// tests-after ticket should not close without a reviewer-authored comment
-// and a non-empty linked_commits" decision. 'uat-only' is deliberately
-// excluded — checkUatGuard already imposes a CONTENT requirement (a
-// recognizable verdict) that is stronger than mere presence, so layering
-// this presence-only evidence check on top would be redundant, not stricter.
-const EVIDENCE_REQUIRED_TIERS = ['tdd', 'tests-after'];
+// linked_commits before close. Mirrors CLAUDE.md's "at minimum, a tests-after
+// ticket should not close without a reviewer-authored comment and a
+// non-empty linked_commits" decision. 'uat-only' is deliberately excluded —
+// checkUatGuard already imposes a CONTENT requirement (a recognizable
+// verdict) that is stronger than mere presence, so layering this
+// presence-only evidence check on top would be redundant, not stricter.
+// TASK-212 — the 'tdd' tier is retired; this array drops it (was
+// ['tdd', 'tests-after']). Done tickets from before the retirement may still
+// carry verification_tier: 'tdd' on disk, but checkCloseEvidence only reads
+// this array to decide whether to REQUIRE evidence on a NEW close — it never
+// re-validates already-closed tickets, so historical 'tdd' tickets are
+// unaffected by the narrowing.
+const EVIDENCE_REQUIRED_TIERS = ['tests-after'];
 
 // TASK-187 — TASK-188's review asked whether hasCommentFromAuthor's presence
 // check (consumed by checkCloseEvidence above) should be PAIRED with a
@@ -710,8 +717,9 @@ function checkDonePredecessorState(task, resolvedException) {
 
 /**
  * TASK-187 AC3 — throws CloseEvidenceError when task.verification_tier is in
- * EVIDENCE_REQUIRED_TIERS (defaulting to 'tdd' per CLAUDE.md's documented
- * backward-compatible fallback) and EITHER no reviewer comment is on record
+ * EVIDENCE_REQUIRED_TIERS (defaulting to 'tests-after' per CLAUDE.md's
+ * documented backward-compatible default — TASK-212 retired 'tdd') and
+ * EITHER no reviewer comment is on record
  * OR `linkedCommits` is empty, UNLESS `resolvedException` is truthy (the
  * escape hatch). `linkedCommits` is the caller's own choice of "final"
  * linked_commits to evaluate — transitionStatus passes the task's existing
@@ -726,7 +734,7 @@ function checkDonePredecessorState(task, resolvedException) {
 function checkCloseEvidence(task, linkedCommits, resolvedException) {
   if (resolvedException) return;
   if (task.status === 'done') return;
-  const tier = task.verification_tier === undefined ? 'tdd' : task.verification_tier;
+  const tier = task.verification_tier === undefined ? 'tests-after' : task.verification_tier;
   if (!EVIDENCE_REQUIRED_TIERS.includes(tier)) return;
   const hasReviewer = hasCommentFromAuthor(task, 'reviewer');
   const hasCommits = Array.isArray(linkedCommits) && linkedCommits.length > 0;
@@ -1034,8 +1042,9 @@ function resolveCloseGuard(closeGuard) {
  * a completeness check on the same action): `checkDonePredecessorState`
  * (task.status must be 'in_review', replaying probe A5) and
  * `checkCloseEvidence` (a
- * reviewer comment + non-empty linked_commits for tdd/tests-after tiers,
- * replaying probe P9, evaluated against the task's EXISTING on-disk
+ * reviewer comment + non-empty linked_commits for EVIDENCE_REQUIRED_TIERS
+ * ('tests-after' — TASK-212 retired 'tdd'), replaying probe P9, evaluated
+ * against the task's EXISTING on-disk
  * linked_commits — transitionStatus never adds new ones itself). An optional
  * `exception: { reason, author? }` (AC6) bypasses both — see
  * resolveCloseException's doc comment — and, when supplied, a separate
@@ -1192,7 +1201,8 @@ const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/i;
  * meta-permission-before-completeness ordering as transitionStatus):
  * checkDonePredecessorState (task.status must be 'in_review', replaying
  * probe A5) and checkCloseEvidence (a reviewer comment + non-empty
- * linked_commits for tdd/tests-after tiers, replaying probe P9). Unlike
+ * linked_commits for EVIDENCE_REQUIRED_TIERS ('tests-after' — TASK-212
+ * retired 'tdd'), replaying probe P9). Unlike
  * transitionStatus, checkCloseEvidence here is evaluated against the MERGED
  * existing+incoming linked_commits — closeTask's whole point is adding new
  * commits atomically in this same call, so a caller supplying `linked_commits`
@@ -1331,7 +1341,9 @@ async function deriveNextKey(repoRoot) {
  * the atomic write so a bad timestamp leaves the store untouched.
  */
 // Mirror of tasks/schema.json#/properties/verification_tier/enum.
-const VERIFICATION_TIERS = ['tdd', 'tests-after', 'uat-only'];
+// TASK-212 — 'tdd' retired; historical done tickets may still carry it on
+// disk (createTask only validates NEW writes against this array).
+const VERIFICATION_TIERS = ['tests-after', 'uat-only'];
 
 export async function createTask({
   repoRoot,

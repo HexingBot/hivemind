@@ -96,7 +96,10 @@ import { taskKeyToNodeId } from './graph-freshness.js';
 
 const PRIORITY = z.enum(['low', 'medium', 'high', 'critical']);
 const STATUS = z.enum(['todo', 'in_progress', 'in_review', 'blocked', 'done']);
-const VERIFICATION_TIER = z.enum(['tdd', 'tests-after', 'uat-only']);
+// TASK-212 — 'tdd' tier retired (2026-08-13 human decision); only new writes
+// go through this input schema, so historical 'tdd'-tier tickets on disk are
+// unaffected by narrowing this enum.
+const VERIFICATION_TIER = z.enum(['tests-after', 'uat-only']);
 // TASK-188 AC4 — mirrors src/task-store.js's COMMENT_AUTHORS (itself a mirror
 // of tasks/schema.json's comments.items.properties.author enum). Rejects an
 // unknown author string at the MCP boundary with a friendly zod error before
@@ -565,8 +568,8 @@ export function createServer({
       description:
         'Set a task status (todo|in_progress|in_review|blocked|done). '
         + "(TASK-187) status:'done' now requires a valid predecessor state "
-        + "that implies a review occurred ('in_review') and, for tdd/"
-        + 'tests-after tiers, a pre-existing reviewer comment plus a '
+        + "that implies a review occurred ('in_review') and, for the "
+        + "'tests-after' tier, a pre-existing reviewer comment plus a "
         + 'non-empty linked_commits — the compliant path is transitioning '
         + "to 'in_review' when spawning the Reviewer, then append_comment "
         + "({ author: 'reviewer' }) recording the verdict, THEN close_task. "
@@ -638,7 +641,7 @@ export function createServer({
         + 'done-guard, the loop-mode close guard, (TASK-163) the '
         + 'loop-mode uat-comment write guard on comment.author, '
         + "(TASK-188) rejects comment.author 'reviewer', and (TASK-187) "
-        + "requires status 'in_review' plus, for tdd/tests-after tiers, a "
+        + "requires status 'in_review' plus, for the 'tests-after' tier, a "
         + 'pre-existing reviewer comment and a non-empty linked_commits — '
         + "the compliant path is transitioning to 'in_review' when "
         + "spawning the Reviewer, then append_comment({ author: 'reviewer' }) "

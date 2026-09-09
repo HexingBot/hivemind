@@ -1,8 +1,10 @@
 // manifest-policy — the tier gate for the Spine's spec layer (Phase 3). Decides whether a ticket
 // must produce/update a language-agnostic manifest BEFORE code, based on its verification_tier:
-// core work (tdd / tests-after) blueprints the hard stuff first; uat-only glue skips it. The
+// core work (tests-after) blueprints the hard stuff first; uat-only glue skips it. The
 // orchestrator consults this before dispatching a developer; the reviewer treats a missing
 // required manifest as a HIGH finding. See PLAN.md Phase 3 and the vendored impl-* manifest skills.
+// TASK-212 — the 'tdd' tier is retired (2026-08-13 human decision); 'tests-after' is now the
+// default tier for all real work, so it alone drives MANIFEST_REQUIRED_TIERS below.
 
 /** The six language-agnostic manifests, each produced by its vendored skill. */
 export const MANIFESTS = [
@@ -22,10 +24,10 @@ export const MANIFESTS = [
 
 const MANIFEST_IDS = new Set(MANIFESTS.map((m) => m.id));
 
-// Absent verification_tier means tdd (matches tasks/schema.json's backward-compatible default).
-const DEFAULT_TIER = 'tdd';
+// Absent verification_tier means tests-after (matches tasks/schema.json's backward-compatible default).
+const DEFAULT_TIER = 'tests-after';
 // Tiers that require a manifest before code. uat-only glue (config/docs/wiring) is exempt.
-const MANIFEST_REQUIRED_TIERS = new Set(['tdd', 'tests-after']);
+const MANIFEST_REQUIRED_TIERS = new Set(['tests-after']);
 
 /** Does a ticket at this verification_tier need a manifest before code? */
 export function requiresManifest(verificationTier) {
