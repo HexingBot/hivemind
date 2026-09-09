@@ -15,6 +15,7 @@
     "build:plugin": "node scripts/build-plugin.mjs",
     "check:calibration": "node bin/check-calibration.js",
     "check:manifests": "node scripts/verify-manifests.mjs",
+    "audit:uat": "node bin/audit-uat.js",
     "bootstrap:brain": "node dist/brain-launch.cjs --health",
     "e2e:brain": "bash scripts/brain-smoke.sh"
   },
