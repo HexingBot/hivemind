@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arreglar el sistema de verificacion UAT de hivemind — Propuesta</title>
+<style>
+  :root{
+    --tinta:#1e2430;
+    --suave:#5b6676;
+    --linea:#dfe4ec;
+    --fondo:#f6f7fb;
+    --papel:#ffffff;
+    --acento:#3b6ea5;
+    --acento-claro:#eaf1f9;
+    --alerta:#b4532a;
+    --alerta-claro:#fdf0e9;
+    --verde:#2f7a5b;
+    --verde-claro:#e9f4ef;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    padding:28px 20px 40px;
+    background:var(--fondo);
+    color:var(--tinta);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    font-size:14px;
+    line-height:1.5;
+  }
+  .hoja{
+    max-width:960px;
+    margin:0 auto;
+    background:var(--papel);
+    border:1px solid var(--linea);
+    border-radius:10px;
+    padding:30px 34px 26px;
+  }
+  header.titulo{border-bottom:2px solid var(--acento);padding-bottom:14px;margin-bottom:20px;}
+  h1{font-size:25px;line-height:1.22;margin:0 0 6px;letter-spacing:-.2px;}
+  .subtitulo{margin:0;color:var(--suave);font-size:13px;}
+  h2{
+    font-size:12px;
+    letter-spacing:1.4px;
+    text-transform:uppercase;
+    color:var(--acento);
+    margin:24px 0 10px;
+    font-family:"Helvetica Neue",Arial,sans-serif;
+  }
+  p{margin:0 0 9px;}
+  section{page-break-inside:avoid;}
+
+  .cifras{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;}
+  .cifra{
+    flex:1 1 220px;
+    border:1px solid var(--linea);
+    border-radius:8px;
+    padding:11px 13px;
+    background:var(--fondo);
+  }
+  .cifra.ok{background:var(--verde-claro);border-color:#c6e2d5;}
+  .cifra.mal{background:var(--alerta-claro);border-color:#f0cfbc;}
+  .cifra .num{font-size:22px;font-weight:700;display:block;line-height:1.1;}
+  .cifra.ok .num{color:var(--verde);}
+  .cifra.mal .num{color:var(--alerta);}
+  .cifra .txt{font-size:12px;color:var(--suave);}
+
+  ol.causas{margin:0;padding-left:20px;}
+  ol.causas li{margin-bottom:5px;}
+  ol.causas b{font-weight:700;}
+
+  .paso{
+    border:1px solid var(--linea);
+    border-left:4px solid var(--acento);
+    border-radius:8px;
+    padding:12px 14px;
+    margin-bottom:11px;
+    page-break-inside:avoid;
+  }
+  .paso.opcional{border-left-color:#b9c2d0;background:#fbfcfe;}
+  .paso h3{
+    margin:0 0 7px;
+    font-size:15px;
+    font-family:"Helvetica Neue",Arial,sans-serif;
+    display:flex;
+    align-items:baseline;
+    gap:9px;
+  }
+  .num-paso{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:24px;height:24px;
+    border-radius:50%;
+    background:var(--acento);
+    color:#fff;
+    font-size:12px;
+    font-weight:700;
+    flex:none;
+  }
+  .paso.opcional .num-paso{background:#8e9aab;}
+  .etiqueta{
+    font-size:10px;
+    letter-spacing:.8px;
+    text-transform:uppercase;
+    background:var(--acento-claro);
+    color:var(--acento);
+    border-radius:20px;
+    padding:2px 8px;
+    font-family:"Helvetica Neue",Arial,sans-serif;
+    font-weight:700;
+  }
+  .etiqueta.op{background:#eef0f4;color:#6c7786;}
+  .paso dl{margin:0;display:grid;grid-template-columns:98px 1fr;gap:3px 10px;}
+  .paso dt{
+    font-family:"Helvetica Neue",Arial,sans-serif;
+    font-size:10.5px;
+    letter-spacing:.6px;
+    text-transform:uppercase;
+    color:var(--suave);
+    padding-top:2px;
+  }
+  .paso dd{margin:0;}
+  code{
+    font-family:"SF Mono",Menlo,Consolas,monospace;
+    font-size:12px;
+    background:#eef1f6;
+    border-radius:3px;
+    padding:1px 4px;
+  }
+  pre{
+    margin:9px 0 0;
+    background:#1e2430;
+    color:#e6ebf2;
+    border-radius:7px;
+    padding:11px 13px;
+    font-family:"SF Mono",Menlo,Consolas,monospace;
+    font-size:11px;
+    line-height:1.45;
+    overflow-x:auto;
+    white-space:pre;
+  }
+  pre .k{color:#8fc7f0;}
+  pre .s{color:#c8e6a0;}
+  pre .pass{color:#8ee0b0;font-weight:700;}
+  pre .fail{color:#ff9b7a;font-weight:700;}
+  pre .c{color:#8792a3;font-style:italic;}
+
+  ul.beneficios{margin:0;padding-left:19px;}
+  ul.beneficios li{margin-bottom:6px;}
+
+  footer{
+    margin-top:22px;
+    padding-top:12px;
+    border-top:1px solid var(--linea);
+    font-size:11.5px;
+    color:var(--suave);
+    text-align:center;
+    font-family:"Helvetica Neue",Arial,sans-serif;
+  }
+
+  @media print{
+    @page{size:A4;margin:12mm;}
+    body{background:#fff;padding:0;font-size:10.5pt;}
+    .hoja{border:none;border-radius:0;padding:0;max-width:none;}
+    pre{background:#f2f4f8;color:#1e2430;border:1px solid var(--linea);}
+    pre .k{color:#1f5c8b;} pre .s{color:#3d6b2e;}
+    pre .pass{color:#1f6b4a;} pre .fail{color:#a83f1c;} pre .c{color:#6b7684;}
+    h1{font-size:19pt;}
+  }
+</style>
+</head>
+<body>
+<div class="hoja">
+
+  <header class="titulo">
+    <h1>Arreglar el sistema de verificacion UAT de hivemind — Propuesta</h1>
+    <p class="subtitulo">Para Mato &middot; repositorio HexingBot/hivemind v0.22.0 &middot; diagnostico verificado en el codigo, sin cambios aplicados</p>
+  </header>
+
+  <section>
+    <h2>1 &middot; El problema</h2>
+    <p>Los UAT se <b>crean</b> pero no se <b>completan</b> ni se <b>corren</b>. La regla que exige un UAT valido antes de cerrar un ticket vive unicamente en la documentacion; ningun punto del codigo la hace cumplir. Resultado: un ticket puede llegar a <code>done</code> sin que nadie haya verificado nada, y el sistema no se entera.</p>
+    <p>La evidencia es numerica y separa limpiamente los dos regimenes:</p>
+    <div class="cifras">
+      <div class="cifra ok">
+        <span class="num">9 / 9</span>
+        <span class="txt">Donde el sensor es <b>incondicional</b> (tier <code>uat-only</code>, reviewer.md): cumplimiento total.</span>
+      </div>
+      <div class="cifra mal">
+        <span class="num">7 / 16 se fugan</span>
+        <span class="txt">Donde el sensor es <b>condicional</b> (tier <code>tests-after</code>): casi la mitad cierra sin UAT.</span>
+      </div>
+      <div class="cifra">
+        <span class="num">0</span>
+        <span class="txt">Puntos del codigo, comandos o jobs de CI que puedan <b>negar</b> un cierre sin UAT.</span>
+      </div>
+    </div>
+    <p style="margin-top:10px">La lectura es directa: el problema no es la disciplina de los agentes, es que <b>la regla no es mecanica</b>. Donde no hay eleccion, se cumple; donde hay criterio, se fuga.</p>
+  </section>
+
+  <section>
+    <h2>2 &middot; Causas raiz (verificadas en el repo)</h2>
+    <ol class="causas">
+      <li><b>El gate UAT solo existe en documentacion</b> (CLAUDE.md, reviewer.md) — ninguna linea de codigo se niega a cerrar un ticket sin UAT completo.</li>
+      <li><b>El UAT es prosa libre, sin esquema</b> — cada autor lo escribe distinto, asi que es imposible validarlo automaticamente.</li>
+      <li><b>Cero CI</b> — no existe <code>.github/workflows</code>; el gate lo corre el mismo agente que decide si aplica (conflicto de interes puro).</li>
+      <li><b>El MCP de tareas se cae</b> (<code>CONNECTION_CLOSED</code>) y el fallback edita JSON a mano, saltandose la capa donde vivirian los gates.</li>
+      <li><b>Triple duplicacion mantenida a mano</b> (<code>agents/</code> &harr; <code>.claude/agents/</code>, <code>skills/</code>, <code>workflows/</code>) — fuente constante de drift entre lo que se lee y lo que corre.</li>
+      <li><b><code>dist/*.cjs</code> son artefactos committeados</b> cuyo gate de frescura solo corre en release: entre releases se puede publicar un bundle viejo en silencio.</li>
+      <li><b><code>transitionStatus</code> / <code>appendComment</code> no son race-safe</b> (<code>src/task-store.js</code>): dos sesiones concurrentes pueden pisarse los cambios.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>3 &middot; La propuesta, paso a paso</h2>
+
+    <div class="paso">
+      <h3><span class="num-paso">1</span> UAT con esquema, no prosa</h3>
+      <dl>
+        <dt>Que hace</dt><dd>Cada UAT pasa a ser un objeto JSON estructurado: una lista de pasos con <code>id</code>, <code>accion</code>, <code>resultado_esperado</code>, <code>resultado_observado</code>, <code>veredicto</code> (PASS o FAIL) y <code>notas</code>, cubriendo cada criterio de aceptacion del ticket.</dd>
+        <dt>Por que importa</dt><dd>Es el cimiento de todo lo demas: nada se puede validar mecanicamente mientras el UAT sea un parrafo escrito a gusto de cada autor.</dd>
+        <dt>Como se ve</dt><dd>Un UAT real, legible por humano y por maquina:</dd>
+      </dl>
+<pre>{
+  <span class="k">"ticket"</span>: <span class="s">"TASK-220"</span>,
+  <span class="k">"acceptance_criteria"</span>: [<span class="s">"AC1"</span>, <span class="s">"AC2"</span>],
+  <span class="k">"pasos"</span>: [
+    {
+      <span class="k">"id"</span>: <span class="s">"1"</span>,
+      <span class="k">"cubre"</span>: <span class="s">"AC1"</span>,
+      <span class="k">"accion"</span>: <span class="s">"npm run uat -- TASK-220"</span>,
+      <span class="k">"resultado_esperado"</span>: <span class="s">"sale 0 y valida los 2 AC"</span>,
+      <span class="k">"resultado_observado"</span>: <span class="s">"exit 0, 2/2 AC cubiertos"</span>,
+      <span class="k">"veredicto"</span>: <span class="pass">"PASS"</span>,
+      <span class="k">"notas"</span>: <span class="s">""</span>
+    },
+    {
+      <span class="k">"id"</span>: <span class="s">"2"</span>,
+      <span class="k">"cubre"</span>: <span class="s">"AC2"</span>,
+      <span class="k">"accion"</span>: <span class="s">"cerrar el ticket sin UAT valido"</span>,
+      <span class="k">"resultado_esperado"</span>: <span class="s">"transitionStatus lanza error"</span>,
+      <span class="k">"resultado_observado"</span>: <span class="s">"cerro igual"</span>,
+      <span class="k">"veredicto"</span>: <span class="fail">"FAIL"</span>,
+      <span class="k">"notas"</span>: <span class="s">"el gate no esta conectado"</span>
+    }
+  ],
+  <span class="k">"overall"</span>: <span class="fail">"FAIL"</span>   <span class="c">// se deriva, no se escribe a mano</span>
+}</pre>
+    </div>
+
+    <div class="paso">
+      <h3><span class="num-paso">2</span> Un comando unico: <code>npm run uat</code></h3>
+      <dl>
+        <dt>Que hace</dt><dd>Valida el esquema y falla (exit distinto de 0) si un UAT no cubre todos los criterios de aceptacion, si algun paso tiene <code>FAIL</code>, o si a algun paso le falta el resultado observado.</dd>
+        <dt>Por que importa</dt><dd>Convierte la regla en una <b>fuente de verdad mecanica</b>: deja de depender del juicio del agente de turno. El <code>overall</code> se calcula, nadie lo declara.</dd>
+        <dt>Como se ve</dt><dd><code>npm run uat -- TASK-220</code> &rarr; <span style="color:var(--alerta);font-weight:700">FAIL</span>: paso 2 en FAIL; AC2 sin cobertura valida. Exit 1.</dd>
+      </dl>
+    </div>
+
+    <div class="paso">
+      <h3><span class="num-paso">3</span> El gate vive en el codigo, no en los docs</h3>
+      <dl>
+        <dt>Que hace</dt><dd><code>transitionStatus</code> hacia <code>done</code> <b>lanza error</b> si el ticket requiere UAT y no tiene un artefacto UAT valido. Se implementa en <code>src/task-store.js</code>, no en el MCP.</dd>
+        <dt>Por que importa</dt><dd>Ataca la causa raiz #1 y ademas la #4: si el gate viviera en el MCP, se evaporaria cada vez que el MCP se cae y el fallback escribe JSON a mano. En el task-store, toda ruta de escritura pasa por el.</dd>
+        <dt>Como se ve</dt><dd>Error: <i>no se puede pasar TASK-220 a done: falta UAT valido (AC2 sin cobertura)</i>.</dd>
+      </dl>
+    </div>
+
+    <div class="paso">
+      <h3><span class="num-paso">4</span> CI basico que juzgue desde afuera</h3>
+      <dl>
+        <dt>Que hace</dt><dd>Un <code>.github/workflows/ci.yml</code> que en cada push corre <code>npm test</code> mas el gate UAT sobre todo el board: ningun ticket en <code>done</code> puede quedar sin UAT completo.</dd>
+        <dt>Por que importa</dt><dd>Elimina el conflicto de interes de la causa #3. Hoy el mismo agente que decide si el gate aplica es el que lo corre; con CI, un tercero neutral emite el veredicto y queda registrado.</dd>
+        <dt>Como se ve</dt><dd>Check rojo en el PR: <i>UAT gate: 3 tickets done sin UAT valido (TASK-204, TASK-211, TASK-219)</i>.</dd>
+      </dl>
+    </div>
+
+    <div class="paso">
+      <h3><span class="num-paso">5</span> Cerrar la fuga del tier <code>tests-after</code></h3>
+      <dl>
+        <dt>Que hace</dt><dd>Ahi esta la fuga real (7 de 16). Dos salidas, hay que elegir una: (a) exigir UAT <b>siempre</b> que los criterios de aceptacion sean observables por un humano, o (b) definir un mecanismo de excepcion <b>explicito</b>, registrado en el ticket y con aprobacion humana.</dd>
+        <dt>Por que importa</dt><dd>Es el unico paso que toca la politica y no solo la mecanica. Lo inaceptable es el estado actual: una excepcion implicita que nadie declara y nadie audita.</dd>
+        <dt>Como se ve</dt><dd>Campo nuevo en el ticket: <code>uat_exempt: true</code> con <code>uat_exempt_reason</code> y <code>approved_by</code> obligatorios; sin los tres, el gate del paso 3 no perdona.</dd>
+      </dl>
+    </div>
+
+    <div class="paso opcional">
+      <h3><span class="num-paso">6</span> El MCP como fachada <span class="etiqueta op">opcional</span></h3>
+      <dl>
+        <dt>Que hace</dt><dd>Se deja explicito que el gate vive en el task-store y que el MCP es solo una fachada delgada sobre el; se documenta el fallback manual para que no exista una ruta que salte la validacion.</dd>
+        <dt>Por que importa</dt><dd>Mientras el MCP siga cayendose, el camino degradado es el camino habitual — y hoy es justo el que no valida nada.</dd>
+        <dt>Como se ve</dt><dd>Editar el JSON a mano sigue siendo posible, pero el gate de CI (paso 4) lo detecta en el siguiente push.</dd>
+      </dl>
+    </div>
+
+    <div class="paso opcional">
+      <h3><span class="num-paso">7</span> Des-duplicar agents / skills / workflows <span class="etiqueta op">opcional</span></h3>
+      <dl>
+        <dt>Que hace</dt><dd>Elegir UNA fuente de verdad para cada par duplicado; la copia se genera en build en lugar de mantenerse a mano.</dd>
+        <dt>Por que importa</dt><dd>Elimina la causa #5 de raiz: hoy la regla puede estar corregida en una copia y vieja en la otra, y el agente lee la vieja.</dd>
+        <dt>Como se ve</dt><dd>Un test de paridad falla si las copias divergen — mismo patron que el gate de frescura de <code>dist/</code>, pero corriendo siempre, no solo en release.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <h2>4 &middot; Que ganas con esto</h2>
+    <ul class="beneficios">
+      <li><b>Los UAT se corren de verdad.</b> Un comando unico los ejecuta y los valida; dejan de ser un texto que se escribe y se olvida.</li>
+      <li><b>Nadie cierra sin verificar.</b> El gate esta en el codigo, en la unica capa por la que pasan todas las escrituras — no en un parrafo que un agente puede no leer.</li>
+      <li><b>El CI juzga sin conflicto de interes.</b> Quien hace el trabajo deja de ser quien decide si el trabajo se verifico.</li>
+      <li><b>Un ticket en <code>done</code> vuelve a significar algo.</b> El estado del board pasa a ser evidencia auditable en vez de una afirmacion de confianza.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Propuesta generada por hivemind orquestado por Hermes — pendiente de aprobacion de Mato.
+  </footer>
+
+</div>
+</body>
+</html>
