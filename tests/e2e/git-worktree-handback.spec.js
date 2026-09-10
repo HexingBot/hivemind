@@ -714,7 +714,9 @@ describe('LOW-1 (fix round 2) — normalizeForCompare only rewrites backslashes 
       // (where this suite runs), since backslash IS the path separator
       // there.
       const posixPathWithLiteralBackslash = '/tmp/does-not-exist/a\\b';
-      expect(normalizeForCompare(posixPathWithLiteralBackslash)).toBe(posixPathWithLiteralBackslash);
+      const result = normalizeForCompare(posixPathWithLiteralBackslash);
+      expect(result.canonical).toBe(false);
+      expect(result.value).toBe(posixPathWithLiteralBackslash);
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform });
     }
@@ -725,10 +727,54 @@ describe('LOW-1 (fix round 2) — normalizeForCompare only rewrites backslashes 
     Object.defineProperty(process, 'platform', { value: 'win32' });
     try {
       const winPathWithBackslashes = 'C:\\does-not-exist\\a\\b';
-      expect(normalizeForCompare(winPathWithBackslashes)).toBe('C:/does-not-exist/a/b');
+      const result = normalizeForCompare(winPathWithBackslashes);
+      expect(result.canonical).toBe(false);
+      expect(result.value).toBe('C:/does-not-exist/a/b');
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform });
     }
+  });
+});
+
+describe('TASK-211 — findWorktreeEntry\'s up-front lookup treats "could not canonicalize" as could-not-answer, never as confirmed absence (the call site TASK-206 did not patch)', () => {
+  it('throws_E_WORKTREE_PATH_UNCANONICALIZABLE_not_E_WORKTREE_NOT_FOUND_when_worktreePath_never_existed_on_disk', () => {
+    // TASK-206's fix round only hardened the POST-failure re-probe
+    // (probeWorktreeRegistered, see tests/e2e/worktree-handback-partial-
+    // removal.spec.js) — the UP-FRONT lookup at the very start of
+    // removeMergedWorktree (findWorktreeEntry) was left silently folding
+    // "could not canonicalize worktreePath" into a confirmed
+    // E_WORKTREE_NOT_FOUND, indistinguishable from a genuinely-absent
+    // worktree. Harm this prevents (Regla 2): a caller (e.g. a cleanup/retry
+    // loop reacting to E_WORKTREE_NOT_FOUND by assuming the path is safe to
+    // reuse or skip re-checking) would act on "I could not tell" as if it
+    // were "confirmed gone" — the exact benign-fold this ticket's MODULE
+    // INVARIANT forbids.
+    const dir = makeTmpDir('wt-uncanon-upfront-repo');
+    initRepo(dir);
+    writeFileSync(join(dir, 'baseline.txt'), 'baseline\n');
+    git(dir, ['add', 'baseline.txt']);
+    git(dir, ['commit', '-q', '-m', 'baseline']);
+
+    // Never created on disk at all — realpathSync.native fails on it, so
+    // findWorktreeEntry's own normalizeForCompare(worktreePath) call cannot
+    // canonicalize it (and it was never registered as a worktree, so no
+    // entry matches either way).
+    const neverCreatedWt = join(dir, 'never-created-wt');
+
+    let thrown = null;
+    try {
+      removeMergedWorktree({ repoRoot: dir, worktreePath: neverCreatedWt, branch: 'agent-ghost', targetBranch: 'HEAD' });
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(
+      thrown,
+      'expected removeMergedWorktree to throw when worktreePath was never a worktree of the repo',
+    ).not.toBeNull();
+    expect(thrown.code).toBe('E_WORKTREE_PATH_UNCANONICALIZABLE');
+    expect(thrown.code).not.toBe('E_WORKTREE_NOT_FOUND');
+    expect(thrown.message).toContain('could not be canonicalized');
   });
 });
 

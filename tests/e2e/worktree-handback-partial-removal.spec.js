@@ -57,14 +57,19 @@ vi.mock('node:child_process', () => ({
 }));
 
 // Partial fs mock — same precedent as tests/e2e/worktree-handback-lstat-
-// failopen.spec.js: only lstatSync is wrapped, every other fs call (this
-// file's own mkdirSync/realpathSync, and worktree-handback.js's own rmSync)
-// passes straight through to the real implementation.
+// failopen.spec.js: lstatSync and realpathSync.native are wrapped (TASK-211
+// adds the latter, for the findWorktreeEntry uncanonicalizable-path spec
+// below); every other fs call (this file's own mkdirSync/realpathSync, and
+// worktree-handback.js's own rmSync) passes straight through to the real
+// implementation.
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal();
+  const realpathSyncMock = vi.fn(real.realpathSync);
+  realpathSyncMock.native = vi.fn(real.realpathSync.native);
   return {
     ...real,
     lstatSync: vi.fn(real.lstatSync),
+    realpathSync: realpathSyncMock,
   };
 });
 
@@ -81,6 +86,7 @@ afterEach(() => {
   // worktree-handback-lstat-failopen.spec.js: every test below targets a
   // distinct path, so a leftover conditional override is a no-op elsewhere.
   lstatSync.mockClear();
+  realpathSync.native.mockClear();
 });
 
 /** Same normalization the real e2e worktree specs use: realpath + forward
@@ -296,7 +302,10 @@ describe('TASK-206 — removeMergedWorktree reports partial-completion post-cond
     // (realpath fails since it never existed) — used so the FIRST list read
     // (findWorktreeEntry) still finds a match despite never canonicalizing,
     // isolating this test to the SECOND (post-failure) probe's behaviour.
-    const fallbackForm = normalizeForCompare(worktreePath);
+    // TASK-211: normalizeForCompare now returns a tagged
+    // `{ canonical, value }` result, not a bare string — `.value` is the
+    // fallback string itself.
+    const fallbackForm = normalizeForCompare(worktreePath).value;
 
     spawnSyncMock
       .mockReturnValueOnce({ status: 0, stdout: porcelainWithWorktree(repoRootPosix, fallbackForm, 'agent-w'), stderr: '' })

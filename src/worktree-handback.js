@@ -154,15 +154,38 @@
 //      See `probeWorktreeRegistered` below for the probe itself, and
 //      `removeMergedWorktree`'s final block for where these are assembled.
 //
-// MODULE INVARIANT (TASK-195 fix round 3): no raw `git()` result may be read
-// as a state assertion — i.e. no call site may collapse a `status` field to
-// a bare "did the checked-for state hold" boolean. Four consecutive review
-// rounds each closed one such site and opened a new one, because a plain
-// git command has (at least) three distinct outcomes — "yes", "no", and "git
-// itself could not answer" — and reading only two of them is exactly the
-// TASK-192 empty-result-contract defect class applied to process exit
-// status. Every call site in this module goes through one of three
-// sanctioned shapes:
+// MODULE INVARIANT (TASK-195 fix round 3; generalized TASK-211): any
+// operation with three distinct possible outcomes must preserve all three
+// through to its caller — "could not answer" may never be silently rendered
+// as the benign outcome. This is the CLASS rule, not a list of banned APIs.
+// It had to be generalized because it wasn't one: three consecutive review
+// rounds (TASK-197, TASK-198, TASK-206) each closed one instance of this
+// class and reopened a different one, because the invariant used to open
+// with "no raw `git()` result may be read as a state assertion" — a rule
+// about ONE API. None of the three HIGHs that followed came in through that
+// API (a bare `catch` on `lstatSync`, then `existsSync`, then
+// `normalizeForCompare`'s silent string fallback below) — the next author
+// simply reached for a different API with the same three-outcome shape, and
+// the old, API-scoped text never applied to it. What follows is the class
+// rule, with KNOWN, EXPLICITLY NON-EXHAUSTIVE instances — there will be
+// others this list does not yet name:
+//   - `git()` exit status: a plain git command's outcomes are "yes", "no",
+//     and "git itself could not answer" (a non-zero exit not documented as
+//     meaning "no"). Reading only two of these is the TASK-192
+//     empty-result-contract defect class applied to process exit status.
+//   - fs errors (TASK-198, TASK-206): `existsSync`/`statSync` FOLLOW a
+//     symlink and collapse every non-ENOENT failure (EPERM, EBUSY, ENOTDIR,
+//     ELOOP) to the same boolean/absence as a genuine "does not exist" —
+//     "could not check" silently rendered as the benign "not there".
+//   - silently-degrading comparisons (TASK-206, TASK-211): a value that
+//     falls back to a raw, non-canonical form when canonicalization fails
+//     (see `normalizeForCompare` below) is, at the comparison site,
+//     indistinguishable from a value that canonicalized successfully —
+//     "could not canonicalize" rendered as if it had, which can under-match
+//     a genuinely present entity and read a could-not-answer as a
+//     confident "no".
+// For the first instance specifically — any call site touching a `git()`
+// result — this module uses one of three sanctioned shapes:
 //   - `runGitOrThrow` — any non-zero exit is a failure, full stop (used
 //     whenever there is no meaningful "no" outcome, only "yes" or "error").
 //   - a dedicated three-valued probe like `probeMergeHead` below — used
@@ -175,9 +198,11 @@
 //     mergeWorktreeBranch's merge invocation, its conflict-status read, and
 //     its abort-status check, plus the dirty checks in
 //     detectOrphanedWorktrees and removeMergedWorktree, below.
-// A new git call that reads `.status === 0` (or `!== 0`) as its only
-// disposition and folds the "neither yes nor no" case into the BENIGN
-// outcome has re-introduced this bug. Do not add one.
+// A new call — to `git()`, to an `fs` function, or to any other API with a
+// could-not-answer outcome — that collapses that outcome into its BENIGN
+// reading (a bare `.status === 0`/`!== 0` check, an unguarded `existsSync`,
+// a silently-degrading fallback compared as if it were canonical) has
+// re-introduced this bug, regardless of which API it uses. Do not add one.
 
 import { spawnSync } from 'node:child_process';
 import { realpathSync, lstatSync, rmSync } from 'node:fs';
@@ -394,15 +419,45 @@ export function probeMergeHead(repoRoot, label) {
  * is an over-normalization vector on POSIX, where `\` is a legal filename
  * character — a directory literally named `a\b` would otherwise compare
  * equal to the path `a/b`. Git never emits backslash-separated paths on
- * POSIX, so no rewrite is needed there. Falls back to a plain (still
- * platform-gated) normalized path if the target no longer exists on disk. */
+ * POSIX, so no rewrite is needed there.
+ *
+ * RETURN SHAPE (TASK-211): a TAGGED result, `{ canonical: true, value } |
+ * { canonical: false, value }` — never a bare string. A bare string was the
+ * defect: when `realpathSync.native` fails, the old implementation fell back
+ * to a plain, non-canonical string that was byte-for-byte indistinguishable,
+ * at every comparison call site, from a value that HAD canonicalized
+ * successfully. That is the "silently-degrading comparisons" instance the
+ * MODULE INVARIANT above now names explicitly — and it is what let two
+ * separate call sites (`findWorktreeEntry`'s `E_WORKTREE_NOT_FOUND`, and
+ * `probeWorktreeRegistered`'s `'deregistered'` reading, TASK-206) render an
+ * unresolvable "could I even compare this" as a confident, benign answer.
+ * A tagged result matches this module's existing house style rather than
+ * introducing a new convention: `probeMergeHead`/`probeWorktreeRegistered`
+ * already return string-literal unions specifically to force a caller to
+ * branch on a could-not-answer case, and a tagged `{ canonical, value }`
+ * pair is that same idea applied to a value instead of a status. `value` is
+ * always populated — a caller that only needs something to log or interpolate
+ * into a message still has it — but `canonical` must be read before a
+ * `a.value === b.value` equality is trusted as proof of anything: when
+ * either side is `canonical: false`, a match is not confirmed sameness (a
+ * coincidental string collision) and a non-match is not confirmed difference
+ * (the same real path, spelled two ways, with one spelling unresolvable).
+ * This function still returns the uncanonicalized `value` rather than
+ * throwing on failure, because throwing here would turn a merely
+ * INCONCLUSIVE comparison into a hard failure at every call site, including
+ * ones that can legitimately still decide something from other evidence —
+ * see `findWorktreeEntry` and `probeWorktreeRegistered` below for how each
+ * one now decides what an uncanonicalized value means for ITS specific
+ * decision, rather than this function deciding it once for everybody. */
 export function normalizeForCompare(p) {
   try {
     const resolved = realpathSync.native(p);
-    return process.platform === 'win32' ? resolved.replace(/\\/g, '/') : resolved;
+    const value = process.platform === 'win32' ? resolved.replace(/\\/g, '/') : resolved;
+    return { canonical: true, value };
   } catch {
     const s = String(p);
-    return process.platform === 'win32' ? s.replace(/\\/g, '/') : s;
+    const value = process.platform === 'win32' ? s.replace(/\\/g, '/') : s;
+    return { canonical: false, value };
   }
 }
 
@@ -426,13 +481,36 @@ function parseWorktreeList(porcelainOut) {
 
 /** Find the `git worktree list --porcelain` entry for `worktreePath`, ground
  * truth for what that worktree actually has checked out (TASK-195 fix round,
- * HIGH-2) — never trust a caller-supplied `branch` argument alone. */
+ * HIGH-2) — never trust a caller-supplied `branch` argument alone.
+ *
+ * TASK-211: an unmatched `worktreePath` is only trustworthy proof of "not a
+ * worktree of this repo" if `worktreePath` itself canonicalized successfully.
+ * When it did not (`normalizeForCompare` reports `canonical: false` — e.g. a
+ * transient EPERM/EBUSY on an otherwise-real path, or an 8.3/case-variant
+ * spelling realpath could not resolve), "no entry matched" means "could not
+ * compare", not "confirmed absent" — comparing the raw fallback string
+ * against git's own canonical-form paths can under-match a worktree git
+ * genuinely still has registered. Reading that as a flat "is not a worktree
+ * of the repo" is exactly the silently-degrading-comparison instance of the
+ * MODULE INVARIANT above, and it is what a real caller — `removeMergedWorktree`,
+ * a destructive path — would otherwise act on. Refuses instead, with a
+ * distinct error code naming the ambiguity rather than asserting a fact this
+ * function cannot back up. */
 function findWorktreeEntry(repoRoot, worktreePath, label) {
   const listOut = runGitOrThrow(repoRoot, ['worktree', 'list', '--porcelain'], label);
   const worktrees = parseWorktreeList(listOut);
   const target = normalizeForCompare(worktreePath);
-  const entry = worktrees.find((wt) => normalizeForCompare(wt.path) === target);
+  const entry = worktrees.find((wt) => normalizeForCompare(wt.path).value === target.value);
   if (!entry) {
+    if (!target.canonical) {
+      throw makeErr(
+        'E_WORKTREE_PATH_UNCANONICALIZABLE',
+        `${label}: ${worktreePath} could not be canonicalized for comparison against git's reported worktree ` +
+        `paths at ${repoRoot} (it may not exist on disk, or be otherwise unreadable) — this is "could not ` +
+        'answer", not proof that it is not a worktree of the repo; treating it as a confirmed "not a worktree" ' +
+        'would be exactly the silently-degrading-comparison defect the module invariant forbids',
+      );
+    }
     throw makeErr(
       'E_WORKTREE_NOT_FOUND',
       `${label}: ${worktreePath} is not a worktree of the repo at ${repoRoot} (per git worktree list)`,
@@ -457,21 +535,24 @@ function findWorktreeEntry(repoRoot, worktreePath, label) {
  * trying to enrich.
  *
  * A SECOND, independent source of `'unknown'` (TASK-206 fix round,
- * MEDIUM-1): even when the list re-read succeeds, "no entry matched" is only
- * trustworthy proof of "deregistered" if `worktreePath` itself canonicalized
- * successfully. `normalizeForCompare` silently falls back to the raw,
- * possibly non-canonical string (an 8.3 short form, a backslash path, a case
- * variant) whenever `realpathSync.native` fails on its input — e.g. because
- * the directory was just removed, which is exactly the situation this probe
- * runs in. Comparing that raw fallback against git's own canonical-form
- * paths can under-match even for a worktree git still has registered, which
- * would silently render as the BENIGN `'deregistered'` reading — the same
- * fs-read-collapse defect this fix round closes for `worktreeDirectory`,
- * one field over. `findWorktreeEntry`'s earlier, successful match (at the
- * top of `removeMergedWorktree`) does not help here: canonicalization was
- * available THEN because the directory still existed; it may not be
- * available NOW, after a `git worktree remove` that may have partially
- * completed.
+ * MEDIUM-1; TASK-211 tightened the mechanism): even when the list re-read
+ * succeeds, "no entry matched" is only trustworthy proof of "deregistered"
+ * if `worktreePath` itself canonicalized successfully. `normalizeForCompare`
+ * now reports that directly via its `canonical` tag (TASK-211) rather than
+ * this function re-deriving it with a second, independent `realpathSync`
+ * call — before TASK-211, `normalizeForCompare` silently folded a failed
+ * canonicalization into a bare fallback string indistinguishable from a
+ * real one, so this function had no way to ask "did MY OWN normalization
+ * above actually succeed?" other than repeating the same realpath call a
+ * second time. Comparing an unreliable fallback against git's own
+ * canonical-form paths can under-match even for a worktree git still has
+ * registered, which would silently render as the BENIGN `'deregistered'`
+ * reading — the same silently-degrading-comparison defect this fix round
+ * closes for `worktreeDirectory`, one field over. `findWorktreeEntry`'s
+ * earlier, successful match (at the top of `removeMergedWorktree`) does not
+ * help here: canonicalization was available THEN because the directory
+ * still existed; it may not be available NOW, after a `git worktree remove`
+ * that may have partially completed.
  *
  * @returns {'registered' | 'deregistered' | 'unknown'}
  */
@@ -479,14 +560,9 @@ function probeWorktreeRegistered(repoRoot, worktreePath, label) {
   const listOut = runGitOrThrow(repoRoot, ['worktree', 'list', '--porcelain'], label);
   const worktrees = parseWorktreeList(listOut);
   const target = normalizeForCompare(worktreePath);
-  const found = worktrees.some((wt) => normalizeForCompare(wt.path) === target);
+  const found = worktrees.some((wt) => normalizeForCompare(wt.path).value === target.value);
   if (found) return 'registered';
-  try {
-    realpathSync.native(worktreePath);
-    return 'deregistered';
-  } catch {
-    return 'unknown';
-  }
+  return target.canonical ? 'deregistered' : 'unknown';
 }
 
 /**
@@ -785,6 +861,13 @@ export function detectOrphanedWorktrees({ repoRoot, targetBranch = 'HEAD' } = {}
  * silently discarded on removal. This function cannot see it either — "it
  * never discards unique work" does not cover gitignored content.
  *
+ * The up-front worktree lookup (`findWorktreeEntry`) throws
+ * `E_WORKTREE_PATH_UNCANONICALIZABLE` (TASK-211), distinct from
+ * `E_WORKTREE_NOT_FOUND`, when `worktreePath` could not itself be
+ * canonicalized for comparison — that is "could not determine whether this
+ * is a worktree of the repo", not a confirmed "it is not one"; see
+ * `findWorktreeEntry`'s own doc comment.
+ *
  * Disposal ordering (TASK-198 fix round, HIGH): if the worktree's
  * `node_modules` is a symlink/junction (the shape `worktree-provision.js`
  * creates), it is unlinked non-recursively BEFORE `git worktree remove`
@@ -874,11 +957,12 @@ export function removeMergedWorktree({ repoRoot, worktreePath, branch, targetBra
     // this data-loss path: the sever step would be silently skipped and
     // `git worktree remove` would proceed to recurse through the junction
     // into the primary's real node_modules — the exact hazard this guard
-    // exists to close. This contradicts the module invariant at :83-89
-    // (that invariant was scoped to `git()` results; this reads an `fs`
-    // result instead, which is how it slipped past). Refuse with a typed
-    // error on anything other than ENOENT, matching this module's other
-    // typed-error refusals rather than guessing "nothing to sever".
+    // exists to close. This is the fs-error instance of the MODULE INVARIANT
+    // above (before TASK-211 generalized it, that invariant was scoped to
+    // `git()` results only; this reads an `fs` result instead, which is how
+    // it slipped past). Refuse with a typed error on anything other than
+    // ENOENT, matching this module's other typed-error refusals rather than
+    // guessing "nothing to sever".
     if (e.code === 'ENOENT') {
       nodeModulesLstat = null;
     } else {
