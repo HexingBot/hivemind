@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-10T16:45:39.358Z",
+  "generated_at": "2026-09-10T17:02:38.822Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1246,7 +1246,7 @@
     {
       "key": "TASK-213",
       "title": "Tres reglas para que los tests dejen de ser vacíos: casos desde el ticket, cada test nombra el daño que evita, y tope por ticket",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {

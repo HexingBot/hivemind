@@ -182,6 +182,12 @@
       "label": "Review completo siempre: retirar la rubrica de profundidad y el nivel liviano (decision humana 2026-08-13)"
     },
     {
+      "id": "decision-20260813-tres-reglas-tests-vacios",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Tres reglas contra tests vacios y la lista de casos observables como mismo artefacto que el script de UAT (decision humana 2026-08-13 + decision del Orquestador 2026-09-10)"
+    },
+    {
       "id": "decision-20260815-subagentstop-hook-durability",
       "type": "decision",
       "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
@@ -1556,6 +1562,12 @@
       "label": "Retirar el tier tdd: dos tiers y limpiar todo lo que existia solo para el tdd"
     },
     {
+      "id": "task-213",
+      "type": "task",
+      "ref": "tasks/TASK-213.json",
+      "label": "Tres reglas para que los tests dejen de ser vacios"
+    },
+    {
       "id": "task-216",
       "type": "task",
       "ref": "tasks/TASK-216.json",
@@ -2169,6 +2181,11 @@
     {
       "from": "task-212",
       "to": "decision-20260909-storage-schema-preserves-retired-tier",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-213",
+      "to": "decision-20260813-tres-reglas-tests-vacios",
       "relation": "produced-by"
     },
     {
