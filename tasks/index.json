@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T23:57:43.225Z",
+  "generated_at": "2026-09-10T01:37:07.732Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1288,7 +1288,7 @@
     {
       "key": "TASK-220",
       "title": "El sensor de UAT del reviewer deja de ser condicional a que el comentario exista",
-      "status": "blocked",
+      "status": "in_progress",
       "priority": "high"
     },
     {
@@ -1312,13 +1312,13 @@
     {
       "key": "TASK-224",
       "title": "CI basico: npm test en push y test:all en pull request contra main, sin gate de board",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
       "key": "TASK-225",
       "title": "Promover el gate de board a CI, bloqueante solo para tickets posteriores a la fecha de corte",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {

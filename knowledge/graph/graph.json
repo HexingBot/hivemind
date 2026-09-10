@@ -194,6 +194,12 @@
       "label": "El schema de datos preserva el tier tdd retirado como valor write-frozen; la politica de asignacion vive en las capas de escritura"
     },
     {
+      "id": "decision-20260910-ci-evidence-rama-efimera",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Producir la evidencia roja de CI en una rama efimera descartable en vez de degradar los criterios o cerrar sin observar"
+    },
+    {
       "id": "ke-a-format-sensor-authoritative-schema",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/a-format-sensor-must-be-checked-against-the-authoritative-schema.md",
@@ -1562,6 +1568,18 @@
       "label": "Comando de auditoria del board: tickets en done sin UAT, con linea base congelada"
     },
     {
+      "id": "task-224",
+      "type": "task",
+      "ref": "tasks/TASK-224.json",
+      "label": "CI basico: npm test en push y test:all en pull request contra main, sin gate de board"
+    },
+    {
+      "id": "task-225",
+      "type": "task",
+      "ref": "tasks/TASK-225.json",
+      "label": "Promover el gate de board a CI, bloqueante solo para tickets posteriores a la fecha de corte"
+    },
+    {
       "id": "task-226",
       "type": "task",
       "ref": "tasks/TASK-226.json",
@@ -2148,6 +2166,16 @@
       "from": "task-223",
       "to": "decision-20260909-requires-uat-separado-del-tier",
       "relation": "produced-by"
+    },
+    {
+      "from": "task-224",
+      "to": "decision-20260910-ci-evidence-rama-efimera",
+      "relation": "relates-to"
+    },
+    {
+      "from": "task-225",
+      "to": "decision-20260910-ci-evidence-rama-efimera",
+      "relation": "relates-to"
     },
     {
       "from": "task-226",

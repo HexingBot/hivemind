@@ -11,7 +11,7 @@
     "Los candados documentales y sensores de paridad de agentes que hoy fijan el texto de reviewer.md quedan actualizados a lo que se escriba, no desactivados. npm test en verde.",
     "UAT: script de aceptacion derivado de estos criterios, corrido con el humano, con el veredicto registrado como comentario de autor uat en la convencion estricta."
   ],
-  "status": "blocked",
+  "status": "in_progress",
   "priority": "high",
   "labels": [
     "uat",
@@ -36,10 +36,15 @@
       "author": "orchestrator",
       "at": "2026-09-09T23:37:45.640Z",
       "body": "SESION 2026-09-09 (continuacion). RE-VERIFIQUE EL BLOQUEO EN VIVO en vez de heredarlo, porque la instruccion de esta sesion afirmaba que los permisos de Edit ya estaban concedidos. Siguen sin estarlo para este arbol. Tres sondas, tres superficies distintas, las tres rechazadas:\n\n1. Herramienta Write sobre .claude/probe-write-access.md (archivo nuevo, no existente): \"which is a sensitive file\".\n2. Bash cp agents/reviewer.md .claude/agents/reviewer.md: \"you haven't granted it yet\".\n3. Herramienta Edit sobre .claude/agents/reviewer.md (archivo existente, con el old_string exacto): \"you haven't granted it yet\".\n\nO sea que el bloqueo NO distingue entre archivo nuevo y existente, ni entre Write y Edit, ni entre la herramienta de archivos y el shell. Es proteccion por ruta sobre todo el arbol .claude/, y .claude/settings.local.json con allow:[\"Edit\"] no la levanta — coherente con el diagnostico de la sesion anterior.\n\nPOR QUE ESO BLOQUEA EL TICKET ENTERO Y NO SOLO AC5. AC6 exige npm test en verde. tests/agents-parity.spec.js compara byte a byte agents/reviewer.md con .claude/agents/reviewer.md. Si aplico el texto nuevo a la copia que SI puedo escribir (agents/reviewer.md) y no a la otra, la paridad se rompe y npm test queda en rojo, lo que a su vez bloquea la regla de cierre de cualquier otro ticket de la cola. Por eso NO se aplico el cambio a medias: dejar el ticket bloqueado es preferible a dejar la suite roja.\n\nESTADO ACTUAL: las dos copias estan byte-identicas y sin modificar, verificado con diff. El texto a aplicar es el del comentario anterior de este ticket (autor developer), sin cambios. Ya lo verifique contra el archivo real: el old_string de dos lineas (las lineas 24 y 25 de la seccion Process) matchea exacto en ambas copias.\n\nDESBLOQUEO, una sola linea del humano:\n  cp agents/reviewer.md .claude/agents/reviewer.md\n(a correr DESPUES de que se aplique el texto nuevo a agents/reviewer.md, no antes).\n\nDEPENDENCIA PENDIENTE, ademas del bloqueo de escritura: depends_on declara TASK-216, que sigue en todo. Esa dependencia es de SERIALIZACION POR ARCHIVO COMPARTIDO, no logica — las dos editan reviewer.md y TASK-216 toca la linea 50 (la tier-audit, que cita textualmente la rubrica de profundidad que TASK-216 retira). El texto de este ticket toca las lineas 24-25, otra region. Cuando se despache TASK-220 hay que coordinar con TASK-216 y nunca correr las dos en paralelo. TASK-212, la otra dependencia declarada, ya esta done.\n\nQUEDA COMO EL UNICO TICKET SIN CERRAR DEL CONJUNTO 220-226. Los otros cinco (221, 222, 223, 224, 225) mas TASK-226 se despacharon en esta sesion."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-10T01:37:07.681Z",
+      "body": "SESION 2026-09-10. DESBLOQUEO PARCIAL Y CORRECCION DE UNA AFIRMACION HEREDADA.\n\nEl operador corrio cp agents/reviewer.md .claude/agents/reviewer.md y las dos copias quedaron byte-identicas (md5 38289075be9a7abd3cea296c5ca0ac98 en ambas, diff vacio). PERO eso NO aplico el texto de este ticket: el developer de la sesion anterior habia REVERTIDO agents/reviewer.md a su estado original justamente para no dejar npm test rojo por paridad, asi que el cp sincronizo un fuente que nunca se edito. Las dos lineas viejas siguen presentes en AMBAS copias, incluida la condicional de la linea 25 (tests-after tickets with a uat comment) que AC1 exige eliminar. Se verifico leyendo el archivo, no asumiendo.\n\nBLOQUEO RE-VERIFICADO EN VIVO, no heredado: la escritura de .claude/agents/reviewer.md sigue rechazada por el guard de rutas sensibles del harness (sonda de append por Bash en esta sesion: permission requested but not granted). Asi que el orquestador puede editar agents/reviewer.md pero no su espejo.\n\nDEPENDENCIA TASK-216, decidido y declarado en vez de ignorado: TASK-216 sigue en todo, y figura en depends_on de este ticket. La razon registrada de esa dependencia es serializacion por superficie de archivo compartida (las dos editan reviewer.md), no dependencia logica. TASK-216 no esta en vuelo y su region es otra (la rubrica de profundidad y la tier-audit de la linea 50); este ticket toca las lineas 24-25. Se avanza, y queda escrito aca para que TASK-216 relea el archivo cuando le toque."
     }
   ],
   "created_at": "2026-09-09T17:17:29.530Z",
-  "updated_at": "2026-09-09T23:37:45.640Z",
+  "updated_at": "2026-09-10T01:37:07.732Z",
   "jira_key": null,
   "verification_tier": "uat-only",
   "requires_uat": true
