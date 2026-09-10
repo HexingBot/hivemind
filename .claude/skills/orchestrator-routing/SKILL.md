@@ -194,10 +194,12 @@ same workflow applies; only the I/O surface changes.
 5. **Spawn the Reviewer.** First call `transition_status` to move the ticket to
    `in_review` (TASK-187) — `done` is reachable only from this state, the one
    step in the documented `todo → in_progress → in_review → done` convention
-   that implies a review occurred. Then give the Reviewer the diff range, the
-   original acceptance criteria, and the computed `review_depth` (see "Review
-   depth rubric" below) together with the rubric inputs (changed-line count,
-   touched surfaces) that produced it. Block on any HIGH-severity finding —
+   that implies a review occurred. Then give the Reviewer the diff range and
+   the original acceptance criteria. Every review runs the complete Reviewer
+   process — `agents/reviewer.md`'s full Process, plus the calibration gate
+   and the observability/minimalism gate (TASK-216, 2026-08-13 human
+   decision, retired the review-depth rubric and its lighter level; see the
+   "Review depth rubric — retired" note below). Block on any HIGH-severity finding —
    loop back to the Developer with the findings; the ticket stays `in_review`
    (no transition back to `in_progress` is required — the Developer's next
    hand-off re-enters this step).
@@ -207,7 +209,7 @@ same workflow applies; only the I/O surface changes.
    itself claim `author: 'reviewer'` (`ClosingCommentAuthorError`). Then call
    the `close_task` MCP tool once —
    it atomically transitions the ticket to `status: done`, appends a summary
-   comment naming the review depth and its rubric inputs, records commit SHAs in
+   comment, records commit SHAs in
    `linked_commits` and any PR URL in `linked_prs`, refreshes `updated_at`, and
    regenerates `tasks/index.json` (see "Ticket-update protocol" below). Status
    transitions during the workflow (`todo → in_progress → in_review → done`, or
@@ -747,73 +749,30 @@ new test/spec/lock, not just regression locks, must be proved able to fail
 before it lands) — this is the part of the old tests-first protection that
 generalized rather than died.
 
-## Review depth rubric (agility R2)
+## Review depth rubric — retired (TASK-216)
 
-Every diff used to get the same full-review treatment on the strongest model
-regardless of risk (agility review 2026-07-01, recommendation R2). The
-Orchestrator now computes a `review_depth` (`light` or `full`) from an
-objective rubric **before spawning the Reviewer**, states the chosen depth and
-the rubric inputs in the Reviewer spawn briefing, and records both in the
-ticket close comment. This is the same three-part obligation named in
-Workflow steps 5-6 above: (a) compute the depth from this rubric before
-spawning the Reviewer, (b) state the depth and its inputs in the spawn
-briefing, and (c) record the depth and its inputs in the close comment.
+TASK-216 (2026-08-13 human decision) retired the review-depth rubric and the
+lighter review level that used to live in this section. Full review is now
+the single, unconditional method: the Orchestrator no longer computes or
+states a review depth when spawning the Reviewer (Workflow step 5 above), and
+the close comment no longer records one (Workflow step 6 above). Reason
+(recorded on the ticket): the Reviewer, not tests-first ordering, is the
+control that has actually caught real defects (see TASK-206's after-action);
+weakening it with a lighter mode ran against that diagnosis.
 
-**Inputs:** changed-line count (added + removed) and the touched-surface list
-(which of the mandatory-FULL surfaces below the diff touches, if any).
+**Where the five recurring HIGH-severity classes ended up:** unlost —
+`agents/developer.md`'s "Pre-hand-off checklist (agility R3)" is the
+canonical list (unspecced path exercised, every new sensor/lock red-green
+planted, `dist/` rebuilt, parity copies byte-identical, calibration markers
+preserved), and `agents/reviewer.md`'s "Pre-hand-off checklist verification
+(agility R3)" section already required the Reviewer to check a stated outcome
+for each of the five on every review, unconditionally — that section was
+never part of the retired split and needed no change here.
 
-| Depth | When |
-|---|---|
-| `light` | Changed lines are under 150 (added + removed, from `git diff --shortstat`) AND the diff touches none of the mandatory-FULL surfaces below. |
-| `full` | Changed lines are 150 or more, OR the diff touches any mandatory-FULL surface, OR the diff touches Core `tdd`-tier logic (historical trigger, frozen — see below), OR the ticket is a release/milestone/publish gate. |
-
-**Mandatory-FULL surfaces** (any one forces `full` regardless of line count):
-schema (`tasks/schema.json`, state/bundle schemas), security surface, shared
-state (`state/`, the session bundle, locks), packaging/dist (`dist/*.cjs`,
-build config), test infrastructure (`vitest.config*.js`, `tests/helpers/`),
-Core `tdd`-tier logic (historical trigger, frozen — see below), and
-release/milestone/publish gates.
-
-**Concrete surface definitions (MEDIUM-1, TASK-078):** two of the surfaces
-above are otherwise fuzzy enough that two sessions could compute different
-depths from the same diff.
-
-- **Security surface** — auth/credential handling, input validation at trust
-  boundaries, any path matching `/auth|security|lock|permission/`, the
-  board-server route handlers (`src/task-board.js`), and the session-lock /
-  close-guard modules (`src/session-lock.js`, `src/close-guard.js`).
-- **Core `tdd`-tier logic** — HISTORICAL TRIGGER, FROZEN (TASK-212,
-  2026-08-13 human decision): the `tdd` verification tier was retired and can
-  no longer be assigned, so this trigger can never fire for a newly-assigned
-  ticket going forward — there is no such thing as a new `tdd`-tier ticket to
-  match against. It is preserved, unchanged, solely as the definition that
-  governed review depth for the roughly 101 tickets that carried tier `tdd`
-  before the retirement: any diff touching a `src/` file that one of those
-  ~101 historical `tdd`-tier tickets created or last modified still forces
-  `full`. When in doubt whether a touched `src/` file falls in that historical
-  set, choose `full`.
-
-**`light` protocol:** an AC-compliance check (restate the ACs and verify each
-against the diff), a re-run of the scaled per-ticket gate (the same
-`test:changed`/`test:since` plus `npm test` plus named e2e specs the
-Developer ran), and a sweep of the five recurring HIGH-severity classes:
-unspecced path, vacuous sensor, stale dist, parity drift, calibration
-laundering. `full` runs the complete Reviewer process — every Process step,
-the calibration gate, and the observability/minimalism gate.
-
-**One-way escalation.** The Reviewer may upgrade `light` to `full` at any
-point on suspicion — a surprising diff, a sensor that looks vacuous, anything
-that doesn't smell right. The Reviewer may never downgrade `full` to `light`;
-only the Orchestrator's rubric computation produces a `light` depth.
-
-**Orthogonal to the tier gate (E2).** `review_depth` scales review *cost*;
-`verification_tier` governs whether tests exist at all, and is the
-highest-leverage knob in the policy — the only gate with no downstream sensor
-of its own. In unattended mode the Orchestrator both assigns the tier and
-benefits from a lighter one, grading its own homework without a verifier. The
-Reviewer's tier-audit (see `agents/reviewer.md`) closes that loop at prose
-cost and runs at **both** depths; `review_depth` never overrides or
-substitutes for it.
+The Reviewer's tier-audit (E2, `agents/reviewer.md`) is unaffected — it was
+already orthogonal to depth and already ran regardless; it now simply runs on
+every review, same as before. (TASK-218 owns the audit's own rewrite; not
+touched here.)
 
 ## UAT procedure (uat-only and tests-after tickets)
 

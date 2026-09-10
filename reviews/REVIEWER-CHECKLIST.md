@@ -81,11 +81,6 @@ was caught by the suite. This section is the highest-yield part of the checklist
 
 Speed is a goal. Speed bought by skipping a gate is not speed, it is deferred cost.
 
-- [ ] **Note the review depth and whether it matched the rubric.** If the depth was overridden,
-      that must be recorded on the ticket. An unrecorded downgrade is indistinguishable from a
-      diff that legitimately earned a light pass.
-- [ ] **Escalate on suspicion.** Depth may always be raised, never lowered. A surprising diff, a
-      sensor that smells vacuous, a hand-off that reads too smoothly — all are sufficient reason.
 - [ ] **Flag redundant new tests.** Suite size should track product surface, not ticket count.
 - [ ] **Say plainly what you did not verify.** An unstated gap is worse than a stated one, because
       it reads as coverage.

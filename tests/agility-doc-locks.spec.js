@@ -12,6 +12,22 @@
 // conflate concerns. A dedicated file keeps the R2+R3 lock coherent and
 // separately greppable.
 //
+// TASK-216 (2026-08-13 human decision) retired the R2 review-depth rubric and
+// its `light` level. The R2 describe blocks that used to live in this file
+// (the light/full depth table, the one-way-escalation "never downgrade"
+// sentence, and the light-protocol's own restatement of the five recurring
+// HIGH-severity classes) are removed below — that prose no longer exists in
+// SKILL.md or agents/reviewer.md, so a lock pinning it would pin an absence.
+// The five recurring classes are NOT lost: they survive, unconditionally (not
+// depth-gated), in agents/developer.md's Pre-hand-off checklist and
+// agents/reviewer.md's "Pre-hand-off checklist verification" section, both of
+// which the surviving R3 describe blocks below already lock. The
+// Tier-audit (E2) sensor is untouched by this retirement (TASK-218 owns any
+// future rewrite of that section) and is still locked by the surviving
+// describe block below, retitled to drop the now-inaccurate "R2 —" prefix.
+// This file is not emptied by the retirement: the R3 half fixes something
+// still real (the pre-hand-off checklist prose), so it stays.
+//
 // Parity note: only the plugin-root copies (skills/, agents/) are read here.
 // tests/agents-parity.spec.js and tests/orchestrator-skill-v2.spec.js already
 // fail on any divergence between the plugin-root and .claude/ copies, so
@@ -20,14 +36,12 @@
 // tests/orchestrator-routing-skill.spec.js).
 //
 // RED-GREEN PLANT PROTOCOL (reported in the hand-off, not committed): every
-// assertion group below was verified able to fail for the right reason by
-// temporarily mutating the target prose in the working tree (one mutation at
-// a time: renaming the checklist heading, dropping the "Never downgrade"
-// sentence, reverting the hard 150-line threshold back to "roughly"), running
-// this spec file alone to confirm the RIGHT assertion went red, then
-// restoring the file from git (`git checkout -- <path>`) and re-running to
-// confirm green — before this commit landed. See the hand-off for the exact
-// commands run.
+// surviving assertion below was re-verified able to fail for the right
+// reason after the TASK-216 edit, by temporarily mutating the target prose
+// in the working tree, running this spec file alone to confirm the RIGHT
+// assertion went red, then restoring the file from git (`git checkout --
+// <path>`) and re-running to confirm green — before this commit landed. See
+// the hand-off for the exact commands run.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -51,105 +65,9 @@ function normalize(text) {
 }
 
 // ---------------------------------------------------------------------------
-// R2 — Review depth rubric (agility R2, sharpened by TASK-078 MEDIUM-1)
+// E2 — Tier-audit (survives the TASK-216 retirement of R2; owned by TASK-218)
 // ---------------------------------------------------------------------------
-describe('R2 — review depth rubric: light/full depth table (SKILL.md)', () => {
-  it('depth_table_header_and_rows_present', () => {
-    const text = load(SKILL_PATH);
-    expect(text.includes('| Depth | When |'), 'depth table header must be present').toBe(true);
-    expect(/\|\s*`light`\s*\|/.test(text), 'light row must be present').toBe(true);
-    expect(/\|\s*`full`\s*\|/.test(text), 'full row must be present').toBe(true);
-  });
-
-  it('threshold_is_a_hard_150_line_cutoff_not_the_old_fuzzy_wording', () => {
-    // MEDIUM-1: "roughly under 150 (approximate, not a hard cutoff)" is gone;
-    // replaced with a hard, reproducible threshold anchored to a named command.
-    const text = load(SKILL_PATH);
-    expect(
-      text.includes('roughly under 150'),
-      'the old fuzzy "roughly under 150" wording must not survive',
-    ).toBe(false);
-    expect(text.includes('under 150'), 'the light row must state the under-150 threshold').toBe(true);
-    expect(
-      text.includes('git diff --shortstat'),
-      'the threshold must be anchored to a concrete, reproducible command',
-    ).toBe(true);
-  });
-
-  it('security_surface_and_core_tdd_logic_have_concrete_definitions', () => {
-    // MEDIUM-1: the two fuzzy surfaces get file/path anchors so two sessions
-    // compute the same depth from the same diff.
-    const text = load(SKILL_PATH);
-    expect(text.includes('Security surface'), 'security surface must have a concrete definition').toBe(true);
-    expect(
-      text.includes('src/task-board.js'),
-      'security surface definition must anchor the board-server route handlers',
-    ).toBe(true);
-    expect(
-      text.includes('src/session-lock.js') && text.includes('src/close-guard.js'),
-      'security surface definition must anchor the session-lock/close-guard modules',
-    ).toBe(true);
-    expect(
-      text.includes('Core `tdd`-tier logic'),
-      'core tdd-tier logic must have a concrete definition',
-    ).toBe(true);
-  });
-
-  // TASK-212 (2026-08-13 human decision) retired the `tdd` verification tier.
-  // Decision recorded on the ticket: the "Core `tdd`-tier logic" review-depth
-  // trigger is NOT deleted and NOT replaced by a new criterion (that broader
-  // rubric change is TASK-216's, landing after this ticket) — it is frozen as
-  // an explicitly historical marker, scoped to the ~101 tickets that carried
-  // tier `tdd` before the retirement, and can never fire for a newly-assigned
-  // ticket going forward.
-  it('core_tdd_logic_trigger_is_pinned_as_a_frozen_historical_marker_not_a_live_tier', () => {
-    const text = normalize(load(SKILL_PATH));
-    expect(
-      text.includes('HISTORICAL TRIGGER, FROZEN'),
-      'the Core `tdd`-tier logic definition must be explicitly marked as a frozen historical trigger',
-    ).toBe(true);
-    expect(
-      /101 (historical )?`?tdd`?-tier tickets|~101 tickets/.test(text) || text.includes('~101 historical'),
-      'the definition must scope itself to the ~101 historical tdd-tier tickets',
-    ).toBe(true);
-    expect(
-      text.includes('can never fire for a newly-assigned'),
-      'the definition must state it can never fire for a new ticket (the tdd tier no longer exists)',
-    ).toBe(true);
-  });
-});
-
-describe('R2 — one-way escalation: "Never downgrade" sentence pinned in both SKILL.md and reviewer.md', () => {
-  it('skill_states_never_downgrade_full_to_light', () => {
-    const text = load(SKILL_PATH);
-    expect(text.includes('downgrade `full` to `light`')).toBe(true);
-  });
-
-  it('reviewer_states_never_downgrade_full_to_light', () => {
-    const text = load(REVIEWER_PATH);
-    expect(text.includes('downgrade `full` to `light`')).toBe(true);
-  });
-});
-
-describe('R2 — five recurring HIGH-severity classes named in both SKILL.md and reviewer.md', () => {
-  const CLASSES = ['unspecced path', 'vacuous sensor', 'stale dist', 'parity drift', 'calibration laundering'];
-
-  it('skill_light_protocol_names_all_five_classes', () => {
-    const text = normalize(load(SKILL_PATH));
-    for (const c of CLASSES) {
-      expect(text.includes(c), `SKILL.md must name the "${c}" HIGH class`).toBe(true);
-    }
-  });
-
-  it('reviewer_light_protocol_names_all_five_classes', () => {
-    const text = normalize(load(REVIEWER_PATH));
-    for (const c of CLASSES) {
-      expect(text.includes(c), `reviewer.md must name the "${c}" HIGH class`).toBe(true);
-    }
-  });
-});
-
-describe('R2 — tier-audit (E2) referenced in SKILL.md, HIGH "tier misassignment" pinned in reviewer.md', () => {
+describe('E2 — tier-audit referenced in SKILL.md, HIGH "tier misassignment" pinned in reviewer.md', () => {
   it('skill_references_the_tier_audit', () => {
     const text = load(SKILL_PATH);
     expect(/tier-audit/i.test(text), 'SKILL.md must reference the tier-audit').toBe(true);
@@ -218,7 +136,7 @@ describe('R3 — reviewer.md: missing checklist outcomes is a MEDIUM finding', (
   it('contrasts_a_false_stated_outcome_as_already_high_not_a_second_medium', () => {
     const text = normalize(load(REVIEWER_PATH));
     expect(
-      /contradicts.*already covered by the existing HIGH/.test(text),
+      /contradicts.*is a HIGH finding.*not a second MEDIUM/.test(text),
       'reviewer.md must contrast a diff-contradicted checklist claim as HIGH, not a second MEDIUM',
     ).toBe(true);
   });
