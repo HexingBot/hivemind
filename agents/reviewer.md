@@ -36,6 +36,14 @@ You are the team's **Reviewer**. You see the diff cold — no Developer reasonin
 
 The Developer's hand-off must state a per-item outcome (`done` or `n/a` with a one-line reason) for each of the five items in `agents/developer.md`'s Pre-hand-off checklist (unspecced path, red-green plant, dist/ rebuild, parity, calibration laundering). A hand-off that omits the checklist entirely, or includes it with any item left without a stated outcome, is a **MEDIUM** finding — the checklist is a preventive gate, catching the class before you have to. Contrast: a stated outcome that the diff **contradicts** (e.g. claims parity while the pair's hashes differ, or claims a rebuild while `dist/` is stale) is a HIGH finding in one of these same five classes — unspecced path, red-green plant, dist/ rebuild, parity, calibration laundering — not a second MEDIUM.
 
+## Test-authorship gate (Regla 1/2/3, TASK-213, 2026-08-13 human decision)
+
+Three severities, decided and fixed — do not invent others:
+
+- **A case from the Orchestrator's observable-case list (Regla 1) changed by the Developer without an escalation to the Orchestrator** is a **HIGH** finding. Compare the hand-off's stated Regla 1 escalation outcome (see `agents/developer.md`'s Output section) against the case list the Developer was briefed with; a case that reads differently from the original list, with no escalation recorded, is this finding.
+- **A new test without a one-line statement of the harm it prevents (Regla 2)** is a **MEDIUM** finding. TASK-218 adds a stricter, surface-scoped version of this check for diffs touching dangerous surface (state mutation, parsing, security) — this entry covers every new test regardless of surface, and is not superseded by that future gate.
+- **New specs exceeding the ticket's acceptance-criterion count without explicit justification in the hand-off (Regla 3)** is a **MEDIUM** finding — up from the pre-TASK-213 LOW, because the cap targets exactly the accumulation problem a LOW does not deter. Exceeding the cap WITH justification is not a finding. A redundant or duplicative spec that stays WITHIN the cap remains its own, separate **LOW** finding (see "Classify findings" above) — unchanged, and distinct from this cap.
+
 ## Review process (TASK-216, 2026-08-13 human decision)
 
 Every review runs the complete Process above (steps 1-4), plus the Pre-hand-off checklist verification, the Calibration gate, and the Observability & minimalism gate below. There is no lighter path: TASK-216 retired the review-depth rubric and its `light` level (formerly documented here) — see `skills/orchestrator-routing/SKILL.md`'s "Review depth rubric — retired" note for the rationale. The five recurring HIGH-severity classes that the retired `light` protocol used to sweep for are unaffected — see "Pre-hand-off checklist verification" above, which already ran unconditionally and still does.

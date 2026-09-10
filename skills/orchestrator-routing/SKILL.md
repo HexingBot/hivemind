@@ -181,6 +181,21 @@ same workflow applies; only the I/O surface changes.
    - Research tasks (one per unknown library/API/pattern).
    - One combined impl+lock task (`tests-after`) or one impl task (`uat-only`).
    - One review task.
+
+   **Derive the observable-case list at this same step, before dispatching to
+   the Developer (Regla 1, TASK-213, 2026-08-13 human decision):** turn the
+   acceptance criteria into a short plain-text list of "do X, expect Y" cases.
+   The Orchestrator derives this list — never the Developer, and never from
+   reading the code — because a test written by the same agent that wrote the
+   implementation, checked against its own code, confirms what that agent
+   believed, not what the ticket asked for. The list travels in the
+   Developer's briefing as the cases to program against. For a ticket with
+   `requires_uat: true`, the SAME list is reused unchanged at close as the
+   UAT script (see the "UAT procedure" section below) — one artifact used at
+   two moments, not two independently-derived lists that would drift apart.
+   If the Developer needs to change a case on this list for it to pass, that
+   is never resolved silently: it escalates to the human, because either the
+   requirement changed or the implementation is wrong.
 3. **Spawn the Researcher** (if any unknowns exist). Pass the specific question and
    the ticket context. Wait for it to return — Researcher output will include a path
    to a new or updated skill in `.claude/skills/` when relevant.
@@ -749,6 +764,33 @@ new test/spec/lock, not just regression locks, must be proved able to fail
 before it lands) — this is the part of the old tests-first protection that
 generalized rather than died.
 
+## Three rules against empty tests (TASK-213, 2026-08-13 human decision)
+
+Retiring `tdd` did not fix the root defect: a test written by the same agent
+that wrote the implementation, checked against its own code, confirms what
+that agent believed — not what the ticket asked for. That is where empty
+tests come from. Three rules close that gap; the operational detail
+(escalation mechanics, severities) lives in `agents/developer.md` and
+`agents/reviewer.md` (with their plugin-root mirrors) — summarized here so
+all three live in one place a reader can start from:
+
+- **Regla 1 — cases come from the ticket, not the code.** The Orchestrator
+  derives a short plain-text list of "do X, expect Y" cases from the
+  acceptance criteria, before dispatching to the Developer (Workflow step 2
+  above). The Developer programs against this list. The SAME list is reused
+  unchanged as the UAT script at close when `requires_uat: true` (see the
+  "UAT procedure" section below) — one artifact, two moments, not two lists
+  that can drift. A case changed by the Developer without escalating to the
+  human is a HIGH finding at review.
+- **Regla 2 — every new test names the harm it prevents.** One line, in the
+  test or the hand-off, naming the concrete harm (e.g. "prevents a
+  half-written state from being persisted"). A new test without that line is
+  a MEDIUM finding at review.
+- **Regla 3 — a per-ticket cap on new tests.** New specs may not exceed the
+  ticket's acceptance-criterion count without explicit justification in the
+  hand-off. See `agents/developer.md`'s New-test budget section and
+  `agents/reviewer.md`'s severity table for the cap's exact severities.
+
 ## Review depth rubric — retired (TASK-216)
 
 TASK-216 (2026-08-13 human decision) retired the review-depth rubric and the
@@ -781,11 +823,12 @@ instead of requiring new specs. For `tests-after` tickets, run this step in
 addition to the regression locks whenever the ACs describe human-observable
 behavior.
 
-1. **Derive the script.** After implementation, read the ticket's acceptance
-   criteria and produce a numbered list of "run/do X, expect Y" steps — at
-   least one step per AC so every AC is covered. Keep it terse: one line per
-   step, no walls of evidence — show supporting evidence only when the human
-   asks.
+1. **Derive the script.** Reuse the observable-case list already derived in
+   Workflow step 2 (Regla 1, TASK-213) — the same plain-text "do X, expect Y"
+   cases the Developer was briefed against — as the numbered UAT script; do
+   not derive a second list from scratch. Renumber or split cases only as
+   needed so every AC is covered. Keep it terse: one line per step, no walls
+   of evidence — show supporting evidence only when the human asks.
 2. **Present to the human.** Show the numbered script and ask the human to work
    through each step, reporting PASS or FAIL (plus optional notes). The human
    may delegate any step's verification back to the Orchestrator; record such

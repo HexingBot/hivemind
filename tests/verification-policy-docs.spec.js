@@ -50,6 +50,13 @@ function loadFile(relPath) {
   return readFileSync(join(REPO_ROOT, relPath), 'utf8');
 }
 
+/** Collapse whitespace runs (including newlines) to a single space, so a
+ * phrase that word-wraps across source lines can still be pinned as one
+ * contiguous string (same convention as tests/agility-doc-locks.spec.js). */
+function normalizeWs(text) {
+  return text.replace(/\s+/g, ' ');
+}
+
 /**
  * Slice the text from the first occurrence of `heading` (matched as a line that
  * STARTS with `heading`) to the next same-level `## ` heading (exclusive), or
@@ -301,6 +308,116 @@ describe('L8 — TASK-033/TASK-212 drift guard: VERIFICATION_TIER enum sources a
       taskStoreTiers.includes('tdd'),
       'the assignment surfaces (task-store.js/mcp-server.js) must NOT accept "tdd" — only the storage schema does',
     ).toBe(false);
+  });
+});
+
+// ===========================================================================
+// TASK-213 — three rules against empty tests: doc-lock sensor
+// ===========================================================================
+// Placement decision (developer, TASK-213): added here rather than a new file
+// or tests/agility-doc-locks.spec.js. This file already asserts on the same
+// topic (tier/verification policy prose across CLAUDE.md, developer.md,
+// reviewer.md); agility-doc-locks.spec.js is scoped to a DIFFERENT topic (the
+// R2 review-depth rubric and the R3 pre-hand-off checklist from TASK-078/
+// TASK-216) and mixing TASK-213's three rules into it would conflate two
+// unrelated lock lineages the way the TASK-078 header itself warns against.
+//
+// Parity note (same convention as agility-doc-locks.spec.js): only the
+// plugin-root copies (agents/, skills/) are read below. tests/agents-parity.spec.js
+// already fails on any divergence between the plugin-root and .claude/ copies,
+// so re-asserting against the .claude/ copies here would be redundant (LOW at
+// review, per the documented convention).
+//
+// Test budget (Regla 3, self-applied): this ticket (TASK-213) has 8
+// acceptance criteria; the 5 `it` blocks below are within that cap, no
+// justification needed.
+//
+// RED-GREEN PLANT PROTOCOL (reported in the hand-off, not committed): each
+// assertion below was verified able to fail for the right reason by
+// temporarily deleting the target rule's prose from the working-tree file,
+// running this spec file alone to confirm the correct assertion went red with
+// the correct message, then restoring via `git checkout -- <path>` and
+// re-running to confirm green — before this commit landed. See the hand-off
+// for the captured output.
+
+describe('TASK-213 Regla 1 — observable-case list derived before dispatch (CLAUDE.md + SKILL.md Workflow)', () => {
+  it('regla1_derivation_before_dispatch_documented_in_claude_md_and_skill_md', () => {
+    // Harm this prevents: if Regla 1's "derive from the AC, before dispatch,
+    // never from the code" mechanism silently drops out of the Workflow docs,
+    // tests-after tickets regress to Developer-authored-and-Developer-checked
+    // tests with no independent case source — the exact defect TASK-213 exists
+    // to close.
+    const claudeSection = sliceSection(loadFile('CLAUDE.md'), '## Workflow');
+    expect(claudeSection, 'CLAUDE.md must contain a "## Workflow" section').not.toBeNull();
+    expect(claudeSection).toMatch(/Regla 1, TASK-213/);
+    expect(claudeSection).toMatch(/never the Developer, and never from reading the code/);
+
+    const skillText = normalizeWs(loadFile('skills/orchestrator-routing/SKILL.md'));
+    expect(skillText).toMatch(/Regla 1, TASK-213/);
+    expect(skillText).toMatch(/never the Developer, and never from reading the code/);
+  });
+});
+
+describe('TASK-213 Regla 1 — silent case changes escalate, and are a HIGH finding', () => {
+  it('developer_escalates_and_reviewer_pins_high', () => {
+    // Harm this prevents: without a documented escalation duty and a matching
+    // HIGH finding, a Developer could quietly water down a ticket's
+    // Orchestrator-derived cases to make them pass, with no review
+    // consequence — laundering the exact gap Regla 1 exists to close.
+    const devText = loadFile('agents/developer.md');
+    expect(devText).toMatch(/stop and escalate to the Orchestrator/);
+
+    const revText = normalizeWs(loadFile('agents/reviewer.md'));
+    expect(revText).toMatch(/observable-case list \(Regla 1\)[\s\S]{0,200}is a \*\*HIGH\*\* finding/);
+  });
+});
+
+describe('TASK-213 Regla 2 — every new test names the harm it prevents (developer.md + reviewer.md MEDIUM)', () => {
+  it('harm_naming_rule_and_medium_severity_documented', () => {
+    // Harm this prevents: without an objective, checkable form for "names the
+    // harm", a Reviewer cannot tell a real regression lock from a vibes-based
+    // test that merely restates the implementation — the failure mode Regla 2
+    // exists to close, and the one TASK-218's future gate depends on.
+    const devText = loadFile('agents/developer.md');
+    expect(devText).toMatch(/must name, in one line[\s\S]{0,80}concrete harm it prevents/);
+
+    const revText = loadFile('agents/reviewer.md');
+    expect(revText).toMatch(/harm it prevents \(Regla 2\)\*\* is a \*\*MEDIUM\*\* finding/);
+  });
+});
+
+describe('TASK-213 Regla 3 — per-ticket new-test cap, with severities for exceeding it', () => {
+  it('numeric_cap_and_severities_documented', () => {
+    // Harm this prevents: a qualitative-only budget ("don't pad tests") lets
+    // unjustified test accumulation creep back in silently, one ticket at a
+    // time, with nothing that can be checked mechanically — Regla 3 replaces
+    // that with a number and a stated consequence for exceeding it.
+    const devText = loadFile('agents/developer.md');
+    expect(devText).toMatch(/new specs may not exceed the ticket's acceptance-criterion count/);
+    expect(devText).toMatch(/without justification is a MEDIUM finding/);
+
+    const revText = loadFile('agents/reviewer.md');
+    expect(revText).toMatch(
+      /acceptance-criterion count without explicit justification in the hand-off \(Regla 3\)\*\* is a \*\*MEDIUM\*\* finding/,
+    );
+    expect(revText).toMatch(/Exceeding the cap WITH justification is not a finding/);
+  });
+});
+
+describe('TASK-213 AC5 — Regla 3 integrated into New-test budget, not duplicated alongside it', () => {
+  it('exactly_one_new_test_budget_section_carries_both_rules', () => {
+    // Harm this prevents: a second, parallel "cap" section next to the
+    // existing New-test budget would give the Reviewer two authoritative-
+    // looking rules that can silently diverge over time — this pins there is
+    // exactly one section, and it carries both Regla 2 and Regla 3.
+    const devText = loadFile('agents/developer.md');
+    const headingMatches = devText.match(/^## New-test budget/gm) ?? [];
+    expect(headingMatches.length, 'developer.md must have exactly one "## New-test budget" heading').toBe(1);
+
+    const section = sliceSection(devText, '## New-test budget (Regla 2 + Regla 3, TASK-213, 2026-08-13 human decision)');
+    expect(section, 'the New-test budget section must exist with the Regla 2 + Regla 3 heading').not.toBeNull();
+    expect(section).toMatch(/must name, in one line/); // Regla 2
+    expect(section).toMatch(/The cap \(Regla 3\)/); // Regla 3
   });
 });
 
