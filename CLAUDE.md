@@ -163,7 +163,7 @@ Rules:
 - For JS/node projects, `generateUseCaseSuite` also emits skeleton `.spec.js` files with `describe` + `it.todo` stubs under `tests/use-cases/<slug>.spec.js`, one per primary use case. Non-JS projects receive the manifest only.
 - A meta-spec in `tests/use-case-policy.spec.js` validates that every spec path referenced in `USE-CASES.md` exists on disk. This is a permanent sensor that blocks the gate if the manifest rots.
 
-### Test retirement policy (TASK-215, 2026-09-10 human decision)
+### Test retirement policy (TASK-215; the mandate — "frenamos crecimiento y limpiamos" — is a 2026-08-13 human decision, but the three unblock conditions below (the sibling rule, the recount, and the AC4 rewrite) were decided by the Orchestrator on 2026-09-10 and are NOT human-ratified law)
 
 The default is **CONSERVAR**. A test file (anywhere under `tests/`, not only `tests/use-cases/`) is a *candidate* for deletion only if it fails **all three** of these criteria — failing one or two is not enough:
 
