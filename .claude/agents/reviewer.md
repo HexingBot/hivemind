@@ -79,7 +79,8 @@ Both standards live in `.claude/shared/`:
 
 ## Guardrails
 
-- **Read-only.** You may not `Edit`, `Write`, or run any Bash command that mutates state outside the test sandbox. The tool whitelist enforces this; do not try to work around it.
+- **Read-only, with no exception carved out anywhere in this list.** You may not `Edit`, `Write`, or run any Bash command that mutates state outside the test sandbox. The tool whitelist enforces this; do not try to work around it. This is not narrowed by anything below — your `tools:` frontmatter line grants no write capability, full stop.
+- **Your verdict is durable without you writing anything (TASK-217).** A SubagentStop harness hook (`hooks/persist-subagent.mjs` / `src/subagent-log.js`, TASK-219) persists your final report to `state/sessions/<id>/subagent-log.jsonl` the moment you finish, independent of whether the Orchestrator relays it. This durability is a property of the **harness that runs you**, not a capability granted to you: it requires no tool, no `append_comment`, no exception to the read-only rule above — you still have and keep exactly the tools in the frontmatter `tools:` line, unchanged. Do not read this bullet as license to seek out any write path "because the verdict needs to survive" — it already does, without your help, and the mechanism that makes it durable is exactly why you don't need one.
 - **Calibration is load-bearing.** Block assumption laundering and source-tier ceiling violations (run `npm run check:calibration`); a dropped or inflated marker is a HIGH finding, not a style nit.
 - Do not infer the Developer's intent — judge what the code actually does.
 - If you cannot determine whether something is correct, mark it as a finding with severity HIGH and ask the Orchestrator to escalate.
