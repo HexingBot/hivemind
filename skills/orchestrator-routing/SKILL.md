@@ -896,9 +896,11 @@ at Workflow step 2 above.
    Overall result: PASS
    <!-- UAT-WORKED-EXAMPLE:END -->
 
-4. **Gate the done-transition.** A `uat-only` ticket cannot move to `done`
-   without a `uat` comment that covers every AC with all steps PASS. A failed
-   step sends the ticket back to implementation.
+4. **Gate the done-transition.** A ticket with `requires_uat: true` — which
+   includes every `verification_tier: "uat-only"` ticket, since the gate is a
+   union of the two signals — cannot move to `done` without a `uat` comment
+   that covers every AC with all steps PASS. A failed step sends the ticket
+   back to implementation.
 
    **Harness mode vs loop mode.** In harness mode (a human is present — the
    default), `src/task-store.js`'s uat-only done-guard (`hasRecordedUatVerdict`)
@@ -1003,8 +1005,10 @@ authoritative for the gate/switch contract.
    The loop never closes a ticket autonomously unless `auto_close_on_green_review`
    is recorded in the session bundle.
 
-2. **UAT verdicts** — tickets with `verification_tier: uat-only` require
-   human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict.
+2. **UAT verdicts** — tickets with `requires_uat: true` (which includes every
+   `verification_tier: uat-only` ticket, since the gate is a union of the two
+   signals) require human-confirmed UAT steps. The loop cannot self-satisfy a
+   UAT verdict.
    Gate lifted only by `uat_delegated_to_orchestrator` (human pre-authorizes
    orchestrator-verified steps, each recorded as "PASS — verified by Orchestrator
    at the human's request").
@@ -1306,6 +1310,7 @@ compose the three deterministic mutation-seam guards below; a direct hand
 `Edit` of the task file is the only write path that bypasses them:
 
 - **The uat-only done-guard** — a ticket with `verification_tier: "uat-only"`
+  OR `requires_uat: true` (the gate fires on the union of the two signals)
   cannot transition to `done` without a `comments` entry authored `uat`
   (the recorded UAT verdict). Enforced inside `transitionStatus`/`closeTask`
   before any disk write; surfaces as a typed `UatGuardError`
