@@ -380,6 +380,7 @@ describe('TASK-213 Regla 2 — every new test names the harm it prevents (develo
     // exists to close, and the one TASK-218's future gate depends on.
     const devText = loadFile('agents/developer.md');
     expect(devText).toMatch(/must name, in one line[\s\S]{0,80}concrete harm it prevents/);
+    expect(devText).toMatch(/A new test that lands without that line is a MEDIUM finding at review/);
 
     const revText = loadFile('agents/reviewer.md');
     expect(revText).toMatch(/harm it prevents \(Regla 2\)\*\* is a \*\*MEDIUM\*\* finding/);
