@@ -71,11 +71,18 @@ function normalize(text) {
 // rewritten from the tier-based Tier-audit by TASK-218)
 // ---------------------------------------------------------------------------
 describe('E2 — dangerous-surface gate referenced in SKILL.md, HIGH finding pinned in reviewer.md (TASK-218)', () => {
+  // Harm prevented: the Orchestrator's skill briefing silently stops pointing
+  // reviewers at the (renamed) gate, so the Dangerous-surface audit quietly
+  // stops being invoked at all.
   it('skill_references_the_dangerous_surface_gate', () => {
     const text = load(SKILL_PATH);
     expect(/dangerous-surface/i.test(text), 'SKILL.md must reference the dangerous-surface gate').toBe(true);
   });
 
+  // Harm prevented: the gate's severity or its section silently regresses to
+  // absent/lower-severity prose, so an unnamed harm on dangerous surface
+  // (e.g. a state-corrupting write with no regression proof) ships as a
+  // MEDIUM nit instead of blocking the ticket.
   it('reviewer_pins_the_dangerous_surface_gate_section_and_high_severity', () => {
     const text = load(REVIEWER_PATH);
     expect(
@@ -88,6 +95,9 @@ describe('E2 — dangerous-surface gate referenced in SKILL.md, HIGH finding pin
     ).toBe(true);
   });
 
+  // Harm prevented: a future edit reintroduces the two review-depth phrases
+  // TASK-216 already retired, leaving reviewer.md self-contradicting (a
+  // depth rubric it claims to defer to no longer exists anywhere else).
   it('reviewer_no_longer_carries_the_retired_depth_phrases_on_this_section', () => {
     const text = load(REVIEWER_PATH);
     expect(text.includes('runs at both depths'), 'the depth-scoping phrase must be gone').toBe(false);
@@ -97,6 +107,9 @@ describe('E2 — dangerous-surface gate referenced in SKILL.md, HIGH finding pin
     ).toBe(false);
   });
 
+  // Harm prevented: a future edit reintroduces the retired tier-based
+  // finding name, contradicting the tier-agnostic gate this ticket landed
+  // and confusing a reviewer about which severity/trigger actually applies.
   it('reviewer_no_longer_mentions_tier_misassignment', () => {
     const text = load(REVIEWER_PATH);
     expect(text.includes('tier misassignment'), 'the retired tier-based finding name must be gone').toBe(false);
