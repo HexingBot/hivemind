@@ -39,27 +39,65 @@
 //                          transcription may not match what the reviewer
 //                          actually said.
 //   - UNVERIFIABLE       — there was nothing usable to compare: no log file,
-//                          no reviewer-type record at all, no record for
-//                          this ticket AND the log's ticket-correlation is
-//                          itself broken (see KNOWN GAP below), no reviewer
-//                          comment yet, or a verdict token could not be
-//                          extracted from one or both sides. Never reported
-//                          as either of the other two.
+//                          no reviewer-type record at all, the comment
+//                          predates the log's own coverage window (see
+//                          COVERAGE WINDOW below), no record for this ticket
+//                          AND the log's ticket-correlation is itself broken
+//                          for that stretch of time (see KNOWN GAP #1 below),
+//                          no reviewer comment yet, or a verdict token could
+//                          not be extracted from one or both sides. Never
+//                          reported as either of the other two.
+//
+// COVERAGE WINDOW (TASK-217 fix round, 2026-09-10 — found by running this
+// tool against the repo's real board: 49/52 examined tickets came back
+// not-corroborated, and inspection showed the overwhelming majority were
+// closed MONTHS before the SubagentStop hook (TASK-219) existed at all —
+// "we never had a chance to record this" was rendering identically to "we
+// recorded it and it doesn't match", exactly the empty-result collapse
+// TASK-192 exists to prevent). The log's coverage window starts at the
+// EARLIEST `captured_at` across EVERY record in the log (any agent_type, not
+// only reviewer records — a developer record two minutes before the first
+// reviewer record still proves the hook was already running). A reviewer
+// comment whose own `at` timestamp predates that earliest `captured_at`
+// could not possibly have been recorded even if the hook worked perfectly
+// that day, and is reported UNVERIFIABLE (reason `out-of-log-coverage`), not
+// NOT_CORROBORATED. A comment with no parseable `at`, or a log with no
+// record carrying a parseable `captured_at`, cannot be placed relative to
+// the window at all — this check is skipped entirely in that case (never
+// guessed either way).
 //
 // KNOWN GAP #1 — ticket correlation depends on a live `active_task`
 // (found while unlocking this ticket, in scope here): every subagent-log
 // record's `ticket` field comes from `resolveActiveTicket` reading the
 // session bundle's `active_task` (src/subagent-log.js). When the bundle sat
-// with `active_task: null` (as this repo's own first 31 records did), EVERY
-// record in that window carries `ticket: null` and NONE of them is
-// correlatable to anything — a systemic gap, not evidence against any one
-// ticket. This module distinguishes that case (UNVERIFIABLE, reason
-// `no-ticket-correlation`) from the ordinary "no record for THIS ticket while
-// correlation works fine for others" case (NOT_CORROBORATED, reason
-// `no-matching-log-record`). The Orchestrator's obligation to keep
-// `active_task` current (see state/README.md's resume contract and CLAUDE.md's
-// RESUME FIRST section) is exactly what keeps this correlation meaningful;
-// this module can only detect the gap, not close it.
+// with `active_task: null`, EVERY record captured during that stretch
+// carries `ticket: null` and NONE of them is correlatable to anything — a
+// systemic gap, not evidence against any one ticket. TASK-217's fix round
+// generalized the detection of this gap from a whole-log check ("are ALL
+// reviewer records in the entire log null-ticketed") to a TIME-WINDOWED one:
+// the log can legitimately contain more than one such stretch (this repo's
+// own log has two, hours apart, separated by long runs of correctly-
+// correlated records in between) and a ticket whose true record fell inside
+// ONE of those stretches must not be judged by whether OTHER, unrelated
+// stretches of the same log happened to correlate fine. Concretely: every
+// maximal contiguous run of null-ticketed reviewer records (ordered by
+// `captured_at`) forms a window from that run's first record up to (but not
+// including) the next non-null reviewer record's `captured_at` — open-ended
+// if the log currently ends mid-run. A ticket's own reviewer comment whose
+// `at` falls inside such a window is reported UNVERIFIABLE (reason
+// `no-ticket-correlation`), never NOT_CORROBORATED, even though no record
+// literally matches its ticket key — because for that stretch of time NO
+// record could possibly have matched anything, by construction. This is a
+// TIME-RANGE check, never an identity guess: it never claims WHICH null
+// record is this ticket's own, only that correlation was demonstrably
+// impossible for every record captured in that stretch. When neither side
+// carries a usable timestamp (comment has no parseable `at`, or no reviewer
+// record carries a parseable `captured_at`), this collapses back to the
+// original coarse check: are ALL reviewer records in the whole log
+// null-ticketed. The Orchestrator's obligation to keep `active_task` current
+// (see state/README.md's resume contract and CLAUDE.md's RESUME FIRST
+// section) is exactly what keeps this correlation meaningful; this module
+// can only detect the gap, not close it.
 //
 // KNOWN GAP #2 — attribution is "which ticket was the Orchestrator driving",
 // not "what did the subagent work on". `resolveActiveTicket` reads the
@@ -69,7 +107,24 @@
 // ticket B is filed under B and will not corroborate against A's comment.
 // This is a real, named limitation of the mechanism, not a bug in this
 // module — stated here rather than hidden (per the ticket's instruction to
-// "decirlo, no esconderlo").
+// "decirlo, no esconderlo"). UNLIKE KNOWN GAP #1's null-ticket stretches
+// (which the record itself honestly flags as "correlation unknown" via
+// `ticket: null`, and which the time-window check above can therefore
+// detect), a GAP #2 misattribution carries a CONFIDENT but WRONG ticket key
+// — nothing in the data signals the error, so it is structurally
+// indistinguishable from "this reviewer comment simply has no backing
+// record at all" without guessing which OTHER ticket's record it actually
+// belongs to. This module deliberately does not attempt that guess (a
+// time-proximity heuristic that reassigns a record to a different ticket
+// would convert a corroboration tool into one that fabricates
+// correlations — exactly what this ticket's fix round was told not to
+// build). CONCRETE, VALIDATED INSTANCE (2026-09-10, found while fixing this
+// ticket, left deliberately unresolved): TASK-211's real, hook-captured
+// reviewer record — content-matched via its "rango f8edcd0..768524b" text —
+// was filed under `ticket: 'TASK-217'` because this repo's own bundle
+// `active_task` pointed at TASK-217 at that moment; TASK-211 therefore still
+// reports NOT_CORROBORATED / `no-matching-log-record` after this fix round,
+// and that is the correct, honest answer given what this module can know.
 //
 // VERDICT EXTRACTION IS A HEURISTIC, NOT A PARSER (see extractVerdictToken):
 // reviewer.md's Output Format template ends every report with a literal
@@ -200,6 +255,95 @@ export function readSubagentLog(repoRoot) {
   return { exists, records };
 }
 
+/**
+ * Parse an ISO-ish timestamp into epoch milliseconds, or null when it is
+ * missing or unusable. Never throws (empty-result contract: an unparseable
+ * timestamp yields "cannot place on the timeline", never a silently-wrong
+ * comparison in either direction).
+ *
+ * @param {*} v
+ * @returns {number|null}
+ */
+function parseTimestamp(v) {
+  if (!isNonEmptyString(v)) return null;
+  const ms = Date.parse(v);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * The log's coverage window starts at the EARLIEST `captured_at` across
+ * every record (any agent_type). Returns null when no record carries a
+ * parseable `captured_at` — the coverage check is then skipped by the
+ * caller rather than guessed (see module header, COVERAGE WINDOW).
+ *
+ * @param {object[]} records
+ * @returns {number|null}
+ */
+function computeLogCoverageStart(records) {
+  let min = null;
+  for (const r of records) {
+    const ms = parseTimestamp(r && r.captured_at);
+    if (ms === null) continue;
+    if (min === null || ms < min) min = ms;
+  }
+  return min;
+}
+
+/**
+ * Maximal contiguous runs (ordered by `captured_at`) of reviewer records
+ * whose `ticket` is null/empty — see module header, KNOWN GAP #1. A run's
+ * window is `[firstNullCapturedAt, nextNonNullCapturedAt)`; the upper bound
+ * is `null` (open-ended) when the run has not yet been closed by a later
+ * correlated reviewer record. Records without a parseable `captured_at` are
+ * excluded from the timeline entirely — never guessed into a position.
+ *
+ * @param {object[]} reviewerRecords
+ * @returns {{start: number, end: number|null}[]}
+ */
+function computeNullTicketWindows(reviewerRecords) {
+  const timestamped = reviewerRecords
+    .map((r) => ({ ticket: r && r.ticket, ms: parseTimestamp(r && r.captured_at) }))
+    .filter((r) => r.ms !== null)
+    .sort((a, b) => a.ms - b.ms);
+
+  const windows = [];
+  let runStart = null;
+  for (const rec of timestamped) {
+    const isNull = !isNonEmptyString(rec.ticket);
+    if (isNull) {
+      if (runStart === null) runStart = rec.ms;
+    } else if (runStart !== null) {
+      windows.push({ start: runStart, end: rec.ms });
+      runStart = null;
+    }
+  }
+  if (runStart !== null) windows.push({ start: runStart, end: null });
+  return windows;
+}
+
+/**
+ * Was ticket-correlation broken AT (or around) the time this ticket's
+ * reviewer comment would have been captured? See module header, KNOWN GAP
+ * #1, for the full rationale. Two modes:
+ *   1. `atTime === null` (comment carries no parseable `at`) — fall back to
+ *      the coarse, whole-log check: EVERY reviewer record in the log has a
+ *      null ticket.
+ *   2. `atTime` available — true when it falls inside any null-ticket
+ *      window (see computeNullTicketWindows). A time-range check, never an
+ *      identity guess.
+ *
+ * @param {object[]} reviewerRecords
+ * @param {number|null} atTime
+ * @returns {boolean}
+ */
+function isTicketCorrelationBrokenAt(reviewerRecords, atTime) {
+  if (atTime === null) {
+    return !reviewerRecords.some((r) => isNonEmptyString(r.ticket));
+  }
+  const windows = computeNullTicketWindows(reviewerRecords);
+  return windows.some((w) => atTime >= w.start && (w.end === null || atTime < w.end));
+}
+
 function unverifiable(reason, message, extra = {}) {
   return { status: PROVENANCE_STATUS.UNVERIFIABLE, reason, message, ...extra };
 }
@@ -245,23 +389,44 @@ export function auditReviewerVerdictProvenance({ task, log }) {
     );
   }
 
-  const anyCorrelatable = reviewerRecords.some((r) => isNonEmptyString(r.ticket));
-  if (!anyCorrelatable) {
-    return unverifiable(
-      'no-ticket-correlation',
-      'ningun registro reviewer trae un ticket no-nulo: el bundle de sesion tenia '
-        + 'active_task en null cuando corrieron estos subagentes, asi que la '
-        + 'correlacion por ticket esta rota para toda esta ventana, no solo para '
-        + 'este ticket (ver KNOWN GAP #1 en el header del modulo).',
-    );
-  }
-
   const reviewerComments = (Array.isArray(task.comments) ? task.comments : [])
     .filter((c) => c && c.author === 'reviewer');
   if (reviewerComments.length === 0) {
     return unverifiable(
       'no-reviewer-comment',
       'el ticket todavia no tiene ningun comentario author "reviewer" que corroborar.',
+    );
+  }
+
+  const lastComment = reviewerComments[reviewerComments.length - 1];
+  const lastCommentAt = parseTimestamp(lastComment.at);
+
+  // COVERAGE WINDOW (see module header): a comment that predates the log's
+  // own earliest captured_at could not possibly have been recorded, hook or
+  // no hook. Skipped (never guessed) when either side lacks a usable
+  // timestamp.
+  const logCoverageStart = computeLogCoverageStart(records);
+  if (lastCommentAt !== null && logCoverageStart !== null && lastCommentAt < logCoverageStart) {
+    return unverifiable(
+      'out-of-log-coverage',
+      'el comentario author "reviewer" es anterior al registro mas antiguo de todo '
+        + `el log (captured_at ${new Date(logCoverageStart).toISOString()}): el hook `
+        + 'SubagentStop (TASK-219) todavia no corria en este repo cuando se escribio '
+        + 'este comentario, asi que la ausencia de registro no dice nada sobre si el '
+        + 'veredicto fue fiel.',
+    );
+  }
+
+  // KNOWN GAP #1 (see module header): ticket correlation may be broken for
+  // the specific stretch of time this comment falls in, even when it works
+  // fine elsewhere in the same log.
+  if (isTicketCorrelationBrokenAt(reviewerRecords, lastCommentAt)) {
+    return unverifiable(
+      'no-ticket-correlation',
+      'el bundle de sesion tenia active_task en null cuando corrieron los '
+        + 'subagentes reviewer de esa ventana de tiempo, asi que la correlacion por '
+        + 'ticket esta rota para ese tramo del log, no solo para este ticket '
+        + '(ver KNOWN GAP #1 en el header del modulo).',
     );
   }
 
@@ -274,7 +439,6 @@ export function auditReviewerVerdictProvenance({ task, log }) {
     );
   }
 
-  const lastComment = reviewerComments[reviewerComments.length - 1];
   const lastRecord = matchingRecords[matchingRecords.length - 1];
 
   const commentVerdict = extractVerdictToken(lastComment.body);
