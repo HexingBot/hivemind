@@ -10,8 +10,8 @@
 // asserts the previously-MISSED behaviour is now CAUGHT — or, where TASK-189's
 // hand-off recorded a deliberate decision NOT to block (P1, P5), asserts the
 // advisory/non-blocking behaviour instead. See src/task-store.js's
-// validateAcceptanceCriteria / checkTierContentMismatch doc comments for the
-// reasoning behind each disposition.
+// validateAcceptanceCriteria / checkDangerousSurfaceMention doc comments for
+// the reasoning behind each disposition.
 
 import { describe, it, expect, afterAll } from 'vitest';
 
