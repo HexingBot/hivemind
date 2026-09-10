@@ -194,6 +194,12 @@
       "label": "El schema de datos preserva el tier tdd retirado como valor write-frozen; la politica de asignacion vive en las capas de escritura"
     },
     {
+      "id": "decision-20260909-uat-sensor-trigger-requires-uat",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "El disparador del check de UAT del reviewer pasa a ser requires_uat, no el tier ni la existencia del comentario"
+    },
+    {
       "id": "decision-20260910-ci-evidence-rama-efimera",
       "type": "decision",
       "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
@@ -1550,6 +1556,12 @@
       "label": "Persistir el resultado de todo subagente con un hook SubagentStop, para que no dependa de que el orquestador esté vivo para relayarlo"
     },
     {
+      "id": "task-220",
+      "type": "task",
+      "ref": "tasks/TASK-220.json",
+      "label": "El sensor de UAT del reviewer deja de ser condicional a que el comentario exista"
+    },
+    {
       "id": "task-221",
       "type": "task",
       "ref": "tasks/TASK-221.json",
@@ -2150,6 +2162,11 @@
     {
       "from": "task-219",
       "to": "decision-20260815-subagentstop-hook-durability",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-220",
+      "to": "decision-20260909-uat-sensor-trigger-requires-uat",
       "relation": "produced-by"
     },
     {

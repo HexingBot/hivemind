@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-10T01:37:07.732Z",
+  "generated_at": "2026-09-10T01:52:13.257Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1288,7 +1288,7 @@
     {
       "key": "TASK-220",
       "title": "El sensor de UAT del reviewer deja de ser condicional a que el comentario exista",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
     },
     {
