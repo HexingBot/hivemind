@@ -896,9 +896,11 @@ at Workflow step 2 above.
    Overall result: PASS
    <!-- UAT-WORKED-EXAMPLE:END -->
 
-4. **Gate the done-transition.** A `uat-only` ticket cannot move to `done`
-   without a `uat` comment that covers every AC with all steps PASS. A failed
-   step sends the ticket back to implementation.
+4. **Gate the done-transition.** A ticket with `requires_uat: true` — which
+   includes every `verification_tier: "uat-only"` ticket, since the gate is a
+   union of the two signals — cannot move to `done` without a `uat` comment
+   that covers every AC with all steps PASS. A failed step sends the ticket
+   back to implementation.
 
    **Harness mode vs loop mode.** In harness mode (a human is present — the
    default), `src/task-store.js`'s uat-only done-guard (`hasRecordedUatVerdict`)
@@ -1004,7 +1006,11 @@ authoritative for the gate/switch contract.
    is recorded in the session bundle.
 
 2. **UAT verdicts** — tickets with `verification_tier: uat-only` require
-   human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict.
+   human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict. This
+   loop-mode gate (`src/close-guard.js`'s `loopModeCloseGuard` Gate 2) is
+   tier-scoped only, deliberately narrower than `checkUatGuard`'s union: a
+   `tests-after` ticket with `requires_uat: true` is not covered by this
+   particular gate.
    Gate lifted only by `uat_delegated_to_orchestrator` (human pre-authorizes
    orchestrator-verified steps, each recorded as "PASS — verified by Orchestrator
    at the human's request").
@@ -1306,6 +1312,7 @@ compose the three deterministic mutation-seam guards below; a direct hand
 `Edit` of the task file is the only write path that bypasses them:
 
 - **The uat-only done-guard** — a ticket with `verification_tier: "uat-only"`
+  OR `requires_uat: true` (the gate fires on the union of the two signals)
   cannot transition to `done` without a `comments` entry authored `uat`
   (the recorded UAT verdict). Enforced inside `transitionStatus`/`closeTask`
   before any disk write; surfaces as a typed `UatGuardError`
@@ -1478,12 +1485,14 @@ An explicit, auditable `exception: { reason, author? }` on `transition_status`/
 `close_task` bypasses steps 1-2 above for a legitimate exception (e.g. a
 won't-do closure, or a documented recovery path) — a non-empty `reason` is
 required and is recorded as a separate `[CLOSE-EXCEPTION]`-prefixed comment
-rather than a silent skip. **It does NOT work for `uat-only` tickets**: the
-uat-only done-guard (`checkUatGuard`) runs BEFORE the exception is even
-considered and is never bypassed by it — this ordering is deliberate, not a
-bug (the escape hatch is not a skeleton key). A won't-do `uat-only` closure
-still needs its own recognizable `uat`-authored verdict comment; there is
-currently no exception-based path around that requirement.
+rather than a silent skip. **It does NOT work for `uat-only` tickets, nor for
+a `requires_uat: true` ticket of any tier**: the uat-only done-guard
+(`checkUatGuard`) fires on the union of those two signals and runs BEFORE the
+exception is even considered, never bypassed by it — this ordering is
+deliberate, not a bug (the escape hatch is not a skeleton key). A won't-do
+closure of either kind still needs its own recognizable `uat`-authored
+verdict comment; there is currently no exception-based path around that
+requirement.
 
 **For intermediate status transitions** (`todo → in_progress → in_review`, or
 `→ blocked`), use `transition_status`; for standalone comments, use
