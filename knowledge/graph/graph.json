@@ -176,6 +176,12 @@
       "label": "Drive the intake-improvement + kb-graph epics (TASK-165..174): mint-a-plan seeder, warn-but-allow intake checks, kb_graph_query on the merge seam with a total no-silent-drop contract, graph-freshness sensor + backfill, auto task-node on close via recordNode"
     },
     {
+      "id": "decision-20260813-review-completo-siempre",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Review completo siempre: retirar la rubrica de profundidad y el nivel liviano (decision humana 2026-08-13)"
+    },
+    {
       "id": "decision-20260815-subagentstop-hook-durability",
       "type": "decision",
       "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
@@ -1550,6 +1556,12 @@
       "label": "Retirar el tier tdd: dos tiers y limpiar todo lo que existia solo para el tdd"
     },
     {
+      "id": "task-216",
+      "type": "task",
+      "ref": "tasks/TASK-216.json",
+      "label": "Review completo siempre: retirar la rubrica de profundidad y el nivel liviano"
+    },
+    {
       "id": "task-219",
       "type": "task",
       "ref": "tasks/TASK-219.json",
@@ -2157,6 +2169,11 @@
     {
       "from": "task-212",
       "to": "decision-20260909-storage-schema-preserves-retired-tier",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-216",
+      "to": "decision-20260813-review-completo-siempre",
       "relation": "produced-by"
     },
     {

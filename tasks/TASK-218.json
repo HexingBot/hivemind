@@ -29,9 +29,10 @@
   "linked_prs": [],
   "comments": [],
   "created_at": "2026-08-13T23:56:43.758Z",
-  "updated_at": "2026-08-13T23:56:43.758Z",
+  "updated_at": "2026-09-10T16:26:09.007Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",
-  "source_tier": "T1"
+  "source_tier": "T1",
+  "requires_uat": true
 }

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-10T01:52:13.257Z",
+  "generated_at": "2026-09-10T16:45:39.358Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1264,7 +1264,7 @@
     {
       "key": "TASK-216",
       "title": "Review completo siempre: retirar la rúbrica de profundidad y el nivel liviano",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
