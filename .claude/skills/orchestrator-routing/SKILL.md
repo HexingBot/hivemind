@@ -75,6 +75,15 @@ The pointer schema is `state/session.schema.json`; the bundle schema is
 `state/bundle.schema.json`. The full bundle layout and the pause / resume / end
 lifecycle are documented in `state/README.md`.
 
+**Why this matters beyond resuming a chat (TASK-214):** this bundle is also
+the concrete answer to "where can I go to see what you're doing right now" —
+see CLAUDE.md's "Live visibility while work is in flight" section for the
+full answer (the bundle's `session.json`, the `SubagentStop`-written
+`subagent-log.jsonl`, and why the kanban board is a tickets view, not a
+work-in-flight view). Skipping a checkpoint update here does not remove the
+path — it makes the path lie about the current state, which is the one way
+this promise can fail.
+
 ## Bundle compaction (rotation)
 
 Before appending a `decisions` or `subagent_results` entry that would push
@@ -176,7 +185,10 @@ same workflow applies; only the I/O surface changes.
    a person can observe? Set `requires_uat: true` if yes, `false` if no. Absent
    defaults to `false` (backward-compatible; see `tasks/schema.json`'s
    `requires_uat` description and `src/task-store.js`'s `requiresUat(task)`
-   helper, the single place that default is read from). Use `TaskCreate` to record
+   helper, the single place that default is read from). See CLAUDE.md's
+   "Observable-by-a-person criterion" section (TASK-214) for what concretely
+   counts, with qualifying/non-qualifying examples, so two different sessions
+   reach the same verdict on the same ticket. Use `TaskCreate` to record
    the breakdown:
    - Research tasks (one per unknown library/API/pattern).
    - One combined impl+lock task (`tests-after`) or one impl task (`uat-only`).
@@ -201,11 +213,14 @@ same workflow applies; only the I/O surface changes.
    to a new or updated skill in `.claude/skills/` when relevant.
 4. **Verify per tier.**
    - `tests-after` — Spawn the Developer in a single spawn: implement first, then
-     add a minimal set of regression locks before hand-off. When the ACs describe
-     human-observable behavior, the UAT step is also mandatory — run it after the
-     regression locks land, exactly as for `uat-only`.
-   - `uat-only` — Spawn the Developer for implementation only; no new specs. After
-     implementation, run the UAT step below.
+     add a minimal set of regression locks before hand-off.
+   - `uat-only` — Spawn the Developer for implementation only; no new specs.
+
+   **UAT step — triggered by `requires_uat: true` (TASK-214), independently of
+   `verification_tier`.** See the "UAT procedure" section below for the full
+   trigger rewrite and rationale; in short, UAT and the test suite are two
+   distinct controls that run in parallel whenever both apply, and neither
+   replaces the other.
 5. **Spawn the Reviewer.** First call `transition_status` to move the ticket to
    `in_review` (TASK-187) — `done` is reachable only from this state, the one
    step in the documented `todo → in_progress → in_review → done` convention
@@ -820,12 +835,19 @@ surface" section for why a tier comparison stopped being a usable signal once
 `tests-after` became the default tier for all real work), it judges the real
 diff against the four dangerous-surface categories directly.
 
-## UAT procedure (uat-only and tests-after tickets)
+## UAT procedure (triggered by `requires_uat: true`, TASK-214)
 
-For `uat-only` tickets the Orchestrator performs human-confirmed verification
-instead of requiring new specs. For `tests-after` tickets, run this step in
-addition to the regression locks whenever the ACs describe human-observable
-behavior.
+See CLAUDE.md's "UAT step" (Workflow step 4) for why this step exists, the
+full `checkUatGuard` union-trigger explanation, and the retired "mandatory
+for uat-only; mandatory for tests-after when ACs are human-observable"
+phrasing — not repeated here, to avoid the two copies drifting apart (a HIGH
+finding already caught them disagreeing once). In short: this step runs
+whenever `requires_uat: true`, independently of `verification_tier`, AND it
+never skips for a `uat-only` ticket regardless of that ticket's own
+`requires_uat` value, because the real gate is a union of the two signals.
+See also CLAUDE.md's "Observable-by-a-person criterion" section (TASK-214)
+for what concretely counts as human-observable when assigning `requires_uat`
+at Workflow step 2 above.
 
 1. **Derive the script.** Reuse the observable-case list already derived in
    Workflow step 2 (Regla 1, TASK-213) — the same plain-text "do X, expect Y"
