@@ -1005,10 +1005,12 @@ authoritative for the gate/switch contract.
    The loop never closes a ticket autonomously unless `auto_close_on_green_review`
    is recorded in the session bundle.
 
-2. **UAT verdicts** — tickets with `requires_uat: true` (which includes every
-   `verification_tier: uat-only` ticket, since the gate is a union of the two
-   signals) require human-confirmed UAT steps. The loop cannot self-satisfy a
-   UAT verdict.
+2. **UAT verdicts** — tickets with `verification_tier: uat-only` require
+   human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict. This
+   loop-mode gate (`src/close-guard.js`'s `loopModeCloseGuard` Gate 2) is
+   tier-scoped only, deliberately narrower than `checkUatGuard`'s union: a
+   `tests-after` ticket with `requires_uat: true` is not covered by this
+   particular gate.
    Gate lifted only by `uat_delegated_to_orchestrator` (human pre-authorizes
    orchestrator-verified steps, each recorded as "PASS — verified by Orchestrator
    at the human's request").
@@ -1483,12 +1485,14 @@ An explicit, auditable `exception: { reason, author? }` on `transition_status`/
 `close_task` bypasses steps 1-2 above for a legitimate exception (e.g. a
 won't-do closure, or a documented recovery path) — a non-empty `reason` is
 required and is recorded as a separate `[CLOSE-EXCEPTION]`-prefixed comment
-rather than a silent skip. **It does NOT work for `uat-only` tickets**: the
-uat-only done-guard (`checkUatGuard`) runs BEFORE the exception is even
-considered and is never bypassed by it — this ordering is deliberate, not a
-bug (the escape hatch is not a skeleton key). A won't-do `uat-only` closure
-still needs its own recognizable `uat`-authored verdict comment; there is
-currently no exception-based path around that requirement.
+rather than a silent skip. **It does NOT work for `uat-only` tickets, nor for
+a `requires_uat: true` ticket of any tier**: the uat-only done-guard
+(`checkUatGuard`) fires on the union of those two signals and runs BEFORE the
+exception is even considered, never bypassed by it — this ordering is
+deliberate, not a bug (the escape hatch is not a skeleton key). A won't-do
+closure of either kind still needs its own recognizable `uat`-authored
+verdict comment; there is currently no exception-based path around that
+requirement.
 
 **For intermediate status transitions** (`todo → in_progress → in_review`, or
 `→ blocked`), use `transition_status`; for standalone comments, use
