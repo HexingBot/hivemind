@@ -837,24 +837,17 @@ diff against the four dangerous-surface categories directly.
 
 ## UAT procedure (triggered by `requires_uat: true`, TASK-214)
 
-This step runs whenever `requires_uat: true`, independently of
-`verification_tier` — not "mandatory for uat-only; mandatory for tests-after
-when ACs are human-observable" (that phrasing predates TASK-221/TASK-222/
-TASK-220 wiring `requires_uat` through the schema, the close guard, and the
-reviewer's sensor, and is retired). UAT and the test suite are two DISTINCT
-controls that run in PARALLEL on the same ticket whenever both apply, and
-neither replaces the other: the test suite proves the behavior keeps working
-after this session ends; UAT proves a person can actually see, right now,
-what the ticket promised. For `uat-only` tickets the Orchestrator performs
-human-confirmed verification instead of requiring new specs; for
-`tests-after` tickets with `requires_uat: true`, run this step in addition to
-the regression locks. In code, the real gate (`checkUatGuard` in
-`src/task-store.js`) fires on the union of `verification_tier === 'uat-only'`
-OR `requires_uat === true`, so a pre-TASK-221 `uat-only` ticket with no
-`requires_uat` field stays covered — but `requires_uat` is the field that
-decides this going forward. See CLAUDE.md's "Observable-by-a-person
-criterion" section (TASK-214) for what concretely counts as human-observable
-when assigning `requires_uat` at Workflow step 2 above.
+See CLAUDE.md's "UAT step" (Workflow step 4) for why this step exists, the
+full `checkUatGuard` union-trigger explanation, and the retired "mandatory
+for uat-only; mandatory for tests-after when ACs are human-observable"
+phrasing — not repeated here, to avoid the two copies drifting apart (a HIGH
+finding already caught them disagreeing once). In short: this step runs
+whenever `requires_uat: true`, independently of `verification_tier`, AND it
+never skips for a `uat-only` ticket regardless of that ticket's own
+`requires_uat` value, because the real gate is a union of the two signals.
+See also CLAUDE.md's "Observable-by-a-person criterion" section (TASK-214)
+for what concretely counts as human-observable when assigning `requires_uat`
+at Workflow step 2 above.
 
 1. **Derive the script.** Reuse the observable-case list already derived in
    Workflow step 2 (Regla 1, TASK-213) — the same plain-text "do X, expect Y"
