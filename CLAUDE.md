@@ -82,6 +82,27 @@ Absent `verification_tier` defaults to `tests-after` (backward-compatible).
 
 **Retired tier — `tdd` (TASK-212, 2026-08-13 human decision).** A third tier, `tdd`, used to exist: tests-first, single-commit discipline (write failing tests, capture the red-run evidence, then implement). It is retired and can no longer be assigned to a ticket — the measured reason: tests-first as a ticket-ordering discipline did not catch the failure modes it was meant to catch (see TASK-211/TASK-212 for the argument). The ~101 tickets closed as `tdd` before the retirement keep that value on their task file as a historical record; it is never rewritten retroactively, and the value is rejected by the schema for any new write. What tests-first actually protected against — a test that cannot fail for the right reason — is still fully enforced and, since TASK-212, applies more broadly: see `agents/developer.md`'s "Red-green planting" section, which every new test/spec/lock must satisfy, not only `tdd`-tier work.
 
+### Dangerous surface (TASK-218, 2026-08-13 human decision)
+
+With `tests-after` the default tier for all real work, "which tier did the Developer pick" stopped being a usable proxy for "was this handled with care" — a tier-based warning either fires on nearly everything (noise) or, if narrowed to `uat-only` alone, goes silent on the exact case that matters most (a schema/security/parsing/state-mutation change declared `tests-after`, i.e. the default). The replacement drops the tier and names the property that actually matters: does work on dangerous surface have the harm it could cause written down where a reviewer can check it?
+
+**This section is the single place "dangerous surface" is defined.** Two independent consumers apply this same definition, by different means, and both cross-reference this section rather than repeating it: `src/task-store.js`'s `checkDangerousSurfaceMention` (a text-only, advisory, never-blocking heuristic run at ticket-creation time) and `agents/reviewer.md`'s Dangerous-surface gate (a mandatory HIGH-severity finding, judged against the real diff at review time). A change touches dangerous surface when it falls into one or more of:
+
+1. **Security-sensitive logic** — authentication, authorization, secret handling, or sanitization/validation of untrusted input.
+2. **Parsing** — interpreting untrusted or structurally-significant input (JSON/regex/format parsing of external or ticket-supplied content).
+3. **Schema or state-schema changes** — `tasks/schema.json`, any other `*.schema.json`, or a change to the shape of a persisted state bundle.
+4. **State mutation with real edge-risk** — a write to shared persisted state (`tasks/*.json`, `state/`, any real fs write path) where a partial, duplicated, or out-of-order write produces an incorrect state that is hard to detect after the fact.
+
+These four carry forward the categories the retired `tdd` tier used to reserve (see the retired-tier note above) — nothing new is being invented, only re-anchored to a property that survives the tier collapse.
+
+The two detections are NOT expected to agree case-by-case, and that is by design:
+- **Text-only (ticket creation)** only has a precise keyword signal for category 3 ("schema") — the same corpus-measured, accepted false-positive rate (2/191 real tickets, both confirmed false positives on inspection) documented in `checkDangerousSurfaceMention`'s own doc comment. The other three categories have no comparably precise keyword signal and are left entirely to the reviewer's real-diff judgement below. It fires regardless of the ticket's declared `verification_tier` — there is no tier this check exempts anymore.
+- **Real-diff (review time)** judges the actual touched files against all four categories, not a keyword match. This is the binding check.
+
+**Concreteness criterion for the named harm** (both consumers apply this, so a reviewer can check it without guessing): the harm must name an **observable consequence on data, state, or a user** — not restate the test's own assertion.
+- Qualifies: "evita que un pago duplicado se registre dos veces si la red falla justo después del commit" — names the consequence (a duplicate charge).
+- Does NOT qualify: "evita que la función devuelva mal el resultado" — this only restates "the assertion checks the return value"; no data/state/user consequence is named.
+
 ### Three rules against empty tests (TASK-213, 2026-08-13 human decision)
 
 Retiring `tdd` did not fix the root defect: a test written by the same agent that wrote the implementation, checked against its own code, confirms what that agent believed — not what the ticket asked for. That is where empty tests come from. Three rules close that gap; the operational detail (escalation mechanics, severities) lives in `agents/developer.md` and `agents/reviewer.md` (with their plugin-root mirrors) — summarized here so all three live in one place a reader can start from:

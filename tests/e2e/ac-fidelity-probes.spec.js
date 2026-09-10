@@ -122,6 +122,10 @@ describe('TASK-189 — AC-fidelity probes replayed as permanent regression specs
 
   // ---------------------------------------------------------------- P5
   // Deliberately NOT hard-blocked (TASK-189 AC4) — advisory WARNING only.
+  // TASK-218 C2/AC5 — also the "protection was not lost" case: a schema
+  // mention + uat-only is exactly the shape the pre-TASK-218 tier-based
+  // check already caught; it must keep producing a warning under the new,
+  // tier-agnostic checkDangerousSurfaceMention.
   it('P5 — a schema-change ticket declared uat-only is ACCEPTED but carries a visible WARNING (advisory, was silent MISS)', async () => {
     const { createTask } = await loadStore();
     const repoDir = makeTmpDir('acfid-p5');
@@ -143,17 +147,59 @@ describe('TASK-189 — AC-fidelity probes replayed as permanent regression specs
 
   // TASK-212 (2026-08-13 human decision) retired the 'tdd' tier. The former
   // "control — a schema-change ticket declared tdd carries NO warning" case
-  // lived here to prove checkTierContentMismatch's `verification_tier ===
-  // 'tdd'` exemption branch (src/task-store.js) — that branch is untouched
-  // (AC5 of this ticket was explicitly ANULADO; the threshold rewrite moved
-  // to TASK-218), but it is now DEAD for any newly-created ticket: createTask
-  // rejects verification_tier: 'tdd' outright (VERIFICATION_TIERS, AC1 of
-  // this ticket) before checkTierContentMismatch ever runs, so the control
-  // case this test proved can no longer be exercised through createTask.
-  // Deleted rather than adapted — it tested that specific now-unreachable
-  // machinery, not a general "no warning" example. The now-reachable
-  // rejection is covered by
-  // tests/e2e/verification-tier.spec.js's createTask_rejects_the_retired_tdd_tier.
+  // that used to live here (proving checkTierContentMismatch's now-deleted
+  // `verification_tier === 'tdd'` exemption branch) tested machinery
+  // createTask makes unreachable on its own (VERIFICATION_TIERS rejects
+  // 'tdd' outright — see tests/e2e/verification-tier.spec.js's
+  // createTask_rejects_the_retired_tdd_tier) — deleted rather than adapted.
+  //
+  // TASK-218 replaces it here with the control cases for the REPLACEMENT
+  // mechanism (checkDangerousSurfaceMention, src/task-store.js — see
+  // CLAUDE.md's "Dangerous surface" section for the definition it audits
+  // against): the harm of losing the old tier-based signal wholesale, and
+  // the harm of the never-shipped TASK-212 AC5 proposal that would have
+  // gone silent on exactly the case that matters most now.
+  it('control (TASK-218) — a schema-change ticket declared tests-after ALSO carries a WARNING (protection preserved; this is exactly the case that would have gone silent under TASK-212 AC5\'s rejected, never-shipped narrower threshold, now that tests-after is the default tier for all real work — harm prevented: a real schema/migration change landing with acceptance criteria that never name the data-corruption or migration risk)', async () => {
+    const { createTask } = await loadStore();
+    const repoDir = makeTmpDir('acfid-p218-tests-after');
+    makeRepoSkeleton(repoDir, {});
+
+    const result = await createTask({
+      repoRoot: repoDir,
+      title: 'TASK-218 schema change at tests-after tier',
+      description: 'Change tasks/schema.json to add a new required field and migrate all existing task files.',
+      acceptance_criteria: ['Schema updated and all task files migrated.'],
+      priority: 'medium',
+      verification_tier: 'tests-after',
+    });
+    expect(result.key).toMatch(/^TASK-\d{3,}$/);
+    expect(Array.isArray(result.warnings)).toBe(true);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toMatch(/schema/i);
+    // C4 — the new advisory never names a tier and never recommends tdd.
+    expect(result.warnings[0]).not.toMatch(/\btier\b/i);
+    expect(result.warnings[0]).not.toMatch(/\btdd\b/i);
+    expect(result.warnings[0]).toMatch(/concrete harm/i);
+  });
+
+  // C3 — harm prevented: a detector that fires on ordinary tickets teaches
+  // the team to ignore it, exactly the noise-vs-signal trade the ticket's
+  // own "why not just adjust the threshold" section warns against.
+  it('control (TASK-218) — a ticket with NO dangerous-surface mention carries ZERO warnings', async () => {
+    const { createTask } = await loadStore();
+    const repoDir = makeTmpDir('acfid-p218-no-mention');
+    makeRepoSkeleton(repoDir, {});
+
+    const result = await createTask({
+      ...base,
+      repoRoot: repoDir,
+      title: 'Ordinary ticket with no dangerous-surface mention',
+      acceptance_criteria: ['The button is blue.'],
+      verification_tier: 'tests-after',
+    });
+    expect(result.key).toMatch(/^TASK-\d{3,}$/);
+    expect(result.warnings).toBeUndefined();
+  });
 
   // ---------------------------------------------------------------- C2
   // (state/sessions/.../ac-fidelity-round3.mjs)

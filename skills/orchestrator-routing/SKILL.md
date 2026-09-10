@@ -811,10 +811,14 @@ preserved), and `agents/reviewer.md`'s "Pre-hand-off checklist verification
 for each of the five on every review, unconditionally — that section was
 never part of the retired split and needed no change here.
 
-The Reviewer's tier-audit (E2, `agents/reviewer.md`) is unaffected — it was
-already orthogonal to depth and already ran regardless; it now simply runs on
-every review, same as before. (TASK-218 owns the audit's own rewrite; not
-touched here.)
+The Reviewer's former tier-audit (E2, `agents/reviewer.md`) is unaffected by
+the depth retirement itself — it already ran regardless of depth, and still
+runs on every review, unconditionally. TASK-218 (2026-08-13 human decision)
+separately rewrote it into the Dangerous-surface gate: it no longer compares
+against the ticket's declared tier at all (see CLAUDE.md's "Dangerous
+surface" section for why a tier comparison stopped being a usable signal once
+`tests-after` became the default tier for all real work), it judges the real
+diff against the four dangerous-surface categories directly.
 
 ## UAT procedure (uat-only and tests-after tickets)
 

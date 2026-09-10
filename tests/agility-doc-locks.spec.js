@@ -21,10 +21,12 @@
 // The five recurring classes are NOT lost: they survive, unconditionally (not
 // depth-gated), in agents/developer.md's Pre-hand-off checklist and
 // agents/reviewer.md's "Pre-hand-off checklist verification" section, both of
-// which the surviving R3 describe blocks below already lock. The
-// Tier-audit (E2) sensor is untouched by this retirement (TASK-218 owns any
-// future rewrite of that section) and is still locked by the surviving
-// describe block below, retitled to drop the now-inaccurate "R2 —" prefix.
+// which the surviving R3 describe blocks below already lock. The former
+// Tier-audit (E2) sensor was untouched by the depth retirement itself
+// (TASK-216) but was separately rewritten by TASK-218 into the
+// Dangerous-surface gate — it no longer compares against the ticket's
+// declared tier at all (see CLAUDE.md's "Dangerous surface" section) — and
+// is still locked by the surviving describe block below, retitled to match.
 // This file is not emptied by the retirement: the R3 half fixes something
 // still real (the pre-hand-off checklist prose), so it stays.
 //
@@ -65,20 +67,39 @@ function normalize(text) {
 }
 
 // ---------------------------------------------------------------------------
-// E2 — Tier-audit (survives the TASK-216 retirement of R2; owned by TASK-218)
+// E2 — Dangerous-surface gate (survives the TASK-216 retirement of R2;
+// rewritten from the tier-based Tier-audit by TASK-218)
 // ---------------------------------------------------------------------------
-describe('E2 — tier-audit referenced in SKILL.md, HIGH "tier misassignment" pinned in reviewer.md', () => {
-  it('skill_references_the_tier_audit', () => {
+describe('E2 — dangerous-surface gate referenced in SKILL.md, HIGH finding pinned in reviewer.md (TASK-218)', () => {
+  it('skill_references_the_dangerous_surface_gate', () => {
     const text = load(SKILL_PATH);
-    expect(/tier-audit/i.test(text), 'SKILL.md must reference the tier-audit').toBe(true);
+    expect(/dangerous-surface/i.test(text), 'SKILL.md must reference the dangerous-surface gate').toBe(true);
   });
 
-  it('reviewer_pins_the_tier_misassignment_high_finding', () => {
+  it('reviewer_pins_the_dangerous_surface_gate_section_and_high_severity', () => {
     const text = load(REVIEWER_PATH);
     expect(
-      text.includes('HIGH "tier misassignment" finding'),
-      'reviewer.md must pin the exact HIGH "tier misassignment" finding name',
+      text.includes('### Dangerous-surface gate'),
+      'reviewer.md must carry the Dangerous-surface gate section heading',
     ).toBe(true);
+    expect(
+      /is a \*\*HIGH\*\* finding here/.test(text),
+      'reviewer.md must pin the unnamed/vague dangerous-surface harm finding as HIGH',
+    ).toBe(true);
+  });
+
+  it('reviewer_no_longer_carries_the_retired_depth_phrases_on_this_section', () => {
+    const text = load(REVIEWER_PATH);
+    expect(text.includes('runs at both depths'), 'the depth-scoping phrase must be gone').toBe(false);
+    expect(
+      text.includes('review_depth rubric never overrides this check'),
+      'the depth-override phrase must be gone',
+    ).toBe(false);
+  });
+
+  it('reviewer_no_longer_mentions_tier_misassignment', () => {
+    const text = load(REVIEWER_PATH);
+    expect(text.includes('tier misassignment'), 'the retired tier-based finding name must be gone').toBe(false);
   });
 });
 

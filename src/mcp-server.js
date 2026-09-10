@@ -533,8 +533,9 @@ export function createServer({
     {
       description:
         'Create a new task (status "todo"). Returns { key, path }, plus an ' +
-        'optional advisory `warnings` array (e.g. a tier-vs-content mismatch ' +
-        'signal) when present — never blocking, but worth surfacing to the human.',
+        'optional advisory `warnings` array (e.g. a dangerous-surface mention ' +
+        'signal — see CLAUDE.md\'s "Dangerous surface" section) when present ' +
+        '— never blocking, but worth surfacing to the human.',
       inputSchema: {
         title: z.string(),
         description: z.string(),

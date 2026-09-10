@@ -871,46 +871,67 @@ function validateAcceptanceCriteria(acceptance_criteria) {
   }
 }
 
-// TASK-189 AC4 — mechanically-detectable subset of CLAUDE.md's verification-tier
-// rubric ("tdd is RESERVED for ... schema/state-schema changes"). Deliberately
-// narrow: it matches only explicit mentions of an actual schema FILE/change,
-// not the broader "security-sensitive logic, parsing, ... state mutation with
-// real edge-risk" categories in the rubric, which have no comparably precise
-// keyword signal and would carry a much higher false-positive rate. Verified
-// against this repo's real tasks/ corpus (191 tickets): 2 flagged, both
+// TASK-189 AC4 (retargeted by TASK-218 — see CLAUDE.md's "Dangerous surface"
+// section, the single place the four dangerous-surface categories and the
+// concreteness criterion for a named harm are defined; this comment and
+// checkDangerousSurfaceMention's below both cross-reference that section
+// rather than repeating it) — mechanically-detectable subset of category 3
+// ("schema or state-schema changes"). Deliberately narrow: it matches only
+// explicit mentions of an actual schema FILE/change, not the other three
+// dangerous-surface categories (security-sensitive logic, parsing, state
+// mutation with real edge-risk), which have no comparably precise keyword
+// signal and would carry a much higher false-positive rate. Verified against
+// this repo's real tasks/ corpus (191 tickets): 2 flagged, both
 // confirmed-by-inspection false positives on manual review (TASK-130 explicitly
 // reasons its uat-only tier for authoring pack DATA that merely *conforms to*
 // an existing schema, not a schema change; TASK-179's description contains the
 // literal negated phrase "NO schema change", which this simple keyword match
 // cannot distinguish from an affirmative one) — the known blind spot this rule
 // does NOT try to catch: negation ("no schema change", "not a schema change"),
-// or any schema-risk category outside "schema" keyword hits. This is
-// acceptable ONLY because the signal is advisory (see checkTierContentMismatch
-// below) and 2/191 is well within a tolerable noise floor for a WARNING that
-// never blocks.
+// or any dangerous-surface category outside "schema" keyword hits. This is
+// acceptable ONLY because the signal is advisory (see
+// checkDangerousSurfaceMention below) and 2/191 is well within a tolerable
+// noise floor for a WARNING that never blocks.
 const SCHEMA_CHANGE_RE = /\bschema\.json\b|\bstate[- ]schema\b|\bschema\s+(?:change|changes|migration|mutation)\b/i;
 
 /**
- * TASK-189 AC4 — advisory-only heuristic: a ticket whose title/description
- * mentions an explicit schema-file change while declaring a verification_tier
- * lighter than 'tdd' (the rubric's reserved tier for schema/state-schema
- * changes) produces a WARNING string. NEVER throws — the check is not
- * decidable (see the module comment above for the false-positive rate this
- * accepts), so this must stay advisory per TASK-189 AC4's explicit mandate.
- * Absent verification_tier defaults to 'tdd' (CLAUDE.md's documented
- * backward-compatible fallback), so an omitted tier never triggers this.
- * Returns an array (empty when nothing fires) so createTask can splice it
- * straight into a `warnings` field on its return value.
+ * TASK-218 — renamed from checkTierContentMismatch, which it replaces
+ * entirely (not just a threshold tweak — see CLAUDE.md's "Dangerous surface"
+ * section for why a tier-based comparison stopped being a usable signal once
+ * `tests-after` became the default tier for all real work: a tier-based rule
+ * either fires on nearly everything, or — if narrowed the way TASK-212's now-
+ * annulled AC5 had proposed — goes silent on exactly the case that matters,
+ * a schema change declared the new default tier). Same underlying mechanism
+ * as before (a keyword match against title/description via SCHEMA_CHANGE_RE,
+ * same accepted false-positive rate — see that constant's own doc comment),
+ * but DIFFERENT in both trigger and message:
+ *   - UNCONDITIONAL on verification_tier — it used to skip when the tier was
+ *     'tdd' or undefined; there is no tier this exempts anymore, so it fires
+ *     purely off the text match regardless of what tier the ticket declares.
+ *   - Advises the caller to name the concrete harm in the acceptance
+ *     criteria (see CLAUDE.md's "Dangerous surface" section for the
+ *     concreteness criterion — an observable consequence on data, state, or
+ *     a user, not a restated assertion) instead of opining on whether the
+ *     declared tier is "too light" — there is no longer a tier judgement to
+ *     make. `agents/reviewer.md`'s Dangerous-surface gate is what actually
+ *     audits for the named harm at review time; this function only advises
+ *     at creation time.
+ * NEVER throws — still not decidable (see the module comment above
+ * SCHEMA_CHANGE_RE for the false-positive rate this accepts), so this stays
+ * advisory, same mandate as before (TASK-189 AC4). Returns an array (empty
+ * when nothing fires) so createTask can splice it straight into a `warnings`
+ * field on its return value.
  */
-function checkTierContentMismatch({ title, description, verification_tier }) {
-  if (verification_tier === undefined || verification_tier === 'tdd') return [];
+function checkDangerousSurfaceMention({ title, description }) {
   const text = `${title || ''}\n${description || ''}`;
   if (!SCHEMA_CHANGE_RE.test(text)) return [];
   return [
-    `verification_tier "${verification_tier}" may be too light — the title/description mentions `
-      + 'a schema change, and CLAUDE.md reserves "tdd" for schema/state-schema changes. This is '
-      + 'an advisory signal only (not a block): re-check the tier assignment, or ignore if the '
-      + 'match is a false positive (e.g. negated, or describing data that merely conforms to an '
+    'This ticket\'s title/description mentions a schema change — dangerous surface (see CLAUDE.md\'s '
+      + '"Dangerous surface" section). Make sure the acceptance criteria name the concrete harm this '
+      + 'change could cause: an observable consequence on data, state, or a user, not a restatement of '
+      + 'a test assertion — the Reviewer\'s Dangerous-surface gate audits for exactly that at review '
+      + 'time. This is advisory only (never a block): re-check the acceptance criteria, or ignore if '
+      + 'the match is a false positive (e.g. negated, or describing data that merely conforms to an '
       + 'existing schema rather than changing one).',
   ];
 }
@@ -1598,7 +1619,7 @@ export async function createTask({
   // included in the return value (never persisted into the task file — it is
   // not a schema field) so it stays visible to whoever reads createTask's/
   // create_task's result without touching on-disk shape.
-  const warnings = checkTierContentMismatch({ title, description, verification_tier });
+  const warnings = checkDangerousSurfaceMention({ title, description });
 
   return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
 }

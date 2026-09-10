@@ -26182,13 +26182,12 @@ function validateAcceptanceCriteria(acceptance_criteria) {
   }
 }
 var SCHEMA_CHANGE_RE = /\bschema\.json\b|\bstate[- ]schema\b|\bschema\s+(?:change|changes|migration|mutation)\b/i;
-function checkTierContentMismatch({ title, description, verification_tier }) {
-  if (verification_tier === void 0 || verification_tier === "tdd") return [];
+function checkDangerousSurfaceMention({ title, description }) {
   const text = `${title || ""}
 ${description || ""}`;
   if (!SCHEMA_CHANGE_RE.test(text)) return [];
   return [
-    `verification_tier "${verification_tier}" may be too light \u2014 the title/description mentions a schema change, and CLAUDE.md reserves "tdd" for schema/state-schema changes. This is an advisory signal only (not a block): re-check the tier assignment, or ignore if the match is a false positive (e.g. negated, or describing data that merely conforms to an existing schema rather than changing one).`
+    `This ticket's title/description mentions a schema change \u2014 dangerous surface (see CLAUDE.md's "Dangerous surface" section). Make sure the acceptance criteria name the concrete harm this change could cause: an observable consequence on data, state, or a user, not a restatement of a test assertion \u2014 the Reviewer's Dangerous-surface gate audits for exactly that at review time. This is advisory only (never a block): re-check the acceptance criteria, or ignore if the match is a false positive (e.g. negated, or describing data that merely conforms to an existing schema rather than changing one).`
   ];
 }
 var UAT_VERDICT_WORD_RE = /\bpass\b/i;
@@ -26464,7 +26463,7 @@ async function createTask({
   await atomicWriteFiles([
     { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
   ]);
-  const warnings = checkTierContentMismatch({ title, description, verification_tier });
+  const warnings = checkDangerousSurfaceMention({ title, description });
   return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
 }
 
@@ -27054,7 +27053,7 @@ function createServer({
   server.registerTool(
     "create_task",
     {
-      description: 'Create a new task (status "todo"). Returns { key, path }, plus an optional advisory `warnings` array (e.g. a tier-vs-content mismatch signal) when present \u2014 never blocking, but worth surfacing to the human.',
+      description: 'Create a new task (status "todo"). Returns { key, path }, plus an optional advisory `warnings` array (e.g. a dangerous-surface mention signal \u2014 see CLAUDE.md\'s "Dangerous surface" section) when present \u2014 never blocking, but worth surfacing to the human.',
       inputSchema: {
         title: external_exports.string(),
         description: external_exports.string(),
