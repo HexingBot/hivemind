@@ -163,6 +163,22 @@ Rules:
 - For JS/node projects, `generateUseCaseSuite` also emits skeleton `.spec.js` files with `describe` + `it.todo` stubs under `tests/use-cases/<slug>.spec.js`, one per primary use case. Non-JS projects receive the manifest only.
 - A meta-spec in `tests/use-case-policy.spec.js` validates that every spec path referenced in `USE-CASES.md` exists on disk. This is a permanent sensor that blocks the gate if the manifest rots.
 
+### Test retirement policy (TASK-215, 2026-09-10 human decision)
+
+The default is **CONSERVAR**. A test file (anywhere under `tests/`, not only `tests/use-cases/`) is a *candidate* for deletion only if it fails **all three** of these criteria — failing one or two is not enough:
+
+1. **No live acceptance criterion** — no open or closed ticket's acceptance criteria still depends on the behavior the file locks.
+2. **No nameable harm** — deleting it would not let any concrete harm to data, state, or a user go undetected (see the Concreteness criterion in "Dangerous surface" above for what "nameable" means here).
+3. **No use case** — it does not cover an entry in `tests/use-cases/USE-CASES.md`.
+
+Even when a file fails all three, it is **not** deleted unless a concrete sibling spec is named that covers the same path (same behavior, same failure mode) — deletion without a named sibling is not a cleanup, it is a coverage hole with no sensor left to catch it. If no sibling exists, the file does not get deleted: it moves to **DOUBT** and is reported to the human with the reason, per AC7 — it is never resolved by "seems redundant" or by an implicit criterion.
+
+A green `npm run test:all` **before and after** a retirement is a necessary check, never the proof that the retirement was safe: a suite that is green after deleting the one file that covered an error path is *expected* to stay green, because nothing else exercises that path anymore — the gate cannot tell "nothing broke" apart from "nothing is watching." Absence of red is not evidence of safety here.
+
+This extends to the whole suite the rule the "Use-case suite" section above already states for `tests/use-cases/` alone — "suite size tracks product surface, not ticket count" — rather than restating it.
+
+(TASK-215's own classification pass applied this policy to all 110 files then under `tests/e2e/` and found zero candidates: every file failed at most one or two of the three criteria, never all three. See the ticket's artifacts for the full per-file table.)
+
 ### Rules
 
 - **The scaled gate applies per ticket:** the Developer runs `npm run test:changed` plus `npm test` (fast tier, ~2s test-execution / ~7s wall-clock) plus any affected e2e specs explicitly named at hand-off. The Reviewer re-runs the equivalent selection against the committed diff with `npm run test:since -- <base-ref>` plus `npm test` plus the named e2e specs — a green Developer hand-off must reproduce as green here. Because the fast tier runs once at hand-off and again at review, budget roughly its wall-clock figure twice per ticket, not once. The Developer proposes the affected-e2e list; the Reviewer independently assesses its sufficiency and may expand it or escalate to the Orchestrator if under-scoped. `npm test` is mandatory at both steps because the `--changed`/`--since` import graph is blind to files read via `fs` rather than imported (agent/skill parity sensors, doc-lock specs) — an md-only ticket would otherwise run zero sensors. Scoped test selection (`test:changed` / `test:since`) is what keeps per-ticket verification time bounded to the affected specs; the fast tier's own startup/collect cost still scales with spec-file count as the suite grows, so its wall-clock figure is not fixed forever.
