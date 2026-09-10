@@ -57,19 +57,17 @@ vi.mock('node:child_process', () => ({
 }));
 
 // Partial fs mock — same precedent as tests/e2e/worktree-handback-lstat-
-// failopen.spec.js: lstatSync and realpathSync.native are wrapped (TASK-211
-// adds the latter, for the findWorktreeEntry uncanonicalizable-path spec
-// below); every other fs call (this file's own mkdirSync/realpathSync, and
-// worktree-handback.js's own rmSync) passes straight through to the real
-// implementation.
+// failopen.spec.js: only lstatSync is wrapped; every other fs call (this
+// file's own mkdirSync/realpathSync, and worktree-handback.js's own rmSync
+// and realpathSync.native) passes straight through to the real
+// implementation. The uncanonicalizable-worktreePath case (this file's last
+// test) is exercised via a REAL, never-created path instead — no
+// realpathSync.native mock needed for it.
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal();
-  const realpathSyncMock = vi.fn(real.realpathSync);
-  realpathSyncMock.native = vi.fn(real.realpathSync.native);
   return {
     ...real,
     lstatSync: vi.fn(real.lstatSync),
-    realpathSync: realpathSyncMock,
   };
 });
 
@@ -86,7 +84,6 @@ afterEach(() => {
   // worktree-handback-lstat-failopen.spec.js: every test below targets a
   // distinct path, so a leftover conditional override is a no-op elsewhere.
   lstatSync.mockClear();
-  realpathSync.native.mockClear();
 });
 
 /** Same normalization the real e2e worktree specs use: realpath + forward

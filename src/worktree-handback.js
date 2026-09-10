@@ -447,8 +447,12 @@ export function probeMergeHead(repoRoot, label) {
  * INCONCLUSIVE comparison into a hard failure at every call site, including
  * ones that can legitimately still decide something from other evidence —
  * see `findWorktreeEntry` and `probeWorktreeRegistered` below for how each
- * one now decides what an uncanonicalized value means for ITS specific
- * decision, rather than this function deciding it once for everybody. */
+ * one now decides what an uncanonicalized TARGET value means for ITS
+ * specific decision, rather than this function deciding it once for
+ * everybody. That decision covers the target operand only: whether the
+ * OTHER side of the comparison (git's own reported `wt.path`) also
+ * canonicalized is a separate, still-open question — see the comment at
+ * each call site below (TASK-211 review round, MEDIUM, deferred). */
 export function normalizeForCompare(p) {
   try {
     const resolved = realpathSync.native(p);
@@ -500,6 +504,14 @@ function findWorktreeEntry(repoRoot, worktreePath, label) {
   const listOut = runGitOrThrow(repoRoot, ['worktree', 'list', '--porcelain'], label);
   const worktrees = parseWorktreeList(listOut);
   const target = normalizeForCompare(worktreePath);
+  // TASK-211 review round (MEDIUM, deferred): only `target.canonical` is read
+  // below — `normalizeForCompare(wt.path)`'s own `canonical` tag is ignored.
+  // If git reports `wt.path` in a spelling that itself fails to realpath
+  // (rare: a transient EPERM/EBUSY, or an 8.3/case-variant spelling git
+  // emitted for a registered entry), this can under-match and fall through
+  // to a confident E_WORKTREE_NOT_FOUND when the true answer is "could not
+  // compare", not "confirmed absent". Preexisting, not introduced by this
+  // fix; deliberately deferred rather than fixed here.
   const entry = worktrees.find((wt) => normalizeForCompare(wt.path).value === target.value);
   if (!entry) {
     if (!target.canonical) {
@@ -560,6 +572,12 @@ function probeWorktreeRegistered(repoRoot, worktreePath, label) {
   const listOut = runGitOrThrow(repoRoot, ['worktree', 'list', '--porcelain'], label);
   const worktrees = parseWorktreeList(listOut);
   const target = normalizeForCompare(worktreePath);
+  // TASK-211 review round (MEDIUM, deferred): same gap as findWorktreeEntry
+  // above — only `target.canonical` is read; `normalizeForCompare(wt.path)`'s
+  // own `canonical` tag is ignored. A non-canonical `wt.path` spelling that
+  // itself fails to realpath can under-match and render the benign
+  // 'deregistered' when the true answer is "could not compare". Preexisting,
+  // not introduced by this fix; deliberately deferred rather than fixed here.
   const found = worktrees.some((wt) => normalizeForCompare(wt.path).value === target.value);
   if (found) return 'registered';
   return target.canonical ? 'deregistered' : 'unknown';
