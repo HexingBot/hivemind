@@ -90,7 +90,21 @@
 // record could possibly have matched anything, by construction. This is a
 // TIME-RANGE check, never an identity guess: it never claims WHICH null
 // record is this ticket's own, only that correlation was demonstrably
-// impossible for every record captured in that stretch. When neither side
+// impossible for every record captured in that stretch.
+//
+// TASK-217 FIX ROUND (2026-09-10, Case 1 — HIGH, code made to agree with the
+// paragraph above instead of contradicting it): this check (and the
+// COVERAGE WINDOW check above it) is evaluated ONLY when no record matching
+// this exact ticket key was found. A matching record proves correlation WAS
+// possible for this ticket — the opposite of what both pre-checks exist to
+// explain — so once one is found, both are skipped entirely and the outcome
+// is decided by comparing verdict tokens instead. Pre-fix, the code ran both
+// pre-checks unconditionally: a single UNRELATED null-ticketed reviewer
+// record captured inside a correlation-broken window could silently launder
+// a real verdict-mismatch for this ticket into unverifiable/
+// no-ticket-correlation, hiding the one outcome (NOT_CORROBORATED) this
+// module exists to surface. See auditReviewerVerdictProvenance's body for
+// the fix. When neither side
 // carries a usable timestamp (comment has no parseable `at`, or no reviewer
 // record carries a parseable `captured_at`), this collapses back to the
 // original coarse check: are ALL reviewer records in the whole log
@@ -344,6 +358,41 @@ function isTicketCorrelationBrokenAt(reviewerRecords, atTime) {
   return windows.some((w) => atTime >= w.start && (w.end === null || atTime < w.end));
 }
 
+/**
+ * TASK-217 FIX ROUND (2026-09-10, Case 3 — LOW, real correctness bug): pick
+ * the matching record with the LATEST `captured_at`, never "the last one in
+ * array order". `readSubagentLog` concatenates records across every
+ * `state/sessions/<id>/` directory in `readdirSync` order, which is NOT
+ * guaranteed to correlate with wall-clock time — with two session dirs on
+ * disk, the array-order-last matching record can be the OLDER one. Picking
+ * it produced a FALSE verdict-mismatch after a legitimate RC-loop re-review
+ * (the earlier, stale record — e.g. an initial BLOCK — outranking the real,
+ * later PASS purely because of directory read order).
+ *
+ * DECISION on records with no parseable `captured_at` (explicitly stated,
+ * not left implicit, per the ticket's instruction): such a record must
+ * neither silently WIN (it has no timestamp to compare, so it can never beat
+ * a record that does have one) nor silently VANISH (it stays eligible and
+ * still wins ties against other timestamp-less records, using their
+ * original array/read order as the tiebreak — the only ordering information
+ * available for it). Concretely: sort ascending treating an unparseable
+ * `captured_at` as `-Infinity`, with the original array index as the
+ * tiebreaker, and take the last element.
+ *
+ * @param {object[]} records non-empty array of matching log records.
+ * @returns {object}
+ */
+function pickLatestRecordByCapturedAt(records) {
+  const ranked = records.map((r, i) => ({ r, i, ms: parseTimestamp(r && r.captured_at) }));
+  ranked.sort((a, b) => {
+    const am = a.ms === null ? -Infinity : a.ms;
+    const bm = b.ms === null ? -Infinity : b.ms;
+    if (am !== bm) return am - bm;
+    return a.i - b.i;
+  });
+  return ranked[ranked.length - 1].r;
+}
+
 function unverifiable(reason, message, extra = {}) {
   return { status: PROVENANCE_STATUS.UNVERIFIABLE, reason, message, ...extra };
 }
@@ -401,37 +450,53 @@ export function auditReviewerVerdictProvenance({ task, log }) {
   const lastComment = reviewerComments[reviewerComments.length - 1];
   const lastCommentAt = parseTimestamp(lastComment.at);
 
-  // COVERAGE WINDOW (see module header): a comment that predates the log's
-  // own earliest captured_at could not possibly have been recorded, hook or
-  // no hook. Skipped (never guessed) when either side lacks a usable
-  // timestamp.
-  const logCoverageStart = computeLogCoverageStart(records);
-  if (lastCommentAt !== null && logCoverageStart !== null && lastCommentAt < logCoverageStart) {
-    return unverifiable(
-      'out-of-log-coverage',
-      'el comentario author "reviewer" es anterior al registro mas antiguo de todo '
-        + `el log (captured_at ${new Date(logCoverageStart).toISOString()}): el hook `
-        + 'SubagentStop (TASK-219) todavia no corria en este repo cuando se escribio '
-        + 'este comentario, asi que la ausencia de registro no dice nada sobre si el '
-        + 'veredicto fue fiel.',
-    );
-  }
-
-  // KNOWN GAP #1 (see module header): ticket correlation may be broken for
-  // the specific stretch of time this comment falls in, even when it works
-  // fine elsewhere in the same log.
-  if (isTicketCorrelationBrokenAt(reviewerRecords, lastCommentAt)) {
-    return unverifiable(
-      'no-ticket-correlation',
-      'el bundle de sesion tenia active_task en null cuando corrieron los '
-        + 'subagentes reviewer de esa ventana de tiempo, asi que la correlacion por '
-        + 'ticket esta rota para ese tramo del log, no solo para este ticket '
-        + '(ver KNOWN GAP #1 en el header del modulo).',
-    );
-  }
-
+  // TASK-217 FIX ROUND (2026-09-10, Case 1 — HIGH): compute matchingRecords
+  // BEFORE the two pre-checks below, and skip both entirely when a record
+  // for THIS ticket already exists. Both pre-checks exist solely to EXPLAIN
+  // AN ABSENCE (see module header, COVERAGE WINDOW and KNOWN GAP #1) — they
+  // have no meaning once a real, correlated record for this exact ticket is
+  // present. Pre-fix, an UNRELATED null-ticketed reviewer record captured
+  // inside the correlation-broken window could silently launder a real
+  // verdict-mismatch into unverifiable/no-ticket-correlation, because the
+  // window check ran unconditionally regardless of whether this ticket's own
+  // record had already been found. A matching record PROVES correlation was
+  // possible for this ticket, which is exactly what the module header's own
+  // KNOWN GAP #1 text says ("it never claims WHICH null record is this
+  // ticket's own, only that correlation was demonstrably impossible for
+  // every record captured in that stretch") — code now agrees with that
+  // text instead of contradicting it.
   const matchingRecords = reviewerRecords.filter((r) => r.ticket === ticketKey);
+
   if (matchingRecords.length === 0) {
+    // COVERAGE WINDOW (see module header): a comment that predates the log's
+    // own earliest captured_at could not possibly have been recorded, hook or
+    // no hook. Skipped (never guessed) when either side lacks a usable
+    // timestamp.
+    const logCoverageStart = computeLogCoverageStart(records);
+    if (lastCommentAt !== null && logCoverageStart !== null && lastCommentAt < logCoverageStart) {
+      return unverifiable(
+        'out-of-log-coverage',
+        'el comentario author "reviewer" es anterior al registro mas antiguo de todo '
+          + `el log (captured_at ${new Date(logCoverageStart).toISOString()}): el hook `
+          + 'SubagentStop (TASK-219) todavia no corria en este repo cuando se escribio '
+          + 'este comentario, asi que la ausencia de registro no dice nada sobre si el '
+          + 'veredicto fue fiel.',
+      );
+    }
+
+    // KNOWN GAP #1 (see module header): ticket correlation may be broken for
+    // the specific stretch of time this comment falls in, even when it works
+    // fine elsewhere in the same log.
+    if (isTicketCorrelationBrokenAt(reviewerRecords, lastCommentAt)) {
+      return unverifiable(
+        'no-ticket-correlation',
+        'el bundle de sesion tenia active_task en null cuando corrieron los '
+          + 'subagentes reviewer de esa ventana de tiempo, asi que la correlacion por '
+          + 'ticket esta rota para ese tramo del log, no solo para este ticket '
+          + '(ver KNOWN GAP #1 en el header del modulo).',
+      );
+    }
+
     return notCorroborated(
       'no-matching-log-record',
       'hay comentario author "reviewer" en el ticket pero ningun registro del log '
@@ -439,7 +504,7 @@ export function auditReviewerVerdictProvenance({ task, log }) {
     );
   }
 
-  const lastRecord = matchingRecords[matchingRecords.length - 1];
+  const lastRecord = pickLatestRecordByCapturedAt(matchingRecords);
 
   const commentVerdict = extractVerdictToken(lastComment.body);
   const recordVerdict = extractVerdictToken(lastRecord.last_assistant_message);

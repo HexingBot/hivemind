@@ -13,11 +13,30 @@
 //             without any transcription step.
 //
 // Regla 3 (TASK-213): 8 acceptance criteria on this ticket -> cap is 8 new
-// specs. This file uses 6 (see the "coverage window" spec added in the
-// TASK-217 fix round below); two further e2e specs cover the CLI layer (see
+// specs. This file used 6 (see the "coverage window" spec added in the first
+// TASK-217 fix round); two further e2e specs cover the CLI layer (see
 // tests/e2e/audit-reviewer-verdict-cli.spec.js) — 8 of 8, at the cap.
 //
-// FIX ROUND (2026-09-10) — the empty-result collapse this ticket's own
+// TASK-217 SECOND FIX ROUND (2026-09-10, Regla 3 cap exceeded WITH
+// justification, pre-authorized by the human): an independent reviewer
+// proved, by mutation, that the first fix round's own "coverage window and
+// time-windowed ticket correlation" spec (below) was VACUOUS for the
+// time-range comparison it claims to lock — all 6 pre-existing unit
+// assertions passed against a mutated isTicketCorrelationBrokenAt whose body
+// was reduced to `return windows.length > 0;` (the entire atTime-in-window
+// comparison deleted). That is not test accretion, it is the sensor the cap
+// already assumed existed: the pre-existing specs did not exercise (a) a
+// comment safely outside a null-ticket window that exists elsewhere in the
+// log, or (b) a comment inside such a window that nonetheless has a real
+// matching record for its own ticket (a live HIGH the reviewer reproduced
+// against the real module: a single unrelated null-ticketed record could
+// launder a genuine verdict-mismatch into unverifiable/no-ticket-correlation
+// — see auditReviewerVerdictProvenance's body for the fix). Four more specs
+// were added below to close both gaps plus a related LOW (Case 3: the
+// matching record compared must be picked by latest captured_at, not array
+// order) — 12 of 8 at the cap, 4 over, justified above.
+//
+// FIRST FIX ROUND (2026-09-10) — the empty-result collapse this ticket's own
 // contract was supposed to prevent, found by running the real CLI against
 // this repo's real board: 49 of 52 examined tickets came back
 // NOT_CORROBORATED, and inspection showed the overwhelming majority were
@@ -222,5 +241,146 @@ describe('FIX ROUND — coverage window and time-windowed ticket correlation', (
     const resultB = auditReviewerVerdictProvenance({ task: midWindowTask, log: windowedLog });
     expect(resultB.status).toBe(PROVENANCE_STATUS.UNVERIFIABLE);
     expect(resultB.reason).toBe('no-ticket-correlation');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. FIX ROUND (2026-09-10, Case 1 HIGH + Case 2 MEDIUM) — regression locks
+// for a reviewer's live reproduction: the pre-TASK-217-fix-round unit specs
+// above never exercised (a) a comment whose `at` falls OUTSIDE a null-ticket
+// window that exists elsewhere in the same log, or (b) a comment INSIDE a
+// window that nonetheless has a real matching record for its own ticket.
+// The reviewer proved this by mutating isTicketCorrelationBrokenAt's body to
+// `return windows.length > 0;` (deleting the atTime-in-window comparison
+// entirely) and replaying all 6 pre-fix-round unit assertions above — all 6
+// still passed.
+//
+// Regla 2 harm line: without sub-case (a), a comment timestamped safely
+// outside a correlation-broken stretch can still be misreported as
+// unverifiable/no-ticket-correlation whenever ANY null-ticketed window
+// exists anywhere else in the log, silently hiding a real
+// not-corroborated/no-matching-log-record finding. Without sub-case (b) —
+// this is Case 1's own HIGH regression lock — an unrelated null-ticketed
+// record captured inside a correlation-broken window can launder a REAL
+// verdict-mismatch (a reviewer's BLOCK reported to the ticket as PASS) into
+// "could not be checked", so nobody notices the drift.
+//
+// RED-GREEN EVIDENCE (do not remove — non-vacuity proof):
+//   RED: applied the reviewer's exact mutation (isTicketCorrelationBrokenAt's
+//        body reduced to `return windows.length > 0;`) and re-ran this file
+//        — the outside-window assertion failed (`no-matching-log-record`
+//        expected, `no-ticket-correlation` returned, because `windows.length
+//        > 0` ignores atTime entirely and fires for ANY log containing a
+//        null-ticket window, whether or not the comment falls inside it).
+//        Restored immediately after confirming red.
+//   GREEN: re-ran with the real implementation restored — both assertions
+//        passed.
+// ---------------------------------------------------------------------------
+
+describe('FIX ROUND — a match takes priority over the pre-checks, and the window check is a real time-range test', () => {
+  it('a comment outside every null window still reaches the record-matching decision instead of being swallowed as unverifiable', () => {
+    const outsideWindowTask = {
+      key: 'TASK-920',
+      comments: [{ author: 'reviewer', at: '2026-06-01T00:25:00Z', body: '## Verdict\nPASS' }],
+    };
+    const log = {
+      exists: true,
+      records: [
+        { agent_type: 'reviewer', ticket: 'TASK-908', captured_at: '2026-06-01T00:00:00Z', last_assistant_message: '## Verdict\nPASS' },
+        { agent_type: 'reviewer', ticket: null, captured_at: '2026-06-01T00:08:00Z', last_assistant_message: '## Verdict\nPASS' },
+        { agent_type: 'reviewer', ticket: 'TASK-912', captured_at: '2026-06-01T00:20:00Z', last_assistant_message: '## Verdict\nPASS' },
+      ],
+    };
+    const resultC = auditReviewerVerdictProvenance({ task: outsideWindowTask, log });
+    expect(resultC.status).toBe(PROVENANCE_STATUS.NOT_CORROBORATED);
+    expect(resultC.reason).toBe('no-matching-log-record');
+  });
+
+  it('a comment INSIDE an open-ended null-ticket window with a real, earlier matching record for its own ticket reports verdict-mismatch, never unverifiable (Case 1 fix — same shape as the reviewer\'s live reproduction)', () => {
+    // Mirrors the reviewer's exact repro: the real matching record for this
+    // ticket is captured BEFORE an unrelated null-ticketed record opens a
+    // window that is never closed (no later non-null reviewer record exists
+    // to close it) — the comment's own `at` falls inside that open window,
+    // even though a real match for THIS ticket exists earlier in the log.
+    const insideWindowWithMatchTask = {
+      key: 'TASK-915',
+      comments: [{ author: 'reviewer', at: '2026-06-01T00:10:00Z', body: '## Verdict\nPASS' }],
+    };
+    const log = {
+      exists: true,
+      records: [
+        { agent_type: 'reviewer', ticket: 'TASK-915', captured_at: '2026-06-01T00:00:00Z', last_assistant_message: '## Verdict\nBLOCK' },
+        { agent_type: 'reviewer', ticket: null, captured_at: '2026-06-01T00:05:00Z', last_assistant_message: '## Verdict\nPASS' },
+      ],
+    };
+    const resultD = auditReviewerVerdictProvenance({ task: insideWindowWithMatchTask, log });
+    expect(resultD.status).toBe(PROVENANCE_STATUS.NOT_CORROBORATED);
+    expect(resultD.reason).toBe('verdict-mismatch');
+    expect(resultD.commentVerdict).toBe('PASS');
+    expect(resultD.recordVerdict).toBe('BLOCK');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. FIX ROUND (2026-09-10, Case 3 LOW) — the matching record compared must
+// be the one with the LATEST `captured_at`, never "the last one in array
+// order". `readSubagentLog` concatenates records across session directories
+// in `readdirSync` order, which does not correlate with wall-clock order.
+//
+// Regla 2 harm line: with two session dirs on disk, an RC-loop re-review
+// (an initial BLOCK, later superseded by a real PASS) can report a FALSE
+// verdict-mismatch purely because the older record happens to sit last in
+// read order — training a reader to distrust (and eventually ignore) this
+// tool's output on exactly the case that should read as a clean pass.
+//
+// RED-GREEN EVIDENCE (do not remove — non-vacuity proof):
+//   RED: temporarily reverted pickLatestRecordByCapturedAt's call site back
+//        to `matchingRecords[matchingRecords.length - 1]` and re-ran this
+//        file — both assertions below failed: the array-order case reported
+//        not-corroborated/verdict-mismatch (PASS vs BLOCK) instead of
+//        corroborated, and the unparseable-timestamp case reported the same
+//        false mismatch instead of corroborated. Restored immediately after
+//        confirming red.
+//   GREEN: re-ran with the real implementation restored — both assertions
+//        passed.
+// ---------------------------------------------------------------------------
+
+describe('FIX ROUND — the matching record compared is the one with the latest captured_at, not the array-order-last one', () => {
+  it('picks the record with the latest captured_at when the array-order-last record is actually the OLDER one', () => {
+    const task = {
+      key: 'TASK-930',
+      comments: [{ author: 'reviewer', at: '2026-06-02T00:00:00Z', body: '## Verdict\nPASS' }],
+    };
+    const log = {
+      exists: true,
+      records: [
+        // Newer record (real, superseding PASS) appears FIRST in array order
+        // — as would happen if it landed in an earlier-sorted session dir.
+        { agent_type: 'reviewer', ticket: 'TASK-930', captured_at: '2026-06-01T00:10:00Z', last_assistant_message: '## Verdict\nPASS' },
+        // Older record (a stale, already-superseded BLOCK) appears LAST.
+        { agent_type: 'reviewer', ticket: 'TASK-930', captured_at: '2026-06-01T00:00:00Z', last_assistant_message: '## Verdict\nBLOCK' },
+      ],
+    };
+    const result = auditReviewerVerdictProvenance({ task, log });
+    expect(result.status).toBe(PROVENANCE_STATUS.CORROBORATED);
+  });
+
+  it('a matching record with no parseable captured_at never silently outranks one that has a real timestamp, even when it sits last in array order', () => {
+    const task = {
+      key: 'TASK-931',
+      comments: [{ author: 'reviewer', at: '2026-06-02T00:00:00Z', body: '## Verdict\nPASS' }],
+    };
+    const log = {
+      exists: true,
+      records: [
+        { agent_type: 'reviewer', ticket: 'TASK-931', captured_at: '2026-06-01T00:00:00Z', last_assistant_message: '## Verdict\nPASS' },
+        // No captured_at at all, and it sits LAST in array order — under the
+        // old "pick array-order-last" rule this would silently win despite
+        // carrying no timestamp at all.
+        { agent_type: 'reviewer', ticket: 'TASK-931', last_assistant_message: '## Verdict\nBLOCK' },
+      ],
+    };
+    const result = auditReviewerVerdictProvenance({ task, log });
+    expect(result.status).toBe(PROVENANCE_STATUS.CORROBORATED);
   });
 });
