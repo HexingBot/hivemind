@@ -218,6 +218,24 @@
       "label": "Producir la evidencia roja de CI en una rama efimera descartable en vez de degradar los criterios o cerrar sin observar"
     },
     {
+      "id": "decision-20260910-invariante-como-regla-de-clase",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Un invariante que se lleva tres hallazgos seguidos de la misma familia se reescribe como regla de clase con instancias no exhaustivas, no como lista de APIs prohibidas"
+    },
+    {
+      "id": "decision-20260910-no-borrar-tests-sin-hermano-nombrado",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "Ningun test se borra sin nombrar el spec hermano que cubre el mismo camino, y una suite verde nunca es prueba de que un borrado fue seguro"
+    },
+    {
+      "id": "decision-20260910-superficie-peligrosa-reemplaza-senial-de-tier",
+      "type": "decision",
+      "ref": "state/sessions/20260708T154259Z-29a27eda/session.json",
+      "label": "La senial de cuidado deja de derivarse del tier declarado y pasa a ser una auditoria de superficie peligrosa con el danio nombrado, en creacion del ticket y en review"
+    },
+    {
       "id": "ke-a-format-sensor-authoritative-schema",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/a-format-sensor-must-be-checked-against-the-authoritative-schema.md",
@@ -1556,6 +1574,12 @@
       "label": "The context-monitor hooks written into every consumer settings.json use an invalid schema and have never fired"
     },
     {
+      "id": "task-211",
+      "type": "task",
+      "ref": "tasks/TASK-211.json",
+      "label": "Generalizar el invariante de worktree-handback a regla de clase y volver no silenciosa la degradacion de normalizeForCompare"
+    },
+    {
       "id": "task-212",
       "type": "task",
       "ref": "tasks/TASK-212.json",
@@ -1568,10 +1592,28 @@
       "label": "Tres reglas para que los tests dejen de ser vacios"
     },
     {
+      "id": "task-214",
+      "type": "task",
+      "ref": "tasks/TASK-214.json",
+      "label": "UAT en paralelo y siempre visible: alinear la prosa a requires_uat, definir el criterio observable y nombrar la ruta de visibilidad en vivo"
+    },
+    {
+      "id": "task-215",
+      "type": "task",
+      "ref": "tasks/TASK-215.json",
+      "label": "Clasificar la suite e2e contra los criterios de retiro y documentar la politica permanente"
+    },
+    {
       "id": "task-216",
       "type": "task",
       "ref": "tasks/TASK-216.json",
       "label": "Review completo siempre: retirar la rubrica de profundidad y el nivel liviano"
+    },
+    {
+      "id": "task-218",
+      "type": "task",
+      "ref": "tasks/TASK-218.json",
+      "label": "Reemplazar la senial de tier por una auditoria de superficie peligrosa"
     },
     {
       "id": "task-219",
@@ -1620,6 +1662,12 @@
       "type": "task",
       "ref": "tasks/TASK-226.json",
       "label": "Arreglar el patron de gitignore con barra final en los fixtures e2e de worktree"
+    },
+    {
+      "id": "task-227",
+      "type": "task",
+      "ref": "tasks/TASK-227.json",
+      "label": "El costo de la suite e2e crece con los tickets y la politica de retiro no lo alcanza"
     }
   ],
   "edges": [
@@ -2179,6 +2227,11 @@
       "relation": "produced-by"
     },
     {
+      "from": "task-211",
+      "to": "decision-20260910-invariante-como-regla-de-clase",
+      "relation": "produced-by"
+    },
+    {
       "from": "task-212",
       "to": "decision-20260909-storage-schema-preserves-retired-tier",
       "relation": "produced-by"
@@ -2189,8 +2242,18 @@
       "relation": "produced-by"
     },
     {
+      "from": "task-215",
+      "to": "decision-20260910-no-borrar-tests-sin-hermano-nombrado",
+      "relation": "produced-by"
+    },
+    {
       "from": "task-216",
       "to": "decision-20260813-review-completo-siempre",
+      "relation": "produced-by"
+    },
+    {
+      "from": "task-218",
+      "to": "decision-20260910-superficie-peligrosa-reemplaza-senial-de-tier",
       "relation": "produced-by"
     },
     {
@@ -2231,6 +2294,11 @@
     {
       "from": "task-226",
       "to": "decision-20260909-requires-uat-separado-del-tier",
+      "relation": "relates-to"
+    },
+    {
+      "from": "task-227",
+      "to": "decision-20260910-no-borrar-tests-sin-hermano-nombrado",
       "relation": "relates-to"
     }
   ]
