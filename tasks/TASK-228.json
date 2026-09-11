@@ -1,0 +1,32 @@
+{
+  "key": "TASK-228",
+  "title": "Atribuir el registro del hook al ticket en el momento del spawn, no leyendo active_task al final",
+  "description": "Sale del review de TASK-217 (2026-09-10) como recomendacion de follow-up no bloqueante, y ataca la raiz de un ruido medido.\n\nEL DATO MEDIDO. Con la herramienta de corroboracion ya funcionando: 53 comentarios author reviewer examinados, 3 corroborados, 43 no verificables, 7 no corroborados. De esos 7, SEIS son mala atribucion (TASK-211, TASK-215, TASK-222, TASK-223, TASK-224, TASK-226) y UNO solo es un hallazgo real (TASK-218, verdict-mismatch). O sea: seis de cada siete alarmas son falsas, y por una causa unica.\n\nLA CAUSA. src/subagent-log.js resuelve el ticket de cada registro con resolveActiveTicket, que lee active_task del bundle de sesion EN EL MOMENTO EN QUE EL SUBAGENTE TERMINA. Eso responde a que ticket estaba conduciendo el orquestador, no sobre que trabajo el subagente. Con dos tickets en vuelo en paralelo — que es lo normal en este framework — uno de los dos queda archivado bajo la clave del otro. Y es peor que un null: es una clave CONFIADA Y EQUIVOCADA, estructuralmente indistinguible de un veredicto sin respaldo.\n\nPOR QUE NO SE ARREGLA CON UNA HEURISTICA. TASK-217 lo evaluo y lo rechazo con razon: adivinar por proximidad temporal a que ticket pertenece un registro convierte una herramienta de corroboracion en una que fabrica exactamente las correlaciones que existe para detectar. Quedo documentado como GAP CONOCIDO 2 en el header de src/reviewer-verdict-provenance.js, con TASK-211 como instancia validada.\n\nLA DIRECCION. Capturar la atribucion en el SPAWN y no en el stop. Lo que hay que averiguar primero, contra el comportamiento real y no contra la documentacion: que identificadores del subagente estan disponibles en cada punta. El payload de SubagentStop trae agent_id y agent_type como OPCIONALES (verificado en TASK-219), y la herramienta Agent devuelve un identificador al orquestador en el momento del spawn. Si esos dos identificadores son el mismo valor, alcanza con que el orquestador registre el par identificador-ticket al spawnear y que el hook lo resuelva contra ese registro. Si no lo son, o si agent_id no viene siempre, hay que decidir otra cosa — y decirlo, en vez de construir sobre una suposicion.\n\nCRITERIO DE EXITO REAL: que los seis falsos positivos de arriba dejen de serlo sin que TASK-218 deje de estar en rojo.",
+  "acceptance_criteria": [
+    "Esta verificado contra el comportamiento real, no contra la documentacion, que identificador del subagente esta disponible en el spawn y cual llega en el payload de SubagentStop, y si son el mismo valor. Registrar la respuesta aunque sea negativa.",
+    "Si son correlacionables, el registro del hook queda atribuido al ticket que motivo el spawn y no al que el orquestador conducia al terminar. Si NO son correlacionables, se dice explicitamente y se documenta que el gap no se puede cerrar por esta via, en vez de dejarlo implicado.",
+    "La atribucion nunca se adivina por proximidad temporal: si no hay forma de correlacionar, el registro queda con ticket null, que es honesto, y no con una clave confiada y equivocada.",
+    "Medido antes y despues con node bin/audit-reviewer-verdict.js: los seis falsos positivos por mala atribucion se reducen, y TASK-218 sigue reportandose en not-corroborated por verdict-mismatch.",
+    "La advertencia sobre la atribucion que hoy esta escrita en CLAUDE.md (seccion Live visibility) queda actualizada a lo que el mecanismo haga despues de este ticket.",
+    "npm run test:all en verde, dist reconstruido y commiteado si cambio src/ o bin/."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "agentes",
+    "durabilidad",
+    "atribucion",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-10T19:50:45.722Z",
+  "updated_at": "2026-09-10T19:50:45.722Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

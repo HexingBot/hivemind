@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-10T17:02:38.822Z",
+  "generated_at": "2026-09-11T00:51:25.864Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1234,7 +1234,7 @@
     {
       "key": "TASK-211",
       "title": "Generalize worktree-handback's invariant from a banned-API list to a class rule, and make normalizeForCompare's degradation non-silent",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -1252,13 +1252,13 @@
     {
       "key": "TASK-214",
       "title": "UAT en paralelo y siempre visible: que el humano pueda ver qué está pasando en cualquier momento, no sólo al final",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-215",
       "title": "Limpiar la suite: revisar los 106 archivos e2e y borrar los que no cubren ningún caso de uso real",
-      "status": "todo",
+      "status": "done",
       "priority": "medium"
     },
     {
@@ -1270,13 +1270,13 @@
     {
       "key": "TASK-217",
       "title": "El reviewer tiene que poder escribir su propio veredicto: hoy no tiene ninguna herramienta de escritura y los veredictos se pierden",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-218",
       "title": "Reemplazar la señal de tier por una auditoría de superficie peligrosa, para no perder la protección que hoy da checkTierContentMismatch",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {
@@ -1326,6 +1326,18 @@
       "title": "Arreglar el patron de gitignore con barra final en los fixtures e2e de worktree (3 tests rojos en Linux)",
       "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-227",
+      "title": "El costo de la suite e2e sigue creciendo 1:1 con los tickets y la politica de retiro no puede alcanzarlo",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-228",
+      "title": "Atribuir el registro del hook al ticket en el momento del spawn, no leyendo active_task al final",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }

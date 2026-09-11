@@ -2,20 +2,17 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
-  "updated_at": "2026-09-10T01:53:06.722Z",
+  "updated_at": "2026-09-11T00:52:35.339Z",
   "active_task": null,
   "workflow_step": "idle",
-  "next_action": "El conjunto 220-226 esta cerrado y pusheado; no hay trabajo en vuelo. Candidatos de la cola, en el orden que el humano decida: TASK-216 (en todo, figura en depends_on de TASK-220 por serializacion de archivo compartido; debe RELEER reviewer.md porque el paso 2 ya no es el que vio, y tiene ahi el LOW-1 de este review para arreglar barato: la oracion sobre uat-only esta mal redactada); TASK-217 (desmarcar de NO ARRANCAR, su solucion propuesta quedo refutada y TASK-219 le dio mecanismo); TASK-213 y TASK-214 (endurecer criterios y decidir si son uno o dos tickets); el batch de Gate 5 con los 9 borradores de knowledge/proposed/; y la ronda 2 del wargame. Pendiente de board entero, no de un ticket: los siete tickets 220-226 cerraron sin source_tier salvo el 220, y al estar done quedan exentos, asi que el hueco no se cierra solo.",
-  "handoff_summary": "SESION DEL 2026-09-10 (cierre). El conjunto 220-226 quedo COMPLETO: TASK-220 cerrado en esta sesion y los otros seis ya lo estaban. El espejo de reviewer.md lo aplico el operador y esta vez SI con el texto nuevo (sha256 43bd9a67 identico en las dos copias, md5 0882244513751097266bcc24be6eb453, distinto del 38289075 de la sincronizacion vacia de la sesion anterior) — se verifico en ese orden, primero el texto y despues la paridad, que es la leccion de la trampa que costo una sesion. TASK-220: npm test verde 99/1312, review LIGHT APPROVE 0 HIGH / 2 MEDIUM / 1 LOW, UAT de 7 pasos uno por criterio delegado al Orquestador, commit ec7a9b9, nodo de grafo y arista produced-by. Se acciono el MEDIUM-1 del review antes de cerrar: source_tier T1 en TASK-220, porque isExemptTierSurface indulta el archivo en cuanto pasa a done y cerrar sin el habria enterrado una violacion viva. Rama remota ci-evidence/task-224-225 BORRADA de origin con autorizacion del humano; los logs de los tres runs de CI sobreviven. Main pusheado a origin.",
+  "next_action": "Board drenado de trabajo en vuelo. Quedan dos follow-ups en todo que nadie arranco: TASK-227 (costo de la suite e2e que TASK-215 estructuralmente no alcanza) y TASK-228 (hueco de atribucion por ticket del hook SubagentStop, el KNOWN GAP #2 que TASK-217 documento y dejo fuera de alcance). Decidir con el humano si se arrancan, y si corresponde un corte de version por la superficie nueva de TASK-217.",
+  "handoff_summary": "Corrida 2026-09-11. TASK-217 CERRADO (done). La re-review que la sesion anterior habia despachado nunca volvio — el log durable termina en el hand-off del developer de db20d33 a las 00:30 sin ningun registro de reviewer posterior — asi que se re-corrio en contexto fresco: APPROVE, 0 HIGH / 0 MEDIUM / 3 LOW. No hubo tercer HIGH. UAT re-corrido completo contra HEAD (8/8 PASS) porque el guion previo precedia a las rondas 3 y 4 de fix. test:all verde 210/2415. Nodo task-217 agregado al grafo (graph-freshness vuelve a verde) y borrador de conocimiento escrito. Board: 221 done, 0 in_review, 2 todo (TASK-227 y TASK-228, follow-ups minteados y nunca arrancados).",
   "open_questions": [
+    "10 borradores de conocimiento en knowledge/proposed/ esperando el batch de Gate 5 (era 9; TASK-217 agrego uno). Deuda vieja que sigue creciendo.",
     "La receta documentada de rotar-antes-de-agregar en la SKILL de orchestrator-routing es un no-op en el tope exacto si se la corre sin --max-decisions, porque partitionMostRecent conserva las N mas recientes. Esta sesion lo esquivo pasando el flag. Decidir si se corrige la doc, se corrige compactBundleSession, o se deja y amerita ticket.",
-    "TASK-221 dispara el aviso advisory de checkTierContentMismatch por mencionar un cambio de esquema declarandose tests-after. El aviso es correcto bajo la regla vigente y queda obsoleto en cuanto TASK-212 retire el tdd; confirmar que TASK-212 o TASK-218 lo dejan coherente.",
-    "TASK-217 ya tiene mecanismo gracias a TASK-219. Desmarcarlo de NO ARRANCAR y reescribir su solucion propuesta, que fue refutada. Toca reviewer.md, asi que coordinar con TASK-220 al despachar.",
     "Verificar el disparo del hook de TASK-219 por el canal del plugin tras un /plugin update — unico pendiente declarado de su AC6.",
     "9 borradores de conocimiento en knowledge/proposed/ esperando el batch de Gate 5 (deuda vieja que sigue creciendo).",
     "La ronda 2 del wargame sigue debiendose (deuda vieja, no se toco).",
-    "TASK-214: criterios de aceptacion narrativos y no verificables. Endurecerlos antes de despachar.",
-    "TASK-213 y TASK-214 producen artefactos que parecen el mismo (lista de casos observables vs script de UAT). Decidir si son uno o dos.",
     "CABO SUELTO ajeno: TASK-210 afirma que el evento Stop no admite matcher, pero claude doctor lo ACEPTA. Afirmacion heredada-no-verificada, nadie la probo nunca.",
     "Este entorno no tenia node_modules al empezar (restaurado con npm ci). Candidato a explicar el CONNECTION_CLOSED del servidor MCP hivemind-tasks; confirmar si el MCP levanta ahora."
   ],
@@ -92,6 +89,12 @@
     }
   ],
   "subagent_results": [
+    {
+      "agent": "reviewer",
+      "task": "TASK-217",
+      "at": "2026-09-11T00:52:35.339Z",
+      "summary": "TASK-217 APPROVE en contexto fresco. 0 HIGH / 0 MEDIUM / 3 LOW. NO acepto el hand-off por lectura: reprodujo el HIGH de la ronda anterior sobre los datos reales del repo (TASK-221 real vuelve a corroborated; TASK-221 forjado da not-corroborated/verdict-mismatch) y corrio su propio ataque de mutacion sobre copias en /tmp — 4 mutantes KILLED, 2 SURVIVES ambos reportados como LOW con su consecuencia acotada. Verifico las 8 AC una por una con evidencia ejecutada, incluido que el rebuild de dist NO corresponde (verificado, no asumido) y la paridad byte a byte de los dos pares espejo. Juzgo el efecto lateral declarado sobre TASK-214 y lo confirmo GAP #2 legitimo leyendo el log: los registros coincidentes hablan de TASK-217, no de TASK-214. Su LOW mas valioso es la asimetria del header del GAP #2, que documenta la direccion falso-negativa y no la falso-positiva recien validada en vivo — y el falso verde es la direccion mas peligrosa de una herramienta de corroboracion."
+    },
     {
       "agent": "reviewer",
       "task": "TASK-220",

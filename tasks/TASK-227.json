@@ -1,0 +1,32 @@
+{
+  "key": "TASK-227",
+  "title": "El costo de la suite e2e sigue creciendo 1:1 con los tickets y la politica de retiro no puede alcanzarlo",
+  "description": "Sale del review de TASK-215 (2026-09-10) como limite de alcance declarado, no como defecto de ese ticket.\n\nEL DATO. La suite e2e mide entre 31 y 44 segundos de reloj segun la maquina, sobre 110 archivos, para 218 tickets cerrados. El tier rapido son ~3 segundos sobre 99 archivos. El crecimiento sigue la cantidad de tickets, no la superficie del producto.\n\nPOR QUE TASK-215 NO LO RESUELVE, dicho por su propio reviewer. La politica de retiro que quedo documentada es un control de conducta MUERTA, no un control de TAMANIO de suite: su criterio (a) protege todo spec por ticket mientras la conducta siga existiendo, asi que en un repo donde no se retiro ninguna funcionalidad el resultado KEEP=110 era casi inevitable. La politica solo puede achicar la suite DESPUES de que se retire una funcionalidad. Eso no la invalida — evita el borrado ciego, que era el riesgo real — pero deja el problema de costo intacto.\n\nTRES DIRECCIONES CANDIDATAS, ninguna elegida todavia:\n1. Paralelizar o shardear el tier e2e. No toca cobertura.\n2. Partir el tier en dos: los e2e que corren en cada hand-off y los que corren solo en el gate de release.\n3. CONSOLIDAR — no borrar — los specs por ticket dentro de un mismo modulo: fusionar archivos preservando cada assertion. Baja el costo de collect, que escala con la cantidad de ARCHIVOS, sin perder un solo caso. Esta tercera no figura en el artefacto de clasificacion; la aporto el reviewer.\n\nCONDICION DE ARRANQUE. Medir primero donde esta el costo: cuanto es arranque de proceso, cuanto es collect (escala con archivos) y cuanto es ejecucion real (escala con I/O). Sin ese desglose, cualquiera de las tres opciones es una apuesta. Si el costo dominante es collect, la (3) es la de mejor relacion; si es I/O real, la (1).\n\nLO QUE NO SE HACE ACA: borrar tests. Eso ya se evaluo en TASK-215 contra los tres criterios de retiro, archivo por archivo, y dio cero candidatos.",
+  "acceptance_criteria": [
+    "Esta medido y reportado el desglose del costo de la suite e2e entre arranque de proceso, collect y ejecucion real, con numeros medidos y no estimados.",
+    "Esta elegida una de las tres direcciones (paralelizar/shardear, partir el tier, consolidar archivos) con el motivo escrito, y descartadas las otras dos con su motivo.",
+    "La cobertura no baja: ninguna assertion existente se pierde. Si la direccion elegida es consolidar, se demuestra que la cantidad de tests antes y despues es la misma.",
+    "Se reporta el tiempo de reloj de la suite e2e antes y despues, medido en la misma maquina.",
+    "npm run test:all en verde antes y despues, con la cantidad de archivos y de tests anotada en ambos momentos."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "metodologia",
+    "suite",
+    "e2e",
+    "costo",
+    "review-followup"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-10T19:20:01.934Z",
+  "updated_at": "2026-09-10T19:20:01.934Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "marker": "[EXPLICIT]",
+  "source_tier": "T2"
+}

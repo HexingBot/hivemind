@@ -1610,6 +1610,12 @@
       "label": "Review completo siempre: retirar la rubrica de profundidad y el nivel liviano"
     },
     {
+      "id": "task-217",
+      "type": "task",
+      "ref": "tasks/TASK-217.json",
+      "label": "Corroborar el veredicto del reviewer contra el log durable del hook, sin darle herramientas de escritura a nadie"
+    },
+    {
       "id": "task-218",
       "type": "task",
       "ref": "tasks/TASK-218.json",
@@ -2250,6 +2256,11 @@
       "from": "task-216",
       "to": "decision-20260813-review-completo-siempre",
       "relation": "produced-by"
+    },
+    {
+      "from": "task-217",
+      "to": "task-219",
+      "relation": "uses"
     },
     {
       "from": "task-218",

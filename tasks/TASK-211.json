@@ -11,7 +11,7 @@
     "The invariant text change is mirrored wherever it is restated - the module doc, the function and probe JSDoc, both skills/orchestrator-routing/SKILL.md copies byte-identical - since TASK-206 established that every restatement is a lockstep-edit site.",
     "npm run test:all is green; dist rebuilt and committed if bundled source changes, with dist-parity passing."
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "worktree-isolation",
@@ -21,11 +21,30 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "768524b",
+    "e3810c8"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "uat",
+      "at": "2026-09-10T19:08:39.616Z",
+      "body": "1. Leer el encabezado del MODULE INVARIANT, esperar la regla de clase primero y las instancias como no exhaustivas. Observado: src/worktree-handback.js:157 abre con toda operacion con tres desenlaces debe preservar los tres y dice esta es la regla de CLASE, no una lista de APIs prohibidas; lista git status, errores de fs y comparaciones degradadas como instancias explicitamente no exhaustivas. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n2. Llamar a normalizeForCompare con una ruta no canonicalizable, esperar un resultado que obligue a decidir. Observado: devuelve el par etiquetado canonical/value; el llamador no puede comparar sin leer canonical primero. La justificacion de la forma elegida quedo escrita en el JSDoc de la funcion. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n3. Enumerar todos los call sites y ver que cada uno declare que hace si falla la canonicalizacion. Observado: dos call sites de produccion, ambos en el mismo modulo — findWorktreeEntry (lineas 502-503), que era el que TASK-206 NO habia parcheado y ahora lanza E_WORKTREE_PATH_UNCANONICALIZABLE en vez de afirmar ausencia; y probeWorktreeRegistered (562-563), que ahora lee la etiqueta en vez de repetir un realpath propio. El developer corrigio de frente la premisa del ticket: eran dos, no cinco o mas. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n4. Correr la spec nueva contra el codigo previo al fix, esperar rojo por la razon correcta. Observado: con src/worktree-handback.js revertido por stash, 1 failed / 23 skipped, expected E_WORKTREE_NOT_FOUND to be E_WORKTREE_PATH_UNCANONICALIZABLE — falla por el pliegue silencioso viejo, no por un import roto. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n5. Correr la misma spec con el fix aplicado, esperar verde. Observado: verde tras stash pop; test:changed selecciono 6 archivos y 33 tests, todos en verde. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n6. Volver a degradar en silencio a proposito y esperar que el sensor falle. Observado: el ciclo revertir-restaurar de los pasos 4 y 5 es exactamente esa prueba y el sensor conmuta rojo/verde con el fix. No es vacuo. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n7. Diferencia entre las dos copias de SKILL.md, esperar byte-identicas. Observado: diff vacio. No hubo que espejar texto porque las dos copias apuntan al invariante sin re-enunciarlo, y eso quedo declarado en vez de asumido. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n8. Correr npm run test:all, esperar verde. Observado: 208 passed / 1 skipped sobre 209 archivos, 2399 tests, dist-parity incluido en verde. Sin rebuild de dist porque el modulo no esta bundleado, confirmado por grep sobre dist/. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n\nOverall result: PASS"
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-09-10T19:18:23.935Z",
+      "body": "VEREDICTO DEL REVIEWER (contexto fresco, rango f8edcd0..768524b, modelo del gate independiente): PASS.\n\nLos siete AC verifican. Gate corrido por el reviewer: test:since -- f8edcd0 verde con seleccion no vacia (6 archivos / 33 tests), npm test verde (99 archivos / 1311 tests), npm run test:all verde (208 archivos, 2399 tests, dist-parity incluido).\n\nROJO-VERDE REPRODUCIDO DE FORMA INDEPENDIENTE, no leido del hand-off: el reviewer monto en sandbox el modulo de f8edcd0 y el de 768524b sin mutar el repo. El viejo lanza E_WORKTREE_NOT_FOUND (el pliegue benigno) sobre una ruta no canonicalizable; el nuevo lanza E_WORKTREE_PATH_UNCANONICALIZABLE. El sensor no es vacuo y falla por la razon correcta.\n\nCONTEO DE CALL SITES CONFIRMADO: exactamente dos funciones de produccion, ambas en el modulo, cero consumidores fuera. La correccion de la premisa del ticket (decia cinco o mas) es correcta y quedo escalada, no resuelta en silencio.\n\nPREGUNTA CENTRAL DEL TICKET, CONTESTADA: el invariante generaliza de verdad, no cambio una lista de APIs por otra. Abre con la propiedad de clase, marca las tres instancias como conocidas y explicitamente no exhaustivas, y la regla de cierre es agnostica de API. La busqueda activa de reintroduccion de la clase en el fix no encontro ninguna; probeWorktreeRegistered ademas elimino un TOCTOU al derivar unknown de la misma llamada que usa para comparar.\n\nHALLAZGO MEDIUM: el operando wt.path de ambas comparaciones lee value sin leer canonical, y ese diferimiento vivia solo en el hand-off, que es efimero — el patron exacto por el que se perdio el diagnostico de TASK-206. RESUELTO en la ronda de fix e3810c8: comentario en cada uno de los dos sitios nombrando el riesgo residual concreto y su caracter preexistente y diferido, mas el JSDoc de normalizeForCompare acotado para que no prometa mas de lo que las dos funciones cumplen.\n\nHALLAZGO LOW: mock inerte de realpathSync.native en el spec de remocion parcial, resto de un plan anterior, con un comentario que apuntaba a una spec que vive en otro archivo. RESUELTO en la misma ronda: se quito el wiring muerto y se reescribio el comentario para describir lo que el archivo realmente hace.\n\nNOTA DE PROCESO: el reviewer pidio confirmar que el hand-off del developer enumero los cinco items del checklist pre-hand-off, porque su briefing se los relataba en parafrasis. Confirmado por el Orquestador: los cinco estaban enumerados en el hand-off original, con los items 3, 4 y 5 declarados n/a y justificados."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-10T19:18:23.990Z",
+      "body": "CIERRE. El invariante del modulo dejo de ser una lista de APIs prohibidas y paso a ser la regla de clase: toda operacion con tres desenlaces preserva los tres, y no pude responder nunca se renderiza como el desenlace benigno. Las tres instancias conocidas quedan listadas como explicitamente no exhaustivas, que es la parte que importa — el modulo se habia llevado tres HIGH seguidos justamente porque cada autor siguiente alcanzaba una API distinta con la misma forma.\n\nnormalizeForCompare devuelve ahora un par etiquetado y ya no se puede comparar sin decidir que significa una canonicalizacion fallida. Los dos call sites quedaron auditados: findWorktreeEntry, que era el que TASK-206 no habia parcheado, ahora refuta con E_WORKTREE_PATH_UNCANONICALIZABLE en vez de afirmar una ausencia que no puede probar; probeWorktreeRegistered lee la etiqueta en vez de repetir un realpath propio, lo que ademas cerro un TOCTOU.\n\nCORRECCION DE LA PREMISA DEL TICKET, registrada y no silenciada: el ticket afirmaba cinco o mas call sites armados. Son dos. El developer lo escalo en vez de resolverlo por su cuenta y el reviewer lo confirmo por grep contra las dos revisiones.\n\nRonda de fix e3810c8 por el MEDIUM y el LOW del review: el riesgo residual del operando wt.path quedo escrito en el codigo, en los dos sitios, en vez de vivir solo en un hand-off efimero — que es exactamente como se habia perdido el diagnostico de TASK-206. UAT de 8 pasos, todos PASS, verificados por el Orquestador bajo la delegacion registrada en loop_auth. test:all verde: 208 archivos, 2399 tests, dist-parity incluido; sin rebuild de dist porque el modulo no esta bundleado."
+    }
+  ],
   "created_at": "2026-08-06T23:34:16.608Z",
-  "updated_at": "2026-09-10T16:26:09.003Z",
+  "updated_at": "2026-09-10T19:18:23.990Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "marker": "[EXPLICIT]",
