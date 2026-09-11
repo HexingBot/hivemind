@@ -896,9 +896,8 @@ at Workflow step 2 above.
    Overall result: PASS
    <!-- UAT-WORKED-EXAMPLE:END -->
 
-4. **Gate the done-transition.** A ticket with `requires_uat: true` — which
-   includes every `verification_tier: "uat-only"` ticket, since the gate is a
-   union of the two signals — cannot move to `done` without a `uat` comment
+4. **Gate the done-transition.** A ticket the UAT step applies to (see the
+   trigger explained above) cannot move to `done` without a `uat` comment
    that covers every AC with all steps PASS. A failed step sends the ticket
    back to implementation.
 
@@ -1008,9 +1007,18 @@ authoritative for the gate/switch contract.
 2. **UAT verdicts** — tickets with `verification_tier: uat-only` require
    human-confirmed UAT steps. The loop cannot self-satisfy a UAT verdict. This
    loop-mode gate (`src/close-guard.js`'s `loopModeCloseGuard` Gate 2) is
-   tier-scoped only, deliberately narrower than `checkUatGuard`'s union: a
-   `tests-after` ticket with `requires_uat: true` is not covered by this
-   particular gate.
+   tier-scoped only: it checks `task.verification_tier === 'uat-only'`, not
+   the `requires_uat` union `checkUatGuard` uses, and nothing in the code or
+   the ticket record — including TASK-222 AC6, which required any surviving
+   harness/loop difference to be written down with its reason — documents
+   this scoping as intentional, so it is an unjustified gap rather than a
+   deliberate one. The residual is narrow: `loopModeUatCommentGuard` blocks
+   any `author: 'uat'` write in loop mode regardless of tier, and
+   `checkUatGuard` still requires an on-disk, AC-covering `uat` comment
+   before close, so what this gate alone fails to catch is only a
+   `tests-after` + `requires_uat: true` ticket whose `uat` comment was
+   recorded earlier in harness mode without an explicit human verdict
+   marker.
    Gate lifted only by `uat_delegated_to_orchestrator` (human pre-authorizes
    orchestrator-verified steps, each recorded as "PASS — verified by Orchestrator
    at the human's request").
