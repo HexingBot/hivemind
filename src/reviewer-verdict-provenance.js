@@ -44,8 +44,11 @@
 //                          COVERAGE WINDOW below), no record for this ticket
 //                          AND the log's ticket-correlation is itself broken
 //                          for that stretch of time (see KNOWN GAP #1 below),
-//                          no reviewer comment yet, or a verdict token could
-//                          not be extracted from one or both sides. Never
+//                          every matching record for this ticket was captured
+//                          AFTER the comment (reason `comment-predates-record`
+//                          — see auditReviewerVerdictProvenance's body), no
+//                          reviewer comment yet, or a verdict token could not
+//                          be extracted from one or both sides. Never
 //                          reported as either of the other two.
 //
 // COVERAGE WINDOW (TASK-217 fix round, 2026-09-10 — found by running this
@@ -508,31 +511,57 @@ export function auditReviewerVerdictProvenance({ task, log }) {
     );
   }
 
-  const lastRecord = pickLatestRecordByCapturedAt(matchingRecords);
+  // TASK-217 THIRD FIX ROUND (2026-09-10, Case 1 — HIGH, reviewer-reproduced
+  // on this repo's own real data): the SECOND round's fix picked the latest
+  // matching record FIRST and only checked the timestamp constraint
+  // afterward — so a comment with several matching records, some genuinely
+  // comparable (captured before the comment) and some merely mis-filed under
+  // this ticket by KNOWN GAP #2 (captured well after it), had its real,
+  // comparable record thrown away in favor of bailing out entirely, because
+  // pickLatestRecordByCapturedAt always preferred the mis-filed LATER record.
+  // Reproduced live against TASK-221: a true same-round record 287s before
+  // the comment (token PASS) plus four later GAP #2 mis-filed records (1.4-
+  // 1.7h after) made the old code pick the 23:39 one and bail out as
+  // comment-predates-record, discarding real corroboration — and on a forged
+  // comment (opposite verdict), the old code converted a DETECTED
+  // FABRICATION into "could not check", the exact regression this check
+  // exists to prevent.
+  //
+  // Fix: restrict the CANDIDATE SET to records that could plausibly be what
+  // this comment transcribes — captured AT OR BEFORE the comment's own `at`
+  // — BEFORE picking the latest one, instead of picking first and checking
+  // after. Timestamp-less records stay eligible (never silently vanish for
+  // lack of a timestamp — same decision pickLatestRecordByCapturedAt itself
+  // already makes). Only when NO record survives this filter is the comment
+  // genuinely uncheckable against anything for this ticket.
+  const eligibleRecords = lastCommentAt === null
+    ? matchingRecords
+    : matchingRecords.filter((r) => {
+        const c = parseTimestamp(r.captured_at);
+        return c === null || c <= lastCommentAt;
+      });
 
-  // TASK-217 SECOND FIX ROUND (2026-09-10, Case 1 — MEDIUM, found live by the
-  // reviewer against this exact module): a matching record proves
-  // correlation was POSSIBLE, but says nothing about WHICH review round the
-  // comment actually transcribes. A comment whose own `at` predates the
-  // picked record's `captured_at` cannot possibly be a transcription of that
-  // record — the record did not exist yet when the comment was written (the
-  // reviewer's repro: a pre-hook-era comment matched against a later,
-  // unrelated re-review's record). Comparing verdict tokens in that case
-  // manufactures a mismatch out of two different review rounds, the same
-  // false-accusation class this whole fix round exists to kill, reintroduced
-  // in a narrower shape by the match-priority skip above. Reported
-  // unverifiable, never not-corroborated (empty-result contract): this is
-  // "nothing usable to compare against", not "compared and disagreed".
-  // Skipped (never guessed) when either side lacks a usable timestamp.
-  const recordCapturedAt = parseTimestamp(lastRecord.captured_at);
-  if (lastCommentAt !== null && recordCapturedAt !== null && lastCommentAt < recordCapturedAt) {
+  if (eligibleRecords.length === 0) {
+    // Every matching record for this ticket was captured AFTER the comment —
+    // none of them could possibly be what it transcribes (eligibleRecords is
+    // only empty here when every matchingRecords entry has a parseable
+    // captured_at strictly greater than lastCommentAt, so the earliest one
+    // below always has a real timestamp to report).
+    const earliestRecord = matchingRecords.reduce((earliest, r) => {
+      const rc = parseTimestamp(r.captured_at);
+      const ec = parseTimestamp(earliest.captured_at);
+      return ec === null || (rc !== null && rc < ec) ? r : earliest;
+    }, matchingRecords[0]);
+    const earliestCapturedAt = parseTimestamp(earliestRecord.captured_at);
     return unverifiable(
       'comment-predates-record',
-      'el comentario author "reviewer" (at) es anterior al registro que coincide por '
-        + `ticket (captured_at ${new Date(recordCapturedAt).toISOString()}): no puede ser `
-        + 'una transcripcion de un registro que todavia no existia.',
+      'el comentario author "reviewer" (at) es anterior a todos los registros que '
+        + `coinciden por ticket (el mas antiguo: captured_at ${new Date(earliestCapturedAt).toISOString()}): `
+        + 'no puede ser una transcripcion de un registro que todavia no existia.',
     );
   }
+
+  const lastRecord = pickLatestRecordByCapturedAt(eligibleRecords);
 
   const commentVerdict = extractVerdictToken(lastComment.body);
   const recordVerdict = extractVerdictToken(lastRecord.last_assistant_message);

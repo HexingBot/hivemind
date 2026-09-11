@@ -47,6 +47,25 @@
 // two specs below). Two more specs were added, one per finding — 14 of 8 at
 // the cap, 6 over, justified above.
 //
+// TASK-217 FOURTH FIX ROUND (2026-09-10, Regla 3 cap exceeded again WITH
+// justification, pre-authorized by the human): an independent reviewer
+// reproduced, on this repo's OWN real board data (TASK-221), that the third
+// round's own comment-predates-record check ran pickLatestRecordByCapturedAt
+// on the full matchingRecords set BEFORE checking the timestamp constraint —
+// so a real, genuinely-comparable record captured BEFORE the comment was
+// discarded whenever a LATER record (mis-filed under the same ticket key by
+// KNOWN GAP #2 — a stale active_task) also matched by ticket, because the
+// latest-by-captured_at pick always preferred the mis-filed later one and
+// then bailed out entirely instead of comparing against the real match. On
+// forged data (comment flipped to the opposite verdict) this converted a
+// DETECTED FABRICATION into "could not check" — exactly the regression this
+// whole module exists to prevent. Fixed by restricting the candidate set to
+// records captured AT OR BEFORE the comment's own `at` BEFORE picking the
+// latest one (see auditReviewerVerdictProvenance's body). Two more specs
+// were added, one per finding (the HIGH itself, and a MEDIUM survivor on the
+// null-guard added to close it) — 16 of 8 at the cap, 8 over, justified
+// above.
+//
 // FIRST FIX ROUND (2026-09-10) — the empty-result collapse this ticket's own
 // contract was supposed to prevent, found by running the real CLI against
 // this repo's real board: 49 of 52 examined tickets came back
@@ -570,5 +589,116 @@ describe('FIX ROUND (third) — the null-ticket window check locks the open-ende
     });
     expect(resultB.status).toBe(PROVENANCE_STATUS.NOT_CORROBORATED);
     expect(resultB.reason).toBe('no-matching-log-record');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. FOURTH FIX ROUND (2026-09-10, Case 1 — HIGH, reviewer-reproduced on
+// this repo's own real board): the third round's comment-predates-record
+// check picked the LATEST matching record first and only checked the
+// timestamp constraint afterward, so a real, comparable record captured
+// BEFORE the comment was thrown away whenever a LATER record also matched by
+// ticket (the KNOWN GAP #2 shape: a stale active_task mis-files later,
+// unrelated records under this ticket's key). Reproduced live against
+// TASK-221: a true same-round record 287s before the comment (token PASS)
+// plus later GAP #2 mis-filed records made the buggy code discard the real
+// match and bail out as unverifiable — and on forged data (opposite verdict)
+// this converted a DETECTED FABRICATION into "could not check".
+//
+// Regla 2 harm line: without restricting the candidate set BEFORE picking,
+// a genuine reviewer verdict-mismatch (a fabricated or drifted transcription)
+// on a ticket that also happens to have a later, unrelated mis-filed record
+// is silently downgraded from a caught fabrication to "nothing to check" —
+// the exact failure this whole module exists to prevent, and the one the
+// reviewer measured live on TASK-221's real data.
+//
+// RED-GREEN EVIDENCE (do not remove — non-vacuity proof; verified against the
+// actual pre-fix module content committed at 63fcb12, copied to /tmp, never
+// against a reverted copy of the repo file itself):
+//   RED: ran this exact assertion against a copy of src/reviewer-verdict-
+//        provenance.js as it existed at commit 63fcb12 (git show 63fcb12:...)
+//        via a throwaway node script — reported
+//        unverifiable/comment-predates-record (message citing the LATER,
+//        mis-filed record's captured_at) instead of not-corroborated/
+//        verdict-mismatch. The real, earlier, genuinely-comparable BLOCK
+//        record was discarded.
+//   GREEN: ran the same assertion against the real, fixed module (this repo,
+//        as committed in this round) — reported not-corroborated/
+//        verdict-mismatch, commentVerdict PASS, recordVerdict BLOCK (the
+//        earlier record), as expected.
+// ---------------------------------------------------------------------------
+
+describe('FOURTH FIX ROUND — the candidate set is restricted to records at-or-before the comment BEFORE picking the latest one', () => {
+  it('a real, earlier matching record is compared (and a real mismatch reported) even when a later, unrelated record also matches by ticket', () => {
+    const task = {
+      key: 'TASK-960',
+      comments: [{ author: 'reviewer', at: '2026-06-01T00:00:00Z', body: '## Verdict\nPASS' }],
+    };
+    const log = {
+      exists: true,
+      records: [
+        // Real, comparable match — captured BEFORE the comment.
+        { agent_type: 'reviewer', ticket: 'TASK-960', captured_at: '2026-05-31T23:00:00Z', last_assistant_message: '## Verdict\nBLOCK' },
+        // GAP #2 mis-filed record — captured AFTER the comment, same ticket key.
+        { agent_type: 'reviewer', ticket: 'TASK-960', captured_at: '2026-06-02T00:00:00Z', last_assistant_message: '## Verdict\nPASS' },
+      ],
+    };
+    const result = auditReviewerVerdictProvenance({ task, log });
+    expect(result.status).toBe(PROVENANCE_STATUS.NOT_CORROBORATED);
+    expect(result.reason).toBe('verdict-mismatch');
+    expect(result.commentVerdict).toBe('PASS');
+    expect(result.recordVerdict).toBe('BLOCK');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 12. FOURTH FIX ROUND (2026-09-10, Case 3 — MEDIUM, surviving mutation on
+// the code this round added) — the candidate-set filter must treat "the
+// comment has no parseable `at`" as "every matching record is eligible",
+// never as "every matching record is somehow after the comment". Dropping
+// the `lastCommentAt === null ? matchingRecords : ...` guard survives every
+// other spec in this file: `c <= lastCommentAt` with `lastCommentAt === null`
+// coerces `null` to `0`, so any record with a real (post-1970) captured_at
+// fails the filter and gets excluded — flipping EVERY reviewer comment
+// lacking a parseable `at` to unverifiable/comment-predates-record.
+//
+// Regla 2 harm line: without this guard, a reviewer comment with no
+// parseable `at` (a real, unremarkable shape — not every historical comment
+// carries one) can never be corroborated against ANY matching record, no
+// matter how clearly it agrees or disagrees — silently converting a real,
+// checkable verdict-mismatch into "could not check" purely because of a
+// missing timestamp field, not because anything was actually incomparable.
+//
+// RED-GREEN EVIDENCE (do not remove — non-vacuity proof; verified against a
+// COPY of the module under /tmp with the guard deleted, never against a
+// reverted copy of the repo file itself):
+//   RED: copied src/reviewer-verdict-provenance.js, replaced
+//        `const eligibleRecords = lastCommentAt === null ? matchingRecords :
+//        matchingRecords.filter(...)` with the filter call alone (no
+//        null-check branch), ran this exact assertion against the mutated
+//        copy — reported unverifiable/comment-predates-record instead of
+//        not-corroborated/verdict-mismatch.
+//   GREEN: ran the same assertion against the real, unmutated module (this
+//        repo, as committed) — reported not-corroborated/verdict-mismatch,
+//        commentVerdict PASS, recordVerdict BLOCK, as expected.
+// ---------------------------------------------------------------------------
+
+describe('FOURTH FIX ROUND — a comment with no parseable `at` never excludes a real matching record from comparison', () => {
+  it('reports the real verdict-mismatch when the comment has no parseable `at` at all', () => {
+    const task = {
+      key: 'TASK-961',
+      comments: [{ author: 'reviewer', body: '## Verdict\nPASS' }],
+    };
+    const log = {
+      exists: true,
+      records: [
+        { agent_type: 'reviewer', ticket: 'TASK-961', captured_at: '2026-06-01T00:00:00Z', last_assistant_message: '## Verdict\nBLOCK' },
+      ],
+    };
+    const result = auditReviewerVerdictProvenance({ task, log });
+    expect(result.status).toBe(PROVENANCE_STATUS.NOT_CORROBORATED);
+    expect(result.reason).toBe('verdict-mismatch');
+    expect(result.commentVerdict).toBe('PASS');
+    expect(result.recordVerdict).toBe('BLOCK');
   });
 });
