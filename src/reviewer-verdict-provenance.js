@@ -104,9 +104,13 @@
 // a real verdict-mismatch for this ticket into unverifiable/
 // no-ticket-correlation, hiding the one outcome (NOT_CORROBORATED) this
 // module exists to surface. See auditReviewerVerdictProvenance's body for
-// the fix. When neither side
-// carries a usable timestamp (comment has no parseable `at`, or no reviewer
-// record carries a parseable `captured_at`), this collapses back to the
+// the fix.
+//
+// SEPARATELY — this is NOT a further degradation of the match-priority skip
+// just described, it is isTicketCorrelationBrokenAt's OWN internal fallback
+// (~line 354, the `atTime === null` branch): when neither side carries a
+// usable timestamp (comment has no parseable `at`, or no reviewer record
+// carries a parseable `captured_at`), that function collapses back to the
 // original coarse check: are ALL reviewer records in the whole log
 // null-ticketed. The Orchestrator's obligation to keep `active_task` current
 // (see state/README.md's resume contract and CLAUDE.md's RESUME FIRST
@@ -505,6 +509,30 @@ export function auditReviewerVerdictProvenance({ task, log }) {
   }
 
   const lastRecord = pickLatestRecordByCapturedAt(matchingRecords);
+
+  // TASK-217 SECOND FIX ROUND (2026-09-10, Case 1 — MEDIUM, found live by the
+  // reviewer against this exact module): a matching record proves
+  // correlation was POSSIBLE, but says nothing about WHICH review round the
+  // comment actually transcribes. A comment whose own `at` predates the
+  // picked record's `captured_at` cannot possibly be a transcription of that
+  // record — the record did not exist yet when the comment was written (the
+  // reviewer's repro: a pre-hook-era comment matched against a later,
+  // unrelated re-review's record). Comparing verdict tokens in that case
+  // manufactures a mismatch out of two different review rounds, the same
+  // false-accusation class this whole fix round exists to kill, reintroduced
+  // in a narrower shape by the match-priority skip above. Reported
+  // unverifiable, never not-corroborated (empty-result contract): this is
+  // "nothing usable to compare against", not "compared and disagreed".
+  // Skipped (never guessed) when either side lacks a usable timestamp.
+  const recordCapturedAt = parseTimestamp(lastRecord.captured_at);
+  if (lastCommentAt !== null && recordCapturedAt !== null && lastCommentAt < recordCapturedAt) {
+    return unverifiable(
+      'comment-predates-record',
+      'el comentario author "reviewer" (at) es anterior al registro que coincide por '
+        + `ticket (captured_at ${new Date(recordCapturedAt).toISOString()}): no puede ser `
+        + 'una transcripcion de un registro que todavia no existia.',
+    );
+  }
 
   const commentVerdict = extractVerdictToken(lastComment.body);
   const recordVerdict = extractVerdictToken(lastRecord.last_assistant_message);
