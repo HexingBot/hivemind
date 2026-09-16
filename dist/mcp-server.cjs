@@ -25726,15 +25726,46 @@ function readBundleSession(repoRoot, sessionId) {
 
 // src/operating-mode.js
 var OPERATING_MODES = ["harness", "loop"];
-async function getMode({ repoRoot }) {
-  try {
-    const pointer = readPointer(repoRoot);
-    if (!pointer || pointer.active_session_id == null) return "harness";
-    const bundle = readBundleSession(repoRoot, pointer.active_session_id);
-    return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
-  } catch (_err) {
-    return "harness";
+var ModeStateError = class extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = "ModeStateError";
+    this.code = code;
   }
+};
+async function getMode({ repoRoot }) {
+  let pointer;
+  try {
+    pointer = readPointer(repoRoot);
+  } catch (err) {
+    throw new ModeStateError(
+      `getMode: state/session.json exists but could not be parsed (${err.message})`,
+      "E_MODE_POINTER_CORRUPT"
+    );
+  }
+  if (!pointer || pointer.active_session_id == null) return "harness";
+  if (pointer.schema_version !== 2) {
+    throw new ModeStateError(
+      `getMode: state/session.json has an unrecognized schema_version (${JSON.stringify(pointer.schema_version)}, expected 2)`,
+      "E_MODE_POINTER_INVALID"
+    );
+  }
+  let bundle;
+  try {
+    bundle = readBundleSession(repoRoot, pointer.active_session_id);
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      throw new ModeStateError(
+        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleSessionPath(repoRoot, pointer.active_session_id)}`,
+        "E_MODE_BUNDLE_MISSING"
+      );
+    }
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be read (${err.message})`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
 }
 
 // src/close-guard.js
