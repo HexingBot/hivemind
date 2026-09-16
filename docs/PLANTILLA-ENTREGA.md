@@ -103,6 +103,15 @@ que mas importan: un caso de uso sin estado, un wargaming sin lo que se ataco, y
 sin decir que no se pidio. Los tres se leen despues como trabajo verificado cuando no lo esta —
 que es exactamente el modo de falla que la politica del 2026-09-16 existe para eliminar.
 
+**Sobre esto, honestidad: no hay sensor automatico que verifique el contenido de un cierre.** Un
+comentario de cierre cuyo cuerpo literal es "OK" pasa todos los guards existentes — el unico
+sensor automatico de este par de plantillas verifica que los ARCHIVOS de la plantilla existan y
+tengan sus bloques (`tests/request-delivery-templates-docs.spec.js`), no que una entrega concreta
+los haya completado de verdad. El control de que los 4 bloques de una entrega esten realmente
+llenos es **humano** — quien lee la entrega — y hoy es una deuda de auditoria abierta, no un
+gate por proceso: la politica del 2026-09-16 prohibe agregar un matcher de strings sobre el
+cuerpo del comentario de cierre para "resolverla" por codigo.
+
 ## La otra punta
 
 Lo que se recoge al principio tiene su propia forma: `docs/PLANTILLA-PEDIDO.md`.

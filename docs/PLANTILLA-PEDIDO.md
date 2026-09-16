@@ -17,6 +17,12 @@ como el pedido del que salieron. Esta plantilla es la forma de ese pedido.
 esta plantilla** y se devuelve completado para que el humano confirme. Lo que nunca se hace es
 rellenar un bloque inventando: si un bloque no se puede completar sin suponer, se pregunta.
 
+**Si el humano delega ("hacelo vos").** No se da nada por aprobado. El Orquestador redacta un
+borrador del pedido completo, marcando explícitamente con la etiqueta **SUPUESTO** cada bloque
+que tuvo que completar sin que el humano lo dijera, y lo somete a **confirmación explícita** antes
+de derivar un solo caso de uso. El silencio no es aprobación — ni acá ni en la aprobación de la
+lista de casos de uso misma (ver "Del pedido a los casos de uso" más abajo).
+
 ---
 
 ## Los bloques del pedido
@@ -127,10 +133,37 @@ PEDIDO
 7. Fuera de alcance:
 ```
 
+## Que bloques son portantes para la derivacion (y que pasa si faltan)
+
+No todos los bloques pesan igual para el paso de derivar casos de uso. Nombrarlo evita que dos
+sesiones distintas resuelvan distinto que hacer si falta un bloque:
+
+- **Bloques 4 y 5 — portantes, sostienen el "hace X / espera Y" de cada caso.** El bloque 4 da el
+  "hace X"; el bloque 5 da el "espera Y". Si cualquiera de los dos esta vacio, o el 4 es una mera
+  repeticion de los criterios de aceptacion, **eso bloquea el despacho** — es el mismo hueco que ya
+  nombra la seccion 4 mas arriba, no una regla nueva.
+- **Bloque 2 — portante, da el sujeto.** Sin actor no hay a quien atribuirle cada caso ("un
+  usuario" a secas no alcanza). Un bloque 2 vacio se completa preguntando antes de derivar, igual
+  que el 4 y el 5.
+- **Bloque 6 — portante para los casos negativos.** Si falta, simplemente no hay casos negativos
+  explicitos en la lista derivada — no bloquea el despacho, pero es un hueco a nombrar en la lista
+  presentada para aprobacion, no a rellenar en silencio.
+- **Bloques 1, 3 y 7 — dan contexto, no bloquean la derivacion mecanica.** Un objetivo (1),
+  problema (3) o fuera-de-alcance (7) pobre no impide escribir "hace X, espera Y"; degrada la
+  calidad del pedido igual, y se pregunta si falta, pero no es, por si solo, un hueco que frene el
+  despacho.
+
 ## Que NO es esta plantilla
 
-- **No es un gate por proceso.** No hay nadie que tilde casillas. El unico efecto de un bloque
-  mal completado es que los casos de uso salgan pobres, y eso se ve en el wargaming.
+- **No es un gate por proceso nuevo.** No hay una casilla separada que tildar ni un paso de
+  proceso adicional: el unico punto de bloqueo es el que ya existe — el hard stop de aprobacion
+  humana de la lista de casos de uso (ver mas abajo) — y los bloques portantes de arriba son lo que
+  hace que esa lista llegue completa a ese hard stop, no una puerta previa distinta.
+- **El wargaming NO detecta un bloque 4 pobre.** Es al reves: el adversario ataca exactamente lo
+  que el bloque 4 enumero, asi que un bloque 4 vacio o pobre produce una lista de casos pobre y una
+  pasada de wargaming que la aprueba trivialmente porque no hay nada mas contra que atacar — el
+  problema queda invisible despues, no expuesto. Por eso los bloques 4 y 5 bloquean el despacho en
+  vez de dejarse para que "se note" mas adelante.
 - **No reemplaza los criterios de aceptacion del ticket.** Los alimenta.
 - **No fija el COMO.** El pedido dice que se quiere y que caminos existen. Como se construye es
   territorio libre del desarrollo — ver "Movimiento libre en el desarrollo" en `CLAUDE.md`.
