@@ -197,7 +197,8 @@ mismo").** Con TDD eliminado, todo el peso cae en dos artefactos, uno en cada ex
 tienen forma escrita en el repo, y CLAUDE.md § Workflow "Entrada y salida del flujo" es la copia
 canónica:
 
-- **ENTRADA — `docs/PLANTILLA-PEDIDO.md`.** La estructura del pedido inicial (de proyecto o de
+- **ENTRADA — `${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-PEDIDO.md`** (dev-repo equivalent
+  `docs/PLANTILLA-PEDIDO.md`). La estructura del pedido inicial (de proyecto o de
   ticket) de la que se **forman** los casos de uso: objetivo en 1-2 líneas, actor/usuario, problema
   que resuelve, **caminos y acciones esperadas** (principal + alternativos + fallo), criterios de
   "hecho" del usuario, restricciones/entorno, fuera de alcance — más la tabla de mapeo bloque→caso
@@ -205,10 +206,11 @@ canónica:
   un pedido en prosa suelta **no se rechaza, se completa contra la plantilla** y se devuelve
   completado para que el humano confirme; un bloque que no se puede completar sin suponer se
   pregunta, nunca se rellena.
-- **SALIDA — `docs/PLANTILLA-ENTREGA.md`.** Los casos de uso aprobados citados tal cual con el
+- **SALIDA — `${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-ENTREGA.md`** (dev-repo equivalent
+  `docs/PLANTILLA-ENTREGA.md`). Los casos de uso aprobados citados tal cual con el
   estado final de cada uno, el resultado de la implementación, el reporte del wargaming (qué se
   atacó, qué sobrevivió, qué no, los e2e corridos ahí, veredicto) y el UAT si se pidió — o la línea
-  explícita de que no se pidió. Ningún bloque se completa con "OK".
+  explícita **"UAT no solicitado"** cuando no. Ningún bloque se completa con "OK".
 
 **Movimiento libre en el desarrollo (misma decisión).** Entre el pedido estructurado y el wargaming
 **no hay pasos obligatorios intermedios**: ni tests-first bajo ningún nombre, ni manifiestos
@@ -220,14 +222,21 @@ el medio (tiers, budgets, checklists) dimensiona el trabajo post-hoc o lo hace l
 puerta previa a implementar. Como Orquestador: no inventes pasos intermedios ni pidas artefactos de
 proceso que ninguna de esas tres obligaciones exija.
 
-**Contradicción viva, nombrada y pendiente de decisión humana (2026-09-16).** `src/manifest-policy.js`
-sigue siendo un gate por proceso **previo al código**: `MANIFEST_REQUIRED_TIERS` contiene
-`tests-after` (el tier por defecto, o sea casi todo el trabajo real) y su cabecera dice que el
-orquestador lo consulta antes de despachar al Developer y que el reviewer trata un manifiesto
-faltante como HIGH. Sobrevivió a la pasada del 2026-09-16 porque esa pasada apuntaba a TDD. No se
-tocó al descubrirlo: cambiar el gate es un cambio de comportamiento con un HIGH de review colgado y
-le corresponde al humano decidirlo. Hasta entonces, movimiento libre es la política y ese gate es la
-excepción conocida. CLAUDE.md § Workflow "Movimiento libre en el desarrollo" es la copia canónica.
+**Contradicción viva, nombrada y pendiente de decisión humana (2026-09-16; alcance corregido el
+mismo día).** Son DOS gates por proceso **previos al código**, no uno: (i) `src/manifest-policy.js`
+— `MANIFEST_REQUIRED_TIERS` contiene `tests-after` (el tier por defecto, o sea casi todo el trabajo
+real), con respaldo ejecutable (`npm run check:manifests`), y `skills/manifest-verifier/SKILL.md`
+dice "both must pass before code on a core (verification_tier tests-after) ticket"; (ii) las 6
+skills `impl-*` (12 archivos entre `skills/` y `.claude/skills/`), que instruyen "Generate/update it
+BEFORE code" en el cuerpo y en el `description` del frontmatter que dispara su auto-load. La
+consecuencia declarada en la cabecera de `src/manifest-policy.js` ("the reviewer treats a missing
+required manifest as a HIGH finding") está **verificada como no implementada hoy**: `agents/reviewer.md`
+no menciona "manifest" salvo el ítem de Observability/OTel, y `reviews/REVIEWER-CHECKLIST.md` no lo
+menciona en absoluto — el gate está declarado y es ejecutable por CLI, no cableado como regla del
+Reviewer. Sobrevivió a la pasada del 2026-09-16 porque esa pasada apuntaba a TDD. No se tocó al
+descubrirlo: cambiar cualquiera de los dos gates es un cambio de comportamiento y le corresponde al
+humano decidirlo. Hasta entonces, movimiento libre es la política y estos dos gates son la excepción
+conocida. CLAUDE.md § Workflow "Movimiento libre en el desarrollo" es la copia canónica.
 
 1. **Fetch ticket.** Read the task JSON from `tasks/<KEY>.json` (or pick the next
    `status: todo` task by scanning `tasks/index.json`). Extract title, description,
@@ -286,9 +295,13 @@ excepción conocida. CLAUDE.md § Workflow "Movimiento libre en el desarrollo" e
    approved list, which is why the approval has to exist before the code does.
 
    **De dónde salen los casos: del PEDIDO, con la forma de
-   `docs/PLANTILLA-PEDIDO.md`.** Antes de derivar, recogé el pedido con esa
+   `${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-PEDIDO.md`** (dev-repo equivalent
+   `docs/PLANTILLA-PEDIDO.md`). Antes de derivar, recogé el pedido con esa
    plantilla —o completá contra ella lo que el humano ya contó en prosa, y
-   devolvé el completado para que lo confirme— y recién entonces derivá, usando
+   devolvé el completado para que lo confirme. **Registrá el pedido completado
+   como un comentario del ticket (author `orchestrator`), inmediatamente antes
+   del comentario que registra la lista de casos de uso** — la misma forma de
+   registro que ya usa la lista — y recién entonces derivá, usando
    su tabla de mapeo: bloque 4 ("caminos y acciones esperadas") → un caso por
    camino, incluidos los alternativos y los de fallo; bloque 5 (criterios de
    "hecho") → el "espera Y" de cada caso; bloque 6 (restricciones) → los casos
@@ -342,9 +355,10 @@ excepción conocida. CLAUDE.md § Workflow "Movimiento libre en el desarrollo" e
      adversary did is a close with no verification of record.
 6. **Update ticket.** **Y entregar con la forma de la salida:** el comentario de
    cierre — y, para un proyecto o un hito, el reporte que se le presenta al
-   humano — sigue `docs/PLANTILLA-ENTREGA.md` (casos de uso aprobados con su
-   estado final, resultado, reporte del wargaming, UAT o la línea explícita de
-   que no se pidió). On a clean (PASS) review, first call `append_comment`
+   humano — sigue `${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-ENTREGA.md` (dev-repo
+   equivalent `docs/PLANTILLA-ENTREGA.md`; casos de uso aprobados con su
+   estado final, resultado, reporte del wargaming, UAT o la línea explícita
+   **"UAT no solicitado"**). On a clean (PASS) review, first call `append_comment`
    with `author: 'reviewer'` to record the verdict as a SEPARATE, pre-existing
    comment (TASK-187/TASK-188) — `close_task`'s own closing comment can never
    itself claim `author: 'reviewer'` (`ClosingCommentAuthorError`). Then call

@@ -48,7 +48,8 @@ Entre los casos de uso aprobados y el wargaming, **el medio es tuyo**:
 obligatorios, ni un orden de commits exigido, ni ningun gate por proceso que tildar antes de
 implementar. Elegis el camino tecnico, el
 orden de trabajo y las herramientas. Las unicas tres obligaciones del flujo son las puntas y el
-final — el pedido estructurado (`docs/PLANTILLA-PEDIDO.md`, que llega ya convertido en los casos
+final — el pedido estructurado (`${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-PEDIDO.md`, dev-repo
+equivalent `docs/PLANTILLA-PEDIDO.md`, que llega ya convertido en los casos
 aprobados de tu briefing), **los casos de uso aprobados**, y **el wargaming** al final contra esos
 casos. Todo lo demas que este documento dice sobre el medio — tiers, `## New-test budget`, la
 `## Pre-hand-off checklist`, red-green planting — **dimensiona** el trabajo una vez que anda, o lo
