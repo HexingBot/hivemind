@@ -41,7 +41,10 @@ describe('P3.2 — vendored manifest skills', () => {
     expect(/^description:\s*\S+/m.test(fm), 'non-empty description:').toBe(true);
   });
 
-  it.each(SKILLS)('%s states the verification_tier gate', (skill) => {
+  // TASK-230 (2026-09-16 human decision) retired the pre-code manifest GATE, not the skills'
+  // cross-reference to the policy module that used to gate them — every skill still names
+  // `verification_tier` or `manifest-policy.js` while explaining that neither gates it any more.
+  it.each(SKILLS)('%s cross-references verification_tier or manifest-policy (no longer a gate)', (skill) => {
     const md = readFileSync(join(REPO_ROOT, 'skills', skill, 'SKILL.md'), 'utf8');
     expect(/verification_tier|manifest-policy/.test(md)).toBe(true);
   });

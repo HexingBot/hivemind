@@ -7,16 +7,17 @@ import {
 } from '../src/manifest-policy.js';
 
 // TASK-212 — the 'tdd' tier was retired (2026-08-13 human decision); 'tests-after' is now the
-// sole core tier and the absent-tier default. These specs previously used 'tdd' purely as
-// example data exercising the same requiresManifest/gateForTicket machinery — updated to
-// 'tests-after', not removed (the machinery itself is unchanged and still needs coverage).
+// sole core tier and the absent-tier default.
+// TASK-230 (2026-09-16 human decision, Mato: "Elimínalo. Ya no necesitamos esa parte. Elimina el
+// TDD.") retired the pre-code manifest GATE itself: no verification_tier requires a manifest
+// before code any more. These specs used to lock the opposite rule (tests-after required one);
+// they are rewritten here to lock the new rule — manifests are optional for every tier — rather
+// than being deleted, because "no gate exists" is exactly as testable as "a gate exists" and is
+// the rule this repo now depends on.
 describe('requiresManifest', () => {
-  it('requires a manifest for the core tier (tests-after) incl. the default', () => {
-    expect(requiresManifest('tests-after')).toBe(true);
-    expect(requiresManifest(undefined)).toBe(true); // absent == tests-after
-  });
-
-  it('skips manifests for uat-only glue', () => {
+  it('never requires a manifest, for any tier, including the default (TASK-230)', () => {
+    expect(requiresManifest('tests-after')).toBe(false);
+    expect(requiresManifest(undefined)).toBe(false); // absent == tests-after
     expect(requiresManifest('uat-only')).toBe(false);
   });
 });
@@ -34,17 +35,18 @@ describe('catalog + lookup', () => {
 });
 
 describe('gateForTicket', () => {
-  it('a tests-after ticket is gated to emit manifests before code', () => {
+  it('a tests-after ticket is never gated — manifests stay optional (TASK-230)', () => {
     const g = gateForTicket({ verification_tier: 'tests-after' });
-    expect(g.required).toBe(true);
+    expect(g.required).toBe(false);
     expect(g.manifests).toHaveLength(6);
-    expect(g.reason).toMatch(/before code/);
+    expect(g.reason).toMatch(/optional/);
+    expect(g.reason).not.toMatch(/before code/i);
   });
 
-  it('a uat-only ticket skips manifests', () => {
+  it('a uat-only ticket is also never gated', () => {
     const g = gateForTicket({ verification_tier: 'uat-only' });
     expect(g.required).toBe(false);
-    expect(g.reason).toMatch(/skipped/);
+    expect(g.reason).toMatch(/optional/);
   });
 
   it('narrows to the named manifests and drops unknown ids', () => {

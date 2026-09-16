@@ -1,10 +1,18 @@
-// manifest-policy — the tier gate for the Spine's spec layer (Phase 3). Decides whether a ticket
-// must produce/update a language-agnostic manifest BEFORE code, based on its verification_tier:
-// core work (tests-after) blueprints the hard stuff first; uat-only glue skips it. The
-// orchestrator consults this before dispatching a developer; the reviewer treats a missing
-// required manifest as a HIGH finding. See PLAN.md Phase 3 and the vendored impl-* manifest skills.
-// TASK-212 — the 'tdd' tier is retired (2026-08-13 human decision); 'tests-after' is now the
-// default tier for all real work, so it alone drives MANIFEST_REQUIRED_TIERS below.
+// manifest-policy — catalog of the Spine's six language-agnostic manifests (Phase 3). Manifests
+// are now OPTIONAL tooling a developer may choose to produce/update whenever it helps, at any
+// point in the work — TASK-230 (2026-09-16 human decision, Mato: "Elimínalo. Ya no necesitamos
+// esa parte. Elimina el TDD.") retired the gate that used to require one BEFORE code on
+// tests-after tickets. That gate was the same class of "process gate before code" that the
+// free-movement policy (CLAUDE.md's Workflow section, "Movimiento libre en el desarrollo")
+// eliminates for every other pre-code step; it survived an earlier pass by accident, not by
+// decision, and TASK-230 is that decision. No verification_tier requires a manifest before code.
+// The reviewer does NOT treat a missing manifest as a finding — `agents/reviewer.md` and
+// `reviews/REVIEWER-CHECKLIST.md` have never mentioned manifests outside the unrelated
+// Observability/OTel item; a prior version of this file's header claimed otherwise, which was
+// false and has been removed. See PLAN.md Phase 3 and the vendored impl-* manifest skills for
+// what each manifest captures when a developer opts in.
+// TASK-212 — the 'tdd' tier is retired (2026-08-13 human decision); 'tests-after' is the default
+// tier for all real work.
 
 /** The six language-agnostic manifests, each produced by its vendored skill. */
 export const MANIFESTS = [
@@ -26,13 +34,15 @@ const MANIFEST_IDS = new Set(MANIFESTS.map((m) => m.id));
 
 // Absent verification_tier means tests-after (matches tasks/schema.json's backward-compatible default).
 const DEFAULT_TIER = 'tests-after';
-// Tiers that require a manifest before code. uat-only glue (config/docs/wiring) is exempt.
-const MANIFEST_REQUIRED_TIERS = new Set(['tests-after']);
 
-/** Does a ticket at this verification_tier need a manifest before code? */
-export function requiresManifest(verificationTier) {
-  const tier = verificationTier || DEFAULT_TIER;
-  return MANIFEST_REQUIRED_TIERS.has(tier);
+/**
+ * Does a ticket at this verification_tier need a manifest before code? Always false — TASK-230
+ * (2026-09-16 human decision) removed the pre-code manifest gate for every tier. Kept as a
+ * function (rather than deleted) because callers ask this question and the answer is now a
+ * constant fact worth naming, not a per-tier lookup.
+ */
+export function requiresManifest(_verificationTier) {
+  return false;
 }
 
 /** Look up a manifest descriptor by id (e.g. 'API_CONTRACTS'). */
@@ -41,13 +51,14 @@ export function manifestById(id) {
 }
 
 /**
- * The gate decision for a ticket. `manifests` may name the specific manifests the ticket touches
- * (filtered to known ids); when omitted, all six are the candidate set. Returns whether a manifest
- * is required before code, the resolved manifest descriptors, and a human-readable reason.
+ * Which manifests are relevant to a ticket, as an informational lookup — not a gate. `manifests`
+ * may name the specific manifests the ticket touches (filtered to known ids); when omitted, all
+ * six are the candidate set. `required` is always `false` (TASK-230, 2026-09-16 human decision):
+ * no verification_tier requires a manifest before code, so the field records that fact rather than
+ * branching on tier. Kept on the return shape for backward compatibility with existing callers.
  */
 export function gateForTicket({ verification_tier, manifests } = {}) {
   const tier = verification_tier || DEFAULT_TIER;
-  const required = requiresManifest(tier);
 
   const ids = Array.isArray(manifests) && manifests.length > 0
     ? manifests.filter((id) => MANIFEST_IDS.has(id))
@@ -55,11 +66,9 @@ export function gateForTicket({ verification_tier, manifests } = {}) {
   const resolved = ids.map(manifestById).filter(Boolean);
 
   return {
-    required,
+    required: false,
     tier,
     manifests: resolved,
-    reason: required
-      ? `verification_tier '${tier}' is core work — emit/update its manifest(s) before code`
-      : `verification_tier '${tier}' is glue — manifests skipped`,
+    reason: `verification_tier '${tier}' — manifests are optional tooling a developer may use at any point in the work (TASK-230, 2026-09-16 human decision)`,
   };
 }
