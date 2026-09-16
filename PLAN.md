@@ -23,7 +23,7 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
    (standalone)                                       ▼
 ┌───────────────────────── hivemind (plugin) ─────────────────────────┐
 │  BODY  : orchestrator · subagents · sessions · tasks+kanban · loop   │
-│  SPINE : markers+tiers · manifests (tier-gated) · validators ·       │
+│  SPINE : markers+tiers · manifests (optional) · validators ·         │
 │          OTel→SigNoz · minimalism                                    │
 │  auth  : subscription CLI (claude -p, key stripped)                  │
 └───────────────┬──────────────────────────────────────────────────────┘
@@ -65,7 +65,7 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
 | 2 | Go learn everything | Brain (research engine) + Body (drive-loop) |
 | 3 | Remember it (with proof) | Brain (graph) + Spine (markers/tiers) |
 | 4 | Make a plan | Body (tasks + kanban) |
-| 5 | Blueprint the hard stuff | Spine (manifests, tier-gated) |
+| 5 | Blueprint the hard stuff | Spine (manifests, optional per TASK-230) |
 | 6 | Build it | Body (developer + TDD) |
 | 7 | Check it (fresh eyes) | Body (reviewer + tiers) + Spine (verifier) + Brain (adversarial refute) |
 | 8 | Keep it visible & lean | Spine (OTel→SigNoz + minimalism) |
@@ -172,12 +172,20 @@ reviewer runs the gate and blocks laundering + tier-ceiling. Unit + e2e verified
 
 ### Phase 3 — Spine: tier-gated spec layer
 
-> **SUPERSEDED FRAMING (2026-09-16 human decision).** This phase shipped and its code is live, but
-> the words "tier-gated" and every `tdd` below are a **historical record of how Phase 3 was built**,
-> not current policy. `tdd` is eliminated and unassignable (`src/manifest-policy.js` already dropped
-> it under TASK-212). Read the manifests as the written form of the flow's **step 1 — the use-case /
-> paths-of-use definition** — not as a hoop to clear before code: a manifest that exists is not
-> evidence that anything was verified. Verification of record is the wargaming pass at the end.
+> **SUPERSEDED FRAMING (2026-09-16 human decision, expanded by TASK-230 the same day).** This phase
+> shipped and its code is live, but the words "tier-gated" and every `tdd` below are a **historical
+> record of how Phase 3 was built**, not current policy — and as of TASK-230 that includes the
+> `tests-after` pre-code gate itself, not only `tdd`. `tdd` was eliminated and made unassignable
+> under TASK-212 (`src/manifest-policy.js` dropped it then); TASK-230 went further and eliminated
+> the manifest gate outright: `MANIFEST_REQUIRED_TIERS` (now removed from the file) no longer names
+> any tier, `requiresManifest()` always returns `false`, and no verification_tier requires a
+> manifest before code. The six manifests and their verifier are **optional tooling** a developer
+> may reach for whenever it helps — never a hoop to clear before code, and a manifest's existence
+> was never evidence that anything was verified. Verification of record is the wargaming pass at
+> the end. Every "Gate by `verification_tier`", "before code", and "orchestrator/reviewer consult
+> it" phrase below this note describes what Phase 3 originally built, not today's policy — the last
+> one (P3.1) was additionally always **false**: no orchestrator or reviewer code ever imported
+> `manifest-policy.js`.
 
 - Vendor implementation-engine's language-agnostic manifest skills (SCREEN_SPECS, API_CONTRACTS,
   STATE_SCHEMAS, COMPONENT_CATALOG, PROJECT_STRUCTURE, BLOCK_TASKS) as hivemind skills.
@@ -203,11 +211,15 @@ invariants → coverage matrix). impl-engine gates by Category(A/B/C); hivemind 
   matrix. Independent of the (judgement-based) reviewer.
 - **Done when:** a `tdd` ticket is gated to emit a manifest before code; a `uat-only` ticket skips.
 
-**Phase 3 status: complete.** P3.1 `src/manifest-policy.js` (tier gate) + P3.2 the six vendored
-manifest skills (both mirrors) + P3.3 `src/manifest-verify.js` + `scripts/verify-manifests.mjs`
-(`npm run check:manifests`, writes `reviews/VERIFY.md`) + the `manifest-verifier` skill. The gate
-decides required-vs-skip by `verification_tier`; the skills emit manifests; the verifier checks
-coverage independently of the reviewer. Unit + CLI verified (test:all 1196).
+**Phase 3 status: complete, then de-gated by TASK-230 (2026-09-16).** P3.1 `src/manifest-policy.js`
+(originally a tier gate, now a catalog only) + P3.2 the six vendored manifest skills (both mirrors)
++ P3.3 `src/manifest-verify.js` + `scripts/verify-manifests.mjs` (`npm run check:manifests`, writes
+`reviews/VERIFY.md`) + the `manifest-verifier` skill. As shipped, the gate decided required-vs-skip
+by `verification_tier`; as of TASK-230 it no longer decides anything — `requiresManifest()` always
+returns `false` and every tier is equally optional. The skills still emit manifests and the
+verifier still checks coverage independently of the reviewer, both on request, never as a
+requirement. Unit + CLI verified (test:all 1196 as of Phase 3; see TASK-230's hand-off for the
+post-degate count).
 
 ### Phase 4 — Spine: observable & lean builds
 - Inject the OTel→SigNoz span/log requirement and the Ponytail minimalism ladder into the

@@ -1,9 +1,9 @@
 ---
 name: manifest-verifier
-description: Run the objective cross-manifest coverage checks (npm run check:manifests, backed by src/manifest-verify.js) and emit a pass/fail matrix to reviews/VERIFY.md. The deterministic gate of the spec loop — distinct from the judgement-based reviewer. Load for the "verify" leg before code on a core (tests-after) ticket.
+description: Run the objective cross-manifest coverage checks (npm run check:manifests, backed by src/manifest-verify.js) and emit a pass/fail matrix to reviews/VERIFY.md. Optional consistency check for a developer who chose to write the impl-* manifests — not a gate before code (TASK-230, 2026-09-16 human decision). Load whenever that consistency check is wanted.
 ---
 
-# manifest-verifier — the objective spec gate
+# manifest-verifier — optional cross-manifest consistency check
 
 You are the **verifier** in a writer ⊥ reviewer ⊥ verifier loop. Your judgement is objective and
 checkable, not stylistic — leave taste to the reviewer.
@@ -38,5 +38,7 @@ the project has. Scope→screens and Blocks→tasks need the project's scope/est
 ## Report back
 
 One line to the orchestrator: `VERIFY=<PASS|FAIL>` plus the exit code and the failing check names.
-This gate is **independent** of the judgement-based reviewer; both must pass before code on a core
-(`verification_tier` tests-after) ticket — see `src/manifest-policy.js`.
+This check is **independent** of the judgement-based reviewer and is **optional** (TASK-230,
+2026-09-16 human decision): it verifies internal consistency among manifests a developer chose to
+produce; it is never required to pass before code, on any `verification_tier` — see
+`src/manifest-policy.js`.

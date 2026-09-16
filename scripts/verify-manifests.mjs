@@ -2,7 +2,9 @@
 // verify-manifests — read a project's implementation/ manifests (+ context/ scope/estimation/gaps
 // when present), run the deterministic coverage checks (src/manifest-verify.js), write the matrix
 // to reviews/VERIFY.md, and exit non-zero on any FAIL. Zero-dep beyond the module. Run via
-// `npm run check:manifests`. This is the objective spec gate; the reviewer is the judgement leg.
+// `npm run check:manifests`. OPTIONAL tooling (TASK-230, 2026-09-16 human decision): checks that
+// manifests a developer chose to write are internally consistent with each other; it is never a
+// gate a ticket must pass before code, on any verification_tier — the reviewer is unrelated to it.
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -222,21 +222,17 @@ el medio (tiers, budgets, checklists) dimensiona el trabajo post-hoc o lo hace l
 puerta previa a implementar. Como Orquestador: no inventes pasos intermedios ni pidas artefactos de
 proceso que ninguna de esas tres obligaciones exija.
 
-**Contradicción viva, nombrada y pendiente de decisión humana (2026-09-16; alcance corregido el
-mismo día).** Son DOS gates por proceso **previos al código**, no uno: (i) `src/manifest-policy.js`
-— `MANIFEST_REQUIRED_TIERS` contiene `tests-after` (el tier por defecto, o sea casi todo el trabajo
-real), con respaldo ejecutable (`npm run check:manifests`), y `skills/manifest-verifier/SKILL.md`
-dice "both must pass before code on a core (verification_tier tests-after) ticket"; (ii) las 6
-skills `impl-*` (12 archivos entre `skills/` y `.claude/skills/`), que instruyen "Generate/update it
-BEFORE code" en el cuerpo y en el `description` del frontmatter que dispara su auto-load. La
-consecuencia declarada en la cabecera de `src/manifest-policy.js` ("the reviewer treats a missing
-required manifest as a HIGH finding") está **verificada como no implementada hoy**: `agents/reviewer.md`
-no menciona "manifest" salvo el ítem de Observability/OTel, y `reviews/REVIEWER-CHECKLIST.md` no lo
-menciona en absoluto — el gate está declarado y es ejecutable por CLI, no cableado como regla del
-Reviewer. Sobrevivió a la pasada del 2026-09-16 porque esa pasada apuntaba a TDD. No se tocó al
-descubrirlo: cambiar cualquiera de los dos gates es un cambio de comportamiento y le corresponde al
-humano decidirlo. Hasta entonces, movimiento libre es la política y estos dos gates son la excepción
-conocida. CLAUDE.md § Workflow "Movimiento libre en el desarrollo" es la copia canónica.
+**Registro de la decisión sobre el gate de manifiestos (TASK-230, 2026-09-16, Mato: "Elimínalo. Ya
+no necesitamos esa parte. Elimina el TDD.").** El gate por proceso previo al código que
+`src/manifest-policy.js` imponía sobre el tier `tests-after` (el tier por defecto, casi todo el
+trabajo real) quedó ELIMINADO — la misma clase de paso obligatorio intermedio que el párrafo de
+arriba prohíbe. Los seis manifiestos `impl-*` y su verificador (`manifest-verifier`,
+`npm run check:manifests`) siguen existiendo como HERRAMIENTA OPCIONAL: un Developer puede
+generarlos y verificarlos cuando le sirva, pero ningún tier los exige antes del código y ningún
+hand-off se bloquea por su ausencia. La afirmación de que "the reviewer treats a missing required
+manifest as a HIGH finding" era falsa (nunca estuvo cableada en `agents/reviewer.md` ni en
+`reviews/REVIEWER-CHECKLIST.md`) y fue retirada. CLAUDE.md § Workflow es la copia canónica de este
+registro.
 
 1. **Fetch ticket.** Read the task JSON from `tasks/<KEY>.json` (or pick the next
    `status: todo` task by scanning `tasks/index.json`). Extract title, description,

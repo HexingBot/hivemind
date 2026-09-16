@@ -1,9 +1,9 @@
 ---
 name: impl-state-schemas
-description: Generate the STATE_SCHEMAS manifest — server/query state (query-key factory) + UI/local state stores + cache-invalidation rules. Load before implementing state management on a core ticket. Vendored Spine skill, gated by verification_tier (src/manifest-policy.js).
+description: Generate the STATE_SCHEMAS manifest — server/query state (query-key factory) + UI/local state stores + cache-invalidation rules. Optional tool a developer may use anytime when implementing state management; not required before code (TASK-230, 2026-09-16 human decision). Vendored Spine skill; see src/manifest-policy.js.
 ---
 
-## Sources & gate (hivemind)
+## Sources & manifest status (hivemind)
 
 Vendored from implementation-engine. In hivemind the "context" this skill reads is the project's
 knowledge surface — `PROJECT.md`, the wisearcher brain graph (`kb_search`/`kb_answer`, or the local
@@ -11,9 +11,10 @@ knowledge surface — `PROJECT.md`, the wisearcher brain graph (`kb_search`/`kb_
 body below refers to `context/<file>.md`, read the equivalent from that surface. Output goes to
 `implementation/STATE_SCHEMAS.md`.
 
-**Gate:** required for **core** tickets (`verification_tier` tests-after), **skipped** for
-`uat-only` glue — see `src/manifest-policy.js` (`requiresManifest`). Generate/update it BEFORE code;
-the reviewer treats a missing required manifest as a HIGH finding. Preserve epistemic markers
+**Status (TASK-230, 2026-09-16 human decision):** optional tool, not a gate. No `verification_tier`
+requires this manifest before code — see `src/manifest-policy.js` (`requiresManifest` always returns
+`false`). Generate/update it whenever it helps, in whatever order the Developer chooses; the
+reviewer does NOT treat a missing manifest as a finding. Preserve epistemic markers
 (`[EXPLICIT]`/`[INFERRED:strong|weak]`/`[ASSUMED]`) and respect source tiers.
 
 ---
