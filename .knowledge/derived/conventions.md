@@ -66,6 +66,15 @@ extend the brain stack's compose file (Phase 6 packaging). [INFERRED:strong] (si
   recorded human approval of it, means no dispatch to the implementer — and the wargaming pass at the
   end verifies the finished change against exactly that approved list. [EXPLICIT] (signal: `CLAUDE.md`
   § Workflow step 2; see [[architecture]] Decisions)
+- **Entrada estructurada y salida con forma; el medio libre** (2026-09-16 human decision, Mato).
+  El pedido inicial se recoge con `docs/PLANTILLA-PEDIDO.md` — o se COMPLETA contra ella cuando llega
+  en prosa suelta, nunca se rechaza — y de su bloque de **caminos y acciones esperadas** salen los
+  casos de uso, uno por camino, alternativos y de fallo incluidos. La entrega sigue
+  `docs/PLANTILLA-ENTREGA.md`. Entre una punta y la otra **no hay pasos obligatorios intermedios**:
+  las únicas tres obligaciones son el pedido estructurado, los casos aprobados y el wargaming final;
+  pedir cualquier otro artefacto de proceso antes de implementar es el gate por proceso reintroducido
+  con otro nombre. [EXPLICIT] (signal: `CLAUDE.md` § Workflow "Entrada y salida del flujo" y
+  "Movimiento libre en el desarrollo"; see [[architecture]] Decisions)
 - **Never reintroduce a tests-first gate under another name.** The defect the elimination targets is
   authorship, not ordering: a test written by the same agent that wrote the implementation, checked
   against its own code, confirms what that agent believed rather than what the ticket asked for —

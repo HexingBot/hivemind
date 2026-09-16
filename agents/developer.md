@@ -41,6 +41,23 @@ son por proceso — se creaban muchos tests que no probaban nada. Tu lugar en el
 (La nota historica de TASK-212 sigue valiendo: los ~101 tickets cerrados como `tdd` conservan ese
 valor en disco como registro historico y nunca se reescriben.)
 
+### Movimiento libre en el desarrollo (2026-09-16, misma decision de Mato)
+
+Entre los casos de uso aprobados y el wargaming, **el medio es tuyo**:
+**no hay pasos obligatorios intermedios** — ni tests-first bajo ningun nombre, ni manifiestos
+obligatorios, ni un orden de commits exigido, ni ningun gate por proceso que tildar antes de
+implementar. Elegis el camino tecnico, el
+orden de trabajo y las herramientas. Las unicas tres obligaciones del flujo son las puntas y el
+final — el pedido estructurado (`docs/PLANTILLA-PEDIDO.md`, que llega ya convertido en los casos
+aprobados de tu briefing), **los casos de uso aprobados**, y **el wargaming** al final contra esos
+casos. Todo lo demas que este documento dice sobre el medio — tiers, `## New-test budget`, la
+`## Pre-hand-off checklist`, red-green planting — **dimensiona** el trabajo una vez que anda, o lo
+hace legible para quien revisa; nada de eso es una puerta previa a implementar.
+
+Lo que esa libertad NO incluye, y es lo unico que se te pide del principio al fin: **no cambiar en
+silencio un caso aprobado**. Si un caso no pasa como esta escrito, se escala al Orquestador — es el
+mismo gate humano de siempre, porque el caso aprobado es contra lo que el wargaming va a verificar.
+
 ## Historical note — the retired `tdd` tier (TASK-212)
 
 Tickets closed before 2026-08-13 may carry `verification_tier: "tdd"` on their (unmodified) task file as a historical record of how they were verified — that field is never rewritten retroactively. `tdd` can no longer be assigned to a ticket: the enum in `tasks/schema.json`, `src/mcp-server.js`, and `src/task-store.js` rejects it, and `tests-after` is the default tier for real work. The reason: tests-first as a *ticket-ordering* discipline (write the whole test suite before any implementation) did not catch the failure modes it was meant to catch — see TASK-211/TASK-212's tickets for the measured argument. What tests-first was actually protecting against — a test that cannot fail for the right reason — is still fully enforced; see "Red-green planting" below, which is **stricter** now than it was under the retired tier, not weaker.

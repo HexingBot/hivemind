@@ -25,6 +25,13 @@ Instructions for the coding agent (the Body's `developer` role) using this knowl
    `tests-after` when the change needs them, but **do not run them as part of your hand-off gate** —
    name them for the wargaming step instead. Your hand-off gate is `npm run test:changed` plus the
    fast tier (`npm test`).
+   **Movimiento libre en el medio** (2026-09-16, "vamos a dejar un poco más libre movimiento dentro
+   del desarrollo mismo"): entre los casos aprobados y el wargaming no hay pasos obligatorios
+   intermedios — ni tests-first, ni manifiestos, ni un orden de commits exigido. Elegís camino
+   técnico, orden y herramientas. Las únicas tres obligaciones del flujo son el pedido estructurado
+   (`docs/PLANTILLA-PEDIDO.md`, que te llega ya convertido en los casos aprobados), los casos de uso
+   aprobados y el wargaming final. Lo único que esa libertad no incluye: cambiar en silencio un caso
+   aprobado — eso se escala.
 4. **Define observability before code**: confirm the feature's logging/tracing/metrics are specified
    in [[conventions]] § Observability. Generated code must emit OTel spans/logs; brain calls must log
    whether they hit the canonical graph or the grep-KB fallback. No code for an unobserved feature.

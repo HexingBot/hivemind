@@ -27,6 +27,15 @@ Instructions for the planning agent (the Body's orchestrator/planning role) usin
    stop, not a courtesy: present the numbered list, wait for an explicit approval, record it on the
    ticket, and only then dispatch. The approval exists up front because the approved list is exactly
    what the wargaming pass verifies the finished change against.
+   **De dónde salen los casos: del PEDIDO, con la forma de `docs/PLANTILLA-PEDIDO.md`** (2026-09-16,
+   "vamos a reforzar la entrada del pedido y la salida"). Recogé el pedido con esa plantilla, o
+   completá contra ella lo que el humano ya contó en prosa y devolvé el completado para que lo
+   confirme — un pedido en prosa suelta nunca se rechaza, y un bloque que no se puede completar sin
+   suponer se pregunta en vez de rellenarse. Después derivá con su tabla de mapeo: bloque 4 (caminos
+   y acciones esperadas) → un caso por camino, alternativos y de fallo incluidos; bloque 5 (criterios
+   de "hecho") → el "espera Y"; bloque 6 (restricciones) → los casos negativos. Un bloque 4 vacío, o
+   que sólo repite los criterios de aceptación, es el hueco a cerrar con el humano ANTES de
+   despachar. La otra punta, al cierre, es `docs/PLANTILLA-ENTREGA.md`.
 5. **Assign a verification tier — sizing only, never a gate**: `tests-after` (the default) or
    `uat-only`. `tdd` is ELIMINATED and cannot be assigned. The tier says how much regression locking
    the change earns *after* it works; it never says when verification happens. Verification of record
@@ -52,3 +61,10 @@ Instructions for the planning agent (the Body's orchestrator/planning role) usin
 - **Never dispatch implementation on use cases the human has not approved.** No list, or a list with
   no recorded human approval, means no implementation.
 - **Never plan a close without a wargaming pass.** A green review is not the verification of record.
+- **Never invent an intermediate process step.** El medio del desarrollo es libre (2026-09-16): las
+  únicas tres obligaciones son el pedido estructurado, los casos de uso aprobados y el wargaming
+  final. Pedir un artefacto de proceso que ninguna de las tres exija es reintroducir el gate por
+  proceso que esta política elimina, con otro nombre.
+- **Never deliver without the output shape.** El cierre sigue `docs/PLANTILLA-ENTREGA.md`: casos
+  aprobados con su estado final, resultado, reporte del wargaming, y UAT o la línea explícita de que
+  no se pidió. Un bloque completado con "OK" se lee después como trabajo verificado sin estarlo.

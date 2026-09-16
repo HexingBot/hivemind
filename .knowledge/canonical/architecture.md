@@ -55,6 +55,18 @@ The eight locked decisions (signal: PLAN.md § "Locked decisions"):
   approval of that list is a process violation. The approval is front-loaded because the approved
   list is precisely what the wargaming pass verifies the finished change against. [EXPLICIT]
   (signal: `CLAUDE.md` § Workflow "Verification flow" step 1 and Workflow step 2)
+- **Las dos puntas del flujo están reforzadas y el medio está libre** (2026-09-16 human decision,
+  Mato: "vamos a reforzar la entrada del pedido y la salida, y vamos a dejar un poco más libre
+  movimiento dentro del desarrollo mismo"). Con TDD eliminado, la calidad depende de dos artefactos
+  en los extremos, y los dos tienen forma escrita: la **ENTRADA** es `docs/PLANTILLA-PEDIDO.md` —
+  objetivo, actor, problema, **caminos y acciones esperadas**, criterios de "hecho", restricciones,
+  fuera de alcance, más la tabla de mapeo bloque→caso de uso que hace mecánica la derivación de los
+  casos; la **SALIDA** es `docs/PLANTILLA-ENTREGA.md` — casos aprobados con su estado final,
+  resultado, reporte del wargaming, y UAT o la constancia de que no se pidió. En el medio **no hay
+  pasos obligatorios intermedios**: las únicas tres obligaciones del flujo son el pedido
+  estructurado, los casos de uso aprobados y el wargaming final; tiers, budgets y checklists
+  dimensionan el trabajo post-hoc, no son puertas previas a implementar. [EXPLICIT]
+  (signal: `CLAUDE.md` § Workflow "Entrada y salida del flujo" y "Movimiento libre en el desarrollo")
 - **Claude auth = subscription CLI** (`claude -p`, `ANTHROPIC_API_KEY` stripped). Both base and
   wisearcher already shell out to the local `claude` CLI rather than an SDK. [INFERRED:strong]
 - **Spine is vendored** into hivemind; **`proposal-engine` is excepted — stays a standalone app**

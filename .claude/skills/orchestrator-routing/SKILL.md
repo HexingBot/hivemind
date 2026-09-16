@@ -191,6 +191,44 @@ approval on the ticket (a comment naming the approved list) so the wargaming ste
 can both check what the work was anchored to. Changing an approved case later is the same gate
 again: it goes back to the human, never resolved between the Orchestrator and the Developer.
 
+**Entrada y salida del flujo — las dos puntas reforzadas (2026-09-16, Mato: "vamos a reforzar la
+entrada del pedido y la salida, y vamos a dejar un poco más libre movimiento dentro del desarrollo
+mismo").** Con TDD eliminado, todo el peso cae en dos artefactos, uno en cada extremo. Los dos
+tienen forma escrita en el repo, y CLAUDE.md § Workflow "Entrada y salida del flujo" es la copia
+canónica:
+
+- **ENTRADA — `docs/PLANTILLA-PEDIDO.md`.** La estructura del pedido inicial (de proyecto o de
+  ticket) de la que se **forman** los casos de uso: objetivo en 1-2 líneas, actor/usuario, problema
+  que resuelve, **caminos y acciones esperadas** (principal + alternativos + fallo), criterios de
+  "hecho" del usuario, restricciones/entorno, fuera de alcance — más la tabla de mapeo bloque→caso
+  de uso que hace la derivación del paso 2 mecánica en vez de improvisada. Es guía, no burocracia:
+  un pedido en prosa suelta **no se rechaza, se completa contra la plantilla** y se devuelve
+  completado para que el humano confirme; un bloque que no se puede completar sin suponer se
+  pregunta, nunca se rellena.
+- **SALIDA — `docs/PLANTILLA-ENTREGA.md`.** Los casos de uso aprobados citados tal cual con el
+  estado final de cada uno, el resultado de la implementación, el reporte del wargaming (qué se
+  atacó, qué sobrevivió, qué no, los e2e corridos ahí, veredicto) y el UAT si se pidió — o la línea
+  explícita de que no se pidió. Ningún bloque se completa con "OK".
+
+**Movimiento libre en el desarrollo (misma decisión).** Entre el pedido estructurado y el wargaming
+**no hay pasos obligatorios intermedios**: ni tests-first bajo ningún nombre, ni manifiestos
+obligatorios, ni orden de commits exigido, ni gate por proceso que tildar. El Developer elige el
+camino técnico, el orden de trabajo y las herramientas. Las **únicas tres obligaciones** del flujo
+son (a) el pedido estructurado, (b) los casos de uso aprobados por el humano antes de que exista
+código, y (c) el wargaming al final contra esos casos. Todo lo demás que este documento dice sobre
+el medio (tiers, budgets, checklists) dimensiona el trabajo post-hoc o lo hace legible; no es una
+puerta previa a implementar. Como Orquestador: no inventes pasos intermedios ni pidas artefactos de
+proceso que ninguna de esas tres obligaciones exija.
+
+**Contradicción viva, nombrada y pendiente de decisión humana (2026-09-16).** `src/manifest-policy.js`
+sigue siendo un gate por proceso **previo al código**: `MANIFEST_REQUIRED_TIERS` contiene
+`tests-after` (el tier por defecto, o sea casi todo el trabajo real) y su cabecera dice que el
+orquestador lo consulta antes de despachar al Developer y que el reviewer trata un manifiesto
+faltante como HIGH. Sobrevivió a la pasada del 2026-09-16 porque esa pasada apuntaba a TDD. No se
+tocó al descubrirlo: cambiar el gate es un cambio de comportamiento con un HIGH de review colgado y
+le corresponde al humano decidirlo. Hasta entonces, movimiento libre es la política y ese gate es la
+excepción conocida. CLAUDE.md § Workflow "Movimiento libre en el desarrollo" es la copia canónica.
+
 1. **Fetch ticket.** Read the task JSON from `tasks/<KEY>.json` (or pick the next
    `status: todo` task by scanning `tasks/index.json`). Extract title, description,
    acceptance criteria, and `depends_on`.
@@ -246,6 +284,18 @@ again: it goes back to the human, never resolved between the Orchestrator and th
    `agents/developer.md` instructs the Developer to refuse to implement without
    it. The wargaming step at the end verifies the finished change against this
    approved list, which is why the approval has to exist before the code does.
+
+   **De dónde salen los casos: del PEDIDO, con la forma de
+   `docs/PLANTILLA-PEDIDO.md`.** Antes de derivar, recogé el pedido con esa
+   plantilla —o completá contra ella lo que el humano ya contó en prosa, y
+   devolvé el completado para que lo confirme— y recién entonces derivá, usando
+   su tabla de mapeo: bloque 4 ("caminos y acciones esperadas") → un caso por
+   camino, incluidos los alternativos y los de fallo; bloque 5 (criterios de
+   "hecho") → el "espera Y" de cada caso; bloque 6 (restricciones) → los casos
+   negativos, lo que NO tiene que poder pasar. Un bloque 4 vacío —o que sólo
+   repite los criterios de aceptación— es el hueco a cerrar con el humano ANTES
+   de despachar. Para un proyecto nuevo, el mismo pedido es la entrada del intake
+   de `PROJECT.md`.
 3. **Spawn the Researcher** (if any unknowns exist). Pass the specific question and
    the ticket context. Wait for it to return — Researcher output will include a path
    to a new or updated skill in `.claude/skills/` when relevant.
@@ -290,7 +340,11 @@ again: it goes back to the human, never resolved between the Orchestrator and th
    - **A HIGH-severity wargaming finding blocks the close**, exactly like a HIGH review finding.
    - Record the wargaming outcome on the ticket before step 6. A close with no record of what the
      adversary did is a close with no verification of record.
-6. **Update ticket.** On a clean (PASS) review, first call `append_comment`
+6. **Update ticket.** **Y entregar con la forma de la salida:** el comentario de
+   cierre — y, para un proyecto o un hito, el reporte que se le presenta al
+   humano — sigue `docs/PLANTILLA-ENTREGA.md` (casos de uso aprobados con su
+   estado final, resultado, reporte del wargaming, UAT o la línea explícita de
+   que no se pidió). On a clean (PASS) review, first call `append_comment`
    with `author: 'reviewer'` to record the verdict as a SEPARATE, pre-existing
    comment (TASK-187/TASK-188) — `close_task`'s own closing comment can never
    itself claim `author: 'reviewer'` (`ClosingCommentAuthorError`). Then call
