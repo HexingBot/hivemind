@@ -230,6 +230,44 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // TASK-236 CU2 (WG-H-007, the ticket's core property). CU1 — the sane-bundle
+  // half of the pair, "a close that policy denies stays denied" — is already
+  // pinned above by 'blocks close-to-done in unauthorized loop mode and
+  // leaves the task file untouched' (same mode:'loop'/loopAuth:{} fixture);
+  // this test does not repeat it, it extends it. Harm prevented: before this
+  // fix, getMode swallowed the truncated-JSON read error and returned
+  // 'harness', so loopModeCloseGuard's `mode !== 'loop'` no-op fired and the
+  // close the test above proves is denied on a healthy bundle went through
+  // UNGUARDED on the truncated one — corrupting a state file turned a denied
+  // close into a permitted one. This test pins the corrupt leg of that pair
+  // so a future regression in getMode's or loopModeCloseGuard's error
+  // handling cannot silently re-open the gap.
+  // ---------------------------------------------------------------------------
+  it('TASK-236 CU2 — the SAME close stays denied when the bundle is truncated to half its length', async () => {
+    const { transitionStatus } = await import(TASK_STORE_URL);
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { ModeStateError } = await import(pathToFileURL(join(__srcDir, 'operating-mode.js')).href);
+
+    const { root, sessionId } = makeRepoWithMode({ mode: 'loop', loopAuth: {} });
+    makeRepoSkeleton(root, { tasks: { 'TASK-298': makeTask('TASK-298') } });
+    const before = readTaskFileBytes(root, 'TASK-298');
+
+    const bundlePath = join(root, 'state', 'sessions', sessionId, 'session.json');
+    const full = readFileSync(bundlePath, 'utf8');
+    writeFileSync(bundlePath, full.slice(0, Math.floor(full.length / 2)), 'utf8');
+
+    await expect(
+      transitionStatus({
+        repoRoot: root, key: 'TASK-298', status: 'done', closeGuard: loopModeCloseGuard,
+      }),
+    ).rejects.toBeInstanceOf(ModeStateError);
+
+    // The property that matters: still untouched, exactly like CU1 — never
+    // MORE permissive with corrupt state than with sane state.
+    expect(readTaskFileBytes(root, 'TASK-298')).toBe(before);
+  });
+
+  // ---------------------------------------------------------------------------
   // TASK-188 AC1/AC3 — the composition gap. Historically this exact scenario
   // (omitting closeGuard entirely, in loop mode with
   // auto_close_on_green_review false) succeeded — task-store.js treated a

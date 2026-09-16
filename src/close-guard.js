@@ -471,8 +471,21 @@ function readLoopAuth(repoRoot) {
  * loopModeCloseGuard({ repoRoot, task, key }) — the closeGuard implementation
  * for autonomous loop mode.
  *
- *   - Reads the operating mode via src/operating-mode.js's getMode, which
- *     already defaults to 'harness' on any missing/corrupt pointer or bundle.
+ *   - Reads the operating mode via src/operating-mode.js's getMode. As of
+ *     TASK-236 (WG-H-007, wargaming 2026-09-16), getMode defaults to
+ *     'harness' ONLY for the legitimate idle case (no pointer, no active
+ *     session, or a healthy bundle that simply does not declare a mode). A
+ *     pointer or bundle that EXISTS but is corrupt (truncated JSON, a ghost
+ *     pointer naming a missing bundle, or an unrecognized schema_version)
+ *     now makes getMode THROW a ModeStateError instead of masking it as
+ *     'harness'. This function does not catch that error, so it propagates
+ *     out of loopModeCloseGuard and the close attempt fails — denied, the
+ *     same direction as an explicit LoopCloseGuardError, never silently
+ *     permitted. (Before this fix, getMode's blanket 'harness' default on
+ *     any error meant a truncated bundle disabled this guard entirely,
+ *     turning a close that a healthy bundle would have denied into one that
+ *     silently succeeded — see src/operating-mode.js's getMode doc comment
+ *     for the full case table.)
  *   - mode !== 'loop' (including 'harness' or no active session) -> resolves
  *     without throwing (no-op).
  *   - mode === 'loop' -> reads the active bundle's loop_auth directly (the
@@ -515,8 +528,12 @@ export async function loopModeCloseGuard({ repoRoot, task }) {
  * orchestrator could append a convention-format all-PASS uat comment itself
  * and pass Gate 2 with no human involvement.
  *
- *   - Reads the operating mode via getMode (defaults to 'harness' on any
- *     missing/corrupt pointer or bundle).
+ *   - Reads the operating mode via getMode (as of TASK-236, defaults to
+ *     'harness' only for the legitimate idle case — no pointer/active
+ *     session, or a healthy bundle with no declared mode; a pointer/bundle
+ *     that exists but is corrupt makes getMode throw instead, which this
+ *     function likewise does not catch, so a corrupt state aborts the write
+ *     rather than silently allowing it through).
  *   - mode !== 'loop' (including 'harness' or no active session) -> resolves
  *     without throwing (no-op) REGARDLESS of author — the normal
  *     human-present UAT-recording flow is unaffected.
