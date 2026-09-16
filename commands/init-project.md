@@ -11,6 +11,29 @@ them to a JSON file, and run the framework's bundled, self-contained init entry
 in NON-INTERACTIVE mode. Never try to drive the framework's readline wizard; it
 cannot read stdin from a Bash-tool invocation.
 
+## Step 0 — Collect the request against the PEDIDO template (before any intake question)
+
+Before asking the discovery questions below, collect the initial request using
+`${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-PEDIDO.md` (dev-repo equivalent
+`docs/PLANTILLA-PEDIDO.md`) — or, if the user already described the project in
+loose prose, complete that prose against the template's blocks instead of
+starting from a blank form. Same rule as everywhere else this template is used:
+a block that cannot be completed without guessing is a question to the user,
+never a silent fill-in.
+
+This matters here specifically because of **block 4, "caminos y acciones
+esperadas"** — it is what the template's own mapping table (`docs/
+PLANTILLA-PEDIDO.md`'s "Del pedido a los casos de uso") sends to the project's
+**primary use cases**, the same `primary_use_cases` field Step 1 below collects
+and that drives the seeded starter backlog. Populating block 4 first, even
+loosely, gives Step 1's discovery dialogue something concrete to probe instead
+of starting from nothing.
+
+Play back the completed pedido to the user for confirmation before moving to
+Step 1's questions — this is a distinct, earlier confirmation than the
+Confirmation step below, which plays back the mapped `PROJECT.md` fields, not
+the raw pedido.
+
 ## Step 1 — Adaptive discovery dialogue
 
 Lead with a short, focused conversation to understand what the user is building.
