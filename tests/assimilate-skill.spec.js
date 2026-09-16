@@ -119,6 +119,33 @@ describe('TASK-154 — assimilate-current-project ships at plugin-root skills/ (
     ).toBe(true);
   });
 
+  it('the four lead invariant guarantees are byte-identical in both variants (WG-H-015)', () => {
+    // TASK-237 — WG-H-015: both files' "## The invariants, first" section used to self-declare
+    // "locked — verbatim in intent" while NOT being identical (1495 vs 1453 bytes at the time of
+    // the finding) and nothing checked it — the claim was documentation, not mechanism. Full
+    // section byte-identity would be the WRONG fix: the surrounding citations legitimately
+    // retarget per repo (`src/assimilate.js` doesn't exist in a consumer project; `(TASK-140)`
+    // and `addon-packs.md §4` are dev-repo-internal references). What genuinely must never
+    // silently drift is the CONTENT of the four security guarantees themselves — so this locks
+    // exactly those four lead clauses, verbatim, in both files, and nothing else.
+    const consumerBody = readFileSync(PLUGIN_CURRENT_PROJECT_SKILL, 'utf8');
+    const frameworkBody = readFileSync(DEV_ASSIMILATE_SKILL, 'utf8');
+    const LEAD_GUARANTEES = [
+      'No third-party skill ever adopts without an explicit human `approve`.',
+      'License classification is decision support only, never a write authority.',
+      "Default-deny: an `approve` write proceeds only when the reviewer verdict is exactly `'safe'`",
+      'Assimilation never goes autonomous under ANY `loop_auth` grant.',
+    ];
+    for (const clause of LEAD_GUARANTEES) {
+      // Harm this prevents: a future retargeting edit silently weakens or drops one of the four
+      // security guarantees in only ONE of the two variants (e.g. the default-deny gate loosens
+      // in the consumer copy but not the framework copy) with no test noticing, which is exactly
+      // what the false "locked" claim implied was already impossible.
+      expect(consumerBody.includes(clause), `consumer copy must contain verbatim: "${clause}"`).toBe(true);
+      expect(frameworkBody.includes(clause), `framework copy must contain verbatim: "${clause}"`).toBe(true);
+    }
+  });
+
   it('preserves_the_security_invariants_verbatim_in_intent', () => {
     // Default-deny verdict gate, license-is-decision-support-not-safety, and
     // no-auto-adopt-without-human-signoff must all survive the retarget — this

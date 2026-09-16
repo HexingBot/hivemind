@@ -28,7 +28,7 @@ to the `assimilate-current-project` variant. This skill is FRAMEWORK-ONLY — it
 `.claude/skills/` only and is deliberately absent from the plugin-root `skills/` shipped to
 consumer installs.
 
-## The invariants, first (locked — verbatim in intent)
+## The invariants, first (retargeted per repo — the four lead guarantees below are locked verbatim against the consumer variant; see tests/assimilate-skill.spec.js)
 
 These are not suggestions; `src/assimilate.js` enforces them in code and this workflow must never
 route around them:
