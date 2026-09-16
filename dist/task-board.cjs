@@ -8190,6 +8190,76 @@ function taskFilePath(repoRoot, key) {
 function indexFilePath(repoRoot) {
   return (0, import_node_path4.join)(tasksDir(repoRoot), "index.json");
 }
+function tasksLockPath(repoRoot) {
+  return (0, import_node_path4.join)(tasksDir(repoRoot), ".mutate.lock");
+}
+var TaskMutationLockError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TaskMutationLockError";
+    this.code = "E_TASK_MUTATION_LOCK_TIMEOUT";
+  }
+};
+var TASKS_LOCK_STALE_MS = 3e3;
+var TASKS_LOCK_POLL_MS = 20;
+var TASKS_LOCK_MAX_WAIT_MS = 6e3;
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function acquireTasksLock(repoRoot) {
+  const dir = tasksDir(repoRoot);
+  (0, import_node_fs4.mkdirSync)(dir, { recursive: true });
+  const lockPath = tasksLockPath(repoRoot);
+  const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  for (; ; ) {
+    try {
+      const fd = (0, import_node_fs4.openSync)(lockPath, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
+      try {
+        const payload = Buffer.from(`${process.pid}
+`, "utf8");
+        (0, import_node_fs4.writeSync)(fd, payload, 0, payload.length);
+        (0, import_node_fs4.fsyncSync)(fd);
+      } finally {
+        (0, import_node_fs4.closeSync)(fd);
+      }
+      return;
+    } catch (err) {
+      if (!err || err.code !== "EEXIST") throw err;
+      let stat = null;
+      try {
+        stat = (0, import_node_fs4.statSync)(lockPath);
+      } catch {
+      }
+      if (stat && Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS) {
+        try {
+          (0, import_node_fs4.unlinkSync)(lockPath);
+        } catch {
+        }
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new TaskMutationLockError(
+          `timed out after ${TASKS_LOCK_MAX_WAIT_MS}ms waiting for the tasks mutation lock at ${lockPath} \u2014 another writer (this process, bin/task-board.js, or another orchestrator process) is holding it. The caller's mutation was NOT applied \u2014 nothing was accepted-and-lost; retry the call.`
+        );
+      }
+      await sleepMs(TASKS_LOCK_POLL_MS);
+    }
+  }
+}
+function releaseTasksLock(repoRoot) {
+  try {
+    (0, import_node_fs4.unlinkSync)(tasksLockPath(repoRoot));
+  } catch {
+  }
+}
+async function withTasksLock(repoRoot, fn) {
+  await acquireTasksLock(repoRoot);
+  try {
+    return await fn();
+  } finally {
+    releaseTasksLock(repoRoot);
+  }
+}
 function numericKeyOrder(a, b) {
   const ka = typeof a === "string" ? a : a.key;
   const kb = typeof b === "string" ? b : b.key;
@@ -8400,32 +8470,34 @@ async function transitionStatus({
     );
   }
   const resolvedException = status === "done" ? resolveCloseException(exception) : null;
-  const allTasks = await readAllTasks(repoRoot);
-  const task = allTasks.find((t) => t.key === key);
-  if (!task) throw new Error(`unknown task key: ${key}`);
-  if (status === "done") {
-    checkUatGuard(task);
-    await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
-    checkDonePredecessorState(task, resolvedException);
-    checkCloseEvidence(task, task.linked_commits, resolvedException);
-  }
-  const previousStatus = task.status;
-  const stamp = now();
-  task.status = status;
-  task.updated_at = stamp;
-  if (resolvedException && previousStatus !== status) {
-    const marker = {
-      author: resolvedException.author,
-      at: stamp,
-      body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`)
-    };
-    task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
-  }
-  validateTaskOrThrow(task);
-  await atomicWriteFiles([
-    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
-  ]);
+  await withTasksLock(repoRoot, async () => {
+    const allTasks = await readAllTasks(repoRoot);
+    const task = allTasks.find((t) => t.key === key);
+    if (!task) throw new Error(`unknown task key: ${key}`);
+    if (status === "done") {
+      checkUatGuard(task);
+      await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+      checkDonePredecessorState(task, resolvedException);
+      checkCloseEvidence(task, task.linked_commits, resolvedException);
+    }
+    const previousStatus = task.status;
+    const stamp = now();
+    task.status = status;
+    task.updated_at = stamp;
+    if (resolvedException && previousStatus !== status) {
+      const marker = {
+        author: resolvedException.author,
+        at: stamp,
+        body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`)
+      };
+      task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
+    }
+    validateTaskOrThrow(task);
+    await atomicWriteFiles([
+      { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+    ]);
+  });
 }
 async function deriveNextKey(repoRoot) {
   const dir = tasksDir(repoRoot);
@@ -8477,69 +8549,72 @@ async function createTask({
   if (requires_uat !== void 0 && typeof requires_uat !== "boolean") {
     throw new Error(`invalid requires_uat "${requires_uat}" \u2014 must be a boolean`);
   }
-  const key = await deriveNextKey(repoRoot);
   const stamp = now();
-  const task = {
-    key,
-    title,
-    description,
-    acceptance_criteria,
-    status: "todo",
-    priority,
-    labels,
-    assignee: null,
-    depends_on,
-    linked_commits: [],
-    linked_prs: [],
-    comments: [],
-    created_at: stamp,
-    updated_at: stamp,
-    jira_key: null,
-    ...verification_tier !== void 0 ? { verification_tier } : {},
-    ...requires_uat !== void 0 ? { requires_uat } : {},
-    // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
-    // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
-    ...marker !== void 0 ? { marker } : {},
-    ...source_tier !== void 0 ? { source_tier } : {},
-    ...confidence !== void 0 ? { confidence } : {}
-  };
-  validateTaskOrThrow(task);
-  const existing = await readAllTasks(repoRoot);
-  const allTasks = [...existing, task];
-  (0, import_node_fs4.mkdirSync)(tasksDir(repoRoot), { recursive: true });
-  const target = taskFilePath(repoRoot, key);
-  const taskBytes = JSON.stringify(task, null, 2) + "\n";
-  const payload = Buffer.from(taskBytes, "utf8");
-  let reserveFd;
-  try {
-    reserveFd = (0, import_node_fs4.openSync)(target, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
-  } catch (err) {
-    if (err && err.code === "EEXIST") {
+  const { key, target, warnings } = await withTasksLock(repoRoot, async () => {
+    const nextKey = await deriveNextKey(repoRoot);
+    const task = {
+      key: nextKey,
+      title,
+      description,
+      acceptance_criteria,
+      status: "todo",
+      priority,
+      labels,
+      assignee: null,
+      depends_on,
+      linked_commits: [],
+      linked_prs: [],
+      comments: [],
+      created_at: stamp,
+      updated_at: stamp,
+      jira_key: null,
+      ...verification_tier !== void 0 ? { verification_tier } : {},
+      ...requires_uat !== void 0 ? { requires_uat } : {},
+      // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
+      // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
+      ...marker !== void 0 ? { marker } : {},
+      ...source_tier !== void 0 ? { source_tier } : {},
+      ...confidence !== void 0 ? { confidence } : {}
+    };
+    validateTaskOrThrow(task);
+    const existing = await readAllTasks(repoRoot);
+    const allTasks = [...existing, task];
+    (0, import_node_fs4.mkdirSync)(tasksDir(repoRoot), { recursive: true });
+    const taskTarget = taskFilePath(repoRoot, nextKey);
+    const taskBytes = JSON.stringify(task, null, 2) + "\n";
+    const payload = Buffer.from(taskBytes, "utf8");
+    let reserveFd;
+    try {
+      reserveFd = (0, import_node_fs4.openSync)(taskTarget, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
+    } catch (err) {
+      if (err && err.code === "EEXIST") {
+        throw new KeyCollisionError(
+          `createTask: key collision \u2014 ${taskTarget} already exists (a concurrent writer won the race for ${nextKey})`
+        );
+      }
+      throw err;
+    }
+    try {
+      let written = 0;
+      while (written < payload.length) {
+        written += (0, import_node_fs4.writeSync)(reserveFd, payload, written, payload.length - written);
+      }
+      (0, import_node_fs4.fsyncSync)(reserveFd);
+    } finally {
+      (0, import_node_fs4.closeSync)(reserveFd);
+    }
+    const onDisk = (0, import_node_fs4.readFileSync)(taskTarget, "utf8");
+    if (onDisk !== taskBytes) {
       throw new KeyCollisionError(
-        `createTask: key collision \u2014 ${target} already exists (a concurrent writer won the race for ${key})`
+        `createTask: verify-after-write detected a competing writer's payload at ${taskTarget} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
       );
     }
-    throw err;
-  }
-  try {
-    let written = 0;
-    while (written < payload.length) {
-      written += (0, import_node_fs4.writeSync)(reserveFd, payload, written, payload.length - written);
-    }
-    (0, import_node_fs4.fsyncSync)(reserveFd);
-  } finally {
-    (0, import_node_fs4.closeSync)(reserveFd);
-  }
-  const onDisk = (0, import_node_fs4.readFileSync)(target, "utf8");
-  if (onDisk !== taskBytes) {
-    throw new KeyCollisionError(
-      `createTask: verify-after-write detected a competing writer's payload at ${target} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
-    );
-  }
-  await atomicWriteFiles([
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
-  ]);
-  const warnings = checkDangerousSurfaceMention({ title, description });
+    await atomicWriteFiles([
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+    ]);
+    const taskWarnings = checkDangerousSurfaceMention({ title, description });
+    return { key: nextKey, target: taskTarget, warnings: taskWarnings };
+  });
   return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
 }
 
