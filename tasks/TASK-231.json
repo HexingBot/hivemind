@@ -1,0 +1,26 @@
+{
+  "key": "TASK-231",
+  "title": "Hacer verificable el registro del wargaming al cierre",
+  "description": "Hallazgo HIGH del wargaming de TASK-229 (2026-09-16), triado como real y NO arreglado ahi por alcance: toca close-guard, que es superficie peligrosa y necesita sus propios casos de uso aprobados. Desde el 2026-09-16 el wargaming es la verificacion de registro del flujo, y no hay NADA que lo sostenga: (1) se midio en sandbox que closeTask cierra con exito un ticket cuyo comentario de cierre es literalmente 'OK', sin ninguno de los 4 bloques de la plantilla de entrega, sin registro de wargaming y sin la linea de UAT; grep de wargam en src/ y bin/ solo devuelve comentarios historicos, cero enforcement — closeTask corre checkUatGuard, resolveCloseGuard, checkDonePredecessorState y checkCloseEvidence, y ninguno sabe nada del wargaming. (2) agents/reviewer.md:64 pide marcar HIGH si un ticket llega al cierre sin registro de wargaming, pero agents/reviewer.md:60 dice de si mismo que el wargaming corre DESPUES del reviewer, y CLAUDE.md paso 6 ordena review verde -> wargaming -> cierre: el chequeo es estructuralmente inaplicable en la unica pasada en que el reviewer participa, y no hay re-review obligatoria posterior. (3) El actor que corre el wargaming es el mismo que cierra, sin sensor y sin segundo par de ojos: autovigilancia pura. La restriccion de diseño mas importante: la solucion NO puede ser un matcher de strings sobre el cuerpo del comentario ni un gate por proceso previo al codigo — la politica del 2026-09-16 prohibe ambos. El precedente a seguir es bin/audit-reviewer-verdict.js y la razon por la que es advisory y nunca esta cableado a close_task: un proyecto sin la herramienta no debe perder la capacidad de cerrar tickets. Decidir entre un guard de presencia analogo a checkUatGuard (veredicto reconocible, no forma libre) y un audit advisory; no asumir cual antes de medir.",
+  "acceptance_criteria": [
+    "Un ticket cerrado sin registro de wargaming queda DISTINGUIBLE de uno que si lo tiene, sin que el lector tenga que inferirlo (contrato de resultado vacio, TASK-192)",
+    "El camino elegido no introduce ningun gate por proceso previo al codigo ni un matcher de strings sobre el cuerpo del comentario de cierre",
+    "Si el camino elegido es un guard en closeTask, un proyecto sin la herramienta o sin el hook conserva la capacidad de cerrar tickets (precedente explicito de linked_commits_verification y de bin/audit-reviewer-verdict.js)",
+    "El chequeo de agents/reviewer.md sobre el registro de wargaming queda coherente con el momento en que el reviewer corre: o se mueve a donde si puede aplicarse, o se declara que aplica solo en una re-review posterior al wargaming",
+    "Medido antes y despues sobre el board real: cuantos tickets done tienen registro de wargaming y cuantos no, con el numero reportado en el cierre"
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "proceso",
+    "harness"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-16T17:02:41.472Z",
+  "updated_at": "2026-09-16T17:02:41.472Z",
+  "jira_key": null
+}

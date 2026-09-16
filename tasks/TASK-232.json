@@ -1,0 +1,25 @@
+{
+  "key": "TASK-232",
+  "title": "Persistir el bloque 4 del pedido (caminos y acciones esperadas) en el intake del proyecto",
+  "description": "Deuda declarada de TASK-229, no implementada ahi por instruccion explicita (cambio de comportamiento en el intake, fuera del alcance de un ticket de doc). TASK-229 agrego un Step 0 a commands/init-project.md que recoge el pedido con docs/PLANTILLA-PEDIDO.md antes del discovery dialogue, pero la recoleccion queda en la CONVERSACION: no hay campo estructurado que la persista. Medido durante el wargaming: el set de preguntas del intake (src/question-library.js:42-110) es problem_statement, goals, scope_in, scope_out, project_name, project_description, project_type, target_users, primary_use_cases, success_criteria, agent_models, y NINGUNA es equivalente al bloque 4; primary_use_cases son slugs (automation, reporting), no paths de uso. Consecuencia concreta: en un proyecto nuevo, el bloque del que por politica salen los casos de uso no sobrevive al fin de la sesion de intake, asi que la segunda sesion vuelve a improvisar la entrada — exactamente el hueco que TASK-229 existe para cerrar, en el unico camino donde no lo cerro.",
+  "acceptance_criteria": [
+    "El intake persiste los caminos y acciones esperadas (bloque 4 del pedido) en PROJECT.md, con los caminos alternativos y de fallo, no solo el principal",
+    "Una segunda sesion puede leer del repo los caminos recogidos en el intake sin volver a preguntarlos",
+    "El campo nuevo no rompe el contrato existente de primary_use_cases ni la backlog seedeada; un PROJECT.md previo sin el campo sigue siendo valido (compatibilidad hacia atras verificada, no asumida)",
+    "commands/init-project.md y la plantilla quedan coherentes con lo que el intake realmente persiste, sin afirmaciones sin respaldo"
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "proceso",
+    "harness"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-16T17:02:41.661Z",
+  "updated_at": "2026-09-16T17:02:41.661Z",
+  "jira_key": null
+}

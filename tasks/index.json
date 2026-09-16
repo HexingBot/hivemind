@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T16:16:11.749Z",
+  "generated_at": "2026-09-16T17:02:41.661Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1342,8 +1342,26 @@
     {
       "key": "TASK-229",
       "title": "Refuerzo de entrada y salida: plantilla de pedido, plantilla de entrega y movimiento libre en el desarrollo",
-      "status": "in_progress",
+      "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-230",
+      "title": "Decision de Mato: que hacer con el gate de manifiestos previo al codigo",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-231",
+      "title": "Hacer verificable el registro del wargaming al cierre",
+      "status": "todo",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-232",
+      "title": "Persistir el bloque 4 del pedido (caminos y acciones esperadas) en el intake del proyecto",
+      "status": "todo",
+      "priority": "medium"
     }
   ]
 }

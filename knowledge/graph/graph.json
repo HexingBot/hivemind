@@ -1674,6 +1674,12 @@
       "type": "task",
       "ref": "tasks/TASK-227.json",
       "label": "El costo de la suite e2e crece con los tickets y la politica de retiro no lo alcanza"
+    },
+    {
+      "id": "task-229",
+      "type": "task",
+      "ref": "tasks/TASK-229.json",
+      "label": "Refuerzo de entrada y salida: plantilla de pedido, plantilla de entrega y movimiento libre en el desarrollo"
     }
   ],
   "edges": [

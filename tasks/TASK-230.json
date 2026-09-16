@@ -1,0 +1,27 @@
+{
+  "key": "TASK-230",
+  "title": "Decision de Mato: que hacer con el gate de manifiestos previo al codigo",
+  "description": "Nombrado dos veces y escalado dos veces sin lugar donde vivir, asi que deja de ser nota al pie de CLAUDE.md y pasa a ser un ticket. El wargaming de TASK-229 (2026-09-16) MIDIO el alcance real, que es mayor que el que la doc habia nombrado: (1) src/manifest-policy.js tiene MANIFEST_REQUIRED_TIERS = ['tests-after'], o sea el tier por defecto, y gateForTicket de un ticket sin tier devuelve required true con la razon literal 'before code'; (2) existe un SEGUNDO gate que nadie habia nombrado, skills/manifest-verifier, cuya SKILL dice literal 'both must pass before code on a core (verification_tier tests-after) ticket', con respaldo ejecutable en npm run check:manifests, scripts/verify-manifests.mjs y src/manifest-verify.js; (3) 14 superficies vivas lo instruyen en modo imperativo (las 6 skills impl-* por duplicado en skills/ y .claude/skills/, mas manifest-verifier por duplicado), y lo hacen en el frontmatter description, que es lo que dispara el auto-load por progressive disclosure, asi que se cargan antes de que nadie lea la nota de excepcion de CLAUDE.md; (4) tests/manifest-policy.spec.js:37-41 LOCKEA la semantica previa al codigo (expect(g.reason).toMatch(/before code/)), o sea que hay un sensor de regresion que exige que el gate siga diciendo 'before code'. Contra eso, la decision humana del 2026-09-16 dice que el medio del desarrollo es libre y que las unicas tres obligaciones son el pedido estructurado, los casos aprobados y el wargaming final. Es una contradiccion de politica, no un bug. HALLAZGO ADICIONAL del wargaming, ya corregido en la doc por TASK-229: la nota afirmaba 'consecuencia bloqueante en la review', y es FALSO — agents/reviewer.md tiene una sola mencion de manifest (el item de Observability/OTel) y reviews/REVIEWER-CHECKLIST.md cero, asi que el HIGH del reviewer nunca se cableo. NO ARRANCAR sin que Mato decida y apruebe los casos de uso: cualquiera de los caminos (eliminar los gates, acotarlos a un tier o a un tipo de trabajo, o ratificarlos como excepcion legitima) es un cambio de politica que le corresponde al humano.",
+  "acceptance_criteria": [
+    "Mato decide explicitamente entre: eliminar los dos gates previos al codigo, acotarlos (a que tier o a que tipo de trabajo), o ratificarlos como excepcion legitima de la politica de movimiento libre",
+    "La decision queda escrita en CLAUDE.md como copia canonica, con su razon, y replicada en la SKILL de orchestrator-routing con paridad verificada",
+    "Las 14 superficies que instruyen el paso previo al codigo quedan coherentes con la decision: si se elimina o acota, se corrige el cuerpo y el frontmatter description de las skills afectadas; si se ratifica, se dice ahi mismo que es una excepcion nombrada",
+    "tests/manifest-policy.spec.js queda coherente con la decision (hoy ancla la semantica 'before code'), y ningun candado queda neutralizado en silencio",
+    "La afirmacion del HIGH del reviewer queda o implementada en agents/reviewer.md o retirada del comentario de cabecera de src/manifest-policy.js: hoy la doc atribuye al harness una puerta mas dura de la que tiene"
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "proceso",
+    "harness"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-16T17:02:12.918Z",
+  "updated_at": "2026-09-16T17:02:12.918Z",
+  "jira_key": null,
+  "verification_tier": "uat-only"
+}
