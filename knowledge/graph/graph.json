@@ -236,6 +236,12 @@
       "label": "La senial de cuidado deja de derivarse del tier declarado y pasa a ser una auditoria de superficie peligrosa con el danio nombrado, en creacion del ticket y en review"
     },
     {
+      "id": "decision-20260916-eliminar-gate-de-manifiestos",
+      "type": "decision",
+      "ref": "tasks/TASK-230.json",
+      "label": "Eliminar el gate de manifiestos previo al codigo; los seis manifiestos quedan como herramienta opcional"
+    },
+    {
       "id": "ke-a-format-sensor-authoritative-schema",
       "type": "knowledge_entry",
       "ref": "knowledge/entries/a-format-sensor-must-be-checked-against-the-authoritative-schema.md",
@@ -1680,6 +1686,12 @@
       "type": "task",
       "ref": "tasks/TASK-229.json",
       "label": "Refuerzo de entrada y salida: plantilla de pedido, plantilla de entrega y movimiento libre en el desarrollo"
+    },
+    {
+      "id": "task-230",
+      "type": "task",
+      "ref": "tasks/TASK-230.json",
+      "label": "Decision de Mato: que hacer con el gate de manifiestos previo al codigo"
     }
   ],
   "edges": [
@@ -2317,6 +2329,11 @@
       "from": "task-227",
       "to": "decision-20260910-no-borrar-tests-sin-hermano-nombrado",
       "relation": "relates-to"
+    },
+    {
+      "from": "task-230",
+      "to": "decision-20260916-eliminar-gate-de-manifiestos",
+      "relation": "produced-by"
     }
   ]
 }
