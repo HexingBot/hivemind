@@ -61,6 +61,11 @@ extend the brain stack's compose file (Phase 6 packaging). [INFERRED:strong] (si
   post-hoc regression locking. `tdd` cannot be assigned. **E2E specs are `tests-after` and run only
   after wargaming** — never as an early automatic gate. [EXPLICIT] (signal: `CLAUDE.md` § Workflow
   "Verification flow"; see [[architecture]] Decisions)
+- **Use cases are mandatory at the definition step, and the human approves them before any
+  implementation** (2026-09-16 human decision, Mato). No written use-case / paths-of-use list, or no
+  recorded human approval of it, means no dispatch to the implementer — and the wargaming pass at the
+  end verifies the finished change against exactly that approved list. [EXPLICIT] (signal: `CLAUDE.md`
+  § Workflow step 2; see [[architecture]] Decisions)
 - **Never reintroduce a tests-first gate under another name.** The defect the elimination targets is
   authorship, not ordering: a test written by the same agent that wrote the implementation, checked
   against its own code, confirms what that agent believed rather than what the ticket asked for —

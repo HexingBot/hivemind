@@ -48,6 +48,13 @@ The eight locked decisions (signal: PLAN.md § "Locked decisions"):
   write surface. **E2E specs are `tests-after` and execute only after wargaming**, never as an
   early automatic gate. [EXPLICIT] (signal: `CLAUDE.md` § Workflow "Verification flow" and
   § Testing "E2E runs after wargaming")
+- **The use cases are mandatory and the human approves them before implementation** (2026-09-16
+  human decision, Mato: "la definicion tiene que crear casos de uso ... yo apruebo los casos de uso,
+  porque eso es lo que se va a aprobar con el Wargaming"). Creating the use-case / paths-of-use list
+  is not optional at the definition step, and dispatching implementation without the human's explicit
+  approval of that list is a process violation. The approval is front-loaded because the approved
+  list is precisely what the wargaming pass verifies the finished change against. [EXPLICIT]
+  (signal: `CLAUDE.md` § Workflow "Verification flow" step 1 and Workflow step 2)
 - **Claude auth = subscription CLI** (`claude -p`, `ANTHROPIC_API_KEY` stripped). Both base and
   wisearcher already shell out to the local `claude` CLI rather than an SDK. [INFERRED:strong]
 - **Spine is vendored** into hivemind; **`proposal-engine` is excepted — stays a standalone app**

@@ -56,9 +56,13 @@ was caught by the suite. This section is the highest-yield part of the checklist
       scoped to the `tdd` tier's captured red run; TDD is eliminated — 2026-09-16 human decision —
       so red-green planting now applies to *every* new test/spec/lock regardless of tier, per
       `agents/developer.md`'s "Red-green planting" section.)
+- [ ] **Confirm a human-approved use-case list exists, and that the work was anchored to it**
+      (2026-09-16). Creating the use cases is mandatory and the human approves them before any
+      implementation; a ticket with no such list, or no record of the approval, is a finding — the
+      wargaming pass has nothing to verify the finished change against.
 - [ ] **Confirm the wargaming pass actually happened and is recorded** — what was attacked, what
-      survived, what did not. A green review is not the verification of record; the adversarial pass
-      is. A close with no wargaming record is a finding.
+      survived, what did not, **judged against the approved use cases**. A green review is not the
+      verification of record; the adversarial pass is. A close with no wargaming record is a finding.
 - [ ] **Confirm the affected e2e specs were named at hand-off and run at the wargaming step** — not
       at the hand-off gate, where they no longer belong (2026-09-16). Specs that were named but never
       executed anywhere are a gap, not a deferral.

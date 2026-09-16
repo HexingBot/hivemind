@@ -169,6 +169,28 @@ same workflow applies; only the I/O surface changes.
 
 ## Workflow (run for every ticket)
 
+**Verification flow — the governing policy (2026-09-16 human decision, Mato).** TDD is
+ELIMINATED, not merely reduced, and no gate is a *process* gate anymore. The order of work is:
+**define the use cases / paths of use -> the human approves them -> implement -> tests-after (the
+minimum necessary) -> wargaming -> UAT if asked for or needed.** The real verification is the
+adversarial wargaming pass at the END, and what it verifies against is the use cases the human
+approved. E2E specs are `tests-after` and execute only after wargaming, never as an early automatic
+gate. CLAUDE.md § Workflow "Verification flow" is the canonical copy.
+
+**The use cases MUST be created — this is not optional.** Every ticket's definition (step 2 below)
+produces a written list of use cases / paths of use before any implementation exists. A ticket
+dispatched to the Developer without that list is a process violation, not a shortcut: there is no
+tests-first pass behind it any more, so the list is the ONLY definition of what the change is
+supposed to do, and it is what the wargaming pass at the end attacks the finished work against.
+
+**Human-approval gate on the use cases (2026-09-16, Mato).** The human approves the use-case list
+BEFORE any implementation starts. This is a **hard stop**: present the list, wait for the human's
+explicit approval, and only then spawn the Developer. No approval, no implementation — and never
+infer approval from silence or from a general go-ahead given earlier for something else. Record the
+approval on the ticket (a comment naming the approved list) so the wargaming step and the reviewer
+can both check what the work was anchored to. Changing an approved case later is the same gate
+again: it goes back to the human, never resolved between the Orchestrator and the Developer.
+
 1. **Fetch ticket.** Read the task JSON from `tasks/<KEY>.json` (or pick the next
    `status: todo` task by scanning `tasks/index.json`). Extract title, description,
    acceptance criteria, and `depends_on`.
@@ -194,9 +216,11 @@ same workflow applies; only the I/O surface changes.
    - One combined impl+lock task (`tests-after`) or one impl task (`uat-only`).
    - One review task.
 
-   **Derive the observable-case list at this same step, before dispatching to
-   the Developer (Regla 1, TASK-213, 2026-08-13 human decision):** turn the
-   acceptance criteria into a short plain-text list of "do X, expect Y" cases.
+   **Create the use-case list at this same step — MANDATORY — and get the
+   human's approval before dispatching to the Developer (Regla 1, TASK-213,
+   2026-08-13 human decision; the approval gate is the 2026-09-16 decision):**
+   turn the acceptance criteria into a short plain-text list of "do X, expect
+   Y" cases.
    The Orchestrator derives this list — never the Developer, and never from
    reading the code — because a test written by the same agent that wrote the
    implementation, checked against its own code, confirms what that agent
@@ -208,12 +232,28 @@ same workflow applies; only the I/O surface changes.
    If the Developer needs to change a case on this list for it to pass, that
    is never resolved silently: it escalates to the human, because either the
    requirement changed or the implementation is wrong.
+
+   This list IS step 1 of the verification flow: a correct definition of the
+   use cases and the paths of use. It must enumerate the PATHS, not only the
+   happy case — what the user does, what is expected, and which
+   alternative/failure paths run through the change. A one-line-per-AC
+   restatement is not a definition of paths of use.
+
+   **Then STOP and get the human's approval of the list** (hard stop, see the
+   policy block at the top of this Workflow). Present the numbered list, wait
+   for an explicit approval, and record it as a ticket comment. The Developer's
+   briefing must carry both the list and the fact that the human approved it;
+   `agents/developer.md` instructs the Developer to refuse to implement without
+   it. The wargaming step at the end verifies the finished change against this
+   approved list, which is why the approval has to exist before the code does.
 3. **Spawn the Researcher** (if any unknowns exist). Pass the specific question and
    the ticket context. Wait for it to return — Researcher output will include a path
    to a new or updated skill in `.claude/skills/` when relevant.
 4. **Verify per tier.**
    - `tests-after` — Spawn the Developer in a single spawn: implement first, then
-     add a minimal set of regression locks before hand-off.
+     add a minimal set of regression locks before hand-off. E2E specs belong to
+     this tier and are written here, but are NOT run as part of this step's gate
+     (2026-09-16) — see the Wargaming step under step 5.
    - `uat-only` — Spawn the Developer for implementation only; no new specs.
 
    **UAT step — triggered by `requires_uat: true` (TASK-214), independently of
@@ -233,6 +273,23 @@ same workflow applies; only the I/O surface changes.
    loop back to the Developer with the findings; the ticket stays `in_review`
    (no transition back to `in_progress` is required — the Developer's next
    hand-off re-enters this step).
+
+   **Wargaming step — the real verification (2026-09-16 human decision).** After the review is green
+   and before the close, run the adversarial pass over the finished change, **attacking it against
+   the use-case list the human approved at step 2**. Spawn the adversarial QA team via
+   `hive-adversarial-improve` (framework repo) or `hive-adversarial-improve-current-project`
+   (consumer project), scoped to the component the ticket touched; add the `deep-review` workflow's
+   four adversarial dimensions for release-sized diffs.
+   - **The approved use-case list is the reference.** Every approved case and every alternative /
+     failure path on it is something the adversary tries to break. A case that was approved and
+     never attacked is not verified.
+   - **The named affected `tests/e2e/**` specs RUN HERE**, once the adversary has said what to
+     attack — not at hand-off and not at review.
+   - The fast tier (`npm test`, ~3s) still runs at hand-off and at review as a smoke check; it is
+     the only sensor for fs-read-coupled specs.
+   - **A HIGH-severity wargaming finding blocks the close**, exactly like a HIGH review finding.
+   - Record the wargaming outcome on the ticket before step 6. A close with no record of what the
+     adversary did is a close with no verification of record.
 6. **Update ticket.** On a clean (PASS) review, first call `append_comment`
    with `author: 'reviewer'` to record the verdict as a SEPARATE, pre-existing
    comment (TASK-187/TASK-188) — `close_task`'s own closing comment can never
@@ -759,7 +816,7 @@ breaks real tickets or forces frequent frontmatter edits, eroding the safety win
 **Verdict: feasible as a `PROJECT.md`-derived, generated allowlist, not as a static
 one — worth a distinct follow-up ticket; not implemented here (analysis only).**
 
-## Single developer spawn (TASK-212: tdd tier retired)
+## Single developer spawn (TDD eliminado — TASK-212 retiro el tier, la decision del 2026-09-16 elimino el proceso)
 
 Every ticket gets **one** Developer spawn. Historical note: an earlier
 two-spawn protocol for the (now-retired) `tdd` tier (TEST mode, then a

@@ -15,7 +15,9 @@ Instructions for the coding agent (the Body's `developer` role) using this knowl
    reusing an established pattern over inventing one.
 3. **Follow the verification flow — there is no tier gate and no TDD** (2026-09-16 human decision).
    Never write tests before the behavior exists; `tdd` is eliminated and unassignable. The order is:
-   the Orchestrator's use-case / paths-of-use definition arrives in your briefing → **implement** →
+   the Orchestrator's use-case / paths-of-use definition arrives in your briefing, **already approved
+   by the human** (no list or no recorded approval means you do not start: return that fact instead of
+   an implementation) → **implement** against those approved cases →
    **tests-after**, the *minimum necessary* regression locks, written only once you have proven the
    behavior by running it → **wargaming** (the adversarial pass, run by the team, and the real
    verification) → **UAT** if asked for or needed. The ticket's `verification_tier` only sizes step

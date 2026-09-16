@@ -23,6 +23,10 @@ Instructions for the planning agent (the Body's orchestrator/planning role) usin
    agent's belief, not the requirement. This list replaces tests-first outright, travels in the
    implementer's briefing, and is reused unchanged as the UAT script when UAT is needed. If the
    implementer needs to change a case to make it pass, that escalates to the human.
+   **Creating the list is mandatory and the human approves it before implementation starts** — a hard
+   stop, not a courtesy: present the numbered list, wait for an explicit approval, record it on the
+   ticket, and only then dispatch. The approval exists up front because the approved list is exactly
+   what the wargaming pass verifies the finished change against.
 5. **Assign a verification tier — sizing only, never a gate**: `tests-after` (the default) or
    `uat-only`. `tdd` is ELIMINATED and cannot be assigned. The tier says how much regression locking
    the change earns *after* it works; it never says when verification happens. Verification of record
@@ -45,4 +49,6 @@ Instructions for the planning agent (the Body's orchestrator/planning role) usin
   legitimises writing tests before the behavior exists.
 - **Never let the implementer derive its own cases.** That is the authorship defect the use-case /
   paths-of-use step exists to close.
+- **Never dispatch implementation on use cases the human has not approved.** No list, or a list with
+  no recorded human approval, means no implementation.
 - **Never plan a close without a wargaming pass.** A green review is not the verification of record.
