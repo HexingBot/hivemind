@@ -13,21 +13,48 @@
 //   - numericKeyOrder comparator so TASK-999 sorts before TASK-1000.
 //   - createTask self-bootstraps tasks/ via mkdirSync(tasksDir, {recursive: true}).
 //
-// SINGLE-WRITER ASSUMPTION: the framework currently runs exactly one
-// orchestrator per repo, so the read-then-write sequence in transitionStatus,
-// appendComment, and createTask does NOT defend against TOCTOU races between
-// readAllTasks() and atomicWriteFiles(). A sibling task mutated by a second
-// concurrent writer between those two calls would be reflected staleley in
-// the regenerated index.json. If/when multi-writer support is required, lift
-// this assumption via a file-lock (or a database-backed adapter) and remove
-// this comment along with the matching note in tasks/README.md.
+// TASK-235 (WG-H-008/WG-H-009, wargaming 2026-09-16) — the SINGLE-WRITER
+// ASSUMPTION this comment used to state here ("the framework currently runs
+// exactly one orchestrator per repo") was FALSE for the product as shipped:
+// bin/task-board.js is a second writer in a SEPARATE OS PROCESS — the kanban
+// the /hivemind:task-status skill itself tells the user to run alongside the
+// Orchestrator — and its POST endpoints call transitionStatus/createTask
+// directly (src/task-board.js's import at the top of that file, and its
+// createTask/transitionStatus call sites). Measured with real spawned
+// processes (never in-process promises, which can hide or inflate the race —
+// see the TASK-235 hand-off for the harness): with the assumption in force,
+// 8 accepted appendComment calls on the SAME ticket from 8 processes landed
+// only 6-7 on disk (an ACCEPTED-AND-LOST mutation), and 6 accepted closeTask
+// calls on 6 DISTINCT tickets left tasks/index.json agreeing with only 4-5 of
+// the 6 on-disk files (index.json alone, not the per-task files, desynced).
+//
+// FIXED (not merely documented): every mutating entry point (transitionStatus,
+// appendComment, closeTask, createTask, and verifyAndRepairIndex's own
+// self-healing rewrite branches) now runs its read-mutate-write critical
+// section inside withTasksLock() below — a per-repo, per-process-safe
+// exclusive-create lock (tasks/.mutate.lock, O_CREAT|O_EXCL, same OS
+// primitive TASK-083/TASK-085 already used for createTask's key-collision
+// guard and src/session-lock.js uses for its session lock) with a SHORT
+// staleness window (crash recovery in seconds, not session-lock.js's 5
+// minutes — a task mutation's critical section is expected to complete in
+// low-single-digit milliseconds, never a whole session). A writer that
+// cannot acquire the lock within a bounded wait throws a named
+// TaskMutationLockError (E_TASK_MUTATION_LOCK_TIMEOUT) rather than
+// proceeding unprotected or silently losing the mutation — "accepted or a
+// named error, never accepted-and-lost" (CU2/CU4, TASK-235's acceptance
+// criteria). listTodos/listReady/readTask (the READ path) never acquire this
+// lock and are unaffected — see withTasksLock's own doc comment for why this
+// does not serialize reads or slow the board (CU7, measured in the TASK-235
+// hand-off, not estimated). (No matching single-writer note was found in
+// tasks/README.md to update — grepped at TASK-235 time; only this module's
+// own header carried the retired assumption.)
 
 import {
   readFile, readdir, unlink,
 } from 'node:fs/promises';
 import {
   mkdirSync, readFileSync, existsSync, statSync,
-  openSync, closeSync, writeSync, fsyncSync, constants,
+  openSync, closeSync, writeSync, fsyncSync, constants, unlinkSync,
 } from 'node:fs';
 import { join } from 'node:path';
 
@@ -182,6 +209,128 @@ function indexFilePath(repoRoot) {
   return join(tasksDir(repoRoot), 'index.json');
 }
 
+function tasksLockPath(repoRoot) {
+  return join(tasksDir(repoRoot), '.mutate.lock');
+}
+
+/**
+ * TASK-235 (WG-H-008/WG-H-009) — thrown by withTasksLock when a writer could
+ * not acquire the tasks mutation lock within TASKS_LOCK_MAX_WAIT_MS. `.code`
+ * lets callers (and tests) distinguish this from any other write failure,
+ * same convention as KeyCollisionError/UatGuardError above. This is the
+ * "named error" half of CU2/CU4's contract — a caller that hits this NEVER
+ * had its mutation silently accepted-and-lost; the mutation simply did not
+ * happen, and the caller can retry.
+ */
+export class TaskMutationLockError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'TaskMutationLockError';
+    this.code = 'E_TASK_MUTATION_LOCK_TIMEOUT';
+  }
+}
+
+// TASK-235 — a task mutation's critical section (read every task file,
+// validate, write the task file + regenerate index.json) is expected to
+// complete in low-single-digit milliseconds even on a slow disk; this is NOT
+// src/session-lock.js's whole-session lock (5-minute staleness, heartbeat
+// renewal) and reusing that lock's semantics here would be wrong — session-lock
+// answers "is another ORCHESTRATOR SESSION active", a much longer-lived,
+// human-timescale question, and piggybacking per-mutation acquisition on it
+// would make a transient board click look like a competing session. This is a
+// separate, purpose-built, short-lived lock: same O_CREAT|O_EXCL primitive
+// (TASK-083/TASK-085's createTask key-collision guard already uses it against
+// a real concurrent OS process — see tests/e2e/task-store-resilience.spec.js
+// AC5(c)), sized for a critical section, not a session.
+const TASKS_LOCK_STALE_MS = 3000; // crash-recovery window: reclaim an abandoned lock after this
+const TASKS_LOCK_POLL_MS = 20; // backoff between acquisition attempts while a live holder has it
+const TASKS_LOCK_MAX_WAIT_MS = 6000; // bounded total wait before failing loudly (never hangs forever)
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * TASK-235 — acquire the tasks mutation lock (tasks/.mutate.lock), blocking
+ * (with bounded backoff) until it is free, a stale holder is reclaimed, or
+ * TASKS_LOCK_MAX_WAIT_MS elapses (-> throws TaskMutationLockError). Mirrors
+ * the exclusive-create + staleness-reclaim shape of src/session-lock.js's
+ * acquire(), narrowed to this module's much shorter critical-section lifetime
+ * (see TASKS_LOCK_STALE_MS above) and with no CAS-steal/content-check
+ * machinery — a stale lock here means an abandoned critical section, not a
+ * live foreign holder worth preserving, so a plain reclaim-and-retry is
+ * proportionate (unlike session-lock.js, which protects a long-lived holder
+ * identity worth not clobbering).
+ */
+async function acquireTasksLock(repoRoot) {
+  const dir = tasksDir(repoRoot);
+  mkdirSync(dir, { recursive: true });
+  const lockPath = tasksLockPath(repoRoot);
+  const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  for (;;) {
+    try {
+      const fd = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+      try {
+        const payload = Buffer.from(`${process.pid}\n`, 'utf8');
+        writeSync(fd, payload, 0, payload.length);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+      return;
+    } catch (err) {
+      if (!err || err.code !== 'EEXIST') throw err;
+      let stat = null;
+      try { stat = statSync(lockPath); } catch { /* vanished between EEXIST and stat — fine, loop */ }
+      if (stat && (Date.now() - stat.mtimeMs) > TASKS_LOCK_STALE_MS) {
+        // Abandoned lock (holder crashed mid-critical-section) — reclaim and
+        // retry immediately. A competing reclaimer racing this same unlink is
+        // harmless: only one of them wins the next openSync(EXCL), the other
+        // just loops again.
+        try { unlinkSync(lockPath); } catch { /* raced with another reclaimer */ }
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new TaskMutationLockError(
+          `timed out after ${TASKS_LOCK_MAX_WAIT_MS}ms waiting for the tasks mutation lock at ${lockPath} — `
+          + 'another writer (this process, bin/task-board.js, or another orchestrator process) is holding '
+          + "it. The caller's mutation was NOT applied — nothing was accepted-and-lost; retry the call.",
+        );
+      }
+      await sleepMs(TASKS_LOCK_POLL_MS);
+    }
+  }
+}
+
+function releaseTasksLock(repoRoot) {
+  try { unlinkSync(tasksLockPath(repoRoot)); } catch { /* best-effort — advisory lock, never throw on release */ }
+}
+
+/**
+ * TASK-235 — run `fn` with the tasks mutation lock held, releasing it in a
+ * finally block so a thrown validation/guard error (or any other failure
+ * inside fn) never leaves the lock stuck for the full staleness window.
+ * Every mutating entry point below (transitionStatus, appendComment,
+ * closeTask, createTask) wraps its ENTIRE read-mutate-write critical section
+ * in this — not just the final write — because the race this closes is
+ * "two writers both read stale state and both write from it", which a lock
+ * around only the write step would not prevent (see the module header for
+ * the measured before/after). Deliberately NOT used by the read path
+ * (listTodos/listReady/readTask) — reads never acquire this lock, and
+ * verifyAndRepairIndex only acquires it on its rare self-heal WRITE branches
+ * (see below), so the common case (index already in sync) touches the lock
+ * not at all. This is what keeps CU7 true: writers serialize against each
+ * other, reads never do.
+ */
+async function withTasksLock(repoRoot, fn) {
+  await acquireTasksLock(repoRoot);
+  try {
+    return await fn();
+  } finally {
+    releaseTasksLock(repoRoot);
+  }
+}
+
 /**
  * AC6 — compare two task-shaped objects (or strings) by the trailing integer
  * of their `key` field (or themselves if strings). Falls back to a stable
@@ -260,16 +409,27 @@ function buildIndexBytes(tasks, generatedAt) {
  *
  * Returns true if a repair was performed, false if the index was already in sync.
  */
+// TASK-235 — small shared helper for verifyAndRepairIndex's three write
+// branches below. Runs under withTasksLock so a read-triggered self-heal
+// rewrite can never race a genuine mutation's own (also lock-protected)
+// index write — closing the same WG-H-009 defect class from the read side,
+// not just the write side. Only entered on the rare drift-detected/missing/
+// corrupt branches; the common "index already in sync" path (the vast
+// majority of calls) returns before ever reaching here and never touches the
+// lock — this is what keeps the read path (CU7) unaffected in the common case.
+async function writeIndexLocked(repoRoot, idxPath, tasks, stamp) {
+  await withTasksLock(repoRoot, () => atomicWriteFiles([
+    { target: idxPath, bytes: buildIndexBytes(tasks, stamp) },
+  ]));
+}
+
 async function verifyAndRepairIndex(repoRoot, tasks, now = () => new Date().toISOString()) {
   const idxPath = indexFilePath(repoRoot);
   if (!existsSync(idxPath)) {
     // No index yet — only repair (write a fresh one) if there ARE on-disk tasks.
     // An empty repo with no tasks AND no index is a legitimate idle state.
     if (tasks.length === 0) return false;
-    const stamp = now();
-    await atomicWriteFiles([
-      { target: idxPath, bytes: buildIndexBytes(tasks, stamp) },
-    ]);
+    await writeIndexLocked(repoRoot, idxPath, tasks, now());
     return true;
   }
   let parsed;
@@ -277,10 +437,7 @@ async function verifyAndRepairIndex(repoRoot, tasks, now = () => new Date().toIS
     parsed = JSON.parse(readFileSync(idxPath, 'utf8'));
   } catch {
     // Corrupt index — regenerate.
-    const stamp = now();
-    await atomicWriteFiles([
-      { target: idxPath, bytes: buildIndexBytes(tasks, stamp) },
-    ]);
+    await writeIndexLocked(repoRoot, idxPath, tasks, now());
     return true;
   }
   const indexEntries = Array.isArray(parsed.tasks) ? parsed.tasks : [];
@@ -307,10 +464,7 @@ async function verifyAndRepairIndex(repoRoot, tasks, now = () => new Date().toIS
   }
   if (!drift) return false;
 
-  const stamp = now();
-  await atomicWriteFiles([
-    { target: idxPath, bytes: buildIndexBytes(tasks, stamp) },
-  ]);
+  await writeIndexLocked(repoRoot, idxPath, tasks, now());
   return true;
 }
 
@@ -419,18 +573,121 @@ export class DanglingDependencyError extends Error {
 }
 
 /**
+ * TASK-235 (WG-H-012) — thrown by listReady when a real cycle exists in the
+ * depends_on graph (A depends on B, B depends on A, directly or through a
+ * longer chain) AND there is nothing else ready to report (see listReady's
+ * doc comment for when this throws vs. when it merely annotates the return
+ * value). Distinct `.code` from DanglingDependencyError so callers can tell
+ * "a key doesn't exist" apart from "the keys exist but form a cycle" — the
+ * fix is different in each case (typo/stale reference vs. an unsatisfiable
+ * dependency loop that needs a human to break it).
+ */
+export class DependencyCycleError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'DependencyCycleError';
+    this.code = 'E_DEPENDENCY_CYCLE';
+  }
+}
+
+/**
+ * TASK-235 (WG-H-012) — detect cycles in the depends_on graph across the
+ * FULL task set (every status, not just 'todo' — a cycle is a structural
+ * property of the graph, independent of any one task's current status).
+ * Dangling edges (a depends_on key absent from `tasks`) are skipped here,
+ * not treated as part of a cycle — that is a distinct defect class, reported
+ * separately by listReady's own dangling-reference handling, and conflating
+ * the two would misreport a plain typo as a cycle.
+ *
+ * Standard white/gray/black DFS: a GRAY node reached again (a back-edge)
+ * means the nodes currently on the DFS stack, from that node's first visit
+ * onward, form a cycle. Returns an array of cycles, each an ordered array of
+ * keys naming the loop (e.g. ['TASK-101', 'TASK-102', 'TASK-101']).
+ */
+function detectDependencyCycles(tasks) {
+  const byKey = new Map(tasks.map((t) => [t.key, t]));
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const color = new Map(tasks.map((t) => [t.key, WHITE]));
+  const stack = [];
+  const cycles = [];
+
+  function visit(key) {
+    color.set(key, GRAY);
+    stack.push(key);
+    const t = byKey.get(key);
+    const deps = Array.isArray(t && t.depends_on) ? t.depends_on : [];
+    for (const depKey of deps) {
+      if (!byKey.has(depKey)) continue; // dangling — reported separately, not a cycle
+      const c = color.get(depKey);
+      if (c === WHITE) {
+        visit(depKey);
+      } else if (c === GRAY) {
+        const idx = stack.indexOf(depKey);
+        cycles.push(stack.slice(idx).concat(depKey));
+      }
+      // BLACK: already fully explored via some other path — not a back-edge.
+    }
+    stack.pop();
+    color.set(key, BLACK);
+  }
+
+  for (const t of tasks) {
+    if (color.get(t.key) === WHITE) visit(t.key);
+  }
+  return cycles;
+}
+
+/**
  * AC4 — return all status=='todo' tasks whose depends_on entries each point at
  * an existing on-disk task with status=='done'. Tasks with no depends_on are
  * trivially ready. A depends_on key that resolves to an existing task but is
  * not yet 'done' is the normal in-progress case (excluded, no throw). A
  * depends_on key with NO matching on-disk task at all is a dangling reference
- * (typo, or the dep was deleted) — by definition it can never reach 'done', so
- * TASK-107 makes this throw a DanglingDependencyError naming the stranded
- * ticket and the missing dep, instead of silently omitting the ticket from
- * the ready list (mirrors depsAreDone's contract in src/drive-loop.js).
- * Sorted by numeric key (AC6).
- * @throws {DanglingDependencyError} If any todo task's depends_on references
- *   a key absent from the on-disk task set.
+ * (typo, or the dependency was deleted) — by definition it can never reach
+ * 'done' — and a depends_on chain that loops back on itself (a cycle) can
+ * also never reach 'done'. Sorted by numeric key (AC6).
+ *
+ * TASK-235 (WG-H-012, wargaming 2026-09-16) — RETARGETED reporting contract.
+ * Measured before this fix (see the TASK-235 hand-off): a single ticket with
+ * a dangling depends_on made listReady THROW unconditionally, which discarded
+ * the ENTIRE ready computation — an unrelated, genuinely-ready ticket on the
+ * same board became invisible too ("breaks listReady for the whole board",
+ * the literal harm reported). And a real cycle (A depends_on B, B depends_on
+ * A) neither hung nor threw — both tickets were silently excluded from
+ * `ready` with ZERO signal that this was a cycle as opposed to an ordinary
+ * pending dependency (the same silent-stranding class TASK-107 already fixed
+ * for the dangling-key case, left open here).
+ *
+ * Both defect classes are still detected and NAMED — no silent loss — but the
+ * "does this take down the whole board" question now depends on whether
+ * there is anything else to report:
+ *   - If, after excluding every dangling/cycled ticket, `ready` is
+ *     NON-EMPTY, listReady returns it normally and attaches the issues found
+ *     as extra properties on the returned array — `ready.danglingDependencies`
+ *     (array of {task, dependsOn}) and/or `ready.dependencyCycles` (array of
+ *     cycle paths, each an ordered array of keys) — rather than discarding a
+ *     legitimate result. Arrays are objects: `.map`/`.length`/iteration/
+ *     `JSON.stringify` of the ready list itself are completely unaffected;
+ *     only a caller that specifically inspects these named properties sees
+ *     the report. (Known, accepted residual — flagged in the TASK-235
+ *     hand-off: a caller that only reads the plain JSON-serialized array,
+ *     e.g. across an MCP tool boundary that does not forward extra
+ *     properties, will not see this report. Surfacing it end-to-end through
+ *     every such caller is out of this ticket's declared file-surface scope.)
+ *   - If `ready` is EMPTY (nothing else to report — same shape as the
+ *     original single-ticket case TASK-107 fixed), listReady still throws —
+ *     DanglingDependencyError when a dangling reference is present (unchanged
+ *     from before this ticket — same message shape, same `.code`), else
+ *     DependencyCycleError when only a cycle is present. This preserves the
+ *     exact pre-existing throw contract for the case that has no OTHER work
+ *     to report anyway.
+ *
+ * @throws {DanglingDependencyError} If a dangling depends_on is found and no
+ *   other ticket is ready.
+ * @throws {DependencyCycleError} If a depends_on cycle is found (and no
+ *   dangling reference), and no other ticket is ready.
  */
 export async function listReady({ repoRoot }) {
   // Mirror the listTodos housekeeping so listReady is a safe stand-alone call
@@ -440,25 +697,61 @@ export async function listReady({ repoRoot }) {
   await verifyAndRepairIndex(repoRoot, tasks);
 
   const byKey = new Map(tasks.map((t) => [t.key, t]));
-  const ready = tasks.filter((t) => {
-    if (t.status !== 'todo') return false;
+  const cycles = detectDependencyCycles(tasks);
+  const cycledKeys = new Set(cycles.flat());
+
+  const dangling = [];
+  const ready = [];
+  for (const t of tasks) {
+    if (t.status !== 'todo') continue;
     const deps = Array.isArray(t.depends_on) ? t.depends_on : [];
+    let blocked = false;
     for (const depKey of deps) {
       const dep = byKey.get(depKey);
       if (!dep) {
+        dangling.push({ task: t.key, dependsOn: depKey });
+        blocked = true;
+        continue; // keep scanning the REST of this task's deps too, so every
+        // dangling reference gets named, not just the first one hit.
+      }
+      if (dep.status !== 'done') blocked = true;
+    }
+    if (cycledKeys.has(t.key)) blocked = true;
+    if (!blocked) ready.push(t);
+  }
+  ready.sort(numericKeyOrder);
+
+  if (dangling.length > 0 || cycles.length > 0) {
+    if (ready.length === 0) {
+      if (dangling.length > 0) {
+        const parts = dangling.map(
+          ({ task, dependsOn }) => `task ${task} depends_on "${dependsOn}", which does not exist as an `
+            + `on-disk task (no tasks/${dependsOn}.json)`,
+        );
         throw new DanglingDependencyError(
-          `listReady: task ${t.key} depends_on "${depKey}", which does not exist `
-          + `as an on-disk task (no tasks/${depKey}.json). Fix the dangling `
-          + 'depends_on reference (typo, or the dependency was deleted) — a '
-          + 'ticket can never become ready while it points at a task that does '
-          + 'not exist.',
+          `listReady: ${parts.join('; ')}. Fix the dangling depends_on reference(s) (typo, or the `
+          + 'dependency was deleted) — a ticket can never become ready while it points at a task that '
+          + 'does not exist.'
+          + (cycles.length > 0
+            ? ` Also found ${cycles.length} depends_on cycle(s): ${cycles.map((c) => c.join(' -> ')).join('; ')}.`
+            : ''),
         );
       }
-      if (dep.status !== 'done') return false;
+      throw new DependencyCycleError(
+        `listReady: found ${cycles.length} depends_on cycle(s), which can never resolve: `
+        + `${cycles.map((c) => c.join(' -> ')).join('; ')}. Break the cycle by removing or `
+        + 'correcting one of the depends_on entries in the loop — none of the tickets in a cycle '
+        + 'can ever reach "done" on their own.',
+      );
     }
-    return true;
-  });
-  return ready.sort(numericKeyOrder);
+    // WG-H-012 — other tickets ARE ready; do not discard that real result.
+    // See the doc comment above for the reporting contract and its accepted
+    // residual (JSON-serialized callers that drop extra array properties).
+    if (dangling.length > 0) ready.danglingDependencies = dangling;
+    if (cycles.length > 0) ready.dependencyCycles = cycles;
+  }
+
+  return ready;
 }
 
 /**
@@ -1193,53 +1486,61 @@ export async function transitionStatus({
   }
   const resolvedException = status === 'done' ? resolveCloseException(exception) : null;
 
-  // SINGLE-WRITER: readAllTasks -> mutate -> atomicWriteFiles is NOT race-safe
-  // against a concurrent writer. See the module header for the full rationale.
-  const allTasks = await readAllTasks(repoRoot);
-  const task = allTasks.find((t) => t.key === key);
-  if (!task) throw new Error(`unknown task key: ${key}`);
+  // TASK-235 — the FULL read-mutate-write critical section runs under
+  // withTasksLock, not just the final write: the race this closes is "two
+  // writers both read stale state and both write from it", so the read
+  // itself must be inside the lock (a lock around only the write would still
+  // let two writers each compute their new state from an equally-stale read
+  // taken before either acquired it). See the module header for the measured
+  // before/after and withTasksLock's own doc comment for why this does not
+  // affect the read path.
+  await withTasksLock(repoRoot, async () => {
+    const allTasks = await readAllTasks(repoRoot);
+    const task = allTasks.find((t) => t.key === key);
+    if (!task) throw new Error(`unknown task key: ${key}`);
 
-  if (status === 'done') {
-    checkUatGuard(task);
-    // TASK-187 — the loop-mode authorization gate (is an autonomous close
-    // permitted at all?) runs BEFORE the new predecessor-state/evidence
-    // checks (is THIS close well-formed?) — a meta-permission check is
-    // logically prior to a completeness check on the same action.
-    await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
-    checkDonePredecessorState(task, resolvedException);
-    checkCloseEvidence(task, task.linked_commits, resolvedException);
-  }
+    if (status === 'done') {
+      checkUatGuard(task);
+      // TASK-187 — the loop-mode authorization gate (is an autonomous close
+      // permitted at all?) runs BEFORE the new predecessor-state/evidence
+      // checks (is THIS close well-formed?) — a meta-permission check is
+      // logically prior to a completeness check on the same action.
+      await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+      checkDonePredecessorState(task, resolvedException);
+      checkCloseEvidence(task, task.linked_commits, resolvedException);
+    }
 
-  // TASK-187 fix round LOW-1 — capture BEFORE the mutation below so the
-  // marker-append guard immediately following can tell an actual status
-  // change apart from an idempotent re-affirmation (task.status already ===
-  // 'done', reached this point only because checkDonePredecessorState/
-  // checkCloseEvidence both no-op on an already-'done' task).
-  const previousStatus = task.status;
-  const stamp = now();
-  task.status = status;
-  task.updated_at = stamp;
-  // Only append the exception marker when this call actually MOVED the
-  // status — an idempotent re-close (previousStatus already === status,
-  // i.e. already 'done') is not a new closure event, so recording a fresh
-  // '[CLOSE-EXCEPTION]' comment on it would be audit noise for a bypass
-  // that did not actually bypass anything this time.
-  if (resolvedException && previousStatus !== status) {
-    const marker = {
-      author: resolvedException.author,
-      at: stamp,
-      body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`),
-    };
-    task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
-  }
+    // TASK-187 fix round LOW-1 — capture BEFORE the mutation below so the
+    // marker-append guard immediately following can tell an actual status
+    // change apart from an idempotent re-affirmation (task.status already ===
+    // 'done', reached this point only because checkDonePredecessorState/
+    // checkCloseEvidence both no-op on an already-'done' task).
+    const previousStatus = task.status;
+    const stamp = now();
+    task.status = status;
+    task.updated_at = stamp;
+    // Only append the exception marker when this call actually MOVED the
+    // status — an idempotent re-close (previousStatus already === status,
+    // i.e. already 'done') is not a new closure event, so recording a fresh
+    // '[CLOSE-EXCEPTION]' comment on it would be audit noise for a bypass
+    // that did not actually bypass anything this time.
+    if (resolvedException && previousStatus !== status) {
+      const marker = {
+        author: resolvedException.author,
+        at: stamp,
+        body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`),
+      };
+      task.comments = Array.isArray(task.comments) ? [...task.comments, marker] : [marker];
+    }
 
-  // AC5 — validate before any disk I/O.
-  validateTaskOrThrow(task);
+    // AC5 — validate before any disk I/O.
+    validateTaskOrThrow(task);
 
-  await atomicWriteFiles([
-    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + '\n' },
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
-  ]);
+    await atomicWriteFiles([
+      { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + '\n' },
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
+    ]);
+  });
 }
 
 /**
@@ -1268,23 +1569,27 @@ export async function appendComment({
       `invalid comment author ${JSON.stringify(author)} — must be one of ${COMMENT_AUTHORS.join(', ')}`,
     );
   }
-  // SINGLE-WRITER: see module header.
-  const allTasks = await readAllTasks(repoRoot);
-  const task = allTasks.find((t) => t.key === key);
-  if (!task) throw new Error(`unknown task key: ${key}`);
+  // TASK-235 — see transitionStatus's matching comment: the full
+  // read-mutate-write critical section runs under withTasksLock, not just
+  // the write.
+  await withTasksLock(repoRoot, async () => {
+    const allTasks = await readAllTasks(repoRoot);
+    const task = allTasks.find((t) => t.key === key);
+    if (!task) throw new Error(`unknown task key: ${key}`);
 
-  const stamp = now();
-  const comment = { author, at: stamp, body: sanitizeCommentBody(body) };
-  task.comments = Array.isArray(task.comments) ? [...task.comments, comment] : [comment];
-  task.updated_at = stamp;
+    const stamp = now();
+    const comment = { author, at: stamp, body: sanitizeCommentBody(body) };
+    task.comments = Array.isArray(task.comments) ? [...task.comments, comment] : [comment];
+    task.updated_at = stamp;
 
-  // AC5 — validate before any disk I/O.
-  validateTaskOrThrow(task);
+    // AC5 — validate before any disk I/O.
+    validateTaskOrThrow(task);
 
-  await atomicWriteFiles([
-    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + '\n' },
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
-  ]);
+    await atomicWriteFiles([
+      { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + '\n' },
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
+    ]);
+  });
 }
 
 // Commit sha shape check for closeTask's linked_commits — 7 to 40 lowercase
@@ -1361,65 +1666,69 @@ export async function closeTask({
   }
   const resolvedException = resolveCloseException(exception);
 
-  // SINGLE-WRITER: see module header.
-  const allTasks = await readAllTasks(repoRoot);
-  const task = allTasks.find((t) => t.key === key);
-  if (!task) throw new Error(`unknown task key: ${key}`);
+  // TASK-235 — see transitionStatus's matching comment: the full
+  // read-mutate-write critical section runs under withTasksLock, not just
+  // the write.
+  await withTasksLock(repoRoot, async () => {
+    const allTasks = await readAllTasks(repoRoot);
+    const task = allTasks.find((t) => t.key === key);
+    if (!task) throw new Error(`unknown task key: ${key}`);
 
-  checkUatGuard(task);
-  // TASK-187 — same ordering rationale as transitionStatus: the loop-mode
-  // authorization gate runs BEFORE the predecessor-state/evidence checks.
-  await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
-  checkDonePredecessorState(task, resolvedException);
-  const existingLinkedCommits = Array.isArray(task.linked_commits) ? task.linked_commits : [];
-  checkCloseEvidence(task, [...existingLinkedCommits, ...linked_commits], resolvedException);
+    checkUatGuard(task);
+    // TASK-187 — same ordering rationale as transitionStatus: the loop-mode
+    // authorization gate runs BEFORE the predecessor-state/evidence checks.
+    await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
+    checkDonePredecessorState(task, resolvedException);
+    const existingLinkedCommits = Array.isArray(task.linked_commits) ? task.linked_commits : [];
+    checkCloseEvidence(task, [...existingLinkedCommits, ...linked_commits], resolvedException);
 
-  for (const sha of linked_commits) {
-    if (typeof sha !== 'string' || !COMMIT_SHA_RE.test(sha)) {
-      throw new Error(
-        `invalid commit sha ${JSON.stringify(sha)} — must match ${COMMIT_SHA_RE}`,
-      );
+    for (const sha of linked_commits) {
+      if (typeof sha !== 'string' || !COMMIT_SHA_RE.test(sha)) {
+        throw new Error(
+          `invalid commit sha ${JSON.stringify(sha)} — must match ${COMMIT_SHA_RE}`,
+        );
+      }
     }
-  }
 
-  // TASK-187 fix round LOW-1 — same idempotent-re-close guard as
-  // transitionStatus: capture BEFORE the mutation below.
-  const previousStatus = task.status;
-  const stamp = now();
-  const newComment = { author: comment.author, at: stamp, body: sanitizeCommentBody(comment.body) };
-  task.status = 'done';
-  task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
-  // Only append the exception marker when this call actually MOVED the
-  // status (previousStatus !== 'done') — an idempotent re-close is not a
-  // new closure event, so it would be audit noise for a bypass that did not
-  // actually bypass anything this time.
-  if (resolvedException && previousStatus !== 'done') {
-    const marker = {
-      author: resolvedException.author,
-      at: stamp,
-      body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`),
-    };
-    // Inserted BEFORE the normal closing comment (splice at the position it
-    // occupied prior to the push above) so the audit trail reads
-    // exception-then-close, matching the order the two events actually
-    // happened in this call.
-    task.comments.splice(task.comments.length - 1, 0, marker);
-  }
-  task.linked_commits = Array.isArray(task.linked_commits)
-    ? [...task.linked_commits, ...linked_commits]
-    : [...linked_commits];
-  task.linked_prs = Array.isArray(task.linked_prs)
-    ? [...task.linked_prs, ...linked_prs]
-    : [...linked_prs];
-  task.updated_at = stamp;
+    // TASK-187 fix round LOW-1 — same idempotent-re-close guard as
+    // transitionStatus: capture BEFORE the mutation below.
+    const previousStatus = task.status;
+    const stamp = now();
+    const newComment = { author: comment.author, at: stamp, body: sanitizeCommentBody(comment.body) };
+    task.status = 'done';
+    task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
+    // Only append the exception marker when this call actually MOVED the
+    // status (previousStatus !== 'done') — an idempotent re-close is not a
+    // new closure event, so it would be audit noise for a bypass that did not
+    // actually bypass anything this time.
+    if (resolvedException && previousStatus !== 'done') {
+      const marker = {
+        author: resolvedException.author,
+        at: stamp,
+        body: sanitizeCommentBody(`${CLOSE_EXCEPTION_MARKER} ${resolvedException.reason}`),
+      };
+      // Inserted BEFORE the normal closing comment (splice at the position it
+      // occupied prior to the push above) so the audit trail reads
+      // exception-then-close, matching the order the two events actually
+      // happened in this call.
+      task.comments.splice(task.comments.length - 1, 0, marker);
+    }
+    task.linked_commits = Array.isArray(task.linked_commits)
+      ? [...task.linked_commits, ...linked_commits]
+      : [...linked_commits];
+    task.linked_prs = Array.isArray(task.linked_prs)
+      ? [...task.linked_prs, ...linked_prs]
+      : [...linked_prs];
+    task.updated_at = stamp;
 
-  // AC5-style guarantee — validate before any disk I/O.
-  validateTaskOrThrow(task);
+    // AC5-style guarantee — validate before any disk I/O.
+    validateTaskOrThrow(task);
 
-  await atomicWriteFiles([
-    { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + '\n' },
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
-  ]);
+    await atomicWriteFiles([
+      { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + '\n' },
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
+    ]);
+  });
 }
 
 /**
@@ -1502,124 +1811,145 @@ export async function createTask({
     throw new Error(`invalid requires_uat "${requires_uat}" — must be a boolean`);
   }
 
-  const key = await deriveNextKey(repoRoot);
   const stamp = now(); // Single call so created_at === updated_at byte-for-byte.
 
-  const task = {
-    key,
-    title,
-    description,
-    acceptance_criteria,
-    status: 'todo',
-    priority,
-    labels,
-    assignee: null,
-    depends_on,
-    linked_commits: [],
-    linked_prs: [],
-    comments: [],
-    created_at: stamp,
-    updated_at: stamp,
-    jira_key: null,
-    ...(verification_tier !== undefined ? { verification_tier } : {}),
-    ...(requires_uat !== undefined ? { requires_uat } : {}),
-    // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
-    // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
-    ...(marker !== undefined ? { marker } : {}),
-    ...(source_tier !== undefined ? { source_tier } : {}),
-    ...(confidence !== undefined ? { confidence } : {}),
-  };
+  // TASK-235 — deriveNextKey (a readdir scan) through the index write all run
+  // under withTasksLock, same full-critical-section treatment as
+  // transitionStatus/appendComment/closeTask. This does not just protect
+  // createTask's OWN index write from racing a concurrent transitionStatus/
+  // appendComment/closeTask's index write (WG-H-009) — serializing
+  // deriveNextKey too means two concurrent createTask calls can no longer
+  // derive the SAME next key in the first place, so the O_CREAT|O_EXCL
+  // collision path below (kept unchanged, as defense-in-depth for a caller
+  // outside this lock's reach, e.g. a crash mid-critical-section reclaimed
+  // mid-flight) becomes a rare residual rather than the routine occurrence it
+  // used to be under uncoordinated concurrent createTask calls.
+  const { key, target, warnings } = await withTasksLock(repoRoot, async () => {
+    const nextKey = await deriveNextKey(repoRoot);
 
-  // AC5 — schema validate BEFORE any disk I/O so a bad payload (e.g. a `now`
-  // that returns a non-ISO string) leaves the store untouched.
-  validateTaskOrThrow(task);
+    const task = {
+      key: nextKey,
+      title,
+      description,
+      acceptance_criteria,
+      status: 'todo',
+      priority,
+      labels,
+      assignee: null,
+      depends_on,
+      linked_commits: [],
+      linked_prs: [],
+      comments: [],
+      created_at: stamp,
+      updated_at: stamp,
+      jira_key: null,
+      ...(verification_tier !== undefined ? { verification_tier } : {}),
+      ...(requires_uat !== undefined ? { requires_uat } : {}),
+      // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
+      // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
+      ...(marker !== undefined ? { marker } : {}),
+      ...(source_tier !== undefined ? { source_tier } : {}),
+      ...(confidence !== undefined ? { confidence } : {}),
+    };
 
-  // Read existing tasks AFTER validation so we don't pay the I/O on bad input.
-  const existing = await readAllTasks(repoRoot);
-  const allTasks = [...existing, task];
+    // AC5 — schema validate BEFORE any disk I/O so a bad payload (e.g. a `now`
+    // that returns a non-ISO string) leaves the store untouched.
+    validateTaskOrThrow(task);
 
-  // AC7 — self-bootstrap tasks/ before the first atomic write. A fresh repo
-  // with no tasks/ would otherwise ENOENT on atomic-write's sibling tmp file.
-  mkdirSync(tasksDir(repoRoot), { recursive: true });
+    // Read existing tasks AFTER validation so we don't pay the I/O on bad input.
+    const existing = await readAllTasks(repoRoot);
+    const allTasks = [...existing, task];
 
-  const target = taskFilePath(repoRoot, key);
-  const taskBytes = JSON.stringify(task, null, 2) + '\n';
-  const payload = Buffer.from(taskBytes, 'utf8');
+    // AC7 — self-bootstrap tasks/ before the first atomic write. A fresh repo
+    // with no tasks/ would otherwise ENOENT on atomic-write's sibling tmp file.
+    mkdirSync(tasksDir(repoRoot), { recursive: true });
 
-  // AC4 (TASK-083) + AC5(a)/(c) + review-HIGH (TASK-085) — collision guard:
-  // derivedNextKey() and this write are not atomic, so a concurrent
-  // createTask call can win the race for the same key in between. A plain
-  // existsSync() check (the original AC4 fix) is ITSELF a check-then-write
-  // TOCTOU — a second writer can still slip in between the check and the
-  // write. Hardened to a real OS-level exclusive create directly against the
-  // derived-key path: O_CREAT|O_EXCL either reserves the slot —
-  // deterministically, even against a genuinely concurrent second OS process
-  // (see tests/e2e/task-store-resilience.spec.js AC5(c)) — or fails with
-  // EEXIST when a competitor already claimed it, exactly like the existsSync
-  // check used to, just race-free.
-  //
-  // review-HIGH fix: the FULL validated payload is written through the SAME
-  // reserved fd (write+fsync+close), mirroring writeLockExclusive in
-  // src/session-lock.js, INSTEAD of closing the fd empty and relying on a
-  // later atomicWriteFiles() rename to fill it in. The earlier design left
-  // target sitting at 0 bytes for the entire tmp-write+fsync window (tens of
-  // ms) — a concurrent reader (readAllTasks via listTodos/listReady/
-  // transitionStatus/createTask) would throw an untyped SyntaxError on
-  // JSON.parse(''), and a crash in that window left target permanently empty
-  // (unreachable by both the tmp sweep — TASK_FILENAME_RE, not TMP_FILE_RE —
-  // and deriveNextKey, which counts it toward maxN forever). Writing the real
-  // bytes directly through the reservation fd shrinks that window to the µs
-  // between openSync and writeSync; readAllTasks additionally skips a
-  // zero-byte task file outright (treats it as an in-flight reservation, not
-  // corruption) and sweepTasksTmpFiles reaps a STALE one — see both comments
-  // above — closing the residual window completely. atomicWriteFiles is used
-  // for index.json only now; the task file never goes through a rename.
-  let reserveFd;
-  try {
-    reserveFd = openSync(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
-  } catch (err) {
-    if (err && err.code === 'EEXIST') {
+    const taskTarget = taskFilePath(repoRoot, nextKey);
+    const taskBytes = JSON.stringify(task, null, 2) + '\n';
+    const payload = Buffer.from(taskBytes, 'utf8');
+
+    // AC4 (TASK-083) + AC5(a)/(c) + review-HIGH (TASK-085) — collision guard:
+    // derivedNextKey() and this write are not atomic, so a concurrent
+    // createTask call can win the race for the same key in between. A plain
+    // existsSync() check (the original AC4 fix) is ITSELF a check-then-write
+    // TOCTOU — a second writer can still slip in between the check and the
+    // write. Hardened to a real OS-level exclusive create directly against the
+    // derived-key path: O_CREAT|O_EXCL either reserves the slot —
+    // deterministically, even against a genuinely concurrent second OS process
+    // (see tests/e2e/task-store-resilience.spec.js AC5(c)) — or fails with
+    // EEXIST when a competitor already claimed it, exactly like the existsSync
+    // check used to, just race-free. TASK-235 note: withTasksLock above already
+    // makes this collision unreachable for any concurrent writer that goes
+    // through task-store.js's own exports — this guard is kept as-is,
+    // unweakened, for the narrow residual (a crash mid-critical-section whose
+    // lock is reclaimed by a new writer while the crashed write is still
+    // physically landing).
+    //
+    // review-HIGH fix: the FULL validated payload is written through the SAME
+    // reserved fd (write+fsync+close), mirroring writeLockExclusive in
+    // src/session-lock.js, INSTEAD of closing the fd empty and relying on a
+    // later atomicWriteFiles() rename to fill it in. The earlier design left
+    // target sitting at 0 bytes for the entire tmp-write+fsync window (tens of
+    // ms) — a concurrent reader (readAllTasks via listTodos/listReady/
+    // transitionStatus/createTask) would throw an untyped SyntaxError on
+    // JSON.parse(''), and a crash in that window left target permanently empty
+    // (unreachable by both the tmp sweep — TASK_FILENAME_RE, not TMP_FILE_RE —
+    // and deriveNextKey, which counts it toward maxN forever). Writing the real
+    // bytes directly through the reservation fd shrinks that window to the µs
+    // between openSync and writeSync; readAllTasks additionally skips a
+    // zero-byte task file outright (treats it as an in-flight reservation, not
+    // corruption) and sweepTasksTmpFiles reaps a STALE one — see both comments
+    // above — closing the residual window completely. atomicWriteFiles is used
+    // for index.json only now; the task file never goes through a rename.
+    let reserveFd;
+    try {
+      reserveFd = openSync(taskTarget, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    } catch (err) {
+      if (err && err.code === 'EEXIST') {
+        throw new KeyCollisionError(
+          `createTask: key collision — ${taskTarget} already exists (a concurrent writer won the race for ${nextKey})`,
+        );
+      }
+      throw err;
+    }
+    try {
+      let written = 0;
+      while (written < payload.length) {
+        written += writeSync(reserveFd, payload, written, payload.length - written);
+      }
+      fsyncSync(reserveFd);
+    } finally {
+      closeSync(reserveFd);
+    }
+
+    // Verify-after-write, kept as belt-and-braces (TASK-085 review MEDIUM-1
+    // parity with session-lock): a LEGITIMATE second createTask call can never
+    // reach this point for the same key (it would have failed EEXIST above),
+    // but re-reading and comparing against the exact bytes we intended to write
+    // still catches a rogue direct mutation of the just-created file landing in
+    // the (tiny, but real) window before we've verified it.
+    const onDisk = readFileSync(taskTarget, 'utf8');
+    if (onDisk !== taskBytes) {
       throw new KeyCollisionError(
-        `createTask: key collision — ${target} already exists (a concurrent writer won the race for ${key})`,
+        `createTask: verify-after-write detected a competing writer's payload ` +
+        `at ${taskTarget} (derived-key collision) — our write was overwritten ` +
+        'immediately after landing.',
       );
     }
-    throw err;
-  }
-  try {
-    let written = 0;
-    while (written < payload.length) {
-      written += writeSync(reserveFd, payload, written, payload.length - written);
-    }
-    fsyncSync(reserveFd);
-  } finally {
-    closeSync(reserveFd);
-  }
 
-  // Verify-after-write, kept as belt-and-braces (TASK-085 review MEDIUM-1
-  // parity with session-lock): a LEGITIMATE second createTask call can never
-  // reach this point for the same key (it would have failed EEXIST above),
-  // but re-reading and comparing against the exact bytes we intended to write
-  // still catches a rogue direct mutation of the just-created file landing in
-  // the (tiny, but real) window before we've verified it.
-  const onDisk = readFileSync(target, 'utf8');
-  if (onDisk !== taskBytes) {
-    throw new KeyCollisionError(
-      `createTask: verify-after-write detected a competing writer's payload ` +
-      `at ${target} (derived-key collision) — our write was overwritten ` +
-      'immediately after landing.',
-    );
-  }
+    await atomicWriteFiles([
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
+    ]);
 
-  await atomicWriteFiles([
-    { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) },
-  ]);
+    // TASK-189 AC4 — advisory, non-blocking; computed AFTER the write succeeds
+    // so a false-positive match never costs the caller their ticket. Only
+    // included in the return value (never persisted into the task file — it is
+    // not a schema field) so it stays visible to whoever reads createTask's/
+    // create_task's result without touching on-disk shape.
+    const taskWarnings = checkDangerousSurfaceMention({ title, description });
 
-  // TASK-189 AC4 — advisory, non-blocking; computed AFTER the write succeeds
-  // so a false-positive match never costs the caller their ticket. Only
-  // included in the return value (never persisted into the task file — it is
-  // not a schema field) so it stays visible to whoever reads createTask's/
-  // create_task's result without touching on-disk shape.
-  const warnings = checkDangerousSurfaceMention({ title, description });
+    return { key: nextKey, target: taskTarget, warnings: taskWarnings };
+  });
 
   return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
 }
