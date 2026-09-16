@@ -136,14 +136,38 @@ while NOT goalSatisfied(tasks, goal)
      in_progress+'fetch' -> resumePoint returns 'reset' ("no durable work landed")
      even though impl commits already landed during that spawn — the
      longest phase in a ticket's lifecycle. This checkpoint closes that gap.
-  3. Spawn the Developer subagent
+  3. [MANDATORY, 2026-09-16 human decision, NOT one of the five hard-stop
+     gates below and NOT liftable by any `loop_auth` switch — it sits in
+     front of all five, not among them] Derive the observable-case list
+     (Workflow step 2 / Regla 1 of CLAUDE.md): collect the request or
+     complete it against `docs/PLANTILLA-PEDIDO.md`, derive the "do X,
+     expect Y" cases with their alternative/failure paths from it, record
+     the completed pedido and then the derived list as separate ticket
+     comments (author `orchestrator`), and STOP for the human's EXPLICIT
+     approval before proceeding to step 4. A loop running unattended
+     (every `loop_auth` switch granted, including the unattended-mode
+     preset) still pauses here exactly as in harness mode — there is no
+     switch anywhere in `LOOP_AUTH_SWITCHES` that self-satisfies this
+     approval, because it is the definition of what the Developer builds
+     and what the wargaming step below verifies against, not a destructive
+     operation a switch could pre-authorize.
+  4. Spawn the Developer subagent, briefed with the approved use-case list
      -> Renew the session lock
-  4. Spawn the Reviewer subagent (fresh context, read-only)
+  5. Spawn the Reviewer subagent (fresh context, read-only)
      - On HIGH finding: loop back to Developer (max 2 retries); on third HIGH, surface and break
      -> Renew the session lock
-  5. [HARD-STOP GATE — see below before proceeding to close]
-  6. Checkpoint the session bundle
-  7. Renew the session lock (final renew before the next iteration's selection)
+  6. [MANDATORY, 2026-09-16 human decision, same non-liftable status as
+     step 3 above — not one of the five hard-stop gates, no lifting
+     switch] Wargaming step: once the review is green, run the adversarial
+     pass against the use-case list approved at step 3, including the
+     named affected `tests/e2e/**` specs. A HIGH-severity wargaming
+     finding blocks the close exactly like a HIGH review finding — loop
+     back to the Developer. Record the wargaming outcome (what was
+     attacked, what survived, what did not) on the ticket before
+     proceeding to step 7.
+  7. [HARD-STOP GATE — see below before proceeding to close]
+  8. Checkpoint the session bundle
+  9. Renew the session lock (final renew before the next iteration's selection)
   tasks = readAllTasks({ repoRoot })   // refresh — statuses changed (e.g. this ticket closed to 'done'), which may unblock dependents
   consecutiveNoProgress = 0  // reset on any progress
   iteration += 1
