@@ -22,8 +22,9 @@ a block that cannot be completed without guessing is a question to the user,
 never a silent fill-in.
 
 This matters here specifically because of **block 4, "caminos y acciones
-esperadas"** — it is what the template's own mapping table (`docs/
-PLANTILLA-PEDIDO.md`'s "Del pedido a los casos de uso") sends to the project's
+esperadas"** — it is what the template's own mapping table
+(`${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-PEDIDO.md`'s "Del pedido a los casos de
+uso"; dev-repo equivalent `docs/PLANTILLA-PEDIDO.md`) sends to the project's
 **primary use cases**, the same `primary_use_cases` field Step 1 below collects
 and that drives the seeded starter backlog. Populating block 4 first, even
 loosely, gives Step 1's discovery dialogue something concrete to probe instead

@@ -140,7 +140,8 @@ while NOT goalSatisfied(tasks, goal)
      gates below and NOT liftable by any `loop_auth` switch — it sits in
      front of all five, not among them] Derive the observable-case list
      (Workflow step 2 / Regla 1 of CLAUDE.md): collect the request or
-     complete it against `docs/PLANTILLA-PEDIDO.md`, derive the "do X,
+     complete it against `${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-PEDIDO.md`
+     (dev-repo equivalent `docs/PLANTILLA-PEDIDO.md`), derive the "do X,
      expect Y" cases with their alternative/failure paths from it, record
      the completed pedido and then the derived list as separate ticket
      comments (author `orchestrator`), and STOP for the human's EXPLICIT
@@ -327,6 +328,12 @@ without per-step supervision. This sets `auto_close_on_green_review`, `uat_deleg
 strictly opt-in — pass them via repeated `--opt-in <switch>` flags to lift Gate 1's push or Gate 4 as well. Gate 3 has no
 switch and is never liftable, preset or not. See SKILL.md's "Unattended-mode preset" section for
 the full contract.
+
+**"Without per-step supervision" is not "without any stop" (2026-09-16).** The preset lifts
+switches; it does not lift what has no switch. Two stops survive it unconditionally: step 3's
+human approval of the use-case list (which is not one of the five gates and has no switch to
+grant) and step 6's wargaming pass. An unattended loop therefore still pauses once per ticket,
+before the Developer is spawned, to get the use cases approved.
 
 ## Stuck handling
 

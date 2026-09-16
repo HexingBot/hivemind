@@ -1207,6 +1207,16 @@ and is never liftable — not even under the unattended preset. An ambiguous
 ticket always surfaces to the human, regardless of how many switches are
 granted.
 
+**"Without per-step supervision" is not "without any stop" (2026-09-16).** The
+preset lifts switches; it cannot lift what has no switch. Besides Gate 3, the
+human approval of the use-case list (Workflow step 2 / `commands/loop.md` step
+3) and the wargaming pass survive the preset unconditionally — neither is one
+of the five gates and neither has an entry in `LOOP_AUTH_SWITCHES`. An
+unattended loop still pauses once per ticket, before the Developer is spawned,
+to get the use cases approved: that approval is the definition of what gets
+built and the reference the wargaming pass verifies against, so a switch that
+self-satisfied it would leave the loop with nothing to verify.
+
 ### Developer Bash allowlist — enforcement boundary (TASK-091)
 
 The TASK-086 ticket-text fencing above is a prompt-level mitigation only: it
