@@ -2,7 +2,7 @@
 module: conventions
 layer: derived
 tier: T2
-updated: 2026-06-24
+updated: 2026-09-16
 files: []
 ---
 
@@ -53,10 +53,24 @@ extend the brain stack's compose file (Phase 6 packaging). [INFERRED:strong] (si
   (dropping one = assumption laundering, [[meta/guardrails]] KG2). [INFERRED:strong]
 - **Source tiering**: `[EXPLICIT]` requires T1/T2; never raise a claim above its file's `tier`
   ([[meta/source-tiers]]). [INFERRED:strong]
-- **Tier-gated rigor**: `tdd` / `tests-after` / `uat-only` by risk; core tickets emit a manifest
-  before code, glue skips it. [INFERRED:strong]
-- **Manifests before code on core tickets**: SCREEN_SPECS, API_CONTRACTS, STATE_SCHEMAS,
-  COMPONENT_CATALOG, PROJECT_STRUCTURE, BLOCK_TASKS (Phase 3). [INFERRED:strong]
+- **Flow-ordered rigor — the gates are no longer by process, and TDD is eliminated**
+  (2026-09-16 human decision; supersedes the former "tier-gated rigor: `tdd`/`tests-after`/
+  `uat-only` by risk" pattern). Every unit of work runs: **use cases / paths of use → implement →
+  tests-after → wargaming → UAT if asked for or needed.** Verification of record is the adversarial
+  wargaming pass at the end; the surviving `tests-after` (default) and `uat-only` tiers only size
+  post-hoc regression locking. `tdd` cannot be assigned. **E2E specs are `tests-after` and run only
+  after wargaming** — never as an early automatic gate. [EXPLICIT] (signal: `CLAUDE.md` § Workflow
+  "Verification flow"; see [[architecture]] Decisions)
+- **Never reintroduce a tests-first gate under another name.** The defect the elimination targets is
+  authorship, not ordering: a test written by the same agent that wrote the implementation, checked
+  against its own code, confirms what that agent believed rather than what the ticket asked for —
+  which is why the use-case/path definition is the Orchestrator's and why the adversary runs last.
+  [EXPLICIT] (signal: `CLAUDE.md` § Testing "Three rules against empty tests")
+- **Manifests are the use-case/paths-of-use definition, not a process gate**: SCREEN_SPECS,
+  API_CONTRACTS, STATE_SCHEMAS, COMPONENT_CATALOG, PROJECT_STRUCTURE, BLOCK_TASKS (Phase 3) are how
+  step 1 of the flow gets written down on a `tests-after` ticket that needs them — they define what
+  the user does and which paths exist. They are never a hoop to satisfy before code for its own
+  sake, and a manifest that exists is not evidence that anything was verified. [INFERRED:strong]
 - **Minimalism ladder (Ponytail)**: the 6-rung hierarchy in
   `implementation-engine/.claude/shared/MINIMALISM.md`; reviewer flags gold-plating as a
   first-class blocker. [INFERRED:strong]

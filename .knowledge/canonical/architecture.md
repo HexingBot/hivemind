@@ -2,7 +2,7 @@
 module: architecture
 layer: canonical
 tier: T1
-updated: 2026-06-24
+updated: 2026-09-16
 files: [src/drive-loop.js, src/mcp-server.js, src/knowledge-graph.js, src/task-store.js, tasks/schema.json, package.json]
 ---
 
@@ -10,7 +10,8 @@ files: [src/drive-loop.js, src/mcp-server.js, src/knowledge-graph.js, src/task-s
 hivemind is one Claude Code plugin that **researches, specs, builds, verifies, and teaches** —
 a single agentic development framework fusing three tools into a Body / Spine / Brain whole.
 It exists to collapse the proposal→implementation→knowledge loop into one front door that
-scales rigor to risk and grounds every claim in a cited knowledge graph.
+orders rigor by flow — use cases → implement → tests-after → wargaming → UAT if needed — and
+grounds every claim in a cited knowledge graph.
 
 > **SOURCE STATE (2026-06-24).** The **Body** (agent-framework base) is fully present in this
 > repo on branch `feat/agentic` — `src/*`, `tasks/`, `package.json` are real, citable source
@@ -36,7 +37,17 @@ The eight locked decisions (signal: PLAN.md § "Locked decisions"):
 - **Source of truth = wisearcher's Neo4j+Qdrant graph**, wired in from session start; hivemind's
   task/decision/skill nodes are written into that same graph, and the base's
   `src/knowledge-graph.js` demotes to a thin cache/projection. [INFERRED:strong]
-- **Rigor is tier-gated** (scale to risk), reusing the `tdd` / `tests-after` / `uat-only` tiers. [INFERRED:strong]
+- **Rigor is flow-ordered, NOT tier-gated — TDD is eliminated** (2026-09-16 human decision, Mato;
+  supersedes the original "rigor is tier-gated, reusing the `tdd`/`tests-after`/`uat-only` tiers"
+  decision). The gates are no longer *process* gates: gating by process manufactured large volumes
+  of tests that did not prove anything. The order of work is **define the use cases and the paths
+  of use → implement → tests-after (the minimum necessary) → wargaming → UAT if asked for or
+  needed**, and the real verification is the adversarial wargaming pass at the END, not any box
+  ticked before code. Two tiers survive (`tests-after` default, `uat-only`) and they only size how
+  much regression locking a change earns once it already works; `tdd` is not assignable by any
+  write surface. **E2E specs are `tests-after` and execute only after wargaming**, never as an
+  early automatic gate. [EXPLICIT] (signal: `CLAUDE.md` § Workflow "Verification flow" and
+  § Testing "E2E runs after wargaming")
 - **Claude auth = subscription CLI** (`claude -p`, `ANTHROPIC_API_KEY` stripped). Both base and
   wisearcher already shell out to the local `claude` CLI rather than an SDK. [INFERRED:strong]
 - **Spine is vendored** into hivemind; **`proposal-engine` is excepted — stays a standalone app**
@@ -58,7 +69,7 @@ proposal-engine ──(optional input: proposal KBs, see proposal-import)──�
 (standalone)                                                           ▼
 ┌───────────────────── hivemind (plugin, this repo) ───────────────────┐
 │ BODY  : orchestrator · subagents · sessions · tasks+kanban · loop    │ ← src/* present
-│ SPINE : markers+tiers · manifests (tier-gated) · validators ·        │ ← to vendor
+│ SPINE : markers+tiers · manifests (use-case defs) · validators ·     │ ← to vendor
 │         OTel→SigNoz · minimalism                                     │
 │ auth  : subscription CLI (claude -p, key stripped)                   │
 └───────────────┬───────────────────────────────────────────────────────┘

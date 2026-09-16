@@ -39,7 +39,14 @@ One Claude Code plugin that **researches, specs, builds, verifies, and teaches**
 2. **Source of truth** = wisearcher's Neo4j+Qdrant graph; wired into hivemind via MCP from
    session start. hivemind's task/decision/skill nodes are written into that same graph;
    agent-framework's local `knowledge-graph.js` demotes to a thin cache/projection.
-3. **Rigor** = tier-gated (scale to risk), reusing the `tdd`/`tests-after`/`uat-only` tiers.
+3. **Rigor** = flow-ordered, **not** tier-gated — **TDD eliminated** (2026-09-16 human decision,
+   Mato; supersedes the original "tier-gated, reusing the `tdd`/`tests-after`/`uat-only` tiers").
+   The gates are no longer *process* gates, because gating by process manufactured large volumes of
+   tests that proved nothing. Order of work: **define the use cases / paths of use → implement →
+   tests-after (the minimum necessary) → wargaming → UAT if asked for or needed**; the wargaming
+   pass at the end is the verification of record. `tests-after` (default) and `uat-only` survive and
+   only size post-hoc regression locking; `tdd` is unassignable. E2E specs are `tests-after` and run
+   only after wargaming. See `CLAUDE.md` § Workflow "Verification flow".
 4. **Claude auth** = subscription CLI (`claude -p`, `ANTHROPIC_API_KEY` stripped). Both base
    and brain already do this — they converge for free.
 5. **Spine** = vendored into hivemind (implementation-engine logic, engine-tools validators,
@@ -164,6 +171,14 @@ check:calibration`) port the validators; `tasks/schema.json` carries optional `m
 reviewer runs the gate and blocks laundering + tier-ceiling. Unit + e2e verified (test:all 1160).
 
 ### Phase 3 — Spine: tier-gated spec layer
+
+> **SUPERSEDED FRAMING (2026-09-16 human decision).** This phase shipped and its code is live, but
+> the words "tier-gated" and every `tdd` below are a **historical record of how Phase 3 was built**,
+> not current policy. `tdd` is eliminated and unassignable (`src/manifest-policy.js` already dropped
+> it under TASK-212). Read the manifests as the written form of the flow's **step 1 — the use-case /
+> paths-of-use definition** — not as a hoop to clear before code: a manifest that exists is not
+> evidence that anything was verified. Verification of record is the wargaming pass at the end.
+
 - Vendor implementation-engine's language-agnostic manifest skills (SCREEN_SPECS, API_CONTRACTS,
   STATE_SCHEMAS, COMPONENT_CATALOG, PROJECT_STRUCTURE, BLOCK_TASKS) as hivemind skills.
 - Gate by `verification_tier`: core/`tdd` tickets generate/update the relevant manifest before

@@ -51,9 +51,17 @@ was caught by the suite. This section is the highest-yield part of the checklist
 
 ## C — Does the evidence exist, and can you reproduce it?
 
-- [ ] **For `tdd` tier, find the captured red run** and confirm it fails for the *right* reason —
-      not an import error or a typo. If the hand-off does not contain it, reproduce it yourself by
-      reverting or stashing the implementation hunks.
+- [ ] **Confirm every new test fails for the *right* reason** — not an import error or a typo.
+      Reproduce it yourself by reverting or stashing the implementation hunks. (This used to be
+      scoped to the `tdd` tier's captured red run; TDD is eliminated — 2026-09-16 human decision —
+      so red-green planting now applies to *every* new test/spec/lock regardless of tier, per
+      `agents/developer.md`'s "Red-green planting" section.)
+- [ ] **Confirm the wargaming pass actually happened and is recorded** — what was attacked, what
+      survived, what did not. A green review is not the verification of record; the adversarial pass
+      is. A close with no wargaming record is a finding.
+- [ ] **Confirm the affected e2e specs were named at hand-off and run at the wargaming step** — not
+      at the hand-off gate, where they no longer belong (2026-09-16). Specs that were named but never
+      executed anywhere are a gap, not a deferral.
 - [ ] **Treat a hand-off claim as a claim.** Session loss has already destroyed red-run evidence
       once. Re-derive rather than trust, and say in your report which you did.
 - [ ] **Re-run the gate yourself** — the scoped selection, the full fast tier, and any named e2e

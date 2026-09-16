@@ -27,7 +27,7 @@ Solo developers and small teams using LLM coding agents get inconsistent, unveri
 
 ## Goals
 - Orchestrate every unit of work through a fixed loop: read ticket, plan, verify-per-tier, implement, fresh-context review, close
-- Make verification cost scale with risk, not project age (tdd / tests-after / uat-only tiers plus a scaled gate)
+- Put real verification at the END of the flow instead of gating by process (2026-09-16: TDD eliminated; use cases / paths of use -> implement -> tests-after -> wargaming -> UAT if asked for or needed; tests-after / uat-only only size post-hoc regression locking)
 - Preserve context across sessions and machines via a portable pointer+bundle session state
 - Ship as a one-command, installable, versioned Claude Code plugin that bootstraps an arbitrary project
 - Define a project well up front: discovery-first init captures problem, goals, and scope before any code is written
