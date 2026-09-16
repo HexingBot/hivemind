@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T15:38:41.613Z",
+  "generated_at": "2026-09-16T16:16:11.749Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1338,6 +1338,12 @@
       "title": "Atribuir el registro del hook al ticket en el momento del spawn, no leyendo active_task al final",
       "status": "todo",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-229",
+      "title": "Refuerzo de entrada y salida: plantilla de pedido, plantilla de entrega y movimiento libre en el desarrollo",
+      "status": "in_progress",
+      "priority": "high"
     }
   ]
 }
