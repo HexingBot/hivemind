@@ -189,9 +189,20 @@ describe('AC2 — setMode idempotency', () => {
 // missing (deleted or moved out from under it). Before the fix this surfaced
 // a raw ENOENT from readBundleSession (via the shared bundle.js helper); the
 // tailored error must name the session id, the expected session.json path,
-// and the calling function ('setMode') for symptom attribution. getMode is
-// deliberately NOT covered here — it swallows errors and defaults to
-// 'harness' and is out of scope for this migration.
+// and the calling function ('setMode') for symptom attribution.
+//
+// TASK-236 (WG-H-010, wargaming 2026-09-16, CU6) — the getMode test right
+// below THIS comment used to assert the opposite of what CU6 requires:
+// "getMode_still_defaults_to_harness_when_bundle_dir_is_missing_unmodified_
+// behavior" locked in the exact silent-degradation defect the ticket fixes
+// (a ghost pointer — active_session_id names a session with no bundle on
+// disk — read as legitimate 'harness' instead of a named error). TASK-092's
+// own comment flagged this as "deliberately NOT covered ... out of scope for
+// this migration" — TASK-236 is what brings it into scope. This is a
+// ticket-mandated correction of a stale anchor, not a silent edit: the old
+// assertion is deleted because CU6 (human-approved, see tasks/TASK-236.json)
+// requires the opposite, and this is the exact test that reproduced the
+// approved-list conflict.
 // ---------------------------------------------------------------------------
 
 describe('TASK-092 AC2 — setMode tailors the missing-bundle-dir error', () => {
@@ -214,11 +225,91 @@ describe('TASK-092 AC2 — setMode tailors the missing-bundle-dir error', () => 
     expect(caughtErr.message).toContain('setMode');
   });
 
-  it('getMode_still_defaults_to_harness_when_bundle_dir_is_missing_unmodified_behavior', async () => {
-    const { getMode } = await import(OPERATING_MODE_URL);
-    const { root } = makeRepo({ missingBundleDir: true });
+  // TASK-236 CU6 (WG-H-010) — replaces the retired
+  // "getMode_still_defaults_to_harness_when_bundle_dir_is_missing_unmodified_
+  // behavior" test above (see the block comment). Harm prevented: a ghost
+  // pointer (active_session_id naming a session with no bundle directory —
+  // e.g. after a partial delete or a botched migration) must never read back
+  // as ordinary 'harness' idle state; that silent read is exactly what let a
+  // corrupted/incomplete state file disable the loop-mode close guard.
+  it('getMode_throws_a_named_ModeStateError_when_the_pointer_names_a_missing_bundle_dir', async () => {
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const { root, id } = makeRepo({ missingBundleDir: true });
 
-    const result = await getMode({ repoRoot: root });
-    expect(result).toBe('harness');
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: root });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'getMode must reject on a ghost pointer, never resolve to harness').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_BUNDLE_MISSING');
+    expect(caughtErr.message).toContain(id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-236 CU3 (WG-H-007) — getMode over a truncated / invalid-JSON bundle
+// must distinguish "the state exists and is corrupt" from the legitimate
+// "no mode declared" harness default (AC1). Harm prevented: a truncated
+// bundle.session.json (e.g. a crash mid-write, or a corrupted disk) reading
+// back as ordinary harness is the exact defect that let corrupting a state
+// file silently disable src/close-guard.js's loop-mode close guard.
+// ---------------------------------------------------------------------------
+describe('TASK-236 CU3 — getMode distinguishes a corrupt bundle from a legitimate default', () => {
+  it('getMode_throws_a_named_ModeStateError_when_the_bundle_json_is_truncated', async () => {
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const { root, id } = makeRepo({ bundleExtra: { mode: 'loop' } });
+
+    // Truncate the bundle's session.json to simulate a half-written file.
+    const bundlePath = join(root, 'state', 'sessions', id, 'session.json');
+    const full = readFileSync(bundlePath, 'utf8');
+    writeFileSync(bundlePath, full.slice(0, Math.floor(full.length / 2)), 'utf8');
+
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: root });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'getMode must reject on truncated JSON, never resolve to harness').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_BUNDLE_CORRUPT');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-236 CU7 (WG-H-010) — the pointer's schema_version is not validated
+// today, so an unrecognized value passes through silently. Harm prevented: a
+// pointer written by a future/incompatible schema version (or corrupted to
+// carry a bogus value) must be reported with a named error rather than have
+// its stale/unknown shape trusted and acted on as if it were the current
+// contract.
+// ---------------------------------------------------------------------------
+describe('TASK-236 CU7 — getMode rejects an unrecognized pointer schema_version', () => {
+  it('getMode_throws_a_named_ModeStateError_when_pointer_schema_version_is_unrecognized', async () => {
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const { root, id } = makeRepo({ bundleExtra: { mode: 'loop' } });
+
+    const pointerPath = join(root, 'state', 'session.json');
+    writeFileSync(
+      pointerPath,
+      JSON.stringify({ schema_version: 999, active_session_id: id, updated_at: '2026-09-16T12:00:00Z' }, null, 2),
+      'utf8',
+    );
+
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: root });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'getMode must reject an unrecognized schema_version, never trust it silently').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_POINTER_INVALID');
   });
 });
