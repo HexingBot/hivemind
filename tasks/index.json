@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T17:02:41.661Z",
+  "generated_at": "2026-09-16T20:56:28.290Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1348,7 +1348,7 @@
     {
       "key": "TASK-230",
       "title": "Decision de Mato: que hacer con el gate de manifiestos previo al codigo",
-      "status": "todo",
+      "status": "done",
       "priority": "high"
     },
     {

@@ -9,7 +9,7 @@
     "tests/manifest-policy.spec.js queda coherente con la decision (hoy ancla la semantica 'before code'), y ningun candado queda neutralizado en silencio",
     "La afirmacion del HIGH del reviewer queda o implementada en agents/reviewer.md o retirada del comentario de cabecera de src/manifest-policy.js: hoy la doc atribuye al harness una puerta mas dura de la que tiene"
   ],
-  "status": "todo",
+  "status": "done",
   "priority": "high",
   "labels": [
     "proceso",
@@ -17,11 +17,30 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "81a9034",
+    "a8c0383"
+  ],
   "linked_prs": [],
-  "comments": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T20:56:28.076Z",
+      "body": "PEDIDO ESTRUCTURADO (registrado antes de la lista de casos, por CLAUDE.md Workflow paso 2).\n\n1. Objetivo: eliminar el gate de manifiestos previo al codigo, que contradecia la politica de movimiento libre.\n2. Actor: el Developer de cualquier ticket, y toda skill que se auto-cargue por progressive disclosure.\n3. Problema: dos gates por proceso previos al codigo sobrevivieron a la pasada que elimino TDD, por accidente y no por decision.\n4. Caminos esperados: (principal) ningun tier exige manifiesto antes del codigo; (alternativo) el Developer elige usar los manifiestos como herramienta en cualquier momento; (fallo) una superficie sigue instruyendo el paso previo desde el frontmatter y lo reinstala en la practica.\n5. Criterios de hecho: las 14 superficies coherentes, el spec que lockeaba la semantica vieja reescrito hacia la nueva, y la afirmacion falsa del HIGH del reviewer retirada.\n6. Restricciones: no borrar las seis skills impl-* ni su verificador; conservar la paridad skills/ vs .claude/skills/.\n7. Fuera de alcance: cablear el HIGH del reviewer (seria reintroducir el gate por la puerta de atras).\n\nLISTA DE CASOS DE USO (derivada de los cinco AC; la decision que la aprueba es la de Mato del 2026-09-16, textual: \"TASK-230, si. Eliminalo. Ya no necesitamos esa parte. Elimina el TDD.\").\nC1. src/manifest-policy.js deja de exigir manifiesto previo al codigo, y su razon ya no dice \"before code\".\nC2. La afirmacion de la cabecera sobre el HIGH del reviewer, que nunca se cableo, queda retirada.\nC3. Las 14 superficies vivas quedan coherentes, cuerpo Y frontmatter description.\nC4. CLAUDE.md pasa de \"contradiccion pendiente\" a registro de la decision, replicado con paridad en la skill.\nC5. El spec que lockeaba la semantica vieja lockea la nueva; ningun candado queda neutralizado en silencio."
+    },
+    {
+      "author": "uat",
+      "at": "2026-09-16T20:56:28.239Z",
+      "body": "1. Verificar que ningun verification_tier exige manifiesto previo al codigo y que la razon no contiene \"before code\". Observado: requiresManifest devuelve false para tests-after, para undefined y para uat-only; gateForTicket devuelve required false y una razon que dice \"optional\". Verdict: PASS\n2. Verificar que la afirmacion sobre el HIGH del reviewer quedo retirada. Observado: grep de \"HIGH finding\" sobre src/manifest-policy.js y las 12 skills impl-* no devuelve nada; agents/reviewer.md conserva solo el item de Observability/OTel, que es de otro dominio. Verdict: PASS\n3. Verificar las 14 superficies, cuerpo y frontmatter description. Observado: las 12 skills impl-* y las 2 de manifest-verifier declaran el manifiesto como herramienta opcional en la linea 3 y en el cuerpo; las menciones residuales de \"before code\" son negaciones explicitas de la regla vieja. Verdict: PASS\n4. Verificar CLAUDE.md como copia canonica y su replica con paridad. Observado: CLAUDE.md:56 es ahora el registro de la decision con fecha, autor y razon; skills/orchestrator-routing/SKILL.md y su copia en .claude/skills/ son byte-identicas (diff vacio), igual que los 7 pares restantes. Los dos doc-locks vivos siguen intactos: \"no hay pasos obligatorios intermedios\" en los tres archivos y \"Movimiento libre en el desarrollo\" en CLAUDE.md. Verdict: PASS\n5. Verificar que ningun candado quedo neutralizado en silencio. Observado: tests/manifest-policy.spec.js fue reescrito para lockear la regla nueva e incluye la asercion negativa expect(g.reason).not.toMatch(/before code/i); las suites quedan en verde, npm test 1330 y test:all 2420, contra un baseline de 1331 y 2421 medido antes del cambio. La unica baja es el colapso de dos casos en uno, con las tres aserciones preservadas. Verdict: PASS\n\nOverall result: PASS"
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T20:56:28.290Z",
+      "body": "Gate de manifiestos ELIMINADO. Decision de Mato del 2026-09-16, ejecutada en dos commits.\n\nQue cambio: src/manifest-policy.js pierde MANIFEST_REQUIRED_TIERS; requiresManifest devuelve false para todo tier; gateForTicket ya no declara obligacion previa al codigo. Las 14 superficies vivas (12 skills impl-* y 2 de manifest-verifier, en sus dos espejos) quedan reescritas en cuerpo y en frontmatter description, que es lo que dispara el auto-load. CLAUDE.md:56 pasa de nombrar una contradiccion pendiente a registrar la decision. Se corrigieron ademas dos superficies que el censo inicial no habia nombrado: docs/skills.html, que no tiene ningun doc-lock que la proteja, y PLAN.md, cuyo bloque SUPERSEDED ahora declara el gate formalmente eliminado y marca las lineas historicas como registro de lo construido en vez de reescribirlas.\n\nQue queda: las seis skills impl-* y manifest-verifier siguen existiendo como HERRAMIENTA OPCIONAL, y npm run check:manifests sigue sirviendo como chequeo de coherencia interna entre los manifiestos que alguien elija escribir. Ningun tier los exige y ningun hand-off se bloquea por su ausencia.\n\nDato que el trabajo destapo y conviene dejar escrito: el gate no tenia NI UN SOLO consumidor de produccion. gateForTicket, requiresManifest y MANIFEST_REQUIRED_TIERS solo los importaba su propio spec; no aparecen en dist/, bin/, hooks/, commands/ ni en el MCP server. Era una puerta declarativa sostenida por prosa imperativa en catorce superficies, no por codigo. Por eso no hizo falta rebundlear dist/.\n\nAC5, que pedia decidir entre implementar o retirar el HIGH del reviewer: se RETIRO. Cablearlo habria reintroducido el gate por la puerta de atras.\n\nVerificacion: npm test 1330 en verde (101 archivos) y npm run test:all 2420 en verde (212 archivos), contra un baseline de 1331 y 2421 medido por el Orquestador ANTES del cambio. El delta de -1 es el colapso de dos casos del spec en uno solo, con las tres aserciones preservadas; esta justificado arriba y no es un candado vaciado.\n\nNota de procedencia, por honestidad del registro: la decision es de Mato y esta citada textual; la verificacion de los cinco casos la hizo el Orquestador por inspeccion directa y corrida de las suites, por instruccion explicita de Mato de cerrar el ticket con constancia. El cambio lo implemento un subagente developer; el Orquestador lo verifico despues contra un censo independiente y de solo lectura del repo, hecho por otro agente antes de que el developer empezara."
+    }
+  ],
   "created_at": "2026-09-16T17:02:12.918Z",
-  "updated_at": "2026-09-16T17:02:12.918Z",
+  "updated_at": "2026-09-16T20:56:28.290Z",
   "jira_key": null,
   "verification_tier": "uat-only"
 }
