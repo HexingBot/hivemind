@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T19:55:33.625Z",
+  "generated_at": "2026-09-17T20:10:02.425Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1378,19 +1378,19 @@
     {
       "key": "TASK-235",
       "title": "Concurrencia del task-store: el segundo escritor que la premisa omite (bin/task-board.js)",
-      "status": "in_review",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-236",
       "title": "Fail-open del modo: corromper un archivo de estado convierte un cierre DENEGADO en PERMITIDO",
-      "status": "in_review",
+      "status": "done",
       "priority": "high"
     },
     {
       "key": "TASK-237",
       "title": "Paridad: project-context.md exento del unico mecanismo de coherencia, y los pares no lockeados",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
