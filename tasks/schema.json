@@ -92,7 +92,32 @@
       "type": "array",
       "items": { "type": "string" },
       "default": [],
-      "description": "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE only (/^[0-9a-f]{7,40}$/i, TASK-082) — it does NOT verify the sha resolves to a real commit (TASK-188 AC6: closeTask is a pure state-store function with no git dependency, deliberately). src/mcp-server.js's close_task tool runs a best-effort, advisory-only existence check (git cat-file, never blocking the close) and reports the result as linked_commits_verification in its response, distinguishing 'verified present/missing' from 'could not verify' (no git binary, or repoRoot is not a git work tree) rather than implying every recorded sha is trustworthy."
+      "description": "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE (/^[0-9a-f]{7,40}$/i, TASK-082) AND, since TASK-234 (WG-H-011, wargaming 2026-09-16), its EXISTENCE: closeTask resolves every final sha through an injectable verifier (src/commit-existence.js, `git cat-file -e <sha>^{commit}`) and REJECTS the close with LinkedCommitNotFoundError when git ran and said no such commit. This supersedes TASK-188 AC6's 'closeTask is a pure state-store function with no git dependency' decision — WG-H-011 measured what that cost (an invented-but-well-formed sha satisfied the close evidence a reader takes as proof the work landed); the dependency is now admitted behind the `commitVerifier` seam, so a caller without git still closes. A sha git could NOT check (no git binary, repoRoot not a work tree, git error) is recorded as 'unverifiable' and never blocks the close — see linked_commits_verification, where every outcome is persisted per-sha. src/mcp-server.js's close_task tool additionally reports its own advisory linked_commits_verification in the tool RESPONSE (a separate, response-only object — not this stored field)."
+    },
+    "linked_commits_verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "commits"],
+      "description": "TASK-234 (WG-H-011/WG-H-020) — the per-sha outcome of closeTask's existence check over the FINAL linked_commits, recorded at close time so a verified close is mechanically distinguishable from an unverified one afterwards (bin/audit-close-verification.js reads exactly this). Written ONLY by closeTask, and only on a real close (never on the no-op re-close path). Its ABSENCE on a done ticket means the ticket closed before this field existed (or was hand-edited) — the audit reports that as 'unverifiable', never as verified and never as a failure: TASK-234 AC7 forbids retroactively re-judging the ~208 historical done tickets.",
+      "properties": {
+        "at": { "type": "string", "format": "date-time", "description": "When the check ran (same stamp as the close itself)." },
+        "checked": { "type": "boolean", "description": "false = git could not be consulted at all; `reason` names why and every entry in `commits` is 'unverifiable'." },
+        "reason": { "type": ["string", "null"], "description": "Why nothing could be checked: 'none-linked' (no shas to check, not an error), 'git-unavailable' (no git binary), 'not-a-git-repo'. Null when checked is true." },
+        "commits": {
+          "type": "array",
+          "description": "One entry per sha in the ticket's final linked_commits. THREE states, never two (CLAUDE.md's Empty-result contract, TASK-192): 'cannot know' is its own recorded outcome and is never collapsed into 'verified' or 'not-found'.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sha", "state"],
+            "properties": {
+              "sha": { "type": "string" },
+              "state": { "type": "string", "enum": ["verified", "not-found", "unverifiable"] },
+              "reason": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
     },
     "linked_prs": {
       "type": "array",

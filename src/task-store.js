@@ -94,6 +94,16 @@ import { loopModeCloseGuard } from './close-guard.js';
 // no-cycle guarantee as the loopModeCloseGuard import above: close-guard.js
 // imports nothing from task-store.js.
 import { parseUatBody, coversAllStepNumbers } from './close-guard.js';
+// TASK-234 (WG-H-011) — the three-state sha existence check closeTask runs on
+// linked_commits. It lives in its own module (and arrives here as an
+// INJECTABLE seam — see closeTask's `commitVerifier` param) so this module's
+// pure-state-store character is preserved for every caller that wants it: a
+// test, or a consumer with no git at all, supplies its own verifier and never
+// touches child_process. TASK-188 AC6 deliberately kept git OUT of closeTask;
+// WG-H-011 measured what that cost (an invented sha satisfies the close
+// evidence a reader treats as proof), so the dependency is admitted here —
+// behind a seam, and never able to turn "cannot know" into either verdict.
+import { verifyCommitExistence, COMMIT_STATE } from './commit-existence.js';
 
 // Mirror of tasks/schema.json#/properties/status/enum. Hard-coded to avoid file
 // I/O on every call; keep in sync with tasks/schema.json (the source of truth).
@@ -1202,12 +1212,31 @@ const WARGAMING_PATH_RE = /\bpaths?\b|\bcaminos?\b|\balternativ\w*|\bfallo\w*/i;
  * case and at least one path/alternative it attacked. See the module-level
  * comment block above for the full rationale and marker convention.
  */
+function wargamingComments(task) {
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  return comments.filter((c) => c && WARGAMING_MARKER_RE.test(String(c.body || '')));
+}
+
+/**
+ * TASK-234 — the PREDICATE behind checkWargamingRecord, extracted so
+ * closeTask can use a valid `[WARGAMING]` comment as an ALTERNATIVE to the
+ * closing body's own "3. WARGAMING" block instead of demanding both (see
+ * findDeliveryBodyProblems's doc comment for the full wiring rationale).
+ * True when the most recent `[WARGAMING]`-marked comment names at least one
+ * approved case AND at least one attacked path.
+ */
+export function hasValidWargamingComment(task) {
+  const marked = wargamingComments(task);
+  if (marked.length === 0) return false;
+  const body = String(marked[marked.length - 1].body || '');
+  return WARGAMING_CASE_RE.test(body) && WARGAMING_PATH_RE.test(body);
+}
+
 function checkWargamingRecord(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === 'done') return;
-  const comments = Array.isArray(task.comments) ? task.comments : [];
-  const wargamingComments = comments.filter((c) => c && WARGAMING_MARKER_RE.test(String(c.body || '')));
-  if (wargamingComments.length === 0) {
+  const marked = wargamingComments(task);
+  if (marked.length === 0) {
     throw new WargamingRecordError(
       `task ${task.key} has no comment carrying a "[WARGAMING]" marker — CLAUDE.md's Workflow step 6 `
       + 'requires the adversarial wargaming pass to run, and its outcome to be recorded, AFTER the review '
@@ -1216,7 +1245,7 @@ function checkWargamingRecord(task, resolvedException) {
       + '`exception: { reason }` escape hatch for a genuine exception.',
     );
   }
-  const last = wargamingComments[wargamingComments.length - 1];
+  const last = marked[marked.length - 1];
   const body = String(last.body || '');
   const hasCase = WARGAMING_CASE_RE.test(body);
   const hasPath = WARGAMING_PATH_RE.test(body);
@@ -1270,6 +1299,223 @@ function checkNoOpenHighFindings(task, resolvedException) {
       + '`exception: { reason }` escape hatch for a genuine exception.',
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// TASK-234 (WG-H-001/WG-H-002/WG-H-003, wargaming 2026-09-16) — the CLOSING
+// COMMENT BODY must actually carry the delivery (docs/PLANTILLA-ENTREGA.md).
+//
+// Measured before this change: `closeTask` accepted a closing comment whose
+// body was the literal string "OK" (WG-H-001), or the four template headings
+// with NOTHING under them (WG-H-002), or a wargaming block naming neither an
+// approved case nor an attacked path (WG-H-003). Since 2026-09-16 the close
+// comment is the delivery — the only durable statement of what was verified —
+// so a close that says nothing is a close with no verification of record.
+//
+// WHY THIS IS NOT THE THING THE 2026-09-16 POLICY PROHIBITS. That policy
+// eliminates *process gates BEFORE code* (tests-first, mandatory manifests):
+// boxes ticked in front of the work, which manufactured artifacts that proved
+// nothing. This check runs at the very END of the flow — after implementation,
+// after review, after the wargaming pass — which is exactly where that same
+// policy says verification belongs (CLAUDE.md's "Verification flow", step 4/5).
+// It gates nothing in front of the Developer and asks for no artifact that the
+// delivery template did not already require.
+//
+// WHAT IT CAN AND CANNOT DETECT — stated honestly, because overstating it
+// would recreate the "green means verified" failure this ticket exists to fix.
+// It is a STRUCTURAL check: the four numbered blocks are present, each has
+// non-filler text under it, the wargaming block names a case and a path, and
+// the UAT block either records a verdict or states UAT was not requested. It
+// cannot tell a truthful delivery from a fluent lie, and it never claims to —
+// it only makes the empty/absent case (the one actually measured in the wild)
+// mechanically impossible. The audit CLI (bin/audit-close-verification.js)
+// reports what it checked with the same honesty, and never collapses
+// "cannot know" into "verified".
+// ---------------------------------------------------------------------------
+
+/**
+ * TASK-234 (WG-H-001/WG-H-002/WG-H-003) — thrown by checkDeliveryBody when
+ * closeTask's own closing-comment body does not carry the delivery blocks of
+ * docs/PLANTILLA-ENTREGA.md with real content. `.code` lets callers (and
+ * tests) distinguish this from any other close failure programmatically, same
+ * convention as CloseEvidenceError/InvalidPredecessorStateError above. The
+ * message NAMES every offending block (which one is missing, which one is
+ * empty) so the error is actionable, never a bare "invalid body".
+ */
+export class DeliveryBodyError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'DeliveryBodyError';
+    this.code = 'E_DELIVERY_BODY';
+  }
+}
+
+/**
+ * TASK-234 (WG-H-011) — thrown by closeTask when a linked_commits sha is
+ * well-formed but does not resolve to a commit in the repository. NEVER thrown
+ * for a sha git could not check at all (no git binary, not a work tree, a git
+ * error): that is recorded as 'unverifiable' and lets the close proceed — the
+ * empty-result contract (TASK-192) forbids collapsing "cannot know" into
+ * either verdict, in EITHER direction.
+ */
+export class LinkedCommitNotFoundError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'LinkedCommitNotFoundError';
+    this.code = 'E_LINKED_COMMIT_NOT_FOUND';
+  }
+}
+
+// The four load-bearing blocks of docs/PLANTILLA-ENTREGA.md's "Formulario en
+// limpio", matched on their NUMBERED form. Block 5 ("ESTADO Y DEUDAS") is
+// deliberately NOT required: the template itself allows it to be empty when
+// nothing is owed, and requiring it would reject a legitimate delivery.
+const DELIVERY_BLOCKS = [
+  { n: 1, label: '1. CASOS DE USO APROBADOS', keyword: /^casos\s+de\s+uso\b/ },
+  { n: 2, label: '2. RESULTADO', keyword: /^resultado\b/ },
+  { n: 3, label: '3. WARGAMING', keyword: /^wargaming\b/ },
+  { n: 4, label: '4. UAT', keyword: /^uat\b/ },
+];
+
+// A block heading in any reasonable rendering of the template: an optional
+// markdown heading prefix / bullet / emphasis, the block number, a separator,
+// then the block name (plus any trailing words, e.g. "1. CASOS DE USO
+// APROBADOS (aprobados por Mato el 2026-09-16)").
+const DELIVERY_HEADING_RE = /^[\s>*_-]*(?:#{1,6}\s*)?[*_\s]*([1-9])\s*[.):-]\s*(.+?)\s*$/;
+
+// Filler that is present-but-says-nothing. A line reduced to one of these is
+// treated as empty content (WG-H-002: four headings with "OK" under each is
+// the same empty close as four headings with nothing under them).
+const DELIVERY_FILLER_RE = /^(?:ok|okay|n\/?a|na|nada|tbd|todo|pendiente|x|s\/?d|\.+|…|-+|_+|\?+)$/;
+
+// Accent/emphasis-insensitive normalization, so "3. WARGAMING", "### 3.
+// Wargaming" and "3) Wargaming — el reporte" all resolve to the same block.
+function normalizeDeliveryText(s) {
+  return String(s)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[*_`#]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function stripLeadingMarker(line) {
+  return String(line).replace(/^[\s>]*(?:[-*•+]|\d{1,2}[.)])\s*/, '').trim();
+}
+
+function hasRealContent(lines) {
+  return lines.some((line) => {
+    const stripped = stripLeadingMarker(line);
+    if (stripped === '') return false;
+    const normalized = normalizeDeliveryText(stripped).replace(/[.:;,!?]+$/, '');
+    if (normalized === '') return false;
+    return !DELIVERY_FILLER_RE.test(normalized);
+  });
+}
+
+/**
+ * Split a closing-comment body into the delivery blocks it actually carries.
+ * Returns a Map of block number -> { label, content: string[] }; a block whose
+ * heading never appears is simply absent from the map (the caller reports it
+ * as missing by name). Lines before the first recognized heading belong to no
+ * block — the "ENTREGA — <TICKET>" title line of the template lives there.
+ */
+function parseDeliveryBlocks(body) {
+  const blocks = new Map();
+  let current = null;
+  for (const line of String(body ?? '').split(/\r?\n/)) {
+    const m = DELIVERY_HEADING_RE.exec(line);
+    if (m) {
+      const n = Number(m[1]);
+      const rest = normalizeDeliveryText(m[2]);
+      const block = DELIVERY_BLOCKS.find((b) => b.n === n && b.keyword.test(rest));
+      if (block) {
+        if (!blocks.has(block.n)) blocks.set(block.n, { label: block.label, content: [] });
+        current = blocks.get(block.n);
+        continue;
+      }
+    }
+    if (current) current.content.push(line);
+  }
+  return blocks;
+}
+
+// The UAT block is satisfied by EITHER a recorded verdict or an explicit
+// "not requested" statement — the template's own two legitimate outcomes
+// ("UAT no solicitado" / "Solicitado: no" are both accepted spellings). A
+// silently omitted UAT block is what reads later as "se hizo y no se anoto".
+const UAT_VERDICT_RE = /\bverdict\b|\bveredicto\b|\bpass\b|\bfail\b/i;
+const UAT_NOT_REQUESTED_RE = /\bno\s+solicitad\w*|\bsolicitado\s*:?\s*no\b|\bnot\s+requested\b|\bno\s+requerid\w*/i;
+
+/**
+ * TASK-234 — the pure form of the delivery-body check: returns an array of
+ * human-readable problem strings (empty array = conforming). Exported so the
+ * advisory audit (src/close-verification.js) applies THE SAME predicate the
+ * close guard applies, rather than a second, independently-drifting copy.
+ *
+ * `wargamingSatisfiedByComment` (see hasValidWargamingComment) relaxes ONLY
+ * the case/path content requirement of block 3 — a ticket that already
+ * recorded its wargaming pass as a separate `[WARGAMING]` comment does not
+ * have to repeat the case/path enumeration inside the closing body. The block
+ * itself is still required to exist with real content: the delivery is where a
+ * reader looks, and "see the other comment" is a pointer, not an absence.
+ */
+export function findDeliveryBodyProblems(body, { wargamingSatisfiedByComment = false } = {}) {
+  const problems = [];
+  const blocks = parseDeliveryBlocks(body);
+
+  for (const spec of DELIVERY_BLOCKS) {
+    const block = blocks.get(spec.n);
+    if (!block) {
+      problems.push(`block "${spec.label}" is missing entirely`);
+      continue;
+    }
+    if (!hasRealContent(block.content)) {
+      problems.push(`block "${spec.label}" has no real content under its heading`);
+      continue;
+    }
+    const text = block.content.join('\n');
+    if (spec.n === 3 && !wargamingSatisfiedByComment) {
+      const hasCase = WARGAMING_CASE_RE.test(text);
+      const hasPath = WARGAMING_PATH_RE.test(text);
+      if (!hasCase || !hasPath) {
+        problems.push(
+          `block "${spec.label}" names ${hasCase ? '' : 'no approved case (e.g. "CU3")'}`
+          + `${!hasCase && !hasPath ? ' and ' : ''}${hasPath ? '' : 'no attacked path (e.g. "path"/"camino"/'
+          + '"alternativo"/"fallo")'} — a wargaming report that names neither a case nor a path is not a `
+          + 'wargaming report (WG-H-003)',
+        );
+      }
+    }
+    if (spec.n === 4 && !UAT_VERDICT_RE.test(text) && !UAT_NOT_REQUESTED_RE.test(text)) {
+      problems.push(
+        `block "${spec.label}" neither records a verdict nor states that UAT was not requested `
+        + '(write the verdicts, or the template\'s explicit "UAT no solicitado" line with the reason)',
+      );
+    }
+  }
+  return problems;
+}
+
+/**
+ * TASK-234 (WG-H-001/WG-H-002/WG-H-003) — throws DeliveryBodyError unless the
+ * closing-comment body carries the delivery blocks of
+ * docs/PLANTILLA-ENTREGA.md with real content. No-op when `resolvedException`
+ * is set (same escape-hatch convention as every sibling check above: a
+ * won't-do closure has no delivery to report). Called by closeTask BEFORE any
+ * mutation, and never on the WG-H-006 no-op re-close path (nothing is being
+ * written there, so there is no new delivery to judge).
+ */
+function checkDeliveryBody(body, { taskKey, wargamingSatisfiedByComment = false, resolvedException } = {}) {
+  if (resolvedException) return;
+  const problems = findDeliveryBodyProblems(body, { wargamingSatisfiedByComment });
+  if (problems.length === 0) return;
+  throw new DeliveryBodyError(
+    `task ${taskKey}'s closing comment does not carry a delivery (docs/PLANTILLA-ENTREGA.md): `
+    + `${problems.join('; ')}. The closing comment IS the delivery — fill the four numbered blocks `
+    + '("1. CASOS DE USO APROBADOS", "2. RESULTADO", "3. WARGAMING", "4. UAT") with what actually '
+    + 'happened, or use the documented `exception: { reason }` escape hatch for a genuine exception.',
+  );
 }
 
 /**
@@ -1711,7 +1957,26 @@ export async function transitionStatus({
       await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
       checkDonePredecessorState(task, resolvedException);
       checkCloseEvidence(task, task.linked_commits, resolvedException);
+      // TASK-234 (WG-H-003/WG-H-004) — run LAST among the pre-write checks, so
+      // a call that is already failing an older, more basic precondition keeps
+      // failing with that same error. transitionStatus carries no comment body,
+      // so the `[WARGAMING]` comment is the ONLY place a wargaming record can
+      // live on this path — this is what keeps "reach done via transition_status
+      // instead of close_task" from being a way around the delivery-body check
+      // closeTask applies (closeTask accepts either source; see
+      // findDeliveryBodyProblems).
+      checkWargamingRecord(task, resolvedException);
+      checkNoOpenHighFindings(task, resolvedException);
     }
+
+    // TASK-234 (WG-H-006) — NO-OP RE-CLOSE: an already-'done' task asked to
+    // become 'done' again is not a new closure event, and from here on nothing
+    // is written. Every check above deliberately no-ops for an already-'done'
+    // task (see checkDonePredecessorState's doc comment); before this
+    // short-circuit the WRITE still happened anyway — updated_at was bumped
+    // with zero verification behind it. Returning here is what makes the
+    // "skipping the check also means skipping the write" claim true.
+    if (status === 'done' && task.status === 'done') return;
 
     // TASK-187 fix round LOW-1 — capture BEFORE the mutation below so the
     // marker-append guard immediately following can tell an actual status
@@ -1852,6 +2117,7 @@ export async function closeTask({
   now = () => new Date().toISOString(),
   closeGuard,
   exception,
+  commitVerifier = verifyCommitExistence,
 }) {
   if (!COMMENT_AUTHORS.includes(comment && comment.author)) {
     throw new Error(
@@ -1884,6 +2150,11 @@ export async function closeTask({
     checkDonePredecessorState(task, resolvedException);
     const existingLinkedCommits = Array.isArray(task.linked_commits) ? task.linked_commits : [];
     checkCloseEvidence(task, [...existingLinkedCommits, ...linked_commits], resolvedException);
+    // TASK-234 (WG-H-004/WG-H-005) — an unresolved HIGH finding recorded on the
+    // ticket itself blocks the close, exactly as a HIGH review finding blocks
+    // Workflow step 6. Runs after the older checks so a call already failing a
+    // more basic precondition keeps failing with that same error.
+    checkNoOpenHighFindings(task, resolvedException);
 
     for (const sha of linked_commits) {
       if (typeof sha !== 'string' || !COMMIT_SHA_RE.test(sha)) {
@@ -1891,6 +2162,49 @@ export async function closeTask({
           `invalid commit sha ${JSON.stringify(sha)} — must match ${COMMIT_SHA_RE}`,
         );
       }
+    }
+
+    // TASK-234 (WG-H-006) — NO-OP RE-CLOSE: the task is already 'done', so
+    // this call is not a new closure event and NOTHING below runs — no closing
+    // comment, no linked_commits/linked_prs concatenation, no updated_at bump,
+    // no index regeneration. Measured before this short-circuit: a second
+    // close_task on a closed ticket appended a second "closing" comment (the
+    // one a reader and the close-verification census take as THE close) and a
+    // second, entirely unverified linked_commit, because every check above
+    // no-ops for an already-'done' task while the write went ahead anyway.
+    // Argument validation (author, sha shape) deliberately stays ABOVE this
+    // line: a malformed call is a caller bug whether or not it would have
+    // written anything. See checkDonePredecessorState's doc comment.
+    if (task.status === 'done') return;
+
+    // TASK-234 (WG-H-001/WG-H-002/WG-H-003) — the closing comment IS the
+    // delivery; it must carry docs/PLANTILLA-ENTREGA.md's blocks with real
+    // content. A `[WARGAMING]` comment already on the ticket satisfies block
+    // 3's case/path enumeration INSTEAD of the body repeating it (not in
+    // addition to it) — a legitimate close never needs both.
+    checkDeliveryBody(comment.body, {
+      taskKey: key,
+      wargamingSatisfiedByComment: hasValidWargamingComment(task),
+      resolvedException,
+    });
+
+    // TASK-234 (WG-H-011) — three-state sha existence check over the FINAL
+    // linked_commits (existing + incoming): 'not-found' rejects the close,
+    // 'unverifiable' does NOT (git may legitimately be unable to answer) but
+    // is recorded so it can never later be read as "verified".
+    const finalLinkedCommits = [...existingLinkedCommits, ...linked_commits];
+    const verification = commitVerifier(repoRoot, finalLinkedCommits);
+    const verifiedCommits = Array.isArray(verification && verification.commits)
+      ? verification.commits
+      : [];
+    const notFound = verifiedCommits.filter((c) => c.state === COMMIT_STATE.NOT_FOUND);
+    if (notFound.length > 0 && !resolvedException) {
+      throw new LinkedCommitNotFoundError(
+        `task ${key} cannot close: linked_commits contains ${notFound.length} sha(s) that do not exist in `
+        + `this repository — ${notFound.map((c) => c.sha).join(', ')}. A well-formed sha is not evidence; `
+        + 'record the real commit sha(s) this ticket landed, or use the documented `exception: { reason }` '
+        + 'escape hatch for a genuine exception (e.g. commits that live in another repository).',
+      );
     }
 
     // TASK-187 fix round LOW-1 — same idempotent-re-close guard as
@@ -1922,6 +2236,26 @@ export async function closeTask({
     task.linked_prs = Array.isArray(task.linked_prs)
       ? [...task.linked_prs, ...linked_prs]
       : [...linked_prs];
+    // TASK-234 (WG-H-011/WG-H-020) — record the per-sha outcome on the task
+    // itself, machine-readably. This is what makes a verified close
+    // distinguishable from an unverified one afterwards, by a reader or by
+    // bin/audit-close-verification.js: an 'unverifiable' entry stays visible
+    // as exactly that forever, instead of dissolving into the same silence as
+    // a verified one. Its PRESENCE is also the marker that this close ran
+    // under TASK-234's guards at all — a done ticket with no record predates
+    // them (or was hand-edited), and the audit reports that as 'unverifiable',
+    // never as a pass and never as a failure (AC7/CU10: no historical ticket
+    // is retroactively re-judged).
+    task.linked_commits_verification = {
+      at: stamp,
+      checked: Boolean(verification && verification.checked),
+      reason: (verification && verification.reason) || null,
+      commits: verifiedCommits.map((c) => ({
+        sha: c.sha,
+        state: c.state,
+        ...(c.reason ? { reason: c.reason } : {}),
+      })),
+    };
     task.updated_at = stamp;
 
     // AC5-style guarantee — validate before any disk I/O.
