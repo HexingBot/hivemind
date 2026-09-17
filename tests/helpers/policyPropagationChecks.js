@@ -5,13 +5,14 @@
 // gates (human-approval hard stop, wargaming as final verification).
 //
 // Deliberately extracted from the spec file so the SAME logic can be run
-// twice: once by tests/policy-propagation-doc-locks.spec.js against the real
-// committed repo files, and once by an ephemeral, uncommitted mutant harness
-// (run against /tmp copies only, never the repo — see the TASK-233 hand-off
-// for the mutant table) to prove each check can actually fail. Two real
-// callers is what earns this file existing as its own module rather than
-// being duplicated (Minimalism ladder: "no abstraction without a second
-// caller").
+// against files that are NOT this repo's: tests/policy-propagation-doc-locks.spec.js
+// runs it over the real committed repo files, and an out-of-repo mutant caller
+// runs it over deliberately-broken /tmp copies to prove each check can actually
+// fail (see the TASK-233 hand-off for the mutant table; the reviewer exercised
+// this path independently). Enabling that out-of-repo caller — not a second
+// committed import — is what earns this file existing as its own module rather
+// than living inline in the spec, where the checks could only ever be pointed
+// at the repo that makes them pass.
 //
 // Every function here is pure: it takes a string (file content) and returns
 // a plain result. No fs, no repo-root resolution — that stays in the caller.
