@@ -1408,6 +1408,32 @@ describe('WG2-M-05 — a finding marker quoted inside another comment does not o
 // distinguishing "nothing marker-shaped here at all" (runaway prose) from
 // "a marker was attempted but its id is malformed" (reported, never
 // silently dropped — AC4/CU3).
+//
+// RED-GREEN MECHANISM, HONESTLY STATED PER SPEC (fifth wargaming pass,
+// 2026-09-17, R-1 loop-back — the prior commit message overclaimed a single
+// mechanism for all four specs, which was false for one of them):
+//   - CU2, CU3, CU6 below were each run against the PRE-TASK-238
+//     src/task-store.js (`git show cead477:src/task-store.js`, restored into
+//     the working tree, never via `git stash` — same reason
+//     tests/e2e/task-234-close-verification.spec.js's header gives for
+//     avoiding stash: a scratch copy cannot collide with a sibling spawn's
+//     own uncommitted stash). Observed: 3 failed / 1 passed. The one that
+//     PASSED was CU4.
+//   - CU4 is a REGRESSION/parity lock, not a bug-fix lock: it exercises only
+//     already-legitimate short ids (11 chars), which the unbounded pre-fix
+//     regex also matched correctly — by definition it is green against BOTH
+//     the old and the new code, so a git-stash-style revert cannot make it
+//     red for the right reason. It was instead red-green planted by
+//     MUTATING the fix itself: temporarily lowering FINDING_ID_MAX_LEN to 10
+//     (below the 11-char length of the real ids "WG4-236-002"/"WG3-235-001"
+//     this test uses) turns it red with a MalformedFindingMarkerError naming
+//     those exact ids — the right reason, confirmed, then the constant was
+//     restored before committing.
+//   - The four WG5-238-* specs further below (added in this same loop-back
+//     round) were each run against this loop-back's OWN pre-fix baseline
+//     (`git show HEAD:src/task-store.js` at the commit that started this
+//     round, i.e. 18ec45a/55dbef8's tree) and observed red for their own
+//     stated reason before being restored to the fixed code.
 // ===========================================================================
 describe('TASK-238 — FINDING_HIGH_RE id-shape bound and malformed-marker reporting', () => {
   it('CU2 (real TASK-234 offset-3213 prose) — runaway prose starting with the marker syntax no longer registers a phantom open finding', async () => {
@@ -1567,5 +1593,297 @@ describe('TASK-238 — FINDING_HIGH_RE id-shape bound and malformed-marker repor
     expect(caught, 'an oversized id must still block the close loudly, never disappear silently')
       .toBeInstanceOf(MalformedFindingMarkerError);
     expect(readTaskFile(repoDir, 'TASK-913').status).toBe('in_review');
+  });
+});
+
+// ===========================================================================
+// WG5-238-001/002/003/006 (FIFTH wargaming pass, 2026-09-17, loop-back round)
+// — four specs added past this ticket's 4-AC cap (explicitly authorized: the
+// loop-back brief names the two HIGH findings below as justification for
+// exceeding it, per CLAUDE.md's Regla 3). Each was run against this
+// loop-back's OWN pre-fix baseline (`git show HEAD:src/task-store.js` at the
+// commit this loop-back started from, 18ec45a/55dbef8) and confirmed red for
+// its own stated reason before being restored to the fixed code — see this
+// file's per-spec red-green note above the TASK-238 describe block.
+// ===========================================================================
+describe('WG5-238-001 — a scan-cap-evading marker attempt is reported, never silently dropped', () => {
+  it('the documented DEGRADED sibling shape (id, separator, long prose) used for a FINDING-HIGH past the 200-char scan cap blocks close with a distinct error, and the finding text stays visible', async () => {
+    // HARM: a real HIGH finding disappearing in total silence — the ticket
+    // reaches `done` on disk while the open finding's own text is still
+    // sitting, unresolved, in its own comments, and the delivery claims
+    // verification happened. Measured on the real board before this fix: 2
+    // of 41 real finding markers already exceed 200 chars.
+    const { transitionStatus, OpenHighFindingError, MalformedFindingMarkerError } =
+      await import('../src/task-store.js');
+
+    const longJustificationShapedProse = 'x'.repeat(300);
+    const repoDir = makeTmpDir('af-wg5-238-001-scan-cap-evasion');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-914': makeTask({
+          key: 'TASK-914',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            {
+              author: 'orchestrator',
+              at: '2026-09-17T00:01:00Z',
+              body: `[FINDING-HIGH: WG5-238-001 — ${longJustificationShapedProse}]`,
+            },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-914', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a marker attempted in this shape must never be silently dropped, whatever its total length')
+      .toBeInstanceOf(MalformedFindingMarkerError);
+    expect(caught).not.toBeInstanceOf(OpenHighFindingError);
+    expect(caught.message).toContain('WG5-238-001');
+    expect(readTaskFile(repoDir, 'TASK-914').status).toBe('in_review');
+  });
+
+  it('positive control — real TASK-234 runaway prose (no separator after its first word) still stays silent, unaffected by the new discriminator', async () => {
+    // HARM: an over-eager fix for WG5-238-001 could reopen the original
+    // TASK-238 bug by flagging ordinary prose as a marker attempt again.
+    const { transitionStatus, OpenHighFindingError, MalformedFindingMarkerError } =
+      await import('../src/task-store.js');
+
+    const real = JSON.parse(readFileSync(join(REPO_ROOT, 'tasks', 'TASK-234.json'), 'utf8'));
+    const runawayProseComment = real.comments[3];
+
+    const repoDir = makeTmpDir('af-wg5-238-001-cu2-still-silent');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-915': makeTask({
+          key: 'TASK-915',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            runawayProseComment,
+            { author: 'orchestrator', at: '2026-09-17T00:05:00Z', body: '[FINDING-RESOLVED: WG2-234-001] arreglado.' },
+            { author: 'orchestrator', at: '2026-09-17T00:06:00Z', body: '[FINDING-RESOLVED: WG2-234-002] arreglado.' },
+            { author: 'orchestrator', at: '2026-09-17T00:07:00Z', body: '[FINDING-RESOLVED: WG-H-050] arreglado.' },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-915', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeUndefined();
+    expect(caught).not.toBeInstanceOf(OpenHighFindingError);
+    expect(caught).not.toBeInstanceOf(MalformedFindingMarkerError);
+    expect(readTaskFile(repoDir, 'TASK-915').status).toBe('done');
+  });
+});
+
+describe('WG5-238-002 — a FINDING-DEGRADED with no visible-width justification does not close the finding', () => {
+  it('BRAILLE PATTERN BLANK (U+2800), HANGUL FILLER (U+3164), and a stray leftover hyphen all fail to close an open HIGH', async () => {
+    // HARM: WG-H-005's whole point is that a degradation requires a RECORDED
+    // justification, not just the marker — these three payloads (all
+    // reachable through the supported append_comment API; ZWSP and SOFT
+    // HYPHEN are sanitized away but these are not) let a HIGH finding close
+    // with nothing a human could read as a reason, defeating that control.
+    const { transitionStatus, OpenHighFindingError } = await import('../src/task-store.js');
+
+    const cases = [
+      ['braille', '⠀', 'TASK-920'],
+      ['hangul', 'ㅤ', 'TASK-921'],
+      ['loose-hyphen', '-', 'TASK-922'],
+    ];
+    for (const [label, justification, taskKey] of cases) {
+      const repoDir = makeTmpDir(`af-wg5-238-002-${label}`);
+      makeRepoSkeleton(repoDir, {
+        tasks: {
+          [taskKey]: makeTask({
+            key: taskKey,
+            verification_tier: 'tests-after',
+            status: 'in_review',
+            linked_commits: ['abc1234'],
+            comments: [
+              { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+              wargamingComment(),
+              { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body: `[FINDING-HIGH: wg${label}] hallazgo real sin arreglar.` },
+              { author: 'orchestrator', at: '2026-09-17T00:02:00Z', body: `[FINDING-DEGRADED: wg${label} — ${justification}]` },
+            ],
+          }),
+        },
+      });
+
+      let caught;
+      try {
+        await transitionStatus({ repoRoot: repoDir, key: taskKey, status: 'done' });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught, `${label}: a degradation with no visible-width justification must not close the finding`)
+        .toBeInstanceOf(OpenHighFindingError);
+      expect(readTaskFile(repoDir, taskKey).status).toBe('in_review');
+    }
+  });
+});
+
+describe('WG5-238-003 — an id with an invisible glyph attached still resolves via its plain-text twin', () => {
+  it('[FINDING-HIGH: id<ZWSP>] opens, and [FINDING-RESOLVED: id] (no ZWSP) closes it', async () => {
+    // HARM: an id and its invisible-glyph-padded twin looking IDENTICAL to a
+    // human reading the error, yet never matching as the same finding,
+    // leaves the ticket permanently stuck open with no visible cause.
+    const { transitionStatus } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-wg5-238-003-invisible-glyph-symmetry');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-930': makeTask({
+          key: 'TASK-930',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body: '[FINDING-HIGH: WG-1​] hallazgo real.' },
+            { author: 'orchestrator', at: '2026-09-17T00:02:00Z', body: '[FINDING-RESOLVED: WG-1] arreglado.' },
+          ],
+        }),
+      },
+    });
+
+    await transitionStatus({ repoRoot: repoDir, key: 'TASK-930', status: 'done' });
+    expect(readTaskFile(repoDir, 'TASK-930').status).toBe('done');
+  });
+});
+
+describe('WG5-238-006 — a fast-tier lock for FINDING-DEGRADED so a mutant disabling it is not invisible to the hand-off gate', () => {
+  it('a legitimate DEGRADED marker with a real justification still closes an open HIGH and reaches done', async () => {
+    // HARM: WG5-238-006 measured that a mutant which kills ALL FINDING-
+    // DEGRADED handling survives the full 1383-test fast tier untouched —
+    // only the e2e task-234-close-verification spec caught it, and that
+    // spec no longer runs in the per-ticket hand-off gate (it runs in the
+    // wargaming step instead). Without a fast-tier lock, a regression here
+    // would ship past every gate that runs before wargaming.
+    const { transitionStatus } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-wg5-238-006-degraded-fast-tier-lock');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-931': makeTask({
+          key: 'TASK-931',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body: '[FINDING-HIGH: WG-2] hallazgo real.' },
+            { author: 'orchestrator', at: '2026-09-17T00:02:00Z', body: '[FINDING-DEGRADED: WG-2 — justificacion real y legible de por que se degrada.] ok' },
+          ],
+        }),
+      },
+    });
+
+    await transitionStatus({ repoRoot: repoDir, key: 'TASK-931', status: 'done' });
+    expect(readTaskFile(repoDir, 'TASK-931').status).toBe('done');
+  });
+});
+
+// ===========================================================================
+// TASK-238 (closing round, 2026-09-17) — three residual silent-discard bands
+// measured by the Orchestrator directly against the code in this tree
+// (post-WG5-238-001): that fix's discriminator required the DOCUMENTED
+// separator (em-dash or spaced hyphen) to appear right after the id-shaped
+// token, on the theory that "id + separator + prose" was the only realistic
+// longform-attempt shape. Three bands stayed silent regardless — neither
+// opened as a finding nor reported as malformed, the ticket closing clean:
+//   B1: a bare over-length unbroken token with no separator, `]` past cap.
+//   B2: a short id followed by ordinary prose with NO separator, `]` past cap.
+//   B4: the same short-id-then-prose shape where the bracket never closes.
+// Fixed by dropping the separator requirement (see ID_SHAPE_WITH_SEPARATOR_RE
+// / isLikelyMarkerAttempt in src/task-store.js) — this is CU6's own approved
+// case ("el tope de longitud no puede volverse canal de evasion") made to
+// hold for real. This single spec (three payloads, one assertion shape)
+// exceeds this ticket's 4-AC new-spec cap (Regla 3); justified the same way
+// the WG5-238-* specs above already are — this is the direct fix for a
+// wargaming-named evasion channel on dangerous close-gate surface, and one
+// spec covering all three reproduced bands is the minimum needed, not padding.
+//
+// RED-GREEN MECHANISM, HONESTLY STATED PER SPEC (this closing round,
+// 2026-09-17, R-1 loop-back follow-through — reported per-spec, not
+// generalized): this spec cannot be red-green planted via `git show <ref>`
+// against an EARLIER commit, because the fix it locks (dropping the
+// separator requirement — ID_SHAPE_WITH_SEPARATOR_RE/isLikelyMarkerAttempt)
+// was written and committed in THIS SAME loop-back round, with no prior
+// commit where it does not exist yet to diff against without also reverting
+// unrelated code from the same round. Instead, planted by MUTATING the fix
+// directly: `isLikelyMarkerAttempt` was temporarily replaced with a
+// hard-coded `return false;` (the literal pre-fix "always silent" behavior),
+// this spec alone was re-run (`npx vitest run ... -t "B1/B2/B4"`), and it
+// failed for the right reason — observed: `b1-long-unbroken-token: must
+// never close silently -- a marker attempted in this shape has to be
+// reported: expected undefined to be an instance of MalformedFindingMarkerError`
+// (the ticket closed with no error thrown at all, i.e. silently — exactly
+// the defect this spec exists to lock). The mutation was then reverted and
+// the full file re-run: 51/51 passed (403ms).
+// ===========================================================================
+describe('TASK-238 (closing round) — B1/B2/B4: no separator, or a bracket that never closes, still gets reported as malformed', () => {
+  it('a 250-char unbroken token, a short id followed by prose with no separator, and an unclosed bracket all block close as MalformedFindingMarkerError', async () => {
+    // HARM: without this fix, a real HIGH finding written in any of these
+    // three shapes (a long unbroken run, a short id followed by ordinary
+    // prose, or a marker whose bracket simply never closes) was silently
+    // dropped by the parser -- neither opened nor reported -- letting the
+    // ticket close with an unresolved finding nobody could ever see was
+    // attempted. This is exactly the evasion channel CU6 names.
+    const { transitionStatus, MalformedFindingMarkerError, OpenHighFindingError } =
+      await import('../src/task-store.js');
+
+    const cases = [
+      ['b1-long-unbroken-token', `[FINDING-HIGH: ${'A'.repeat(250)}]`, 'TASK-940'],
+      ['b2-short-id-then-prose-no-separator', `[FINDING-HIGH: WG-1 ${'palabra '.repeat(40)}]`, 'TASK-941'],
+      ['b4-bracket-never-closes', `[FINDING-HIGH: WG-1 ${'p'.repeat(300)}`, 'TASK-942'],
+    ];
+    for (const [label, body, taskKey] of cases) {
+      const repoDir = makeTmpDir(`af-238-closing-${label}`);
+      makeRepoSkeleton(repoDir, {
+        tasks: {
+          [taskKey]: makeTask({
+            key: taskKey,
+            verification_tier: 'tests-after',
+            status: 'in_review',
+            linked_commits: ['abc1234'],
+            comments: [
+              { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+              wargamingComment(),
+              { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body },
+            ],
+          }),
+        },
+      });
+
+      let caught;
+      try {
+        await transitionStatus({ repoRoot: repoDir, key: taskKey, status: 'done' });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught, `${label}: must never close silently -- a marker attempted in this shape has to be reported`)
+        .toBeInstanceOf(MalformedFindingMarkerError);
+      expect(caught).not.toBeInstanceOf(OpenHighFindingError);
+      expect(readTaskFile(repoDir, taskKey).status).toBe('in_review');
+    }
   });
 });
