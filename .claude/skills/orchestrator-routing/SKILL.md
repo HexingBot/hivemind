@@ -349,6 +349,15 @@ registro.
    - **A HIGH-severity wargaming finding blocks the close**, exactly like a HIGH review finding.
    - Record the wargaming outcome on the ticket before step 6. A close with no record of what the
      adversary did is a close with no verification of record.
+   - **Recording a HIGH finding on the ticket — the marker convention (TASK-234/WG2-H-02).** A HIGH
+     finding from review or wargaming blocks the close via `src/task-store.js`'s
+     `checkNoOpenHighFindings`, which recognizes ONLY the literal marker forms in a comment body —
+     `[FINDING-HIGH: <id>] <text>` to open one, `[FINDING-RESOLVED: <id>]` to close it once fixed,
+     `[FINDING-DEGRADED: <id> — <justification>]` to close it via a justified downgrade (a bare marker
+     with no justification text does not count). Prose under a `### HIGH` heading, or a comment merely
+     saying "HIGH", is invisible to this specific guard — write the literal marker into the
+     `append_comment` call that records the finding on the ticket, not only into the reviewer's or
+     adversary's own returned report.
 6. **Update ticket.** **Y entregar con la forma de la salida:** el comentario de
    cierre — y, para un proyecto o un hito, el reporte que se le presenta al
    humano — sigue `${CLAUDE_PLUGIN_ROOT}/docs/PLANTILLA-ENTREGA.md` (dev-repo

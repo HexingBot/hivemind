@@ -117,3 +117,18 @@ Return structured findings:
 ## Verdict
 PASS | BLOCK
 ```
+
+**HIGH-finding marker convention (TASK-234/WG2-H-02, wargaming 2026-09-17).** `src/task-store.js`'s
+close guard (`checkNoOpenHighFindings`) recognizes ONLY a literal `[FINDING-HIGH: <id>]` marker in a
+ticket **comment body** — never the prose `### HIGH` heading above, which is this file's own report
+format and lives in your returned message, not on the ticket. Give every HIGH finding a short id slug
+(e.g. `R-1`, `R-2`) in your `### HIGH` list so the Orchestrator can transcribe it faithfully. When the
+Orchestrator records your verdict as a ticket comment (`append_comment`), a HIGH finding is written as
+`[FINDING-HIGH: <id>] <one-line summary>`; once fixed, `[FINDING-RESOLVED: <id>]`; once knowingly
+downgraded, `[FINDING-DEGRADED: <id> — <justification>]` (a bare marker with no justification text does
+not count — see `checkNoOpenHighFindings`'s doc comment in `src/task-store.js`). This is a *recording*
+convention for you and the Orchestrator, not a widened detector: the close guard does not scan prose
+for the word "HIGH" (a comment merely mentioning, quoting, or negating a finding — e.g. "no HIGH
+findings", or this very paragraph — must never be read as one), so a HIGH finding that never gets the
+literal marker written onto the ticket is invisible to that specific guard, even though it still blocks
+Workflow step 6 through the ordinary review process either way.

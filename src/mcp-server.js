@@ -294,10 +294,21 @@ export async function recordTaskGraphNode({
 
 /**
  * TASK-188 AC6 — best-effort, ADVISORY-ONLY existence check for
- * close_task's linked_commits, run ONLY here at the MCP layer (never inside
- * src/task-store.js — closeTask is a pure state-store function with no git
- * dependency, deliberately: see the TASK-188 hand-off for why adding one
- * there was rejected). Never throws and never blocks the close (STRIDE-
+ * close_task's linked_commits, run here at the MCP layer.
+ *
+ * WG2-L-07 (wargaming 2026-09-17) — CORRECTING A STALE CLAIM this comment
+ * used to make: "never inside src/task-store.js — closeTask is a pure
+ * state-store function with no git dependency, deliberately". TASK-234
+ * (WG-H-011) REVERSED that TASK-188 AC6 decision: `closeTask` now ALSO runs
+ * its own three-state existence check (via the injectable `commitVerifier`
+ * seam, `src/commit-existence.js`) and REJECTS the close outright when git
+ * says a linked sha does not exist (`LinkedCommitNotFoundError`) — see
+ * `checkDeliveryBody`'s sibling block in `closeTask`. This function is a
+ * SEPARATE, narrower check that still exists alongside that one: it reports
+ * a two-state present/missing partition in the TOOL RESPONSE only (never
+ * written to the task file, never blocks), which remains useful as a
+ * caller-facing echo even though the authoritative existence check now lives
+ * in task-store.js too. Never throws and never blocks the close (STRIDE-
  * Repudiation was scoped LOW in the originating probe, P8, and git
  * verification has too many legitimate false-negative paths — shallow
  * clones, rebased/squashed history, a sandboxed environment with no git
@@ -602,10 +613,15 @@ export function createServer({
       key, status, exception,
     }) => {
       // TASK-082 — loopModeCloseGuard is composed unconditionally on every
-      // call: it decides for itself whether loop mode is even active
-      // (getMode defaults to 'harness', a no-op), so this is safe in
-      // harness mode / with no active session and only bites when status
-      // === 'done' AND loop mode is active AND unauthorized.
+      // call: it decides for itself whether loop mode is even active. In
+      // harness mode / with no active session, getMode resolves 'harness'
+      // (a no-op) so this is safe there; as of TASK-236, a pointer/bundle
+      // that EXISTS but is corrupt makes getMode throw a ModeStateError
+      // instead — which this call does not catch, so the transition fails
+      // (denied) rather than silently proceeding. Either way this only
+      // *permits* the close when status === 'done' AND loop mode is active
+      // AND authorized — see src/operating-mode.js's getMode doc comment for
+      // the full case table.
       await transitionStatus({
         repoRoot, key, status, closeGuard: loopModeCloseGuard, exception,
       });
@@ -616,7 +632,15 @@ export function createServer({
   server.registerTool(
     'append_comment',
     {
-      description: 'Append a comment ({ author, body }) to a task.',
+      description:
+        'Append a comment ({ author, body }) to a task. Recognized marker '
+        + 'conventions for `body` (TASK-234, WG2-H-02): `[CLOSE-EXCEPTION] '
+        + '<reason>`, `[WARGAMING] <what was attacked>` (must be the FIRST '
+        + 'thing in the body, naming a case and a path), `[FINDING-HIGH: '
+        + '<id>] <text>` to open a HIGH finding, `[FINDING-RESOLVED: <id>]` '
+        + 'to close it, `[FINDING-DEGRADED: <id> — <justification>]` to '
+        + 'close it via a justified downgrade — see close_task\'s '
+        + 'description and agents/reviewer.md for what reads each marker.',
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
         author: COMMENT_AUTHOR,
@@ -661,9 +685,27 @@ export function createServer({
         + "work for verification_tier 'uat-only': the uat-only done-guard "
         + 'runs BEFORE the exception is considered and is never bypassed '
         + "by it — a won't-do uat-only closure still needs its own "
-        + "recognizable 'uat'-authored verdict comment. Reports a "
-        + 'best-effort, advisory-only linked_commits_verification (never '
-        + 'blocks the close) — see the TASK-188 hand-off / tasks/schema.json.',
+        + "recognizable 'uat'-authored verdict comment. (TASK-234, WG2-L-07) "
+        + 'THREE MORE guards block this call, none of them bypassable except '
+        + 'by the same `exception`: comment.body must itself carry the '
+        + 'delivery (docs/PLANTILLA-ENTREGA.md\'s four numbered blocks with '
+        + 'real content — DeliveryBodyError); the ticket must carry a '
+        + '`[WARGAMING] <what was attacked>` comment naming at least one '
+        + 'approved case and one path (OR the closing body\'s own "3. '
+        + 'WARGAMING" block does — WargamingRecordError); and the ticket '
+        + 'must carry no unresolved `[FINDING-HIGH: <id>]` marker — resolve '
+        + 'with `[FINDING-RESOLVED: <id>]` or a justified '
+        + '`[FINDING-DEGRADED: <id> — <reason>]` first (OpenHighFindingError; '
+        + 'see agents/reviewer.md for the full marker convention). Every '
+        + 'linked_commits sha (existing + incoming) is also resolved against '
+        + 'the repository: a sha git confirms does NOT exist BLOCKS the '
+        + 'close (LinkedCommitNotFoundError); a sha git could not check at '
+        + 'all is recorded on the task as "unverifiable" and does NOT block '
+        + '(three-state, never collapsed to a pass/fail binary) — this is '
+        + 'DISTINCT from the best-effort, advisory-only '
+        + 'linked_commits_verification reported in the TOOL RESPONSE below, '
+        + 'which never blocks and is a separate, response-only echo — see '
+        + 'the TASK-188 hand-off / tasks/schema.json for both.',
       inputSchema: {
         key: z.string().describe('Task key, e.g. TASK-026'),
         comment: z.object({ author: COMMENT_AUTHOR, body: z.string() }),

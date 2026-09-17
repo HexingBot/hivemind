@@ -45,7 +45,12 @@ Esta es la verificacion real del flujo, asi que este bloque no puede ser una lin
   adversario. Un caso aprobado que no fue atacado **no esta verificado**, y se dice asi.
 - **Que sobrevivio.**
 - **Que NO sobrevivio.** Cada hallazgo con su severidad. Un HIGH bloquea el cierre: vuelve al
-  Developer y no hay entrega hasta que se resuelva.
+  Developer y no hay entrega hasta que se resuelva. **Convencion de marcador (TASK-234/WG2-H-02):**
+  el guard de cierre (`checkNoOpenHighFindings` en `src/task-store.js`) solo reconoce el marcador
+  literal `[FINDING-HIGH: <id>] <texto>` en el CUERPO de un comentario del ticket — nunca el
+  encabezado `### HIGH` en prosa que usa `agents/reviewer.md`. Un hallazgo abierto se cierra con
+  `[FINDING-RESOLVED: <id>]`, o se degrada con justificacion registrada via
+  `[FINDING-DEGRADED: <id> — <justificacion>]` (un marcador pelado sin texto no cuenta).
 - **Los e2e afectados corridos aca** (nombrados y con su resultado), porque desde el 2026-09-16
   se ejecutan en este paso y no antes.
 - **Veredicto.**
