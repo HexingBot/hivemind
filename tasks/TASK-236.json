@@ -1,0 +1,46 @@
+{
+  "key": "TASK-236",
+  "title": "Fail-open del modo: corromper un archivo de estado convierte un cierre DENEGADO en PERMITIDO",
+  "description": "WG-H-007 (ALTA, reproducida por el Orquestador). Con el bundle sano y mode: loop, getMode (src/operating-mode.js:24) devuelve loop. Con el bundle TRUNCADO A LA MITAD devuelve harness -- sin lanzar, sin avisar, sin dejar rastro. Y la guarda de cierre autonomo (Gate 1, loopModeCloseGuard en src/close-guard.js:487) solo actua cuando el modo es loop. O sea: corromper un archivo de estado convierte un cierre denegado en permitido. Es una guarda de seguridad que falla HACIA ABIERTO, que es la direccion equivocada -- y el propio doc comment de close-guard.js:518 declara el default a harness \"on any error\" como si fuera benigno. Se suma WG-H-010 (media): el puntero de sesion no se valida, asi que un bundle fantasma (active_session_id apuntando a un directorio inexistente) y una schema_version desconocida pasan sin ruido -- el mismo defecto de degradacion silenciosa en el seam de al lado.",
+  "acceptance_criteria": [
+    "WG-H-007: un bundle ilegible, truncado o con JSON invalido NO se degrada en silencio a harness. getMode distingue \"no hay sesion / no hay modo declarado\" (legitimo -> harness) de \"el estado existe y esta corrupto\" (error nombrado), y el llamador puede distinguirlos -- contrato de resultado vacio (TASK-192).",
+    "La guarda de cierre autonomo deja de fallar hacia abierto: ante un estado corrupto DENIEGA o escala, nunca permite. Un cierre que era denegado con el bundle sano sigue denegado con el bundle truncado.",
+    "WG-H-010: el puntero state/session.json se valida -- un active_session_id que apunta a un bundle inexistente y una schema_version desconocida se reportan con un error nombrado en vez de pasar.",
+    "El doc comment de src/close-guard.js que describe el default a harness \"on any error\" se corrige para decir lo que el codigo hace despues del arreglo.",
+    "No se rompe el arranque legitimo: un repo sin state/, sin puntero o con active_session_id null sigue siendo harness sin error (es el estado idle documentado).",
+    "Candados de regresion para las dos direcciones (sano -> permitido segun politica; corrupto -> nunca mas permisivo que sano). npm test y test:all verdes."
+  ],
+  "status": "in_review",
+  "priority": "high",
+  "labels": [
+    "wargaming-2026-09-16",
+    "fail-open",
+    "close-guard"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.319Z",
+      "body": "PEDIDO COMPLETADO contra docs/PLANTILLA-PEDIDO.md (bloque 4 portante).\n\n1. OBJETIVO: que una guarda de seguridad no falle hacia abierto -- que corromper un archivo de\nestado no pueda convertir un cierre denegado en permitido.\n\n2. ACTOR: el Orquestador en modo loop (autonomo, sin humano mirando, que es justo el modo donde\nla guarda importa) y Mato, que confia en que el Gate 1 del loop lo protege.\n\n3. PROBLEMA: getMode (src/operating-mode.js:24) devuelve harness ante cualquier error, en\nsilencio. Reproducido: bundle sano con mode loop -> loop; bundle truncado a la mitad ->\nharness. Y loopModeCloseGuard (src/close-guard.js:487) solo actua cuando el modo es loop. O sea\nque truncar un archivo apaga la guarda. El doc comment de close-guard.js:518 declara ese\ndefault \"on any error\" como si fuera benigno. Al lado, el mismo defecto: el puntero de sesion\nno se valida (bundle fantasma y schema_version desconocida pasan).\n\n4. CAMINOS Y ACCIONES ESPERADAS -- de aca salen los casos:\n   PRINCIPAL: bundle sano con mode loop -> la guarda actua y deniega lo que debe denegar.\n   ALTERNATIVO A: no hay sesion, no hay puntero, o active_session_id es null -> harness\n     legitimo, sin error (es el estado idle que la doc describe).\n   ALTERNATIVO B: el bundle existe y no declara modo -> harness legitimo.\n   FALLO A: el bundle esta truncado o con JSON invalido -> hoy degrada a harness en silencio.\n   FALLO B: active_session_id apunta a un bundle inexistente (fantasma).\n   FALLO C: schema_version desconocida.\n   NEGATIVO: el arreglo no puede romper el arranque legitimo de un repo sin state/.\n\n5. CRITERIOS DE HECHO DEL USUARIO: un cierre que era denegado con el bundle sano sigue denegado\ncon el bundle truncado.\n\n6. RESTRICCIONES: superficie peligrosa (categorias 2 y 4). Aplica el contrato de resultado\nvacio (TASK-192): \"no hay modo declarado\" y \"el estado esta corrupto\" tienen que ser\ndistinguibles por el llamador, sin inferencia.\n\n7. FUERA DE ALCANCE: rediseniar el modelo de sesiones; la migracion v1->v2 del bundle."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.365Z",
+      "body": "LISTA DE CASOS DE USO / PATHS DE USO (CLAUDE.md Workflow step 2, Regla 1). Derivada del bloque 4\ndel pedido registrado en el comentario anterior, un caso por camino, incluidos alternativos y de\nfallo. Esta es la lista contra la que el Developer programa y contra la que el WARGAMING ataca al\nfinal. Un caso que no pase como esta escrito se ESCALA, no se cambia en silencio.\n\n1. CU1 (principal). Bundle sano, mode loop, cierre que la politica deniega. Espera Y: denegado.\n2. CU2 (fallo A, WG-H-007). El MISMO cierre con el bundle truncado a la mitad. Espera Y: sigue denegado. La guarda nunca es mas permisiva con el estado corrupto que con el sano.\n3. CU3 (fallo A). getMode sobre un bundle truncado o con JSON invalido. Espera Y: distingue \"no hay modo declarado\" (legitimo -> harness) de \"el estado existe y esta corrupto\" (error nombrado); el llamador puede distinguirlos sin inferir.\n4. CU4 (alternativo A, negativo). Repo sin state/, sin puntero, o con active_session_id null. Espera Y: harness sin error -- el estado idle documentado sigue funcionando.\n5. CU5 (alternativo B, negativo). Bundle sano que no declara modo. Espera Y: harness sin error.\n6. CU6 (fallo B, WG-H-010). active_session_id apunta a un bundle inexistente. Espera Y: error nombrado, no silencio.\n7. CU7 (fallo C, WG-H-010). schema_version desconocida en el puntero. Espera Y: error nombrado, no silencio.\n8. CU8 (la afirmacion falsa). Se lee el doc comment de src/close-guard.js sobre el default a harness \"on any error\". Espera Y: dice lo que el codigo hace despues del arreglo, no lo que hacia antes."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.412Z",
+      "body": "CONSTANCIA DE APROBACION HUMANA DE LOS CASOS DE USO (CLAUDE.md Workflow step 2, hard stop del 2026-09-16).\n\nAprobador: Mato. Momento: despacho del 2026-09-16, posterior al triaje del wargaming.\n\nCita verbatim de la autorizacion:\n  \"actualiza lo que tengas que actualizar y vamos a arreglar ese bug. Una vez el bug este\n   arreglado, una vez todos los tickets o cosas que salieron de este wargaming esten\n   arreglados, me avisas. Hacemos un bump a la version, actualizamos Hivemind, y hacemos el\n   ejercicio de nuevo. Actualizamos en todos los proyectos.\"\n  Mas, en el mismo despacho: \"Mato autorizo arreglar todo.\"\n\nALCANCE EXACTO DE LO QUE ESTA APROBACION ES Y LO QUE NO ES, dicho para que no se lea despues\ncomo mas de lo que fue:\n  - LO QUE ES: una autorizacion en bloque y explicita para arreglar las 23 roturas del wargaming\n    del 2026-09-16, sobre un triaje que Mato leyo. Los casos de uso de abajo NO son requisitos\n    que yo invente: cada uno es un CAMINO YA REPRODUCIDO por el ataque, con su evidencia en\n    ~/qa-agents/wargames/hivemind/2026-09-16/. El \"espera Y\" de cada caso es la conducta que el\n    SUT promete y hoy incumple, no una funcionalidad nueva.\n  - LO QUE NO ES: una aprobacion caso por caso de esta lista concreta. Mato no vio esta\n    numeracion antes de que existiera. Se registra asi, y no como \"Mato aprobo estos 6 casos\",\n    porque maquillarlo seria exactamente el registro falso que la politica del 2026-09-16 vino a\n    eliminar.\n  - CONSECUENCIA OPERATIVA: si al implementar un caso hay que CAMBIARLO, no se resuelve por\n    criterio propio -- se escala a Mato, igual que manda la Regla 1. Esta constancia autoriza\n    arreglar, no re-definir."
+    }
+  ],
+  "created_at": "2026-09-16T21:36:43.522Z",
+  "updated_at": "2026-09-16T22:04:12.904Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "requires_uat": false
+}

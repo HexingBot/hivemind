@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T20:56:28.290Z",
+  "generated_at": "2026-09-16T22:04:12.955Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1361,6 +1361,36 @@
       "key": "TASK-232",
       "title": "Persistir el bloque 4 del pedido (caminos y acciones esperadas) en el intake del proyecto",
       "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-233",
+      "title": "RAIZ: publicar la politica a la superficie que la ejecuta (propagacion del plugin)",
+      "status": "in_review",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-234",
+      "title": "Guardas de cierre: el doble cierre escribe, el cuerpo \"OK\" pasa, y un HIGH no bloquea",
+      "status": "in_progress",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-235",
+      "title": "Concurrencia del task-store: el segundo escritor que la premisa omite (bin/task-board.js)",
+      "status": "in_review",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-236",
+      "title": "Fail-open del modo: corromper un archivo de estado convierte un cierre DENEGADO en PERMITIDO",
+      "status": "in_review",
+      "priority": "high"
+    },
+    {
+      "key": "TASK-237",
+      "title": "Paridad: project-context.md exento del unico mecanismo de coherencia, y los pares no lockeados",
+      "status": "in_review",
       "priority": "medium"
     }
   ]

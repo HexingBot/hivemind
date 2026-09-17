@@ -1,0 +1,46 @@
+{
+  "key": "TASK-235",
+  "title": "Concurrencia del task-store: el segundo escritor que la premisa omite (bin/task-board.js)",
+  "description": "WG-H-008 y WG-H-009 (ALTAS, alcance corregido por el Orquestador). El atacante los reporto como roturas de concurrencia; el SUT declara la premisa en su propio codigo (src/task-store.js:16-23: \"the framework currently runs exactly one orchestrator per repo\"), asi que bajo esa premisa forzar concurrencia seria fabricar el hallazgo. PERO LA PREMISA ES FALSA EN EL PRODUCTO QUE SE ENTREGA: bin/task-board.js es un PROCESO APARTE -- el kanban que la propia skill task-status le dice al usuario que levante -- y sus endpoints POST llaman a transitionStatus y createTask, las mismas funciones no race-safe (src/task-board.js:58, :1308, :1389). Ese segundo escritor no es un orquestador, asi que la premisa no lo contempla. Medicion del atacante entre procesos: 8 llamadas aceptadas -> 4 en disco, y 6 cierres -> 1 en el indice. La precondicion es alcanzable con solo tener el board abierto mientras el orquestador cierra un ticket, que es el flujo que el propio producto documenta. Lo que se reporta NO es \"el task-store tiene una carrera\" (eso esta declarado), sino que la premisa que lo declara seguro omite un escritor que el framework mismo entrega. Se suma WG-H-012 (media): una referencia colgante en depends_on rompe listReady para TODO el board, y el ciclo no se detecta.",
+  "acceptance_criteria": [
+    "La premisa de src/task-store.js:16-23 se corrige para nombrar a bin/task-board.js como segundo escritor real en otro proceso -- el comentario deja de declarar seguro lo que no lo es.",
+    "WG-H-008: dos escritores concurrentes en PROCESOS distintos no pierden mutaciones en silencio; una mutacion aceptada o queda en disco o falla con un error nombrado (nunca aceptada-y-perdida). Reproducible con la medicion del atacante (N llamadas aceptadas -> N en disco).",
+    "WG-H-009: tasks/index.json queda consistente con el conjunto de archivos tras cierres concurrentes, o el desajuste se detecta y se reporta en vez de quedar silencioso.",
+    "WG-H-012: una referencia colgante en depends_on no rompe listReady para todo el board -- se reporta nombrando el ticket colgante; un ciclo en depends_on se detecta en vez de colgar o mentir.",
+    "El arreglo no serializa el camino de lectura ni degrada el tiempo del board de forma perceptible; si hay un costo se mide y se escribe.",
+    "Candados de regresion con procesos reales (tier e2e), reusando la reproduccion del atacante. npm test y test:all verdes."
+  ],
+  "status": "in_review",
+  "priority": "high",
+  "labels": [
+    "wargaming-2026-09-16",
+    "concurrencia",
+    "task-store"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.161Z",
+      "body": "PEDIDO COMPLETADO contra docs/PLANTILLA-PEDIDO.md (bloque 4 portante).\n\n1. OBJETIVO: que el task-store no pierda mutaciones en silencio cuando escribe el segundo\nescritor que el propio framework entrega, y que la premisa escrita en su codigo deje de\ndeclarar seguro lo que no lo es.\n\n2. ACTOR: cualquier usuario que levante el kanban con /hivemind:task-status y lo deje abierto\nmientras el Orquestador trabaja. Es el flujo que el producto documenta, no un caso forzado.\n\n3. PROBLEMA: src/task-store.js:16-23 declara \"the framework currently runs exactly one\norchestrator per repo\". Es falso en el producto entregado: bin/task-board.js es un proceso\naparte y sus POST llaman a transitionStatus y createTask, las mismas funciones no race-safe.\nMedido entre procesos: 8 llamadas aceptadas -> 4 en disco; 6 cierres -> 1 en el indice.\n\n4. CAMINOS Y ACCIONES ESPERADAS -- de aca salen los casos:\n   PRINCIPAL: un unico escritor muta el board; todo queda en disco y el indice coincide.\n   ALTERNATIVO A: el board abierto y el Orquestador cerrando a la vez (dos procesos).\n   ALTERNATIVO B: dos mutaciones concurrentes sobre tickets DISTINTOS.\n   FALLO A: una mutacion es aceptada por la API y no queda en disco (perdida silenciosa).\n   FALLO B: tasks/index.json queda desincronizado del conjunto de archivos.\n   FALLO C: depends_on con una referencia colgante o un ciclo.\n   NEGATIVO: el arreglo no puede serializar la lectura ni hacer el board perceptiblemente lento.\n\n5. CRITERIOS DE HECHO DEL USUARIO: con el board abierto, N mutaciones aceptadas producen N\nmutaciones en disco -- o un error nombrado, nunca una aceptacion perdida.\n\n6. RESTRICCIONES: superficie peligrosa (categoria 4). Toda escritura pasa por\nsrc/atomic-write.js. El costo del arreglo se mide, no se estima.\n\n7. FUERA DE ALCANCE: rehacer el modelo de almacenamiento; migrar a una base."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.218Z",
+      "body": "LISTA DE CASOS DE USO / PATHS DE USO (CLAUDE.md Workflow step 2, Regla 1). Derivada del bloque 4\ndel pedido registrado en el comentario anterior, un caso por camino, incluidos alternativos y de\nfallo. Esta es la lista contra la que el Developer programa y contra la que el WARGAMING ataca al\nfinal. Un caso que no pase como esta escrito se ESCALA, no se cambia en silencio.\n\n1. CU1 (principal). Un solo escritor muta el board. Espera Y: todo queda en disco y tasks/index.json coincide con el conjunto de archivos.\n2. CU2 (alternativo A, WG-H-008). Board abierto + Orquestador cerrando, dos PROCESOS reales, N llamadas aceptadas. Espera Y: N mutaciones en disco, o un error nombrado por cada una que no entro. Nunca aceptada-y-perdida.\n3. CU3 (alternativo B). Dos mutaciones concurrentes sobre tickets DISTINTOS. Espera Y: ambas quedan; no se pisan por compartir el indice.\n4. CU4 (fallo B, WG-H-009). Cierres concurrentes. Espera Y: el indice queda consistente, o el desajuste se DETECTA y se reporta en vez de quedar silencioso.\n5. CU5 (fallo C, WG-H-012). Un depends_on apunta a un ticket inexistente. Espera Y: listReady NO se rompe para todo el board -- reporta nombrando el ticket colgante.\n6. CU6 (fallo C, WG-H-012). Un ciclo en depends_on. Espera Y: se detecta y se nombra, en vez de colgar o de mentir con una lista incompleta.\n7. CU7 (negativo). Se mide el tiempo del board antes y despues. Espera Y: sin degradacion perceptible; si hay costo se MIDE y se escribe en el hand-off, no se estima.\n8. CU8 (la premisa). Se lee src/task-store.js:16-23. Espera Y: el comentario nombra a bin/task-board.js como segundo escritor real en otro proceso y deja de declarar seguro lo que no lo es."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.265Z",
+      "body": "CONSTANCIA DE APROBACION HUMANA DE LOS CASOS DE USO (CLAUDE.md Workflow step 2, hard stop del 2026-09-16).\n\nAprobador: Mato. Momento: despacho del 2026-09-16, posterior al triaje del wargaming.\n\nCita verbatim de la autorizacion:\n  \"actualiza lo que tengas que actualizar y vamos a arreglar ese bug. Una vez el bug este\n   arreglado, una vez todos los tickets o cosas que salieron de este wargaming esten\n   arreglados, me avisas. Hacemos un bump a la version, actualizamos Hivemind, y hacemos el\n   ejercicio de nuevo. Actualizamos en todos los proyectos.\"\n  Mas, en el mismo despacho: \"Mato autorizo arreglar todo.\"\n\nALCANCE EXACTO DE LO QUE ESTA APROBACION ES Y LO QUE NO ES, dicho para que no se lea despues\ncomo mas de lo que fue:\n  - LO QUE ES: una autorizacion en bloque y explicita para arreglar las 23 roturas del wargaming\n    del 2026-09-16, sobre un triaje que Mato leyo. Los casos de uso de abajo NO son requisitos\n    que yo invente: cada uno es un CAMINO YA REPRODUCIDO por el ataque, con su evidencia en\n    ~/qa-agents/wargames/hivemind/2026-09-16/. El \"espera Y\" de cada caso es la conducta que el\n    SUT promete y hoy incumple, no una funcionalidad nueva.\n  - LO QUE NO ES: una aprobacion caso por caso de esta lista concreta. Mato no vio esta\n    numeracion antes de que existiera. Se registra asi, y no como \"Mato aprobo estos 6 casos\",\n    porque maquillarlo seria exactamente el registro falso que la politica del 2026-09-16 vino a\n    eliminar.\n  - CONSECUENCIA OPERATIVA: si al implementar un caso hay que CAMBIARLO, no se resuelve por\n    criterio propio -- se escala a Mato, igual que manda la Regla 1. Esta constancia autoriza\n    arreglar, no re-definir."
+    }
+  ],
+  "created_at": "2026-09-16T21:36:43.466Z",
+  "updated_at": "2026-09-16T22:04:12.855Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "requires_uat": false
+}

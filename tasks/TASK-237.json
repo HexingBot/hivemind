@@ -1,0 +1,45 @@
+{
+  "key": "TASK-237",
+  "title": "Paridad: project-context.md exento del unico mecanismo de coherencia, y los pares no lockeados",
+  "description": "WG-H-013 (MEDIA, verificada por el Orquestador en tests/agents-parity.spec.js:48): el filtro es .filter((n) => n.endsWith(\".md\") && n !== \"project-context.md\"). Es el UNICO archivo del directorio explicitamente exento, y es precisamente el briefing de proyecto que se le inyecta a TODOS los subagentes -- o sea que dos copias contradictorias del texto que gobierna a cada subagente pueden convivir con la suite en verde. WG-H-014 (media, anticipado por UC-12 path 4): los pares NO lockeados divergen libremente, incluida la skill con la que se corre el wargaming. WG-H-015 (baja): una seccion que se autodeclara \"locked -- verbatim in intent, unchanged from the framework variant\" no es identica y nada la lockea. NOTA A FAVOR DEL SUT, que se registra porque el informe corrigio a su propio atacante: WG-H-016 es definicion_equivocada y NO es un defecto nuestro -- el guard de paridad SI descubre agentes nuevos comparando el conjunto de archivos, verificado en las dos direcciones; la definicion de qa-agents estaba mal y ya se corrigio alla.",
+  "acceptance_criteria": [
+    "WG-H-013: project-context.md deja de estar exento del mecanismo de coherencia -- o entra al guard de paridad, o queda cubierto por un mecanismo propio que detecte dos copias contradictorias. Si hay un motivo real para la exencion (contenido por-proyecto), el mecanismo cubre la parte que NO es por-proyecto y el motivo queda escrito.",
+    "WG-H-014: el inventario de pares espejo se vuelve exhaustivo por descubrimiento en vez de por lista escrita a mano -- un par nuevo queda cubierto sin que nadie lo agregue, o su ausencia del lock se reporta.",
+    "La skill orchestrator-routing (skills/ vs .claude/skills/) queda lockeada: es la superficie con la que se corre el wargaming y hoy puede divergir sin un rojo.",
+    "WG-H-015: la seccion que se autodeclara \"locked\" o bien es identica y esta lockeada de verdad, o bien deja de autodeclararse locked. No se deja una afirmacion falsa en el texto.",
+    "El arreglo no rompe la escritura: el guard de rutas sensibles del harness impide escribir .claude/** con la herramienta directa; el mecanismo de sincronizacion documentado (node -e con fs.copyFileSync) sigue siendo viable y queda escrito.",
+    "Candados de regresion para las tres roturas. npm test y test:all verdes."
+  ],
+  "status": "in_review",
+  "priority": "medium",
+  "labels": [
+    "wargaming-2026-09-16",
+    "paridad"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.470Z",
+      "body": "PEDIDO COMPLETADO contra docs/PLANTILLA-PEDIDO.md (bloque 4 portante).\n\n1. OBJETIVO: que el unico mecanismo de coherencia entre las dos copias (repo de desarrollo y\ncopia enviada al consumidor) no tenga exentos -- empezando por el archivo que se le inyecta a\ntodos los subagentes.\n\n2. ACTOR: todo subagente que recibe el briefing de proyecto; y el que edita una copia creyendo\nque el guard le avisa si se olvida de la otra.\n\n3. PROBLEMA: tests/agents-parity.spec.js:48 filtra .filter((n) => n.endsWith(\".md\") && n !==\n\"project-context.md\"). Es el UNICO archivo explicitamente exento, y es precisamente el briefing\nque gobierna a cada subagente: dos copias contradictorias pueden convivir con la suite en\nverde. Ademas los pares NO lockeados divergen libremente, incluida la skill con la que se corre\nel wargaming; y una seccion que se autodeclara \"locked -- verbatim in intent, unchanged from\nthe framework variant\" no es identica y nada la lockea.\n\n4. CAMINOS Y ACCIONES ESPERADAS -- de aca salen los casos:\n   PRINCIPAL: se edita una copia de un par espejo y no la otra -> rojo.\n   ALTERNATIVO A: project-context.md tiene contenido legitimamente por-proyecto; el mecanismo\n     tiene que cubrir la parte que NO lo es, no exentar el archivo entero.\n   ALTERNATIVO B: aparece un par espejo NUEVO que nadie agrego a la lista.\n   FALLO A: dos project-context.md contradictorios conviven y la suite queda verde.\n   FALLO B: skills/orchestrator-routing vs .claude/skills/orchestrator-routing divergen sin rojo.\n   FALLO C: una seccion se autodeclara locked y no lo esta (afirmacion falsa en el texto).\n   RESTRICCION DE ENTORNO: .claude/** no se escribe con la herramienta directa.\n\n5. CRITERIOS DE HECHO DEL USUARIO: no queda ningun archivo exento sin un motivo escrito, y el\ninventario de pares no depende de que alguien se acuerde de agregarlo.\n\n6. RESTRICCIONES: el guard de rutas sensibles del harness impide escribir .claude/** con la\nherramienta directa; el mecanismo viable documentado es node -e con fs.copyFileSync.\n\n7. FUERA DE ALCANCE: unificar las dos copias en una sola (es un cambio de arquitectura del\nplugin, no de este ticket). NOTA A FAVOR DEL SUT: WG-H-016 es definicion_equivocada del\natacante y NO es defecto nuestro -- el guard SI descubre agentes nuevos comparando el conjunto\nde archivos; ya se corrigio en la definicion de qa-agents."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.516Z",
+      "body": "LISTA DE CASOS DE USO / PATHS DE USO (CLAUDE.md Workflow step 2, Regla 1). Derivada del bloque 4\ndel pedido registrado en el comentario anterior, un caso por camino, incluidos alternativos y de\nfallo. Esta es la lista contra la que el Developer programa y contra la que el WARGAMING ataca al\nfinal. Un caso que no pase como esta escrito se ESCALA, no se cambia en silencio.\n\n1. CU1 (principal). Se edita agents/developer.md y no .claude/agents/developer.md. Espera Y: rojo (esto ya funciona; el caso existe para no romperlo).\n2. CU2 (fallo A, WG-H-013). Se hacen contradictorios los dos project-context.md. Espera Y: ROJO. Hoy la suite queda verde.\n3. CU3 (alternativo A). project-context.md tiene contenido legitimamente por-proyecto. Espera Y: el mecanismo cubre la parte que NO es por-proyecto y el motivo de lo que queda afuera esta ESCRITO; no se exenta el archivo entero en silencio.\n4. CU4 (fallo B, WG-H-014). Divergen skills/orchestrator-routing/SKILL.md y su copia en .claude/skills/. Espera Y: ROJO -- es la superficie con la que se corre el wargaming.\n5. CU5 (alternativo B, WG-H-014). Aparece un par espejo nuevo que nadie agrego a ninguna lista. Espera Y: queda cubierto por descubrimiento, o su ausencia del lock se REPORTA. No pasa desapercibido.\n6. CU6 (fallo C, WG-H-015). Una seccion se autodeclara \"locked -- verbatim in intent\" y no es identica. Espera Y: o es identica y esta lockeada de verdad, o deja de autodeclararse locked. No se deja una afirmacion falsa en el texto.\n7. CU7 (restriccion de entorno). Se sincroniza una copia bajo .claude/**. Espera Y: el mecanismo documentado (node -e con fs.copyFileSync) sigue siendo viable y queda escrito; el arreglo no exige una herramienta que el guard bloquea."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-16T21:39:03.570Z",
+      "body": "CONSTANCIA DE APROBACION HUMANA DE LOS CASOS DE USO (CLAUDE.md Workflow step 2, hard stop del 2026-09-16).\n\nAprobador: Mato. Momento: despacho del 2026-09-16, posterior al triaje del wargaming.\n\nCita verbatim de la autorizacion:\n  \"actualiza lo que tengas que actualizar y vamos a arreglar ese bug. Una vez el bug este\n   arreglado, una vez todos los tickets o cosas que salieron de este wargaming esten\n   arreglados, me avisas. Hacemos un bump a la version, actualizamos Hivemind, y hacemos el\n   ejercicio de nuevo. Actualizamos en todos los proyectos.\"\n  Mas, en el mismo despacho: \"Mato autorizo arreglar todo.\"\n\nALCANCE EXACTO DE LO QUE ESTA APROBACION ES Y LO QUE NO ES, dicho para que no se lea despues\ncomo mas de lo que fue:\n  - LO QUE ES: una autorizacion en bloque y explicita para arreglar las 23 roturas del wargaming\n    del 2026-09-16, sobre un triaje que Mato leyo. Los casos de uso de abajo NO son requisitos\n    que yo invente: cada uno es un CAMINO YA REPRODUCIDO por el ataque, con su evidencia en\n    ~/qa-agents/wargames/hivemind/2026-09-16/. El \"espera Y\" de cada caso es la conducta que el\n    SUT promete y hoy incumple, no una funcionalidad nueva.\n  - LO QUE NO ES: una aprobacion caso por caso de esta lista concreta. Mato no vio esta\n    numeracion antes de que existiera. Se registra asi, y no como \"Mato aprobo estos 6 casos\",\n    porque maquillarlo seria exactamente el registro falso que la politica del 2026-09-16 vino a\n    eliminar.\n  - CONSECUENCIA OPERATIVA: si al implementar un caso hay que CAMBIARLO, no se resuelve por\n    criterio propio -- se escala a Mato, igual que manda la Regla 1. Esta constancia autoriza\n    arreglar, no re-definir."
+    }
+  ],
+  "created_at": "2026-09-16T21:36:43.577Z",
+  "updated_at": "2026-09-16T22:04:12.955Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "requires_uat": false
+}

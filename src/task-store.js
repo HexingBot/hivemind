@@ -1011,11 +1011,29 @@ function resolveCloseException(exception) {
  * be satisfied whenever it FIRST reached 'done'. This is what keeps
  * src/mcp-server.js's close_task idempotent (TASK-171/KB-GRAPH-4's repeated-
  * call graph-node semantics) without re-litigating evidence for an event
- * that already happened. Not a loophole: reaching this branch with
+ * that already happened.
+ *
+ * TASK-234 (WG-H-006, wargaming 2026-09-16) — CORRECTION of a claim this
+ * comment used to make here ("Not a loophole: reaching this branch with
  * task.status still 'done' requires having reached 'done' previously through
- * this same guarded path (or the documented exception) — moving a task OFF
- * 'done' first (transitionStatus to any other status) clears it, so a fresh
- * close attempt is fully re-checked.
+ * this same guarded path"). That sentence was FALSE as shipped: this
+ * function (and checkCloseEvidence below) correctly SKIPPED their own checks
+ * for an already-'done' task, but transitionStatus/closeTask's callers did
+ * NOT correspondingly skip the WRITE that follows — every re-close attempt
+ * still bumped updated_at, and closeTask additionally appended a fresh
+ * closing comment and concatenated any newly-supplied linked_commits onto
+ * the existing array, with ZERO verification behind any of it (both checks
+ * had just no-op'd). Measured: a ticket closed once, then closed again with
+ * an arbitrary comment and an arbitrary linked_commit, ended up with a
+ * SECOND closing comment (the one the reader and the close-verification
+ * census read as "the close") and a second, unverified linked_commit — a
+ * real loophole, not a documented idempotency guarantee. Reaching this
+ * branch with task.status already 'done' is now ALSO where
+ * transitionStatus/closeTask themselves stop: see the "WG-H-006" comment at
+ * each function's own no-op short-circuit, right before any mutation or
+ * disk write. This function's OWN no-op (skipping its check) is still
+ * correct and unchanged — it is the paired assumption ("skipping the check
+ * also means skipping the write") that was missing, and is now true.
  */
 function checkDonePredecessorState(task, resolvedException) {
   if (resolvedException) return;
@@ -1048,6 +1066,10 @@ function checkDonePredecessorState(task, resolvedException) {
  * IDEMPOTENT RE-CLOSE — same task.status === 'done' no-op as
  * checkDonePredecessorState, for the same reason (see that function's doc
  * comment): a re-close is a no-op re-affirmation, not a new closure event.
+ * TASK-234 (WG-H-006) — see checkDonePredecessorState's doc comment above for
+ * the correction: this function's own skip was always correct, what was
+ * missing was transitionStatus/closeTask ALSO skipping the write, which they
+ * now do.
  */
 function checkCloseEvidence(task, linkedCommits, resolvedException) {
   if (resolvedException) return;
@@ -1065,6 +1087,187 @@ function checkCloseEvidence(task, linkedCommits, resolvedException) {
       + 'sha(s) to `close_task`\'s `linked_commits` — this is the compliant path, not the exception. Only '
       + 'for a genuine exception (never as a routine substitute for the above) — pass '
       + '`exception: { reason }` to use the documented escape hatch.',
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TASK-234 (WG-H-003/WG-H-004/WG-H-005, wargaming 2026-09-16) — the wargaming
+// pass is CLAUDE.md's real verification of record (Workflow step 6's
+// "Wargaming step" sub-block), and it runs strictly AFTER the review and
+// strictly BEFORE close_task. Two completeness checks were entirely missing:
+// nothing verified a wargaming record existed at all (src/close-guard.js had
+// no notion of wargaming — WG-H-004), and nothing blocked a close carrying an
+// unresolved HIGH-severity finding (from either the review or the wargaming
+// pass) the same way a HIGH review finding already blocks step 6 (WG-H-004),
+// with no trace left when a HIGH got quietly downgraded to MEDIUM to unblock
+// a close (WG-H-005).
+//
+// WHY THIS LIVES HERE, NOT IN src/close-guard.js: close-guard.js is
+// specifically the loop-mode/bundle-state seam (it reads state/session.json
+// and the active bundle — see that file's own header). These two checks read
+// only `task.comments`, exactly like checkCloseEvidence/checkDonePredecessorState
+// above — no bundle/session access — so they belong beside their siblings in
+// THIS module, the same family of pre-write completeness checks. WG-H-004's
+// literal finding ("src/close-guard.js has not one reference to wargaming")
+// is a real, confirmed symptom of the underlying gap (CONFIRMS it, per the
+// wargaming triage note — does not require the fix to literally live in that
+// one file); the gap it points at is behavioral (nothing blocks an unattacked
+// or unresolved-HIGH close), and that is what is fixed below.
+//
+// MARKER CONVENTION (mirrors the existing `[CLOSE-EXCEPTION]` marker
+// precedent — a structural, mechanically-greppable convention, never a
+// judgment call on arbitrary prose content):
+//   `[WARGAMING] <body>`            — records the wargaming outcome. The
+//                                     body must name at least one approved
+//                                     case (matching the CUn/"caso N"
+//                                     numbering the Orchestrator's own
+//                                     use-case-list comment already uses —
+//                                     see CLAUDE.md Workflow step 2) and at
+//                                     least one path/alternative reference —
+//                                     "a wargaming record that names neither
+//                                     a case nor a path is not a wargaming
+//                                     record" (WG-H-003's own wording).
+//   `[FINDING-HIGH: <id>] <text>`   — opens a HIGH-severity finding (from a
+//                                     review OR a wargaming comment), <id> a
+//                                     short slug (e.g. "WG-H-004").
+//   `[FINDING-RESOLVED: <id>]`      — closes a previously-opened
+//                                     `[FINDING-HIGH: <id>]` — fully fixed.
+//   `[FINDING-DEGRADED: <id> — <justification>]` — closes a previously-opened
+//                                     `[FINDING-HIGH: <id>]` by downgrading
+//                                     its severity, WITH a recorded, non-empty
+//                                     justification (WG-H-005 — this is what
+//                                     makes a degradation leave a trace: it is
+//                                     append-only on task.comments, so it can
+//                                     never disappear silently once recorded).
+//
+// Both checks below are OPT-IN in the sense that mirrors every other
+// completeness check in this file: they only fire on a genuine transition
+// INTO 'done' (never on an already-'done' task — see the shared
+// `if (task.status === 'done') return;` short-circuit, identical to
+// checkDonePredecessorState/checkCloseEvidence), and a ticket that predates
+// this convention simply has no `[WARGAMING]`/`[FINDING-HIGH]` markers on it
+// at all. This is what keeps CU10 true: an already-'done' historical ticket
+// is NEVER re-validated by these checks merely by being read, appendComment'd,
+// or transitioned to a non-'done' status; it is only re-evaluated if someone
+// deliberately moves it OFF 'done' and back INTO 'done' again — a genuine new
+// closure event, which is exactly the case these new guardas are meant to
+// govern. Both accept the SAME `exception: { reason }` escape hatch as
+// checkDonePredecessorState/checkCloseEvidence, for the same reason (a
+// genuine won't-do closure may have no wargaming record at all).
+// ---------------------------------------------------------------------------
+
+/**
+ * TASK-234 (WG-H-003/WG-H-004) — thrown by checkWargamingRecord when no
+ * comment carries a `[WARGAMING]` marker at all, or the most recent one does
+ * not name at least one approved case AND at least one path/alternative.
+ * `.code` lets callers (and tests) distinguish this from any other close
+ * failure programmatically, same convention as CloseEvidenceError/
+ * InvalidPredecessorStateError above.
+ */
+export class WargamingRecordError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'WargamingRecordError';
+    this.code = 'E_WARGAMING_RECORD_REQUIRED';
+  }
+}
+
+/**
+ * TASK-234 (WG-H-004/WG-H-005) — thrown by checkNoOpenHighFindings when a
+ * `[FINDING-HIGH: <id>]` marker has no matching `[FINDING-RESOLVED: <id>]` or
+ * `[FINDING-DEGRADED: <id> — <justification>]` counterpart among the task's
+ * comments. `.code` lets callers (and tests) distinguish this from any other
+ * close failure programmatically.
+ */
+export class OpenHighFindingError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'OpenHighFindingError';
+    this.code = 'E_OPEN_HIGH_FINDING';
+  }
+}
+
+const WARGAMING_MARKER_RE = /\[WARGAMING\]([\s\S]*)/;
+// A named case: "CU1", "CU 1", "caso 1" (the Orchestrator's own numbering
+// convention — see the use-case-list comment format documented in CLAUDE.md
+// Workflow step 2). A named path: the literal words this repo already uses
+// for the concept ("path"/"paths"/"camino"/"alternativ*"/"fallo").
+const WARGAMING_CASE_RE = /\bCU\s?\d+\b|\bcaso\s*\d+/i;
+const WARGAMING_PATH_RE = /\bpaths?\b|\bcaminos?\b|\balternativ\w*|\bfallo\w*/i;
+
+/**
+ * TASK-234 (WG-H-003/WG-H-004) — throws WargamingRecordError unless the most
+ * recent `[WARGAMING]`-marked comment on the task names at least one approved
+ * case and at least one path/alternative it attacked. See the module-level
+ * comment block above for the full rationale and marker convention.
+ */
+function checkWargamingRecord(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === 'done') return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const wargamingComments = comments.filter((c) => c && WARGAMING_MARKER_RE.test(String(c.body || '')));
+  if (wargamingComments.length === 0) {
+    throw new WargamingRecordError(
+      `task ${task.key} has no comment carrying a "[WARGAMING]" marker — CLAUDE.md's Workflow step 6 `
+      + 'requires the adversarial wargaming pass to run, and its outcome to be recorded, AFTER the review '
+      + 'and BEFORE close. Record it via `append_comment` (e.g. author: "orchestrator") with a body starting '
+      + '"[WARGAMING]" that names the attacked case(s) and path(s) before closing — or use the documented '
+      + '`exception: { reason }` escape hatch for a genuine exception.',
+    );
+  }
+  const last = wargamingComments[wargamingComments.length - 1];
+  const body = String(last.body || '');
+  const hasCase = WARGAMING_CASE_RE.test(body);
+  const hasPath = WARGAMING_PATH_RE.test(body);
+  if (!hasCase || !hasPath) {
+    throw new WargamingRecordError(
+      `task ${task.key}'s most recent "[WARGAMING]" comment names no ${!hasCase ? 'approved case (e.g. "CU3")' : ''}`
+      + `${!hasCase && !hasPath ? ' and no' : ''}${!hasPath ? ' path/alternative it attacked' : ''} — a wargaming `
+      + 'record that names neither a case nor a path is not a wargaming record (WG-H-003). Record what was '
+      + 'actually attacked, or use the documented `exception: { reason }` escape hatch for a genuine exception.',
+    );
+  }
+}
+
+const FINDING_HIGH_RE = /\[FINDING-HIGH:\s*([^\]]+)\]/gi;
+const FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
+const FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^—-]+)[—-]\s*(\S.*)\]/gi;
+
+/**
+ * TASK-234 (WG-H-004/WG-H-005) — throws OpenHighFindingError when any
+ * `[FINDING-HIGH: <id>]` marker recorded on the task has no matching
+ * `[FINDING-RESOLVED: <id>]` or non-empty-justification `[FINDING-DEGRADED:
+ * <id> — <reason>]` counterpart among ALL of the task's comments (order does
+ * not matter — a finding opened after its own resolution marker, an
+ * unrealistic but harmless edge case, still counts as closed rather than
+ * inventing a stricter ordering requirement nothing else in this file
+ * enforces). A `[FINDING-DEGRADED: <id> — ]` with no text after the dash
+ * does NOT count as closed — WG-H-005's whole point is that a degradation
+ * requires a RECORDED justification, not just the marker.
+ */
+function checkNoOpenHighFindings(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === 'done') return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const allText = comments.map((c) => String((c && c.body) || '')).join('\n');
+
+  const opened = new Set();
+  for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
+  const closed = new Set();
+  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) closed.add(m[1].trim().toUpperCase());
+  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
+    if (m[2] && m[2].trim() !== '') closed.add(m[1].trim().toUpperCase());
+  }
+  const open = [...opened].filter((id) => !closed.has(id));
+  if (open.length > 0) {
+    throw new OpenHighFindingError(
+      `task ${task.key} has ${open.length} open HIGH-severity finding(s) with no recorded resolution: `
+      + `${open.join(', ')} — a HIGH finding (from review or wargaming) blocks close exactly like a HIGH `
+      + 'review finding already blocks Workflow step 6 (WG-H-004). Resolve it (`[FINDING-RESOLVED: <id>]`) '
+      + 'or record a justified downgrade (`[FINDING-DEGRADED: <id> — <reason>]`, WG-H-005 — a bare marker '
+      + 'with no justification text does not count) before closing — or use the documented '
+      + '`exception: { reason }` escape hatch for a genuine exception.',
     );
   }
 }
