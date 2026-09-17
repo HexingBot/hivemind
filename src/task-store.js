@@ -30,31 +30,80 @@
 //
 // FIXED (not merely documented): every mutating entry point (transitionStatus,
 // appendComment, closeTask, createTask, and verifyAndRepairIndex's own
-// self-healing rewrite branches) now runs its read-mutate-write critical
-// section inside withTasksLock() below — a per-repo, per-process-safe
-// exclusive-create lock (tasks/.mutate.lock, O_CREAT|O_EXCL, same OS
-// primitive TASK-083/TASK-085 already used for createTask's key-collision
-// guard and src/session-lock.js uses for its session lock) with a SHORT
-// staleness window (crash recovery in seconds, not session-lock.js's 5
-// minutes — a task mutation's critical section is expected to complete in
-// low-single-digit milliseconds, never a whole session). A writer that
+// self-healing rewrite branches) runs its read-mutate-write critical section
+// inside withTasksLock() below — a per-repo, per-process-safe exclusive-create
+// lock (tasks/.mutate.lock, O_CREAT|O_EXCL, same OS primitive TASK-083/
+// TASK-085 already used for createTask's key-collision guard and
+// src/session-lock.js uses for its session lock) with a SHORT staleness
+// window (crash recovery in seconds, not session-lock.js's 5 minutes).
+// EXCEPTION: sweepTasksTmpFiles (also exported, also mutates — it unlinks
+// orphan tmp files and stale zero-byte task reservations) deliberately runs
+// OUTSIDE this lock: it is idempotent, age-gated (TMP_SWEEP_MIN_AGE_MS,
+// well clear of atomic-write's own in-flight window) and best-effort by
+// design (every per-file failure is swallowed), so two sweepers racing each
+// other reap the same orphan harmlessly rather than corrupting live state —
+// unlike the read-mutate-write races the lock exists to close. A writer that
 // cannot acquire the lock within a bounded wait throws a named
 // TaskMutationLockError (E_TASK_MUTATION_LOCK_TIMEOUT) rather than
 // proceeding unprotected or silently losing the mutation — "accepted or a
 // named error, never accepted-and-lost" (CU2/CU4, TASK-235's acceptance
-// criteria). listTodos/listReady/readTask (the READ path) never acquire this
-// lock and are unaffected — see withTasksLock's own doc comment for why this
-// does not serialize reads or slow the board (CU7, measured in the TASK-235
-// hand-off, not estimated). (No matching single-writer note was found in
-// tasks/README.md to update — grepped at TASK-235 time; only this module's
-// own header carried the retired assumption.)
+// criteria).
+//
+// MEASURED COST, corrected (WG2-235-001, second wargaming pass, 2026-09-17):
+// the original text here claimed a mutation's critical section completes in
+// "low-single-digit milliseconds" and sized TASKS_LOCK_STALE_MS (3000ms) on
+// that assumption. Measured directly against THIS repo's own board, that
+// premise was false: appendComment costs 63ms on an 8-ticket board but 620ms
+// on this repo's live 240-ticket board, ~1.2s at 400, and ~2.9s at 700 with a
+// busy comment thread — a margin of 2-5x against the 3s window, not 1000x,
+// shrinking with every ticket filed. Because the old staleness check measured
+// "time since the lock file was CREATED" rather than "time since the holder
+// last proved it is alive", any critical section that ran past 3s got
+// reclaimed out from under its own still-running holder, letting a second
+// writer enter the SAME critical section — the token check on release only
+// ever stopped the wrong lock from being deleted, never stopped the double
+// ENTRY. FIXED by heartbeating the lock file's mtime on a short interval
+// (TASKS_LOCK_HEARTBEAT_MS, see withTasksLock below) for the duration a
+// holder's critical section runs, so staleness now measures time-since-last-
+// heartbeat, the same fix src/session-lock.js already applies via its own
+// renew()/heartbeat_at, adapted to this lock's much shorter lifetime (an
+// automatic interval here rather than a caller-driven renew(), since a task
+// mutation's critical section is not under the orchestrator's direct control
+// the way a whole session is).
+//
+// READ PATH, corrected (WG2-235-002, same pass): listTodos/listReady do NOT
+// acquire this lock for the read itself, and the common case (index.json
+// already in sync with tasks/*.json) never touches the lock at all — that
+// part of the original claim holds and is what keeps CU7 true (measured
+// below). What was false: the claim that the read path is "unaffected" by
+// this lock, unqualified, plus a reference to a `readTask` export that does
+// not exist in this module. When the index HAS drifted, both list functions
+// call verifyAndRepairIndex, whose write branch (writeIndexLocked) DOES
+// acquire the lock — and used to let TaskMutationLockError propagate straight
+// out of a read if a live writer held the lock at that moment (observed:
+// listTodos threw E_TASK_MUTATION_LOCK_TIMEOUT after 6075ms on a drifted
+// index with a live writer, vs. 74ms on an in-sync index). FIXED: the index
+// self-heal triggered by a read is now best-effort — a lock-acquisition
+// failure there is caught and reported via an `indexRepairFailed` property on
+// the returned array (see verifyAndRepairIndex/listTodos/listReady below)
+// rather than thrown, and it uses a much shorter INDEX_REPAIR_MAX_WAIT_MS
+// (not the full writer TASKS_LOCK_MAX_WAIT_MS) so an unrepairable read never
+// blocks anywhere near as long as a real mutation is allowed to. The read's
+// OWN result (the task list) is unaffected either way — only the OPTIONAL
+// maintenance rewrite is skipped on failure, per the TASK-192 empty-result
+// contract: "could not repair" must stay distinguishable from "nothing to
+// repair", never silently collapsed into the same "everything is fine"
+// return shape. (No matching single-writer note was found in tasks/README.md
+// to update — grepped at TASK-235 time; only this module's own header carried
+// the retired assumption.)
 
 import {
   readFile, readdir, unlink,
 } from 'node:fs/promises';
 import {
-  mkdirSync, readFileSync, existsSync, statSync,
+  mkdirSync, readFileSync, existsSync, statSync, lstatSync,
   openSync, closeSync, writeSync, fsyncSync, constants, unlinkSync, renameSync,
+  rmSync, utimesSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -241,21 +290,42 @@ export class TaskMutationLockError extends Error {
   }
 }
 
-// TASK-235 — a task mutation's critical section (read every task file,
-// validate, write the task file + regenerate index.json) is expected to
-// complete in low-single-digit milliseconds even on a slow disk; this is NOT
-// src/session-lock.js's whole-session lock (5-minute staleness, heartbeat
-// renewal) and reusing that lock's semantics here would be wrong — session-lock
-// answers "is another ORCHESTRATOR SESSION active", a much longer-lived,
-// human-timescale question, and piggybacking per-mutation acquisition on it
-// would make a transient board click look like a competing session. This is a
-// separate, purpose-built, short-lived lock: same O_CREAT|O_EXCL primitive
-// (TASK-083/TASK-085's createTask key-collision guard already uses it against
-// a real concurrent OS process — see tests/e2e/task-store-resilience.spec.js
-// AC5(c)), sized for a critical section, not a session.
-const TASKS_LOCK_STALE_MS = 3000; // crash-recovery window: reclaim an abandoned lock after this
+// TASK-235 — this is NOT src/session-lock.js's whole-session lock (5-minute
+// staleness, caller-driven renew()); reusing that lock's semantics here would
+// be wrong — session-lock answers "is another ORCHESTRATOR SESSION active", a
+// much longer-lived, human-timescale question, and piggybacking per-mutation
+// acquisition on it would make a transient board click look like a competing
+// session. This is a separate, purpose-built lock: same O_CREAT|O_EXCL
+// primitive (TASK-083/TASK-085's createTask key-collision guard already uses
+// it against a real concurrent OS process — see
+// tests/e2e/task-store-resilience.spec.js AC5(c)), sized for a critical
+// section, not a session — but (WG2-235-001, second wargaming pass) it DOES
+// need session-lock's other idea, a heartbeat, because "sized for a critical
+// section" turned out to mean 620ms-2.9s on a real board, not the
+// milliseconds the original design assumed (see the module header). Rather
+// than make the caller drive a renew() call (this lock's holders are
+// arbitrary read-mutate-write closures, not a long-lived session an
+// orchestrator explicitly manages), withTasksLock below runs the heartbeat on
+// an automatic interval for the duration `fn()` executes.
+const TASKS_LOCK_STALE_MS = 3000; // crash-recovery window: reclaim a lock whose last heartbeat is this old
 const TASKS_LOCK_POLL_MS = 20; // backoff between acquisition attempts while a live holder has it
-const TASKS_LOCK_MAX_WAIT_MS = 6000; // bounded total wait before failing loudly (never hangs forever)
+const TASKS_LOCK_MAX_WAIT_MS = 6000; // bounded total wait for a real writer before failing loudly
+// TASK-235 (WG2-235-002) — the read-triggered, OPTIONAL index self-heal
+// (verifyAndRepairIndex -> writeIndexLocked) uses this much shorter wait
+// instead of TASKS_LOCK_MAX_WAIT_MS: unlike a real writer's mutation, giving
+// up here loses nothing — the read's own result was already computed from
+// the file set before this lock is ever touched — so there is no reason to
+// make a caller's READ sit out a real writer's full 6s budget for a
+// maintenance rewrite it does not need to succeed.
+const INDEX_REPAIR_MAX_WAIT_MS = 750;
+// TASK-235 (WG2-235-001) — refresh the lock file's mtime this often while a
+// holder's critical section runs, well under TASKS_LOCK_STALE_MS so a
+// critical section that takes the full measured 620ms-2.9s (or longer) never
+// crosses the staleness window while its holder is still alive and heartbeat
+// ticking. The common case (a critical section under ~500ms, i.e. most single
+// writes on today's board) never fires the interval even once before
+// release, so this costs nothing on the fast path.
+const TASKS_LOCK_HEARTBEAT_MS = 750;
 
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -311,11 +381,22 @@ function sleepMs(ms) {
  * (best-effort) instead of discarded, so the real live holder's lock is
  * restored rather than silently destroyed.
  */
-async function acquireTasksLock(repoRoot) {
+// TASK-235 LOW (second wargaming pass) — true if `mtimeMs` is far enough in
+// the FUTURE that it can never age past TASKS_LOCK_STALE_MS on its own (a
+// clock-skew / NTP-correction / NFS-skew lock that would otherwise be a
+// PERMANENT trap — `Date.now() - mtimeMs` stays negative forever). Symmetric
+// with the staleness window itself: a timestamp implausibly ahead of "now" is
+// exactly as untrustworthy as one implausibly old, and gets reclaimed the
+// same way rather than wedging every future writer indefinitely.
+function isImplausiblyFuture(mtimeMs) {
+  return (mtimeMs - Date.now()) > TASKS_LOCK_STALE_MS;
+}
+
+async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS } = {}) {
   const dir = tasksDir(repoRoot);
   mkdirSync(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
-  const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  const deadline = Date.now() + maxWaitMs;
   const token = `${process.pid}-${randomBytes(6).toString('hex')}`;
   for (;;) {
     try {
@@ -331,15 +412,35 @@ async function acquireTasksLock(repoRoot) {
     } catch (err) {
       if (!err || err.code !== 'EEXIST') throw err;
       let stat = null;
-      try { stat = statSync(lockPath); } catch { /* vanished between EEXIST and stat — fine, loop */ }
-      if (stat && (Date.now() - stat.mtimeMs) > TASKS_LOCK_STALE_MS) {
-        // Abandoned lock (holder crashed mid-critical-section, or a live
-        // holder overran the staleness window — see releaseTasksLock for how
-        // that second case is kept from cascading). Reclaim via atomic
-        // rename-away rather than a bare unlink: only one concurrent
-        // reclaimer's rename can succeed on the same source path (see this
-        // function's doc comment above for why the old unlink-based reclaim
-        // let two waiters both win).
+      let foreignEntry = false;
+      try {
+        stat = statSync(lockPath);
+      } catch {
+        // TASK-235 LOW (second wargaming pass) — statSync FOLLOWS symlinks,
+        // so a DANGLING symlink at lockPath throws ENOENT here even though
+        // openSync's EEXIST just proved the path itself exists. Without this
+        // branch `stat` stays null forever, the staleness check below never
+        // fires, and every future acquisition attempt (this call and every
+        // later one, in this process or any other) hits the same dead end —
+        // a permanent lock nothing ever reclaims. acquireTasksLock/
+        // releaseTasksLock never create a symlink, only a plain O_WRONLY
+        // regular file, so ANY symlink found here is foreign and can never be
+        // a legitimate live holder — safe to reclaim unconditionally rather
+        // than waiting out a staleness window on a target that will never
+        // resolve.
+        try {
+          foreignEntry = lstatSync(lockPath).isSymbolicLink();
+        } catch { /* vanished between EEXIST and lstat — fine, loop */ }
+      }
+      if (foreignEntry || (stat && ((Date.now() - stat.mtimeMs) > TASKS_LOCK_STALE_MS || isImplausiblyFuture(stat.mtimeMs)))) {
+        // Abandoned lock (holder crashed mid-critical-section — a LIVE
+        // holder's lock never reaches this branch any more, because
+        // withTasksLock now heartbeats its mtime; see WG2-235-001 in the
+        // module header), a clock-skewed future mtime, or a foreign symlink.
+        // Reclaim via atomic rename-away rather than a bare unlink: only one
+        // concurrent reclaimer's rename can succeed on the same source path
+        // (see this function's doc comment above for why the old
+        // unlink-based reclaim let two waiters both win).
         const quarantinePath = `${lockPath}.stale.${token}`;
         let renamed = false;
         try {
@@ -353,12 +454,32 @@ async function acquireTasksLock(repoRoot) {
         if (renamed) {
           // Second-order TOCTOU check (see doc comment above) — re-verify
           // staleness on the file we ACTUALLY captured, not on the earlier
-          // `stat` snapshot, before deciding it is safe to discard.
+          // `stat` snapshot, before deciding it is safe to discard. A foreign
+          // symlink we captured is never "genuinely stale" by mtime (its own
+          // mtime may be fresh) but is still always safe to discard — it was
+          // never a real lock holder to begin with.
           let qStat = null;
-          try { qStat = statSync(quarantinePath); } catch { /* we own it; should not vanish, but be defensive */ }
-          const genuinelyStale = qStat && (Date.now() - qStat.mtimeMs) > TASKS_LOCK_STALE_MS;
+          let qIsSymlink = false;
+          try {
+            qStat = lstatSync(quarantinePath);
+            qIsSymlink = qStat.isSymbolicLink();
+          } catch { /* we own it; should not vanish, but be defensive */ }
+          const genuinelyStale = qIsSymlink
+            || (qStat && ((Date.now() - qStat.mtimeMs) > TASKS_LOCK_STALE_MS || isImplausiblyFuture(qStat.mtimeMs)));
           if (genuinelyStale) {
-            try { unlinkSync(quarantinePath); } catch { /* best-effort cleanup */ }
+            try {
+              unlinkSync(quarantinePath);
+            } catch {
+              // TASK-235 LOW (second wargaming pass) — a DIRECTORY at
+              // lockPath (e.g. a mistaken `mkdir tasks/.mutate.lock`) survives
+              // the rename above but unlinkSync throws EISDIR/EPERM on it,
+              // and TMP_FILE_RE does not match `.mutate.lock.stale.<token>`,
+              // so sweepTasksTmpFiles never reaps it either — an orphan
+              // directory left in tasks/ forever. Fall back to a recursive
+              // removal so this cleanup actually completes instead of
+              // silently leaving the orphan behind.
+              try { rmSync(quarantinePath, { recursive: true, force: true }); } catch { /* best-effort */ }
+            }
           } else {
             // We mistakenly captured a LIVE lock another reclaimer just
             // (re)created in the gap between our stat and our rename — give
@@ -370,7 +491,7 @@ async function acquireTasksLock(repoRoot) {
       }
       if (Date.now() >= deadline) {
         throw new TaskMutationLockError(
-          `timed out after ${TASKS_LOCK_MAX_WAIT_MS}ms waiting for the tasks mutation lock at ${lockPath} — `
+          `timed out after ${maxWaitMs}ms waiting for the tasks mutation lock at ${lockPath} — `
           + 'another writer (this process, bin/task-board.js, or another orchestrator process) is holding '
           + "it. The caller's mutation was NOT applied — nothing was accepted-and-lost; retry the call.",
         );
@@ -384,17 +505,17 @@ async function acquireTasksLock(repoRoot) {
  * TASK-235 fix round (review finding MEDIUM-1) — release the tasks mutation
  * lock, but ONLY IF the lock file currently on disk still carries the exact
  * `token` this holder wrote at acquisition (see acquireTasksLock). Without
- * this check, release was unconditional: if THIS holder's own critical
- * section ever ran long enough to exceed TASKS_LOCK_STALE_MS, a waiter could
- * legitimately reclaim the lock as abandoned and acquire it for itself — and
- * this holder's own (unconditional) release would then unlink that WAITER's
- * fresh lock instead of its own, letting a second mutation start while the
- * first was still in its critical section (the exact defect this finding
- * named: "the original holder's finally unlink then deletes the NEW holder's
- * lock, cascading"). Comparing tokens before unlinking closes that: a
- * mismatch means someone else already reclaimed this lock, so this call
- * leaves it alone — best-effort, never throws (advisory lock semantics,
- * unchanged from before this fix).
+ * this check, release was unconditional: if a waiter ever legitimately
+ * reclaimed this lock as abandoned (this holder crashed, or — pre-WG2-235-001
+ * — simply ran long with no heartbeat) and acquired it for itself, this
+ * holder's own (unconditional) release would then unlink that WAITER's fresh
+ * lock instead of its own, letting a second mutation start while the first
+ * was still in its critical section (the exact defect this finding named:
+ * "the original holder's finally unlink then deletes the NEW holder's lock,
+ * cascading"). Comparing tokens before unlinking closes that: a mismatch
+ * means someone else already reclaimed this lock, so this call leaves it
+ * alone — best-effort, never throws (advisory lock semantics, unchanged from
+ * before this fix).
  */
 function releaseTasksLock(repoRoot, token) {
   const lockPath = tasksLockPath(repoRoot);
@@ -409,6 +530,36 @@ function releaseTasksLock(repoRoot, token) {
 }
 
 /**
+ * TASK-235 (WG2-235-001, second wargaming pass) — refresh the lock file's
+ * mtime on TASKS_LOCK_HEARTBEAT_MS ticks for as long as `token` still owns
+ * it, so a critical section that runs longer than TASKS_LOCK_STALE_MS is
+ * never mistaken for an abandoned one (see acquireTasksLock's staleness
+ * check, which reads this same mtime). Checks current lock content against
+ * `token` before each bump — same ownership guard as releaseTasksLock, for
+ * the same reason: if this holder's lock was somehow already reclaimed, a
+ * blind utimesSync would incorrectly extend the NEW holder's lock's life
+ * instead of doing nothing. Returns the interval handle; the caller MUST
+ * clearInterval it in a finally block (see withTasksLock) or the timer leaks.
+ */
+function startTasksLockHeartbeat(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
+  const timer = setInterval(() => {
+    try {
+      const current = readFileSync(lockPath, 'utf8').trim();
+      if (current !== token) return; // no longer ours — nothing to heartbeat
+      const now = new Date();
+      utimesSync(lockPath, now, now);
+    } catch {
+      // best-effort — a transient fs error here just means the next tick
+      // tries again; never throw out of a background heartbeat.
+    }
+  }, TASKS_LOCK_HEARTBEAT_MS);
+  // Never let this background timer keep the process alive on its own.
+  if (typeof timer.unref === 'function') timer.unref();
+  return timer;
+}
+
+/**
  * TASK-235 — run `fn` with the tasks mutation lock held, releasing it in a
  * finally block so a thrown validation/guard error (or any other failure
  * inside fn) never leaves the lock stuck for the full staleness window.
@@ -417,21 +568,48 @@ function releaseTasksLock(repoRoot, token) {
  * in this — not just the final write — because the race this closes is
  * "two writers both read stale state and both write from it", which a lock
  * around only the write step would not prevent (see the module header for
- * the measured before/after). Deliberately NOT used by the read path
- * (listTodos/listReady/readTask) — reads never acquire this lock, and
+ * the measured before/after). Deliberately NOT used by the read path itself
+ * (listTodos/listReady never acquire this lock for their own read) —
  * verifyAndRepairIndex only acquires it on its rare self-heal WRITE branches
- * (see below), so the common case (index already in sync) touches the lock
- * not at all. This is what keeps CU7 true: writers serialize against each
- * other, reads never do.
+ * (see below, and WG2-235-002 in the module header for why that branch is
+ * now best-effort), so the common case (index already in sync) touches the
+ * lock not at all. This is what keeps CU7 true: writers serialize against
+ * each other, reads never do.
+ *
+ * `maxWaitMs` (optional) narrows how long THIS call will wait to acquire —
+ * passed straight through to acquireTasksLock. Every real mutation below
+ * omits it and gets the full TASKS_LOCK_MAX_WAIT_MS; only the optional,
+ * read-triggered index repair (writeIndexLocked) passes the shorter
+ * INDEX_REPAIR_MAX_WAIT_MS, because giving up there costs nothing (see
+ * INDEX_REPAIR_MAX_WAIT_MS's own comment).
  */
-async function withTasksLock(repoRoot, fn) {
-  const token = await acquireTasksLock(repoRoot);
+async function withTasksLock(repoRoot, fn, { maxWaitMs } = {}) {
+  const token = await acquireTasksLock(repoRoot, { maxWaitMs });
+  const heartbeat = startTasksLockHeartbeat(repoRoot, token);
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     releaseTasksLock(repoRoot, token);
   }
 }
+
+// TASK-235 (WG2-235-001, second wargaming pass) — internal-only test seam,
+// same precedent as closeTask's injectable `commitVerifier` (TASK-234): lets
+// tests/e2e/task-store-concurrent-writers.spec.js drive a REAL critical
+// section past TASKS_LOCK_STALE_MS in-process (via a slow `fn`) so the
+// heartbeat/reclaim fix can be exercised directly, without reconstructing a
+// multi-thousand-task fixture just to make a real mutation's own critical
+// section naturally run that long. NOT part of the documented public API —
+// no production caller may import this; it exists solely so the test can
+// reach the same withTasksLock every real mutation below already uses,
+// unmodified.
+export const __lockInternalsForTests = {
+  withTasksLock,
+  TASKS_LOCK_STALE_MS,
+  TASKS_LOCK_HEARTBEAT_MS,
+  INDEX_REPAIR_MAX_WAIT_MS,
+};
 
 /**
  * AC6 — compare two task-shaped objects (or strings) by the trailing integer
@@ -506,7 +684,8 @@ function buildIndexBytes(tasks, generatedAt) {
  * AC1 — drift detection between tasks/*.json (source of truth) and
  * tasks/index.json (regenerable summary): true iff the index disagrees with
  * the file set (missing/extra keys) OR an index entry is missing one of the
- * required summary fields, OR the index is absent/corrupt while tasks exist.
+ * required summary fields OR disagrees in VALUE with its own on-disk task
+ * (WG2-235-M02, below) OR the index is absent/corrupt while tasks exist.
  * Pure and synchronous — no write, no lock — so it is safe to call both
  * OUTSIDE the lock (the cheap common-case check that lets a read never touch
  * the lock at all) and again INSIDE the lock right before a repair write
@@ -532,10 +711,22 @@ function computeIndexDrift(idxPath, tasks) {
   for (let i = 0; i < fileKeys.length; i++) {
     if (fileKeys[i] !== idxKeys[i]) return true;
   }
-  // Also check that every index entry carries the required summary fields.
+  // TASK-235 (WG2-235-M02, second wargaming pass) — presence of the required
+  // fields is not enough: an index.json with the correct KEYS but a STALE or
+  // simply WRONG status/title/priority for one of them (a torn write, a
+  // manual edit, a merge that brought back an old index.json alongside fresh
+  // task files) used to survive both listTodos and listReady untouched —
+  // self-heal only ever fired on a missing key or a missing field, never on
+  // a value mismatch. Compare every entry's VALUES against its own matching
+  // on-disk task, not merely its shape.
+  const byKey = new Map(tasks.map((t) => [t.key, t]));
   for (const e of indexEntries) {
     if (!e || typeof e.key !== 'string' || typeof e.title !== 'string'
       || typeof e.status !== 'string' || typeof e.priority !== 'string') {
+      return true;
+    }
+    const t = byKey.get(e.key);
+    if (t && (t.title !== e.title || t.status !== e.status || t.priority !== e.priority)) {
       return true;
     }
   }
@@ -563,20 +754,47 @@ function computeIndexDrift(idxPath, tasks) {
 // re-check sees no drift and skips the write entirely rather than clobbering
 // fresher content with stale content.
 async function writeIndexLocked(repoRoot, idxPath, stamp) {
+  // TASK-235 (WG2-235-002) — this lock acquisition is the OPTIONAL,
+  // read-triggered self-heal path (see INDEX_REPAIR_MAX_WAIT_MS's own
+  // comment): bound it far below a real writer's TASKS_LOCK_MAX_WAIT_MS so a
+  // read that cannot repair the index gives up quickly instead of sitting out
+  // a real writer's full budget for a rewrite the caller's own read result
+  // never depended on.
   await withTasksLock(repoRoot, async () => {
     const freshTasks = await readAllTasks(repoRoot);
     if (!computeIndexDrift(idxPath, freshTasks)) return; // a racing mutation already fixed it
     await atomicWriteFiles([
       { target: idxPath, bytes: buildIndexBytes(freshTasks, stamp) },
     ]);
-  });
+  }, { maxWaitMs: INDEX_REPAIR_MAX_WAIT_MS });
 }
 
+/**
+ * TASK-235 (WG2-235-002, second wargaming pass) — returns one of three
+ * distinguishable outcomes (TASK-192 empty-result contract: "could not
+ * repair" must never collapse silently into "nothing to repair"):
+ *   'in-sync'      — no drift found; nothing to do (the common case).
+ *   'repaired'     — drift was found and the rewrite landed.
+ *   'lock-timeout' — drift was found but the lock could not be acquired
+ *                    within INDEX_REPAIR_MAX_WAIT_MS (a real writer is
+ *                    active). The repair was SKIPPED, not silently treated
+ *                    as fine — callers (listTodos/listReady) surface this via
+ *                    an `indexRepairFailed` property on their return value
+ *                    rather than swallowing it.
+ * Only TaskMutationLockError is caught here — any other failure (a real fs
+ * error, a corrupt write) still propagates, because that is not the
+ * "optional maintenance lost a lock race" case this fix targets.
+ */
 async function verifyAndRepairIndex(repoRoot, tasks, now = () => new Date().toISOString()) {
   const idxPath = indexFilePath(repoRoot);
-  if (!computeIndexDrift(idxPath, tasks)) return false;
-  await writeIndexLocked(repoRoot, idxPath, now());
-  return true;
+  if (!computeIndexDrift(idxPath, tasks)) return 'in-sync';
+  try {
+    await writeIndexLocked(repoRoot, idxPath, now());
+  } catch (err) {
+    if (err instanceof TaskMutationLockError) return 'lock-timeout';
+    throw err;
+  }
+  return 'repaired';
 }
 
 // TASK-083 AC3 — only reap tmps older than this. atomicWriteFiles's phase-1/
@@ -647,6 +865,16 @@ export async function sweepTasksTmpFiles({ repoRoot }) {
  * missing index never poisons planning. Side effects (housekeeping):
  *   1. sweepTasksTmpFiles  — reap orphan tmp files.
  *   2. verifyAndRepairIndex — rewrite index.json if it disagrees with the file set.
+ *
+ * TASK-235 (WG2-235-002) — verifyAndRepairIndex's repair is now BEST-EFFORT:
+ * this call NEVER throws out of a failed self-heal (the read's own result,
+ * computed above, was never at risk). If the repair was needed but could not
+ * acquire the lock, the returned array carries `indexRepairFailed = true` —
+ * distinguishable/reportable per the TASK-192 empty-result contract, rather
+ * than silently reading as "everything is fine". A caller that only reads
+ * the plain array (e.g. a JSON-serialized MCP response) will not see this
+ * flag — same accepted residual already noted for
+ * danglingDependencies/dependencyCycles below.
  */
 export async function listTodos({ repoRoot }) {
   // AC3 — housekeeping hook at the very top so every read trims orphans
@@ -656,11 +884,13 @@ export async function listTodos({ repoRoot }) {
   const tasks = await readAllTasks(repoRoot);
 
   // AC1 — drift-detect-and-repair before returning anything to the caller.
-  await verifyAndRepairIndex(repoRoot, tasks);
+  const repairResult = await verifyAndRepairIndex(repoRoot, tasks);
 
-  return tasks
+  const result = tasks
     .filter((t) => t.status === 'todo')
     .sort(numericKeyOrder);
+  if (repairResult === 'lock-timeout') result.indexRepairFailed = true;
+  return result;
 }
 
 /**
@@ -702,6 +932,27 @@ export class DependencyCycleError extends Error {
 }
 
 /**
+ * TASK-235 (WG2-235-M03, second wargaming pass) — normalize a task's
+ * `depends_on` field. The schema (tasks/schema.json) requires an array, so
+ * every path that goes through ajv validation is already safe — but the
+ * documented direct-Edit-of-tasks/ fallback (CLAUDE.md's "Ticket-update
+ * protocol") bypasses ajv entirely, and a hand-edited `depends_on:
+ * "TASK-002"` (a bare string, forgetting the brackets) used to be silently
+ * treated as "no dependencies" by the old `Array.isArray(...) ? ... : []`
+ * guard — reporting a ticket with a real, unmet dependency as READY. A
+ * non-empty string is a single dependency, not an absent one; any other
+ * non-array shape (null, a number, a plain object — already exercised by the
+ * wargaming pass as depends_on ARRAY ELEMENTS, not as the whole-field case
+ * this normalizes) has no sensible single-dependency reading and stays "no
+ * dependencies", same as before.
+ */
+function normalizeDependsOn(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw.length > 0) return [raw];
+  return [];
+}
+
+/**
  * TASK-235 (WG-H-012) — detect cycles in the depends_on graph across the
  * FULL task set (every status, not just 'todo' — a cycle is a structural
  * property of the graph, independent of any one task's current status).
@@ -728,7 +979,7 @@ function detectDependencyCycles(tasks) {
     color.set(key, GRAY);
     stack.push(key);
     const t = byKey.get(key);
-    const deps = Array.isArray(t && t.depends_on) ? t.depends_on : [];
+    const deps = normalizeDependsOn(t && t.depends_on);
     for (const depKey of deps) {
       if (!byKey.has(depKey)) continue; // dangling — reported separately, not a cycle
       const c = color.get(depKey);
@@ -809,7 +1060,7 @@ export async function listReady({ repoRoot }) {
   // from the orchestrator without first calling listTodos.
   await sweepTasksTmpFiles({ repoRoot });
   const tasks = await readAllTasks(repoRoot);
-  await verifyAndRepairIndex(repoRoot, tasks);
+  const repairResult = await verifyAndRepairIndex(repoRoot, tasks);
 
   const byKey = new Map(tasks.map((t) => [t.key, t]));
   const cycles = detectDependencyCycles(tasks);
@@ -828,7 +1079,7 @@ export async function listReady({ repoRoot }) {
   const ready = [];
   for (const t of tasks) {
     if (t.status !== 'todo') continue;
-    const deps = Array.isArray(t.depends_on) ? t.depends_on : [];
+    const deps = normalizeDependsOn(t.depends_on);
     let blocked = false;
     for (const depKey of deps) {
       const dep = byKey.get(depKey);
@@ -888,6 +1139,10 @@ export async function listReady({ repoRoot }) {
     if (dangling.length > 0) ready.danglingDependencies = dangling;
     if (cycles.length > 0) ready.dependencyCycles = cycles;
   }
+  // TASK-235 (WG2-235-002) — see listTodos's matching comment: the OPTIONAL
+  // index self-heal is best-effort here too; a failed repair never throws out
+  // of a read, it is only reported via this flag.
+  if (repairResult === 'lock-timeout') ready.indexRepairFailed = true;
 
   return ready;
 }

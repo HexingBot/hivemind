@@ -18,6 +18,14 @@
 //   AC4 (WG-H-012)  dangling_dep_does_not_hide_ready_sibling
 //   AC4 (WG-H-012)  dependency_cycle_is_detected_and_named
 //   AC5 (CU7)       read_path_never_waits_on_a_held_mutation_lock
+//
+// SECOND WARGAMING PASS (2026-09-17, WG2-235-*) — the four specs at the
+// bottom of this file close the two HIGH findings and two of the MEDIUM
+// findings from that pass. They use `__lockInternalsForTests` (an
+// internal-only seam exported by src/task-store.js, same precedent as
+// closeTask's injectable `commitVerifier`) to drive a REAL critical section
+// past the staleness window in-process, rather than constructing a
+// multi-thousand-task fixture to make a real mutation naturally run that long.
 
 import { describe, it, expect, afterAll } from 'vitest';
 import {
@@ -393,5 +401,192 @@ describe('AC5 (CU7) — read path never waits on a held mutation lock', () => {
       elapsedMs,
       `listTodos took ${elapsedMs}ms with the mutation lock held by another process — the read path must never wait on it`,
     ).toBeLessThan(500);
+  });
+});
+
+// ===========================================================================
+// WG2-235-001 — a live, heartbeating holder must never be reclaimed as stale,
+// no matter how long its critical section legitimately runs. Before the fix,
+// staleness measured "time since the lock file was CREATED"; a second waiter
+// could reclaim a still-running holder's lock and enter the SAME critical
+// section, corrupting the "accepted or a named error, never accepted-and-lost"
+// contract CU2/CU4 depend on.
+//
+// Regla 2 harm: a second writer entering the same critical section while the
+// first is still reading/writing lets one of the two mutations silently
+// overwrite the other's work in memory before either write lands — the exact
+// "accepted-and-lost" defect AC2/AC3 exist to close, reopened via the lock's
+// own staleness window instead of via a missing lock.
+// ===========================================================================
+describe('WG2-235-001 — a live, heartbeating holder is never reclaimed as stale', () => {
+  it('heartbeat_prevents_wrongful_reclaim_past_the_staleness_window', async () => {
+    const { __lockInternalsForTests: L } = await import(PROD.taskStore);
+    const repoDir = makeTmpDir('af-ts235-heartbeat');
+    makeRepoSkeleton(repoDir, { tasks: {} });
+
+    // Sanity on the constant this test leans on — if it ever changes, this
+    // test's HOLD_MS below must still comfortably exceed it.
+    expect(L.TASKS_LOCK_STALE_MS).toBe(3000);
+    const HOLD_MS = L.TASKS_LOCK_STALE_MS + 700; // comfortably past the (pre-fix) staleness window
+
+    let holderStartedAt = null;
+    const holderPromise = L.withTasksLock(repoDir, async () => {
+      holderStartedAt = Date.now();
+      await new Promise((resolve) => { setTimeout(resolve, HOLD_MS); });
+    });
+
+    // Wait for the holder to actually be inside its critical section before
+    // racing a waiter against it — a tight synchronous-ish poll, no sleep-based
+    // coordination beyond the 5ms granularity needed to observe the flag.
+    const acquireDeadline = Date.now() + 2000;
+    while (holderStartedAt === null) {
+      if (Date.now() > acquireDeadline) throw new Error('holder never acquired the lock in time');
+      await new Promise((resolve) => { setTimeout(resolve, 5); });
+    }
+
+    let waiterEnteredAt = null;
+    const waiterPromise = L.withTasksLock(repoDir, async () => {
+      waiterEnteredAt = Date.now();
+    });
+
+    await Promise.all([holderPromise, waiterPromise]);
+
+    const waitedMs = waiterEnteredAt - holderStartedAt;
+    expect(
+      waitedMs,
+      `the waiter entered its critical section ${waitedMs}ms after the holder acquired the lock, but the `
+      + `holder legitimately held it for ${HOLD_MS}ms — a shorter wait means the waiter reclaimed a LIVE, `
+      + 'heartbeating lock as abandoned (WG2-235-001) instead of waiting it out',
+    ).toBeGreaterThanOrEqual(HOLD_MS - 200); // small scheduling slop
+  }, 10000);
+});
+
+// ===========================================================================
+// WG2-235-002 — a read-triggered index self-heal must never propagate a lock
+// failure out of listTodos/listReady: the read's own result was already
+// computed correctly before the repair was ever attempted.
+//
+// Regla 2 harm: without this fix, the Orchestrator's very first listTodos/
+// listReady call after a crash-induced or merge-induced index drift THROWS
+// outright whenever a real writer happens to hold the lock at that instant —
+// turning an optional maintenance rewrite into an outage for a legitimate
+// read that already had a correct answer in hand.
+// ===========================================================================
+describe('WG2-235-002 — a drift-triggered index repair never propagates a lock failure out of a read', () => {
+  it('listTodos_reports_indexRepairFailed_instead_of_throwing_when_repair_cannot_acquire_the_lock', async () => {
+    const { listTodos, __lockInternalsForTests: L } = await import(PROD.taskStore);
+    const repoDir = makeTmpDir('af-ts235-read-best-effort');
+    makeRepoSkeleton(repoDir, { tasks: { 'TASK-001': buildTask('TASK-001') } });
+
+    // Force drift: an index.json that disagrees with the on-disk file set.
+    writeFileSync(
+      join(repoDir, 'tasks', 'index.json'),
+      JSON.stringify({ generated_at: '2000-01-01T00:00:00Z', tasks: [] }, null, 2),
+      'utf8',
+    );
+
+    const HOLD_MS = L.INDEX_REPAIR_MAX_WAIT_MS + 500; // outlast the read-triggered repair's own short budget
+    let holderStartedAt = null;
+    const holderPromise = L.withTasksLock(repoDir, async () => {
+      holderStartedAt = Date.now();
+      await new Promise((resolve) => { setTimeout(resolve, HOLD_MS); });
+    });
+    const acquireDeadline = Date.now() + 2000;
+    while (holderStartedAt === null) {
+      if (Date.now() > acquireDeadline) throw new Error('holder never acquired the lock in time');
+      await new Promise((resolve) => { setTimeout(resolve, 5); });
+    }
+
+    const t0 = Date.now();
+    let result;
+    let thrown = null;
+    try {
+      result = await listTodos({ repoRoot: repoDir });
+    } catch (e) {
+      thrown = e;
+    }
+    const elapsedMs = Date.now() - t0;
+    await holderPromise;
+
+    expect(thrown, `listTodos threw ${thrown && thrown.message} instead of degrading to a best-effort read`).toBeNull();
+    expect(result.map((t) => t.key)).toEqual(['TASK-001']);
+    expect(
+      result.indexRepairFailed,
+      'a repair that could not acquire the lock must be REPORTED, never silently collapsed into "everything is fine" (TASK-192)',
+    ).toBe(true);
+    expect(
+      elapsedMs,
+      `listTodos took ${elapsedMs}ms — a read-triggered repair must give up on its own short budget `
+      + `(${L.INDEX_REPAIR_MAX_WAIT_MS}ms), not sit out a real writer's full acquisition budget`,
+    ).toBeLessThan(L.INDEX_REPAIR_MAX_WAIT_MS + 1500);
+  }, 10000);
+});
+
+// ===========================================================================
+// WG2-235-M02 — index drift detection must catch VALUE mismatches, not only
+// key-set / shape mismatches.
+//
+// Regla 2 harm: an index.json with the right ticket keys but a stale/wrong
+// status (a torn write, a manual edit, a merge that brought back an old
+// index.json) used to survive self-heal untouched — silently misreporting a
+// ticket's status to any board or report that trusts the index summary
+// instead of opening every individual task file to double-check.
+// ===========================================================================
+describe('WG2-235-M02 — index drift detection catches VALUE mismatches, not only key/shape mismatches', () => {
+  it('listTodos_repairs_an_index_with_correct_keys_but_wrong_status_values', async () => {
+    const { listTodos } = await import(PROD.taskStore);
+    const repoDir = makeTmpDir('af-ts235-value-drift');
+    makeRepoSkeleton(repoDir, { tasks: { 'TASK-001': buildTask('TASK-001', { status: 'todo' }) } });
+
+    // Correct key, correct shape, WRONG value — exactly what WG2-235-M02
+    // reported as surviving self-heal silently.
+    writeFileSync(
+      join(repoDir, 'tasks', 'index.json'),
+      JSON.stringify({
+        generated_at: '2000-01-01T00:00:00Z',
+        tasks: [{
+          key: 'TASK-001', title: 'Synthetic TASK-001', status: 'done', priority: 'medium',
+        }],
+      }, null, 2),
+      'utf8',
+    );
+
+    await listTodos({ repoRoot: repoDir });
+
+    const idx = JSON.parse(readFileSync(join(repoDir, 'tasks', 'index.json'), 'utf8'));
+    expect(
+      idx.tasks.find((t) => t.key === 'TASK-001').status,
+      'a value-only drift (correct keys, wrong status) must be repaired, not silently survive self-heal',
+    ).toBe('todo');
+    expect(idx.generated_at).not.toBe('2000-01-01T00:00:00Z');
+  });
+});
+
+// ===========================================================================
+// WG2-235-M03 — a depends_on written as a bare STRING (reachable via the
+// documented direct-Edit-of-tasks/ fallback, which bypasses ajv) must be
+// treated as one real dependency, not silently treated as "no dependencies".
+//
+// Regla 2 harm: a hand-edited depends_on that forgets the array brackets used
+// to make a ticket with a real, unmet dependency look READY — the
+// Orchestrator (or a human) could dispatch work whose prerequisite genuinely
+// is not done yet.
+// ===========================================================================
+describe('WG2-235-M03 — a depends_on written as a bare string is treated as one dependency, not none', () => {
+  it('listReady_does_not_report_a_ticket_ready_when_its_string_depends_on_is_unmet', async () => {
+    const { listReady } = await import(PROD.taskStore);
+    const repoDir = makeTmpDir('af-ts235-string-dep');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-001': buildTask('TASK-001', { depends_on: 'TASK-002' }), // bare string, not an array
+        'TASK-002': buildTask('TASK-002', { status: 'in_progress' }),
+      },
+    });
+
+    const ready = await listReady({ repoRoot: repoDir });
+    expect(
+      ready.map((t) => t.key),
+      'TASK-001 depends_on "TASK-002" (a bare string) which is not done — it must NOT be reported ready',
+    ).not.toContain('TASK-001');
   });
 });

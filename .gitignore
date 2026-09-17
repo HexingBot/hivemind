@@ -52,4 +52,12 @@ build/
 state/.lock
 state/**/*.tmp.*
 tasks/*.tmp.*
+# TASK-235 (WG2-235 second wargaming pass, LOW) — the tasks mutation lock
+# (tasks/.mutate.lock, src/task-store.js's acquireTasksLock) and its
+# acquisition-time quarantine copies (tasks/.mutate.lock.stale.<token>) are
+# the same class of runtime-only, per-process lock artifact as state/.lock
+# above — a live lock file showing up in `git status`/`git add tasks/` would
+# commit a live process's advisory lock into the repo.
+tasks/.mutate.lock
+tasks/.mutate.lock.stale.*
 .firebase/
