@@ -3645,49 +3645,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options2, skipNormalization) {
+    function resolveComponent(base, relative, options2, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse2(serialize(base, options2), options2);
-        relative2 = parse2(serialize(relative2, options2), options2);
+        relative = parse2(serialize(relative, options2), options2);
       }
       options2 = options2 || {};
-      if (!options2.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options2.tolerant && relative.scheme) {
+        target.scheme = relative.scheme;
+        target.userinfo = relative.userinfo;
+        target.host = relative.host;
+        target.port = relative.port;
+        target.path = removeDotSegments(relative.path || "");
+        target.query = relative.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
+          target.userinfo = relative.userinfo;
+          target.host = relative.host;
+          target.port = relative.port;
+          target.path = removeDotSegments(relative.path || "");
+          target.query = relative.query;
         } else {
-          if (!relative2.path) {
+          if (!relative.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative.query !== void 0) {
+              target.query = relative.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative.path[0] === "/") {
+              target.path = removeDotSegments(relative.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3695,7 +3695,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative.fragment;
       return target;
     }
     function equal(uriA, uriB, options2) {
@@ -11012,11 +11012,11 @@ var require_excerpt = __commonJS({
       if (typeof opts.excerpt === "function") {
         return opts.excerpt(file, opts);
       }
-      const sep2 = file.data.excerpt_separator || opts.excerpt_separator;
-      if (sep2 == null && (opts.excerpt === false || opts.excerpt == null)) {
+      const sep = file.data.excerpt_separator || opts.excerpt_separator;
+      if (sep == null && (opts.excerpt === false || opts.excerpt == null)) {
         return file;
       }
-      const delimiter = typeof opts.excerpt === "string" ? opts.excerpt : sep2 || opts.delimiters[0];
+      const delimiter = typeof opts.excerpt === "string" ? opts.excerpt : sep || opts.delimiters[0];
       const idx = file.content.indexOf(delimiter);
       if (idx !== -1) {
         file.excerpt = file.content.slice(0, idx);
@@ -11861,6 +11861,54 @@ function readPointerForMode(repoRoot) {
   }
   return parsed;
 }
+function assertBundleContainerNotSymlinked(repoRoot, sessionId) {
+  const dirCandidates = [
+    (0, import_node_path5.join)(repoRoot, "state"),
+    sessionsDir(repoRoot),
+    bundleDirFor(repoRoot, sessionId)
+  ];
+  for (const dir of dirCandidates) {
+    let st;
+    try {
+      st = (0, import_node_fs5.lstatSync)(dir);
+    } catch (err) {
+      if (err && err.code === "ENOENT") return;
+      throw new ModeStateError(
+        `getMode: ${dir} could not be inspected (${err.message})`,
+        "E_MODE_BUNDLE_CORRUPT"
+      );
+    }
+    if (st.isSymbolicLink()) {
+      throw new ModeStateError(
+        `getMode: ${dir} is a symlink \u2014 state/, state/sessions/, and a session's own bundle directory must be real directories, never a symlink (a symlinked container can make an external file's declared mode resolve as if it were this repo's own state, bypassing containment entirely \u2014 WG3-236-001)`,
+        "E_MODE_BUNDLE_CORRUPT"
+      );
+    }
+  }
+  const filePath = bundleSessionPath(repoRoot, sessionId);
+  let fileSt;
+  try {
+    fileSt = (0, import_node_fs5.lstatSync)(filePath);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return;
+    throw new ModeStateError(
+      `getMode: ${filePath} could not be inspected (${err.message})`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  if (fileSt.isSymbolicLink()) {
+    throw new ModeStateError(
+      `getMode: ${filePath} is a symlink \u2014 a session's own session.json must be a real file, never a symlink (the same containment WG3-236-001 applies to its parent directories now also applies to the file itself \u2014 WG4-236-002)`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  if (fileSt.nlink > 1) {
+    throw new ModeStateError(
+      `getMode: ${filePath} has ${fileSt.nlink} hard links \u2014 a session's own session.json must be an ordinary, singly-linked file (a hardlink to an external file cannot be told apart from this repo's own bundle content by lstat's type alone, so it is rejected outright rather than trusted)`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+}
 async function getMode({ repoRoot }) {
   const pointer = readPointerForMode(repoRoot);
   if (!pointer || pointer.active_session_id == null) return "harness";
@@ -11876,10 +11924,11 @@ async function getMode({ repoRoot }) {
       "E_MODE_POINTER_INVALID"
     );
   }
+  assertBundleContainerNotSymlinked(repoRoot, pointer.active_session_id);
   const bundleFilePath = bundleSessionPath(repoRoot, pointer.active_session_id);
-  let realBundleFile;
+  let bundleFileStat;
   try {
-    realBundleFile = (0, import_node_fs5.realpathSync)(bundleFilePath);
+    bundleFileStat = (0, import_node_fs5.lstatSync)(bundleFilePath);
   } catch (err) {
     if (err && err.code === "ENOENT") {
       throw new ModeStateError(
@@ -11892,26 +11941,27 @@ async function getMode({ repoRoot }) {
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
-  const realSessionsDir = (0, import_node_fs5.realpathSync)(sessionsDir(repoRoot));
-  const relToSessionsDir = (0, import_node_path5.relative)(realSessionsDir, realBundleFile);
-  if (relToSessionsDir === "" || relToSessionsDir === ".." || relToSessionsDir.startsWith(`..${import_node_path5.sep}`) || (0, import_node_path5.isAbsolute)(relToSessionsDir)) {
+  if (bundleFileStat.isSymbolicLink()) {
     throw new ModeStateError(
-      `getMode: the bundle for session ${pointer.active_session_id} resolves outside state/sessions/ of this repo (a symlink escaping the repo) and cannot be trusted`,
+      `getMode: the bundle for session ${pointer.active_session_id} at ${bundleFilePath} is a symlink and cannot be trusted (see assertBundleContainerNotSymlinked above for why a symlinked container or file is rejected outright rather than resolved)`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  let bundleRaw;
+  try {
+    bundleRaw = (0, import_node_fs5.readFileSync)(bundleFilePath, "utf8");
+  } catch (err) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be read (${err.message})`,
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
   let bundle;
   try {
-    bundle = readBundleSession(repoRoot, pointer.active_session_id);
+    bundle = JSON.parse(stripBom(bundleRaw));
   } catch (err) {
-    if (err && err.code === "ENOENT") {
-      throw new ModeStateError(
-        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleFilePath}`,
-        "E_MODE_BUNDLE_MISSING"
-      );
-    }
     throw new ModeStateError(
-      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be read (${err.message})`,
+      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be parsed (${err.message})`,
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
@@ -12441,6 +12491,11 @@ var __ajv = new import__2.default({ allErrors: true, strict: false });
 (0, import_ajv_formats2.default)(__ajv);
 var __validateTask = __ajv.compile(schema_default);
 var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
+var KNOWN_BLANK_GLYPHS = "\u2800";
+var IGNORABLE_OR_BLANK_RE = new RegExp(
+  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,
+  "gu"
+);
 
 // src/knowledge.js
 var import_node_fs7 = require("node:fs");

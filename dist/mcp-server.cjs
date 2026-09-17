@@ -3644,49 +3644,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options2, skipNormalization) {
+    function resolveComponent(base, relative, options2, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options2), options2);
-        relative2 = parse4(serialize(relative2, options2), options2);
+        relative = parse4(serialize(relative, options2), options2);
       }
       options2 = options2 || {};
-      if (!options2.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options2.tolerant && relative.scheme) {
+        target.scheme = relative.scheme;
+        target.userinfo = relative.userinfo;
+        target.host = relative.host;
+        target.port = relative.port;
+        target.path = removeDotSegments(relative.path || "");
+        target.query = relative.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
+          target.userinfo = relative.userinfo;
+          target.host = relative.host;
+          target.port = relative.port;
+          target.path = removeDotSegments(relative.path || "");
+          target.query = relative.query;
         } else {
-          if (!relative2.path) {
+          if (!relative.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative.query !== void 0) {
+              target.query = relative.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative.path[0] === "/") {
+              target.path = removeDotSegments(relative.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3694,7 +3694,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative.fragment;
       return target;
     }
     function equal(uriA, uriB, options2) {
@@ -11011,11 +11011,11 @@ var require_excerpt = __commonJS({
       if (typeof opts.excerpt === "function") {
         return opts.excerpt(file, opts);
       }
-      const sep2 = file.data.excerpt_separator || opts.excerpt_separator;
-      if (sep2 == null && (opts.excerpt === false || opts.excerpt == null)) {
+      const sep = file.data.excerpt_separator || opts.excerpt_separator;
+      if (sep == null && (opts.excerpt === false || opts.excerpt == null)) {
         return file;
       }
-      const delimiter = typeof opts.excerpt === "string" ? opts.excerpt : sep2 || opts.delimiters[0];
+      const delimiter = typeof opts.excerpt === "string" ? opts.excerpt : sep || opts.delimiters[0];
       const idx = file.content.indexOf(delimiter);
       if (idx !== -1) {
         file.excerpt = file.content.slice(0, idx);
@@ -25812,6 +25812,54 @@ function readPointerForMode(repoRoot) {
   }
   return parsed;
 }
+function assertBundleContainerNotSymlinked(repoRoot, sessionId) {
+  const dirCandidates = [
+    (0, import_node_path4.join)(repoRoot, "state"),
+    sessionsDir(repoRoot),
+    bundleDirFor(repoRoot, sessionId)
+  ];
+  for (const dir of dirCandidates) {
+    let st;
+    try {
+      st = (0, import_node_fs4.lstatSync)(dir);
+    } catch (err) {
+      if (err && err.code === "ENOENT") return;
+      throw new ModeStateError(
+        `getMode: ${dir} could not be inspected (${err.message})`,
+        "E_MODE_BUNDLE_CORRUPT"
+      );
+    }
+    if (st.isSymbolicLink()) {
+      throw new ModeStateError(
+        `getMode: ${dir} is a symlink \u2014 state/, state/sessions/, and a session's own bundle directory must be real directories, never a symlink (a symlinked container can make an external file's declared mode resolve as if it were this repo's own state, bypassing containment entirely \u2014 WG3-236-001)`,
+        "E_MODE_BUNDLE_CORRUPT"
+      );
+    }
+  }
+  const filePath = bundleSessionPath(repoRoot, sessionId);
+  let fileSt;
+  try {
+    fileSt = (0, import_node_fs4.lstatSync)(filePath);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return;
+    throw new ModeStateError(
+      `getMode: ${filePath} could not be inspected (${err.message})`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  if (fileSt.isSymbolicLink()) {
+    throw new ModeStateError(
+      `getMode: ${filePath} is a symlink \u2014 a session's own session.json must be a real file, never a symlink (the same containment WG3-236-001 applies to its parent directories now also applies to the file itself \u2014 WG4-236-002)`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  if (fileSt.nlink > 1) {
+    throw new ModeStateError(
+      `getMode: ${filePath} has ${fileSt.nlink} hard links \u2014 a session's own session.json must be an ordinary, singly-linked file (a hardlink to an external file cannot be told apart from this repo's own bundle content by lstat's type alone, so it is rejected outright rather than trusted)`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+}
 async function getMode({ repoRoot }) {
   const pointer = readPointerForMode(repoRoot);
   if (!pointer || pointer.active_session_id == null) return "harness";
@@ -25827,10 +25875,11 @@ async function getMode({ repoRoot }) {
       "E_MODE_POINTER_INVALID"
     );
   }
+  assertBundleContainerNotSymlinked(repoRoot, pointer.active_session_id);
   const bundleFilePath = bundleSessionPath(repoRoot, pointer.active_session_id);
-  let realBundleFile;
+  let bundleFileStat;
   try {
-    realBundleFile = (0, import_node_fs4.realpathSync)(bundleFilePath);
+    bundleFileStat = (0, import_node_fs4.lstatSync)(bundleFilePath);
   } catch (err) {
     if (err && err.code === "ENOENT") {
       throw new ModeStateError(
@@ -25843,26 +25892,27 @@ async function getMode({ repoRoot }) {
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
-  const realSessionsDir = (0, import_node_fs4.realpathSync)(sessionsDir(repoRoot));
-  const relToSessionsDir = (0, import_node_path4.relative)(realSessionsDir, realBundleFile);
-  if (relToSessionsDir === "" || relToSessionsDir === ".." || relToSessionsDir.startsWith(`..${import_node_path4.sep}`) || (0, import_node_path4.isAbsolute)(relToSessionsDir)) {
+  if (bundleFileStat.isSymbolicLink()) {
     throw new ModeStateError(
-      `getMode: the bundle for session ${pointer.active_session_id} resolves outside state/sessions/ of this repo (a symlink escaping the repo) and cannot be trusted`,
+      `getMode: the bundle for session ${pointer.active_session_id} at ${bundleFilePath} is a symlink and cannot be trusted (see assertBundleContainerNotSymlinked above for why a symlinked container or file is rejected outright rather than resolved)`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  let bundleRaw;
+  try {
+    bundleRaw = (0, import_node_fs4.readFileSync)(bundleFilePath, "utf8");
+  } catch (err) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be read (${err.message})`,
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
   let bundle;
   try {
-    bundle = readBundleSession(repoRoot, pointer.active_session_id);
+    bundle = JSON.parse(stripBom(bundleRaw));
   } catch (err) {
-    if (err && err.code === "ENOENT") {
-      throw new ModeStateError(
-        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleFilePath}`,
-        "E_MODE_BUNDLE_MISSING"
-      );
-    }
     throw new ModeStateError(
-      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be read (${err.message})`,
+      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be parsed (${err.message})`,
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
@@ -25984,6 +26034,7 @@ function readLoopAuth(repoRoot) {
   try {
     const pointer = readPointer(repoRoot);
     if (pointer && pointer.active_session_id != null) {
+      assertBundleContainerNotSymlinked(repoRoot, pointer.active_session_id);
       const bundle = readBundleSession(repoRoot, pointer.active_session_id);
       return bundle && bundle.loop_auth || {};
     }
@@ -26097,14 +26148,19 @@ var TaskMutationLockError = class extends Error {
 var TASKS_LOCK_STALE_MS = 3e3;
 var TASKS_LOCK_POLL_MS = 20;
 var TASKS_LOCK_MAX_WAIT_MS = 6e3;
+var INDEX_REPAIR_MAX_WAIT_MS = 750;
+var TASKS_LOCK_HEARTBEAT_MS = 750;
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-async function acquireTasksLock(repoRoot) {
+function isImplausiblyFuture(mtimeMs) {
+  return mtimeMs - Date.now() > TASKS_LOCK_STALE_MS;
+}
+async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS } = {}) {
   const dir = tasksDir(repoRoot);
   (0, import_node_fs5.mkdirSync)(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
-  const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  const deadline = Date.now() + maxWaitMs;
   const token = `${process.pid}-${(0, import_node_crypto2.randomBytes)(6).toString("hex")}`;
   for (; ; ) {
     try {
@@ -26121,11 +26177,16 @@ async function acquireTasksLock(repoRoot) {
     } catch (err) {
       if (!err || err.code !== "EEXIST") throw err;
       let stat = null;
+      let foreignEntry = false;
       try {
         stat = (0, import_node_fs5.statSync)(lockPath);
       } catch {
+        try {
+          foreignEntry = (0, import_node_fs5.lstatSync)(lockPath).isSymbolicLink();
+        } catch {
+        }
       }
-      if (stat && Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS) {
+      if (foreignEntry || stat && (Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(stat.mtimeMs))) {
         const quarantinePath = `${lockPath}.stale.${token}`;
         let renamed = false;
         try {
@@ -26135,15 +26196,21 @@ async function acquireTasksLock(repoRoot) {
         }
         if (renamed) {
           let qStat = null;
+          let qIsSymlink = false;
           try {
-            qStat = (0, import_node_fs5.statSync)(quarantinePath);
+            qStat = (0, import_node_fs5.lstatSync)(quarantinePath);
+            qIsSymlink = qStat.isSymbolicLink();
           } catch {
           }
-          const genuinelyStale = qStat && Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS;
+          const genuinelyStale = qIsSymlink || qStat && (Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(qStat.mtimeMs));
           if (genuinelyStale) {
             try {
               (0, import_node_fs5.unlinkSync)(quarantinePath);
             } catch {
+              try {
+                (0, import_node_fs5.rmSync)(quarantinePath, { recursive: true, force: true });
+              } catch {
+              }
             }
           } else {
             try {
@@ -26156,7 +26223,7 @@ async function acquireTasksLock(repoRoot) {
       }
       if (Date.now() >= deadline) {
         throw new TaskMutationLockError(
-          `timed out after ${TASKS_LOCK_MAX_WAIT_MS}ms waiting for the tasks mutation lock at ${lockPath} \u2014 another writer (this process, bin/task-board.js, or another orchestrator process) is holding it. The caller's mutation was NOT applied \u2014 nothing was accepted-and-lost; retry the call.`
+          `timed out after ${maxWaitMs}ms waiting for the tasks mutation lock at ${lockPath} \u2014 another writer (this process, bin/task-board.js, or another orchestrator process) is holding it. The caller's mutation was NOT applied \u2014 nothing was accepted-and-lost; retry the call.`
         );
       }
       await sleepMs(TASKS_LOCK_POLL_MS);
@@ -26172,11 +26239,27 @@ function releaseTasksLock(repoRoot, token) {
   } catch {
   }
 }
-async function withTasksLock(repoRoot, fn) {
-  const token = await acquireTasksLock(repoRoot);
+function startTasksLockHeartbeat(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
+  const timer = setInterval(() => {
+    try {
+      const current = (0, import_node_fs5.readFileSync)(lockPath, "utf8").trim();
+      if (current !== token) return;
+      const now = /* @__PURE__ */ new Date();
+      (0, import_node_fs5.utimesSync)(lockPath, now, now);
+    } catch {
+    }
+  }, TASKS_LOCK_HEARTBEAT_MS);
+  if (typeof timer.unref === "function") timer.unref();
+  return timer;
+}
+async function withTasksLock(repoRoot, fn, { maxWaitMs } = {}) {
+  const token = await acquireTasksLock(repoRoot, { maxWaitMs });
+  const heartbeat = startTasksLockHeartbeat(repoRoot, token);
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     releaseTasksLock(repoRoot, token);
   }
 }
@@ -26237,8 +26320,13 @@ function computeIndexDrift(idxPath, tasks) {
   for (let i = 0; i < fileKeys.length; i++) {
     if (fileKeys[i] !== idxKeys[i]) return true;
   }
+  const byKey = new Map(tasks.map((t) => [t.key, t]));
   for (const e of indexEntries) {
     if (!e || typeof e.key !== "string" || typeof e.title !== "string" || typeof e.status !== "string" || typeof e.priority !== "string") {
+      return true;
+    }
+    const t = byKey.get(e.key);
+    if (t && (t.title !== e.title || t.status !== e.status || t.priority !== e.priority)) {
       return true;
     }
   }
@@ -26251,13 +26339,18 @@ async function writeIndexLocked(repoRoot, idxPath, stamp) {
     await atomicWriteFiles([
       { target: idxPath, bytes: buildIndexBytes(freshTasks, stamp) }
     ]);
-  });
+  }, { maxWaitMs: INDEX_REPAIR_MAX_WAIT_MS });
 }
 async function verifyAndRepairIndex(repoRoot, tasks, now = () => (/* @__PURE__ */ new Date()).toISOString()) {
   const idxPath = indexFilePath(repoRoot);
-  if (!computeIndexDrift(idxPath, tasks)) return false;
-  await writeIndexLocked(repoRoot, idxPath, now());
-  return true;
+  if (!computeIndexDrift(idxPath, tasks)) return { outcome: "in-sync" };
+  try {
+    await writeIndexLocked(repoRoot, idxPath, now());
+  } catch (err) {
+    if (err instanceof TaskMutationLockError) return { outcome: "lock-timeout" };
+    return { outcome: "repair-failed", error: err };
+  }
+  return { outcome: "repaired" };
 }
 var TMP_SWEEP_MIN_AGE_MS = 6e4;
 async function sweepTasksTmpFiles({ repoRoot }) {
@@ -26298,8 +26391,14 @@ async function sweepTasksTmpFiles({ repoRoot }) {
 async function listTodos({ repoRoot }) {
   await sweepTasksTmpFiles({ repoRoot });
   const tasks = await readAllTasks(repoRoot);
-  await verifyAndRepairIndex(repoRoot, tasks);
-  return tasks.filter((t) => t.status === "todo").sort(numericKeyOrder);
+  const repairResult = await verifyAndRepairIndex(repoRoot, tasks);
+  const result = tasks.filter((t) => t.status === "todo").sort(numericKeyOrder);
+  if (repairResult.outcome === "lock-timeout") result.indexRepairFailed = true;
+  if (repairResult.outcome === "repair-failed") {
+    result.indexRepairFailed = true;
+    result.indexRepairError = repairResult.error;
+  }
+  return result;
 }
 var DanglingDependencyError = class extends Error {
   constructor(message) {
@@ -26315,6 +26414,11 @@ var DependencyCycleError = class extends Error {
     this.code = "E_DEPENDENCY_CYCLE";
   }
 };
+function normalizeDependsOn(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string" && raw.length > 0) return [raw];
+  return [];
+}
 function detectDependencyCycles(tasks) {
   const byKey = new Map(tasks.map((t) => [t.key, t]));
   const WHITE = 0;
@@ -26327,7 +26431,7 @@ function detectDependencyCycles(tasks) {
     color.set(key, GRAY);
     stack.push(key);
     const t = byKey.get(key);
-    const deps = Array.isArray(t && t.depends_on) ? t.depends_on : [];
+    const deps = normalizeDependsOn(t && t.depends_on);
     for (const depKey of deps) {
       if (!byKey.has(depKey)) continue;
       const c = color.get(depKey);
@@ -26349,7 +26453,7 @@ function detectDependencyCycles(tasks) {
 async function listReady({ repoRoot }) {
   await sweepTasksTmpFiles({ repoRoot });
   const tasks = await readAllTasks(repoRoot);
-  await verifyAndRepairIndex(repoRoot, tasks);
+  const repairResult = await verifyAndRepairIndex(repoRoot, tasks);
   const byKey = new Map(tasks.map((t) => [t.key, t]));
   const cycles = detectDependencyCycles(tasks);
   const cycledKeys = new Set(cycles.flat());
@@ -26363,7 +26467,7 @@ async function listReady({ repoRoot }) {
   const ready = [];
   for (const t of tasks) {
     if (t.status !== "todo") continue;
-    const deps = Array.isArray(t.depends_on) ? t.depends_on : [];
+    const deps = normalizeDependsOn(t.depends_on);
     let blocked = false;
     for (const depKey of deps) {
       const dep = byKey.get(depKey);
@@ -26396,6 +26500,11 @@ async function listReady({ repoRoot }) {
     }
     if (dangling.length > 0) ready.danglingDependencies = dangling;
     if (cycles.length > 0) ready.dependencyCycles = cycles;
+  }
+  if (repairResult.outcome === "lock-timeout") ready.indexRepairFailed = true;
+  if (repairResult.outcome === "repair-failed") {
+    ready.indexRepairFailed = true;
+    ready.indexRepairError = repairResult.error;
   }
   return ready;
 }
@@ -26553,17 +26662,17 @@ function checkNoOpenHighFindings(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === "done") return;
   const comments = Array.isArray(task.comments) ? task.comments : [];
-  const allText = blankQuotedAndFencedSpans(comments.map((c) => String(c && c.body || "")).join("\n"));
+  const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || ""))).join("\n");
   const opened = /* @__PURE__ */ new Set();
   for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
   const closed = /* @__PURE__ */ new Set();
   for (const m of allText.matchAll(FINDING_RESOLVED_RE)) closed.add(m[1].trim().toUpperCase());
   for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
     const inner = m[1] || "";
-    const sep2 = inner.search(DEGRADED_SEPARATOR_RE);
-    if (sep2 === -1) continue;
-    const id = inner.slice(0, sep2).trim();
-    const justification = inner.slice(sep2).replace(DEGRADED_SEPARATOR_RE, "").trim();
+    const sep = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep === -1) continue;
+    const id = inner.slice(0, sep).trim();
+    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
     if (id !== "" && justification !== "") closed.add(id.toUpperCase());
   }
   const open = [...opened].filter((id) => !closed.has(id));
@@ -26595,8 +26704,13 @@ var DELIVERY_BLOCKS = [
 ];
 var DELIVERY_HEADING_RE = /^[\s>*_-]*(?:#{1,6}\s*)?[*_\s]*([1-9])\s*[.):-]\s*(.+?)\s*$/;
 var DELIVERY_FILLER_RE = /^(?:ok|okay|n\/?a|na|nada|tbd|todo|pendiente|x|s\/?d|\.+|…|-+|_+|\?+)$/;
+var KNOWN_BLANK_GLYPHS = "\u2800";
+var IGNORABLE_OR_BLANK_RE = new RegExp(
+  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,
+  "gu"
+);
 function normalizeDeliveryText(s) {
-  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(new RegExp("\\p{Cf}", "gu"), "").replace(/[*_`#]/g, "").trim().toLowerCase();
+  return String(s).normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").replace(/[*_`#]/g, "").trim().toLowerCase();
 }
 function stripLeadingMarker(line) {
   return String(line).replace(/^[\s>]*(?:[-*•+]|\d{1,2}[.)])\s*/, "").trim();

@@ -8026,14 +8026,18 @@ var TaskMutationLockError = class extends Error {
 var TASKS_LOCK_STALE_MS = 3e3;
 var TASKS_LOCK_POLL_MS = 20;
 var TASKS_LOCK_MAX_WAIT_MS = 6e3;
+var TASKS_LOCK_HEARTBEAT_MS = 750;
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-async function acquireTasksLock(repoRoot) {
+function isImplausiblyFuture(mtimeMs) {
+  return mtimeMs - Date.now() > TASKS_LOCK_STALE_MS;
+}
+async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS } = {}) {
   const dir = tasksDir(repoRoot);
   (0, import_node_fs2.mkdirSync)(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
-  const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  const deadline = Date.now() + maxWaitMs;
   const token = `${process.pid}-${(0, import_node_crypto2.randomBytes)(6).toString("hex")}`;
   for (; ; ) {
     try {
@@ -8050,11 +8054,16 @@ async function acquireTasksLock(repoRoot) {
     } catch (err) {
       if (!err || err.code !== "EEXIST") throw err;
       let stat = null;
+      let foreignEntry = false;
       try {
         stat = (0, import_node_fs2.statSync)(lockPath);
       } catch {
+        try {
+          foreignEntry = (0, import_node_fs2.lstatSync)(lockPath).isSymbolicLink();
+        } catch {
+        }
       }
-      if (stat && Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS) {
+      if (foreignEntry || stat && (Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(stat.mtimeMs))) {
         const quarantinePath = `${lockPath}.stale.${token}`;
         let renamed = false;
         try {
@@ -8064,15 +8073,21 @@ async function acquireTasksLock(repoRoot) {
         }
         if (renamed) {
           let qStat = null;
+          let qIsSymlink = false;
           try {
-            qStat = (0, import_node_fs2.statSync)(quarantinePath);
+            qStat = (0, import_node_fs2.lstatSync)(quarantinePath);
+            qIsSymlink = qStat.isSymbolicLink();
           } catch {
           }
-          const genuinelyStale = qStat && Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS;
+          const genuinelyStale = qIsSymlink || qStat && (Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(qStat.mtimeMs));
           if (genuinelyStale) {
             try {
               (0, import_node_fs2.unlinkSync)(quarantinePath);
             } catch {
+              try {
+                (0, import_node_fs2.rmSync)(quarantinePath, { recursive: true, force: true });
+              } catch {
+              }
             }
           } else {
             try {
@@ -8085,7 +8100,7 @@ async function acquireTasksLock(repoRoot) {
       }
       if (Date.now() >= deadline) {
         throw new TaskMutationLockError(
-          `timed out after ${TASKS_LOCK_MAX_WAIT_MS}ms waiting for the tasks mutation lock at ${lockPath} \u2014 another writer (this process, bin/task-board.js, or another orchestrator process) is holding it. The caller's mutation was NOT applied \u2014 nothing was accepted-and-lost; retry the call.`
+          `timed out after ${maxWaitMs}ms waiting for the tasks mutation lock at ${lockPath} \u2014 another writer (this process, bin/task-board.js, or another orchestrator process) is holding it. The caller's mutation was NOT applied \u2014 nothing was accepted-and-lost; retry the call.`
         );
       }
       await sleepMs(TASKS_LOCK_POLL_MS);
@@ -8101,11 +8116,27 @@ function releaseTasksLock(repoRoot, token) {
   } catch {
   }
 }
-async function withTasksLock(repoRoot, fn) {
-  const token = await acquireTasksLock(repoRoot);
+function startTasksLockHeartbeat(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
+  const timer = setInterval(() => {
+    try {
+      const current = (0, import_node_fs2.readFileSync)(lockPath, "utf8").trim();
+      if (current !== token) return;
+      const now = /* @__PURE__ */ new Date();
+      (0, import_node_fs2.utimesSync)(lockPath, now, now);
+    } catch {
+    }
+  }, TASKS_LOCK_HEARTBEAT_MS);
+  if (typeof timer.unref === "function") timer.unref();
+  return timer;
+}
+async function withTasksLock(repoRoot, fn, { maxWaitMs } = {}) {
+  const token = await acquireTasksLock(repoRoot, { maxWaitMs });
+  const heartbeat = startTasksLockHeartbeat(repoRoot, token);
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     releaseTasksLock(repoRoot, token);
   }
 }
@@ -8157,6 +8188,11 @@ var KeyCollisionError = class extends Error {
   }
 };
 var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
+var KNOWN_BLANK_GLYPHS = "\u2800";
+var IGNORABLE_OR_BLANK_RE = new RegExp(
+  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,
+  "gu"
+);
 var AcceptanceCriteriaError = class extends Error {
   constructor(message) {
     super(message);
