@@ -147,6 +147,152 @@ describe('WG-H-014/CU5 — skill mirror pairs are discovered, not hand-listed', 
       'add it to that allowlist with a reason, or give it a mirror',
     ).toEqual([]);
   });
+
+  it('the one-sided allowlists contain no stale/dead entries (WG2-237-M02)', () => {
+    // TASK-237 WG2-237-M02: the allowlists above are exempt from the discovery loop by design
+    // (they document a genuine one-sided split), but nothing previously checked that an allowlisted
+    // NAME still corresponds to a real dir on disk. Harm this prevents: a removed skill's name stays
+    // in the allowlist forever, so a FUTURE skill that reuses the dead name is silently exempted
+    // from the byte-identity / section-inventory locks with nothing flagging the reuse — the same
+    // failure mode tests/use-case-policy.spec.js closes for USE-CASES.md referencing a spec path
+    // that no longer exists on disk.
+    const deadFrameworkOnly = [...FRAMEWORK_ONLY_SKILLS].filter((n) => !devNames.includes(n));
+    const deadConsumerOnly = [...CONSUMER_ONLY_SKILLS].filter((n) => !pluginNames.includes(n));
+    expect(
+      deadFrameworkOnly,
+      'FRAMEWORK_ONLY_SKILLS name(s) with no matching .claude/skills/ dir on disk — remove the stale entry',
+    ).toEqual([]);
+    expect(
+      deadConsumerOnly,
+      'CONSUMER_ONLY_SKILLS name(s) with no matching skills/ dir on disk — remove the stale entry',
+    ).toEqual([]);
+  });
+});
+
+// TASK-237 WG2-237-001 — differently-named framework/-current-project variant pairs (the skills
+// listed in FRAMEWORK_ONLY_SKILLS/CONSUMER_ONLY_SKILLS above because their names differ, e.g.
+// `hive-adversarial-improve` vs `hive-adversarial-improve-current-project`) never pair up by
+// DIRECTORY NAME, so the same-name discovery loop above — and its byte-identical check — never
+// runs on them at all; they fall straight into the one-sided allowlists, where only EXISTENCE is
+// asserted. The 2026-09-16 wargaming's own reproduction (injecting a CLAUDE.md-contradicting
+// "## Override" section into `.claude/skills/hive-adversarial-improve/SKILL.md`) went undetected
+// for exactly this reason.
+//
+// This deliberately does NOT attempt full byte-identity — the three pairs below are retargeted
+// per repo ON PURPOSE (different name/description/wording throughout; see e.g.
+// tests/assimilate-skill.spec.js's own doc comment) — a full byte-compare would be a false
+// positive the moment anyone makes a legitimate per-repo wording edit. What must never silently
+// drift is narrower and true today for all three pairs:
+//   (a) the ## SECTION INVENTORY — no section can be added to one side and not the other without
+//       a written, named exception (`oneSidedHeadings`); an injected extra section (the wargaming
+//       attack) shows up as an unaccounted heading and fails loudly.
+//   (b) each pair's own load-bearing invariant clause(s), verbatim — content that is already
+//       byte-identical between the two files today and must stay that way.
+const NAME_PAIRS = [
+  {
+    label: 'hive-adversarial-improve / hive-adversarial-improve-current-project',
+    frameworkFile: join(DEV_SKILLS_DIR, 'hive-adversarial-improve', 'SKILL.md'),
+    consumerFile: join(PLUGIN_SKILLS_DIR, 'hive-adversarial-improve-current-project', 'SKILL.md'),
+    // "Worked example (reference implementation)" (framework) vs "Worked example" (consumer) is a
+    // known, intentional caption difference for the same section — normalize it away.
+    normalizeHeading: (h) => h.replace(/\s*\(reference implementation\)\s*$/, ''),
+    oneSidedHeadings: [],
+    lockedClauses: [
+      '**Every gap becomes a `tests-after` ticket, with the probe input as a replayable test fixture.**',
+    ],
+  },
+  {
+    label: 'hive-self-improve / hive-self-improve-current-project',
+    frameworkFile: join(DEV_SKILLS_DIR, 'hive-self-improve', 'SKILL.md'),
+    consumerFile: join(PLUGIN_SKILLS_DIR, 'hive-self-improve-current-project', 'SKILL.md'),
+    normalizeHeading: (h) => h,
+    // "Runs on Fable end to end" documents which model THIS FRAMEWORK REPO's PROJECT.md pins for
+    // the orchestrator running this skill — meaningless for a consumer project, which has its own
+    // PROJECT.md/agent_models map. Deliberately one-sided, not a drift.
+    oneSidedHeadings: ['Runs on Fable end to end'],
+    lockedClauses: [
+      '**Every finding is grounded in the REAL code actually run — never speculation.**',
+    ],
+  },
+  {
+    label: 'hivemind-assimilate-skill / assimilate-current-project',
+    frameworkFile: join(DEV_SKILLS_DIR, 'hivemind-assimilate-skill', 'SKILL.md'),
+    consumerFile: join(PLUGIN_SKILLS_DIR, 'assimilate-current-project', 'SKILL.md'),
+    // The "invariants, first" heading's parenthetical cross-references the OTHER file by name on
+    // each side (different repo, different pointer) — normalize the parenthetical away, not the
+    // heading itself.
+    normalizeHeading: (h) => h.replace(/\s*\(retargeted per repo[\s\S]*\)$/, ' (retargeted per repo)'),
+    oneSidedHeadings: [],
+    // Already locked at clause level by tests/assimilate-skill.spec.js's LEAD_GUARANTEES check —
+    // no duplicate clause lock needed here, the section-inventory check above still applies.
+    lockedClauses: [],
+  },
+];
+
+function headingsOf(text) {
+  return [...text.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1].trim());
+}
+
+describe('WG2-237-001 — differently-named framework/-current-project variant pairs stay locked', () => {
+  for (const pair of NAME_PAIRS) {
+    describe(pair.label, () => {
+      const frameworkExists = existsSync(pair.frameworkFile);
+      const consumerExists = existsSync(pair.consumerFile);
+
+      it('both variant files exist on disk', () => {
+        expect(frameworkExists, `${pair.frameworkFile} must exist`).toBe(true);
+        expect(consumerExists, `${pair.consumerFile} must exist`).toBe(true);
+      });
+
+      if (!frameworkExists || !consumerExists) return;
+
+      const frameworkBody = readFileSync(pair.frameworkFile, 'utf8');
+      const consumerBody = readFileSync(pair.consumerFile, 'utf8');
+
+      it('carries the same ## section inventory on both sides, modulo the documented one-sided headings', () => {
+        // Harm this prevents: a section can be ADDED to one side (an injected override block that
+        // contradicts CLAUDE.md, exactly the 2026-09-16 wargaming reproduction) or silently DROPPED
+        // from one side, with nothing catching it — differently-named pairs never enter the
+        // same-name discovery loop above, so this is the only inventory check they get.
+        const frameworkHeadings = headingsOf(frameworkBody).map(pair.normalizeHeading);
+        const consumerHeadings = headingsOf(consumerBody).map(pair.normalizeHeading);
+        const missingFromConsumer = frameworkHeadings.filter(
+          (h) => !consumerHeadings.includes(h) && !pair.oneSidedHeadings.includes(h),
+        );
+        const missingFromFramework = consumerHeadings.filter(
+          (h) => !frameworkHeadings.includes(h) && !pair.oneSidedHeadings.includes(h),
+        );
+        expect(
+          missingFromConsumer,
+          'section(s) present in the framework variant but not the consumer variant, and not in ' +
+          `oneSidedHeadings: ${JSON.stringify(missingFromConsumer)}`,
+        ).toEqual([]);
+        expect(
+          missingFromFramework,
+          'section(s) present in the consumer variant but not the framework variant, and not in ' +
+          `oneSidedHeadings: ${JSON.stringify(missingFromFramework)}`,
+        ).toEqual([]);
+      });
+
+      if (pair.lockedClauses.length > 0) {
+        it('carries its load-bearing invariant clause(s) verbatim on both sides', () => {
+          for (const clause of pair.lockedClauses) {
+            // Harm this prevents: the rule text itself silently weakening or flipping in only one
+            // variant (e.g. "every gap becomes a ticket" quietly dropped from the consumer copy)
+            // without any heading changing, which the section-inventory check above would not catch.
+            expect(
+              frameworkBody.includes(clause),
+              `framework copy (${pair.frameworkFile}) must contain verbatim: "${clause}"`,
+            ).toBe(true);
+            expect(
+              consumerBody.includes(clause),
+              `consumer copy (${pair.consumerFile}) must contain verbatim: "${clause}"`,
+            ).toBe(true);
+          }
+        });
+      }
+    });
+  }
 });
 
 describe('WG-H-014 — workflows/ mirrors .claude/workflows/ (previously unlocked pair)', () => {

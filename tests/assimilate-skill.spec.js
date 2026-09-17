@@ -119,7 +119,7 @@ describe('TASK-154 — assimilate-current-project ships at plugin-root skills/ (
     ).toBe(true);
   });
 
-  it('the four lead invariant guarantees are byte-identical in both variants (WG-H-015)', () => {
+  it('the four lead invariant guarantees are present verbatim (substring match, not byte-identical) in both variants (WG-H-015)', () => {
     // TASK-237 — WG-H-015: both files' "## The invariants, first" section used to self-declare
     // "locked — verbatim in intent" while NOT being identical (1495 vs 1453 bytes at the time of
     // the finding) and nothing checked it — the claim was documentation, not mechanism. Full
@@ -128,6 +128,13 @@ describe('TASK-154 — assimilate-current-project ships at plugin-root skills/ (
     // and `addon-packs.md §4` are dev-repo-internal references). What genuinely must never
     // silently drift is the CONTENT of the four security guarantees themselves — so this locks
     // exactly those four lead clauses, verbatim, in both files, and nothing else.
+    //
+    // TASK-237 WG2-237 LOW fix: this test's own former title claimed "byte-identical", which was
+    // false — the body below does `.includes()` of four clauses, not a byte comparison of the
+    // section (or the file). Renamed to say exactly what the assertions below check, so the title
+    // itself can no longer be read as a "locked" claim stronger than the mechanism underneath it —
+    // the same false-"locked" failure mode CU6/WG-H-015 exists to catch, now applied to this
+    // spec's own title.
     const consumerBody = readFileSync(PLUGIN_CURRENT_PROJECT_SKILL, 'utf8');
     const frameworkBody = readFileSync(DEV_ASSIMILATE_SKILL, 'utf8');
     const LEAD_GUARANTEES = [
