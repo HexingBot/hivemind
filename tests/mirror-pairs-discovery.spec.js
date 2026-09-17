@@ -44,6 +44,30 @@ function listFiles(dir, ext) {
   return readdirSync(dir).filter((n) => n.endsWith(ext) && statSync(join(dir, n)).isFile()).sort();
 }
 
+// TASK-237 MEDIUM-3: recurse the FULL pair directory (references/, scripts/, any nested file),
+// not just SKILL.md. Discovery was previously SKILL.md-only, so a new pair's non-SKILL.md content
+// (references/, scripts/) had no discovery-based coverage — only a hand-written dedicated spec
+// (today, `mcp-server` and `watch` are the two pairs with such content) caught drift there, which
+// is exactly the "remember to register it" gap this whole file exists to close.
+/** Sorted list of file paths, relative to `dir`, for every file found anywhere under `dir`. */
+function listFilesRecursive(dir) {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  const walk = (current, prefix) => {
+    for (const name of readdirSync(current).sort()) {
+      const full = join(current, name);
+      const rel = prefix ? join(prefix, name) : name;
+      if (statSync(full).isDirectory()) {
+        walk(full, rel);
+      } else {
+        out.push(rel);
+      }
+    }
+  };
+  walk(dir, '');
+  return out.sort();
+}
+
 // One-sided by design (TASK-152/153/154) — a skill living ONLY here is a written decision,
 // not a gap. Adding a genuinely new one-sided skill means adding it here WITH a reason, or
 // giving it a mirror; this test fails on anything left off both.
@@ -72,21 +96,35 @@ describe('WG-H-014/CU5 — skill mirror pairs are discovered, not hand-listed', 
   const devNames = listSubdirs(DEV_SKILLS_DIR);
   const sharedNames = pluginNames.filter((n) => devNames.includes(n));
 
-  it('every same-named skill dir found in BOTH roots has a byte-identical SKILL.md', () => {
+  it('every same-named skill dir found in BOTH roots is byte-identical THROUGHOUT (SKILL.md, references/, scripts/, any nested file — TASK-237 MEDIUM-3)', () => {
     // Sanity: this loop must actually exercise at least one pair, or the assertion below is
     // vacuously true forever (e.g. if skills/ or .claude/skills/ went missing/empty).
     expect(sharedNames.length, 'at least one same-named skill dir must exist in both roots').toBeGreaterThan(0);
     for (const name of sharedNames) {
-      const pluginMd = join(PLUGIN_SKILLS_DIR, name, 'SKILL.md');
-      const devMd = join(DEV_SKILLS_DIR, name, 'SKILL.md');
-      if (!existsSync(pluginMd) || !existsSync(devMd)) continue; // SKILL.md presence is covered elsewhere
+      const pluginDir = join(PLUGIN_SKILLS_DIR, name);
+      const devDir = join(DEV_SKILLS_DIR, name);
+      const pluginFiles = listFilesRecursive(pluginDir);
+      const devFiles = listFilesRecursive(devDir);
+      // TASK-237 LOW-2: a mismatched file SET used to be silently skipped file-by-file (`continue`
+      // when one side was missing SKILL.md) rather than failing loudly. Harm this prevents: a
+      // registered pair whose dev side quietly drops (or gains) a file — e.g. a references/ doc,
+      // or a scripts/ helper — passing this discovery-based guard in total silence.
       expect(
-        readFileSync(pluginMd).equals(readFileSync(devMd)),
-        `skills/${name}/SKILL.md must be byte-identical to .claude/skills/${name}/SKILL.md ` +
-        '(discovered same-name pair — WG-H-014: an edited-one-side-only skill, like ' +
-        'hive-adversarial-improve diverging from its dogfood copy, is exactly what this misses ' +
-        'without a discovery-based guard)',
-      ).toBe(true);
+        pluginFiles,
+        `skills/${name} and .claude/skills/${name} must carry the exact same file set ` +
+        '(discovered recursively — a missing/extra file on either side must fail loudly, not be skipped)',
+      ).toEqual(devFiles);
+      for (const rel of pluginFiles) {
+        const pluginBytes = readFileSync(join(pluginDir, rel));
+        const devBytes = readFileSync(join(devDir, rel));
+        expect(
+          pluginBytes.equals(devBytes),
+          `skills/${name}/${rel} must be byte-identical to .claude/skills/${name}/${rel} ` +
+          '(discovered same-name pair, full recursive compare — WG-H-014: an edited-one-side-only ' +
+          'skill, like hive-adversarial-improve diverging from its dogfood copy, is exactly what ' +
+          'a SKILL.md-only guard misses for any references/ or scripts/ content)',
+        ).toBe(true);
+      }
     }
   });
 

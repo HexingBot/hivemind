@@ -26,7 +26,7 @@ that itself is evidence you are in a consumer project: proceed. Only STOP when y
 confirm framework-repo identity (a `.claude-plugin/plugin.json` whose `name` is `hivemind`, AND a
 `src/` directory, AND a `bin/init.js` file, all present at the repo root).
 
-## The invariants, first (retargeted per repo — the four lead guarantees below are locked verbatim against the framework variant; see tests/assimilate-skill.spec.js)
+## The invariants, first (retargeted per repo — the four lead guarantees below are locked verbatim against the framework variant, `hivemind-assimilate-skill`)
 
 These are not suggestions; the shipped CLI's `assimilate` primitive enforces them in code and this
 workflow must never route around them:
