@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T03:23:57.734Z",
+  "generated_at": "2026-09-17T16:38:37.946Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1392,6 +1392,12 @@
       "title": "Paridad: project-context.md exento del unico mecanismo de coherencia, y los pares no lockeados",
       "status": "in_review",
       "priority": "medium"
+    },
+    {
+      "key": "TASK-238",
+      "title": "FINDING_HIGH_RE convierte prosa en un id de hallazgo basura y deja el ticket incerrable",
+      "status": "todo",
+      "priority": "high"
     }
   ]
 }

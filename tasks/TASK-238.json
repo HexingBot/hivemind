@@ -1,0 +1,29 @@
+{
+  "key": "TASK-238",
+  "title": "FINDING_HIGH_RE convierte prosa en un id de hallazgo basura y deja el ticket incerrable",
+  "description": "src/task-store.js:1421 define FINDING_HIGH_RE = /\\[FINDING-HIGH:\\s*([^\\]]+)\\]/gi. El grupo [^\\]]+ es ilimitado, asi que cualquier prosa de un comentario que arranque con la sintaxis literal del marcador se traga todo el texto hasta el proximo corchete de cierre y se registra como un id de hallazgo abierto. Ocurrencia real medida en TASK-234: el comentario de wargaming (comments[3]) tiene cuatro apariciones de [FINDING-HIGH; tres son marcadores legitimos de 23-26 chars (WG2-234-001, WG2-234-002, WG-H-050) y la cuarta, en offset 3213, es prosa que cierra recien 1196 chars despues. Ese id de ~1190 chars no lo puede resolver ningun [FINDING-RESOLVED], asi que TASK-234 quedo incerrable salvo por excepcion. El defecto es de parseo sobre una guarda de cierre: superficie peligrosa por las categorias 2 (parsing de entrada estructuralmente significativa) y 4 (mutacion de estado con riesgo de borde) de la seccion Dangerous surface.",
+  "acceptance_criteria": [
+    "FINDING_HIGH_RE solo acepta como id una cadena con forma de identificador (sin espacios ni saltos de linea, con un tope de longitud explicito), de modo que la prosa del offset 3213 de TASK-234 deja de registrarse como hallazgo abierto.",
+    "Los tres marcadores legitimos de TASK-234 (WG2-234-001, WG2-234-002, WG-H-050) siguen siendo detectados exactamente igual que hoy, y lo mismo para los marcadores ya registrados en TASK-233, TASK-235, TASK-236 y TASK-237.",
+    "Se decide y se registra que pasa con el texto historico del comentario de TASK-234: o se deja intacto (y el fix de parseo basta para cerrarlo) o Mato autoriza corregir la prosa. La opcion por defecto es dejarlo intacto.",
+    "Un marcador mal formado no se descarta en silencio: la guarda distingue no hay hallazgos abiertos de no pude parsear un marcador, para no repetir el patron de ausencia de evidencia como evidencia de ausencia del Empty-result contract."
+  ],
+  "status": "todo",
+  "priority": "high",
+  "labels": [
+    "close-guard",
+    "parsing",
+    "dangerous-surface",
+    "wargaming"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-09-17T16:38:37.946Z",
+  "updated_at": "2026-09-17T16:38:37.946Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "requires_uat": false
+}
