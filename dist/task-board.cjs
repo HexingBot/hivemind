@@ -3645,49 +3645,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options, skipNormalization) {
+    function resolveComponent(base, relative2, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse(serialize(base, options), options);
-        relative = parse(serialize(relative, options), options);
+        relative2 = parse(serialize(relative2, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3695,7 +3695,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -7731,12 +7731,12 @@ function resolveRepoRoot(env, cwd) {
 // src/task-board.js
 var import_node_http = __toESM(require("node:http"), 1);
 var import_promises3 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 
 // src/task-store.js
 var import_promises = require("node:fs/promises");
-var import_node_fs4 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
 var import_node_crypto2 = require("node:crypto");
 var import__ = __toESM(require__(), 1);
 var import_ajv_formats2 = __toESM(require_dist(), 1);
@@ -8005,6 +8005,9 @@ var import_ajv_formats = __toESM(require_dist(), 1);
 function bundleDirFor(repoRoot, sessionId) {
   return (0, import_node_path3.join)(repoRoot, "state", "sessions", sessionId);
 }
+function sessionsDir(repoRoot) {
+  return (0, import_node_path3.join)(repoRoot, "state", "sessions");
+}
 function bundleSessionPath(repoRoot, sessionId) {
   return (0, import_node_path3.join)(bundleDirFor(repoRoot, sessionId), "session.json");
 }
@@ -8025,6 +8028,8 @@ function readBundleSession(repoRoot, sessionId) {
 }
 
 // src/operating-mode.js
+var import_node_fs4 = require("node:fs");
+var import_node_path4 = require("node:path");
 var OPERATING_MODES = ["harness", "loop"];
 var ModeStateError = class extends Error {
   constructor(message, code) {
@@ -8033,21 +8038,91 @@ var ModeStateError = class extends Error {
     this.code = code;
   }
 };
-async function getMode({ repoRoot }) {
-  let pointer;
+var SESSION_ID_RE = /^\d{8}T\d{6}Z-[0-9a-f]{8}$/;
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stripBom(text) {
+  return text.charCodeAt(0) === 65279 ? text.slice(1) : text;
+}
+function describeNonObject(value) {
+  if (Array.isArray(value)) return "an array";
+  return JSON.stringify(value);
+}
+function readPointerForMode(repoRoot) {
+  const p = pointerFilePath(repoRoot);
   try {
-    pointer = readPointer(repoRoot);
+    (0, import_node_fs4.lstatSync)(p);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return null;
+    throw new ModeStateError(
+      `getMode: state/session.json could not be inspected (${err.message})`,
+      "E_MODE_POINTER_CORRUPT"
+    );
+  }
+  let raw;
+  try {
+    raw = (0, import_node_fs4.readFileSync)(p, "utf8");
+  } catch (err) {
+    throw new ModeStateError(
+      `getMode: state/session.json exists but could not be read (${err.message})`,
+      "E_MODE_POINTER_CORRUPT"
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(stripBom(raw));
   } catch (err) {
     throw new ModeStateError(
       `getMode: state/session.json exists but could not be parsed (${err.message})`,
       "E_MODE_POINTER_CORRUPT"
     );
   }
+  if (!isPlainObject(parsed)) {
+    throw new ModeStateError(
+      `getMode: state/session.json exists but does not contain a JSON object (parsed to ${describeNonObject(parsed)})`,
+      "E_MODE_POINTER_INVALID"
+    );
+  }
+  return parsed;
+}
+async function getMode({ repoRoot }) {
+  const pointer = readPointerForMode(repoRoot);
   if (!pointer || pointer.active_session_id == null) return "harness";
   if (pointer.schema_version !== 2) {
     throw new ModeStateError(
       `getMode: state/session.json has an unrecognized schema_version (${JSON.stringify(pointer.schema_version)}, expected 2)`,
       "E_MODE_POINTER_INVALID"
+    );
+  }
+  if (typeof pointer.active_session_id !== "string" || !SESSION_ID_RE.test(pointer.active_session_id)) {
+    throw new ModeStateError(
+      `getMode: state/session.json declares an active_session_id with an unrecognized format (${JSON.stringify(pointer.active_session_id)})`,
+      "E_MODE_POINTER_INVALID"
+    );
+  }
+  const bundleFilePath = bundleSessionPath(repoRoot, pointer.active_session_id);
+  let realBundleFile;
+  try {
+    realBundleFile = (0, import_node_fs4.realpathSync)(bundleFilePath);
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      throw new ModeStateError(
+        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleFilePath}`,
+        "E_MODE_BUNDLE_MISSING"
+      );
+    }
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} could not be inspected (${err.message})`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  const realSessionsDir = (0, import_node_fs4.realpathSync)(sessionsDir(repoRoot));
+  const relToSessionsDir = (0, import_node_path4.relative)(realSessionsDir, realBundleFile);
+  if (relToSessionsDir === "" || relToSessionsDir === ".." || relToSessionsDir.startsWith(`..${import_node_path4.sep}`) || (0, import_node_path4.isAbsolute)(relToSessionsDir)) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} resolves outside state/sessions/ of this repo (a symlink escaping the repo) and cannot be trusted`,
+      "E_MODE_BUNDLE_CORRUPT"
     );
   }
   let bundle;
@@ -8056,12 +8131,18 @@ async function getMode({ repoRoot }) {
   } catch (err) {
     if (err && err.code === "ENOENT") {
       throw new ModeStateError(
-        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleSessionPath(repoRoot, pointer.active_session_id)}`,
+        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleFilePath}`,
         "E_MODE_BUNDLE_MISSING"
       );
     }
     throw new ModeStateError(
       `getMode: the bundle for session ${pointer.active_session_id} exists but could not be read (${err.message})`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  if (!isPlainObject(bundle)) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} exists but is not a JSON object (parsed to ${describeNonObject(bundle)})`,
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
@@ -8214,16 +8295,16 @@ function validateTaskOrThrow(task) {
   throw new Error(`task payload failed schema validation: ${msg}`);
 }
 function tasksDir(repoRoot) {
-  return (0, import_node_path4.join)(repoRoot, "tasks");
+  return (0, import_node_path5.join)(repoRoot, "tasks");
 }
 function taskFilePath(repoRoot, key) {
-  return (0, import_node_path4.join)(tasksDir(repoRoot), `${key}.json`);
+  return (0, import_node_path5.join)(tasksDir(repoRoot), `${key}.json`);
 }
 function indexFilePath(repoRoot) {
-  return (0, import_node_path4.join)(tasksDir(repoRoot), "index.json");
+  return (0, import_node_path5.join)(tasksDir(repoRoot), "index.json");
 }
 function tasksLockPath(repoRoot) {
-  return (0, import_node_path4.join)(tasksDir(repoRoot), ".mutate.lock");
+  return (0, import_node_path5.join)(tasksDir(repoRoot), ".mutate.lock");
 }
 var TaskMutationLockError = class extends Error {
   constructor(message) {
@@ -8240,52 +8321,52 @@ function sleepMs(ms) {
 }
 async function acquireTasksLock(repoRoot) {
   const dir = tasksDir(repoRoot);
-  (0, import_node_fs4.mkdirSync)(dir, { recursive: true });
+  (0, import_node_fs5.mkdirSync)(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
   const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
   const token = `${process.pid}-${(0, import_node_crypto2.randomBytes)(6).toString("hex")}`;
   for (; ; ) {
     try {
-      const fd = (0, import_node_fs4.openSync)(lockPath, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
+      const fd = (0, import_node_fs5.openSync)(lockPath, import_node_fs5.constants.O_CREAT | import_node_fs5.constants.O_EXCL | import_node_fs5.constants.O_WRONLY, 384);
       try {
         const payload = Buffer.from(`${token}
 `, "utf8");
-        (0, import_node_fs4.writeSync)(fd, payload, 0, payload.length);
-        (0, import_node_fs4.fsyncSync)(fd);
+        (0, import_node_fs5.writeSync)(fd, payload, 0, payload.length);
+        (0, import_node_fs5.fsyncSync)(fd);
       } finally {
-        (0, import_node_fs4.closeSync)(fd);
+        (0, import_node_fs5.closeSync)(fd);
       }
       return token;
     } catch (err) {
       if (!err || err.code !== "EEXIST") throw err;
       let stat = null;
       try {
-        stat = (0, import_node_fs4.statSync)(lockPath);
+        stat = (0, import_node_fs5.statSync)(lockPath);
       } catch {
       }
       if (stat && Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS) {
         const quarantinePath = `${lockPath}.stale.${token}`;
         let renamed = false;
         try {
-          (0, import_node_fs4.renameSync)(lockPath, quarantinePath);
+          (0, import_node_fs5.renameSync)(lockPath, quarantinePath);
           renamed = true;
         } catch {
         }
         if (renamed) {
           let qStat = null;
           try {
-            qStat = (0, import_node_fs4.statSync)(quarantinePath);
+            qStat = (0, import_node_fs5.statSync)(quarantinePath);
           } catch {
           }
           const genuinelyStale = qStat && Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS;
           if (genuinelyStale) {
             try {
-              (0, import_node_fs4.unlinkSync)(quarantinePath);
+              (0, import_node_fs5.unlinkSync)(quarantinePath);
             } catch {
             }
           } else {
             try {
-              (0, import_node_fs4.renameSync)(quarantinePath, lockPath);
+              (0, import_node_fs5.renameSync)(quarantinePath, lockPath);
             } catch {
             }
           }
@@ -8304,9 +8385,9 @@ async function acquireTasksLock(repoRoot) {
 function releaseTasksLock(repoRoot, token) {
   const lockPath = tasksLockPath(repoRoot);
   try {
-    const current = (0, import_node_fs4.readFileSync)(lockPath, "utf8").trim();
+    const current = (0, import_node_fs5.readFileSync)(lockPath, "utf8").trim();
     if (current !== token) return;
-    (0, import_node_fs4.unlinkSync)(lockPath);
+    (0, import_node_fs5.unlinkSync)(lockPath);
   } catch {
   }
 }
@@ -8343,7 +8424,7 @@ async function readAllTasks(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises.readFile)((0, import_node_path4.join)(dir, name), "utf8");
+    const raw = await (0, import_promises.readFile)((0, import_node_path5.join)(dir, name), "utf8");
     if (raw.length === 0) continue;
     out.push(JSON.parse(raw));
   }
@@ -8453,12 +8534,16 @@ var OpenHighFindingError = class extends Error {
     this.code = "E_OPEN_HIGH_FINDING";
   }
 };
-var WARGAMING_MARKER_RE = /\[WARGAMING\]([\s\S]*)/;
+var WARGAMING_MARKER_RE = /^\s*\[WARGAMING\]([\s\S]*)/;
 var WARGAMING_CASE_RE = /\bCU\s?\d+\b|\bcaso\s*\d+/i;
 var WARGAMING_PATH_RE = /\bpaths?\b|\bcaminos?\b|\balternativ\w*|\bfallo\w*/i;
 function wargamingComments(task) {
   const comments = Array.isArray(task.comments) ? task.comments : [];
   return comments.filter((c) => c && WARGAMING_MARKER_RE.test(String(c.body || "")));
+}
+function wargamingMarkerCapture(body) {
+  const m = WARGAMING_MARKER_RE.exec(body);
+  return m ? m[1] : body;
 }
 function checkWargamingRecord(task, resolvedException) {
   if (resolvedException) return;
@@ -8471,8 +8556,9 @@ function checkWargamingRecord(task, resolvedException) {
   }
   const last = marked[marked.length - 1];
   const body = String(last.body || "");
-  const hasCase = WARGAMING_CASE_RE.test(body);
-  const hasPath = WARGAMING_PATH_RE.test(body);
+  const text = wargamingMarkerCapture(body);
+  const hasCase = WARGAMING_CASE_RE.test(text);
+  const hasPath = WARGAMING_PATH_RE.test(text);
   if (!hasCase || !hasPath) {
     throw new WargamingRecordError(
       `task ${task.key}'s most recent "[WARGAMING]" comment names no ${!hasCase ? 'approved case (e.g. "CU3")' : ""}${!hasCase && !hasPath ? " and no" : ""}${!hasPath ? " path/alternative it attacked" : ""} \u2014 a wargaming record that names neither a case nor a path is not a wargaming record (WG-H-003). Record what was actually attacked, or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
@@ -8483,21 +8569,27 @@ var FINDING_HIGH_RE = /\[FINDING-HIGH:\s*([^\]]+)\]/gi;
 var FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
 var FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^\]]*)\]/gi;
 var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
+var FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g;
+var BACKTICK_SPAN_RE = /`[^`\n]*`/g;
+var DOUBLE_QUOTED_SPAN_RE = /"[^"\n]*"/g;
+function blankQuotedAndFencedSpans(text) {
+  return text.replace(FENCED_CODE_BLOCK_RE, (m) => " ".repeat(m.length)).replace(BACKTICK_SPAN_RE, (m) => " ".repeat(m.length)).replace(DOUBLE_QUOTED_SPAN_RE, (m) => " ".repeat(m.length));
+}
 function checkNoOpenHighFindings(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === "done") return;
   const comments = Array.isArray(task.comments) ? task.comments : [];
-  const allText = comments.map((c) => String(c && c.body || "")).join("\n");
+  const allText = blankQuotedAndFencedSpans(comments.map((c) => String(c && c.body || "")).join("\n"));
   const opened = /* @__PURE__ */ new Set();
   for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
   const closed = /* @__PURE__ */ new Set();
   for (const m of allText.matchAll(FINDING_RESOLVED_RE)) closed.add(m[1].trim().toUpperCase());
   for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
     const inner = m[1] || "";
-    const sep = inner.search(DEGRADED_SEPARATOR_RE);
-    if (sep === -1) continue;
-    const id = inner.slice(0, sep).trim();
-    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
+    const sep2 = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep2 === -1) continue;
+    const id = inner.slice(0, sep2).trim();
+    const justification = inner.slice(sep2).replace(DEGRADED_SEPARATOR_RE, "").trim();
     if (id !== "" && justification !== "") closed.add(id.toUpperCase());
   }
   const open = [...opened].filter((id) => !closed.has(id));
@@ -8613,6 +8705,14 @@ async function transitionStatus({
     const stamp = now();
     task.status = status;
     task.updated_at = stamp;
+    if (status === "done" && previousStatus !== "done" && !resolvedException) {
+      task.linked_commits_verification = {
+        at: stamp,
+        checked: false,
+        reason: "transition-status-route: this call carries no comment body, so no delivery could be checked here",
+        commits: []
+      };
+    }
     if (resolvedException && previousStatus !== status) {
       const marker = {
         author: resolvedException.author,
@@ -8708,13 +8808,13 @@ async function createTask({
     validateTaskOrThrow(task);
     const existing = await readAllTasks(repoRoot);
     const allTasks = [...existing, task];
-    (0, import_node_fs4.mkdirSync)(tasksDir(repoRoot), { recursive: true });
+    (0, import_node_fs5.mkdirSync)(tasksDir(repoRoot), { recursive: true });
     const taskTarget = taskFilePath(repoRoot, nextKey);
     const taskBytes = JSON.stringify(task, null, 2) + "\n";
     const payload = Buffer.from(taskBytes, "utf8");
     let reserveFd;
     try {
-      reserveFd = (0, import_node_fs4.openSync)(taskTarget, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
+      reserveFd = (0, import_node_fs5.openSync)(taskTarget, import_node_fs5.constants.O_CREAT | import_node_fs5.constants.O_EXCL | import_node_fs5.constants.O_WRONLY, 384);
     } catch (err) {
       if (err && err.code === "EEXIST") {
         throw new KeyCollisionError(
@@ -8726,13 +8826,13 @@ async function createTask({
     try {
       let written = 0;
       while (written < payload.length) {
-        written += (0, import_node_fs4.writeSync)(reserveFd, payload, written, payload.length - written);
+        written += (0, import_node_fs5.writeSync)(reserveFd, payload, written, payload.length - written);
       }
-      (0, import_node_fs4.fsyncSync)(reserveFd);
+      (0, import_node_fs5.fsyncSync)(reserveFd);
     } finally {
-      (0, import_node_fs4.closeSync)(reserveFd);
+      (0, import_node_fs5.closeSync)(reserveFd);
     }
-    const onDisk = (0, import_node_fs4.readFileSync)(taskTarget, "utf8");
+    const onDisk = (0, import_node_fs5.readFileSync)(taskTarget, "utf8");
     if (onDisk !== taskBytes) {
       throw new KeyCollisionError(
         `createTask: verify-after-write detected a competing writer's payload at ${taskTarget} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
@@ -8749,25 +8849,25 @@ async function createTask({
 
 // src/knowledge-graph.js
 var import_promises2 = require("node:fs/promises");
-var import_node_fs5 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_node_path6 = require("node:path");
 var import_ajv_formats3 = __toESM(require_dist(), 1);
 function graphPath(repoRoot) {
-  return (0, import_node_path5.join)(repoRoot, "knowledge", "graph", "graph.json");
+  return (0, import_node_path6.join)(repoRoot, "knowledge", "graph", "graph.json");
 }
 function emptyGraph() {
   return { schema_version: 1, nodes: [], edges: [] };
 }
 async function loadGraph({ repoRoot }) {
   const path = graphPath(repoRoot);
-  if (!(0, import_node_fs5.existsSync)(path)) return emptyGraph();
+  if (!(0, import_node_fs6.existsSync)(path)) return emptyGraph();
   const raw = await (0, import_promises2.readFile)(path, "utf8");
   return JSON.parse(raw);
 }
 
 // src/task-board.js
 async function readAllTasksForBoard(repoRoot) {
-  const tasksDir2 = (0, import_node_path6.join)(repoRoot, "tasks");
+  const tasksDir2 = (0, import_node_path7.join)(repoRoot, "tasks");
   let entries;
   try {
     entries = await (0, import_promises3.readdir)(tasksDir2);
@@ -8778,7 +8878,7 @@ async function readAllTasksForBoard(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises3.readFile)((0, import_node_path6.join)(tasksDir2, name), "utf8");
+    const raw = await (0, import_promises3.readFile)((0, import_node_path7.join)(tasksDir2, name), "utf8");
     out.push(JSON.parse(raw));
   }
   return out;

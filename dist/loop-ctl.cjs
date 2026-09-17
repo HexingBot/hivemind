@@ -3645,49 +3645,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options2, skipNormalization) {
+    function resolveComponent(base, relative2, options2, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse2(serialize(base, options2), options2);
-        relative = parse2(serialize(relative, options2), options2);
+        relative2 = parse2(serialize(relative2, options2), options2);
       }
       options2 = options2 || {};
-      if (!options2.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options2.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3695,7 +3695,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options2) {
@@ -10857,7 +10857,7 @@ var require_strip_bom_string = __commonJS({
 var require_utils2 = __commonJS({
   "node_modules/gray-matter/lib/utils.js"(exports2) {
     "use strict";
-    var stripBom = require_strip_bom_string();
+    var stripBom2 = require_strip_bom_string();
     var typeOf = require_kind_of();
     exports2.define = function(obj, key, val) {
       Reflect.defineProperty(obj, key, {
@@ -10877,11 +10877,11 @@ var require_utils2 = __commonJS({
       return typeof input === "string" ? Buffer.from(input) : input;
     };
     exports2.toString = function(input) {
-      if (exports2.isBuffer(input)) return stripBom(String(input));
+      if (exports2.isBuffer(input)) return stripBom2(String(input));
       if (typeof input !== "string") {
         throw new TypeError("expected input to be a string or buffer");
       }
-      return stripBom(input);
+      return stripBom2(input);
     };
     exports2.arrayify = function(val) {
       return val ? Array.isArray(val) ? val : [val] : [];
@@ -11012,11 +11012,11 @@ var require_excerpt = __commonJS({
       if (typeof opts.excerpt === "function") {
         return opts.excerpt(file, opts);
       }
-      const sep = file.data.excerpt_separator || opts.excerpt_separator;
-      if (sep == null && (opts.excerpt === false || opts.excerpt == null)) {
+      const sep2 = file.data.excerpt_separator || opts.excerpt_separator;
+      if (sep2 == null && (opts.excerpt === false || opts.excerpt == null)) {
         return file;
       }
-      const delimiter = typeof opts.excerpt === "string" ? opts.excerpt : sep || opts.delimiters[0];
+      const delimiter = typeof opts.excerpt === "string" ? opts.excerpt : sep2 || opts.delimiters[0];
       const idx = file.content.indexOf(delimiter);
       if (idx !== -1) {
         file.excerpt = file.content.slice(0, idx);
@@ -11202,7 +11202,7 @@ __export(loop_ctl_exports, {
 module.exports = __toCommonJS(loop_ctl_exports);
 var import_node_url = require("node:url");
 var import_promises = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 
 // src/repo-root.js
 function resolveRepoRoot(env, cwd) {
@@ -11571,6 +11571,10 @@ function makeErr(code, message) {
   return e;
 }
 
+// src/operating-mode.js
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
+
 // src/pointer.js
 var import_node_fs3 = require("node:fs");
 var import_node_path3 = require("node:path");
@@ -11732,6 +11736,9 @@ var bundleStateSchema = {
 function bundleDirFor(repoRoot, sessionId) {
   return (0, import_node_path4.join)(repoRoot, "state", "sessions", sessionId);
 }
+function sessionsDir(repoRoot) {
+  return (0, import_node_path4.join)(repoRoot, "state", "sessions");
+}
 function bundleSessionPath(repoRoot, sessionId) {
   return (0, import_node_path4.join)(bundleDirFor(repoRoot, sessionId), "session.json");
 }
@@ -11806,21 +11813,91 @@ var ModeStateError = class extends Error {
     this.code = code;
   }
 };
-async function getMode({ repoRoot }) {
-  let pointer;
+var SESSION_ID_RE = /^\d{8}T\d{6}Z-[0-9a-f]{8}$/;
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function stripBom(text) {
+  return text.charCodeAt(0) === 65279 ? text.slice(1) : text;
+}
+function describeNonObject(value) {
+  if (Array.isArray(value)) return "an array";
+  return JSON.stringify(value);
+}
+function readPointerForMode(repoRoot) {
+  const p = pointerFilePath(repoRoot);
   try {
-    pointer = readPointer(repoRoot);
+    (0, import_node_fs5.lstatSync)(p);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return null;
+    throw new ModeStateError(
+      `getMode: state/session.json could not be inspected (${err.message})`,
+      "E_MODE_POINTER_CORRUPT"
+    );
+  }
+  let raw;
+  try {
+    raw = (0, import_node_fs5.readFileSync)(p, "utf8");
+  } catch (err) {
+    throw new ModeStateError(
+      `getMode: state/session.json exists but could not be read (${err.message})`,
+      "E_MODE_POINTER_CORRUPT"
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(stripBom(raw));
   } catch (err) {
     throw new ModeStateError(
       `getMode: state/session.json exists but could not be parsed (${err.message})`,
       "E_MODE_POINTER_CORRUPT"
     );
   }
+  if (!isPlainObject(parsed)) {
+    throw new ModeStateError(
+      `getMode: state/session.json exists but does not contain a JSON object (parsed to ${describeNonObject(parsed)})`,
+      "E_MODE_POINTER_INVALID"
+    );
+  }
+  return parsed;
+}
+async function getMode({ repoRoot }) {
+  const pointer = readPointerForMode(repoRoot);
   if (!pointer || pointer.active_session_id == null) return "harness";
   if (pointer.schema_version !== 2) {
     throw new ModeStateError(
       `getMode: state/session.json has an unrecognized schema_version (${JSON.stringify(pointer.schema_version)}, expected 2)`,
       "E_MODE_POINTER_INVALID"
+    );
+  }
+  if (typeof pointer.active_session_id !== "string" || !SESSION_ID_RE.test(pointer.active_session_id)) {
+    throw new ModeStateError(
+      `getMode: state/session.json declares an active_session_id with an unrecognized format (${JSON.stringify(pointer.active_session_id)})`,
+      "E_MODE_POINTER_INVALID"
+    );
+  }
+  const bundleFilePath = bundleSessionPath(repoRoot, pointer.active_session_id);
+  let realBundleFile;
+  try {
+    realBundleFile = (0, import_node_fs5.realpathSync)(bundleFilePath);
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      throw new ModeStateError(
+        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleFilePath}`,
+        "E_MODE_BUNDLE_MISSING"
+      );
+    }
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} could not be inspected (${err.message})`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  const realSessionsDir = (0, import_node_fs5.realpathSync)(sessionsDir(repoRoot));
+  const relToSessionsDir = (0, import_node_path5.relative)(realSessionsDir, realBundleFile);
+  if (relToSessionsDir === "" || relToSessionsDir === ".." || relToSessionsDir.startsWith(`..${import_node_path5.sep}`) || (0, import_node_path5.isAbsolute)(relToSessionsDir)) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} resolves outside state/sessions/ of this repo (a symlink escaping the repo) and cannot be trusted`,
+      "E_MODE_BUNDLE_CORRUPT"
     );
   }
   let bundle;
@@ -11829,12 +11906,18 @@ async function getMode({ repoRoot }) {
   } catch (err) {
     if (err && err.code === "ENOENT") {
       throw new ModeStateError(
-        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleSessionPath(repoRoot, pointer.active_session_id)}`,
+        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was found at ${bundleFilePath}`,
         "E_MODE_BUNDLE_MISSING"
       );
     }
     throw new ModeStateError(
       `getMode: the bundle for session ${pointer.active_session_id} exists but could not be read (${err.message})`,
+      "E_MODE_BUNDLE_CORRUPT"
+    );
+  }
+  if (!isPlainObject(bundle)) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} exists but is not a JSON object (parsed to ${describeNonObject(bundle)})`,
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
@@ -12039,8 +12122,8 @@ async function grantUnattended({ repoRoot, optIns = {} }) {
 }
 
 // src/bundle-compaction.js
-var import_node_fs5 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_node_path6 = require("node:path");
 var MAX_DECISIONS = 15;
 var MAX_SUBAGENT_RESULTS = 15;
 var MAX_BETA_FINDINGS = 15;
@@ -12115,7 +12198,7 @@ function appendBundleArchive(repoRoot, sessionId, {
     return 0;
   }
   const p = bundleArchivePath(repoRoot, sessionId);
-  if (!(0, import_node_fs5.existsSync)((0, import_node_path5.dirname)(p))) (0, import_node_fs5.mkdirSync)((0, import_node_path5.dirname)(p), { recursive: true });
+  if (!(0, import_node_fs6.existsSync)((0, import_node_path6.dirname)(p))) (0, import_node_fs6.mkdirSync)((0, import_node_path6.dirname)(p), { recursive: true });
   const at = archivedAt || (/* @__PURE__ */ new Date()).toISOString();
   const lines = [
     ...decisions.map((d) => JSON.stringify({ type: "decision", archived_at: at, ...d })),
@@ -12123,7 +12206,7 @@ function appendBundleArchive(repoRoot, sessionId, {
     ...betaFindings.map((text) => JSON.stringify({ type: "loop_state_beta_finding", archived_at: at, text })),
     ...note !== null ? [JSON.stringify({ type: "loop_state_note", archived_at: at, text: note })] : []
   ];
-  (0, import_node_fs5.appendFileSync)(p, lines.join("\n") + "\n", "utf8");
+  (0, import_node_fs6.appendFileSync)(p, lines.join("\n") + "\n", "utf8");
   return lines.length;
 }
 async function compactBundleSession({
@@ -12360,14 +12443,14 @@ var __validateTask = __ajv.compile(schema_default);
 var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
 
 // src/knowledge.js
-var import_node_fs6 = require("node:fs");
-var import_node_path6 = require("node:path");
+var import_node_fs7 = require("node:fs");
+var import_node_path7 = require("node:path");
 var import_gray_matter = __toESM(require_gray_matter(), 1);
 var import_ajv_formats3 = __toESM(require_dist(), 1);
 function listDraftEntries({ repoRoot }) {
-  const dir = (0, import_node_path6.join)(repoRoot, "knowledge", "proposed");
-  if (!(0, import_node_fs6.existsSync)(dir)) return [];
-  return (0, import_node_fs6.readdirSync)(dir).filter((name) => name.endsWith(".md")).map((name) => ({ id: name.replace(/\.md$/, ""), path: (0, import_node_path6.join)(dir, name) }));
+  const dir = (0, import_node_path7.join)(repoRoot, "knowledge", "proposed");
+  if (!(0, import_node_fs7.existsSync)(dir)) return [];
+  return (0, import_node_fs7.readdirSync)(dir).filter((name) => name.endsWith(".md")).map((name) => ({ id: name.replace(/\.md$/, ""), path: (0, import_node_path7.join)(dir, name) }));
 }
 
 // bin/loop-ctl.js
@@ -12431,7 +12514,7 @@ function resolveRoot(flags) {
   return flags.repoRoot || resolveRepoRoot(process.env, process.cwd());
 }
 async function readAllTasksForResume(repoRoot) {
-  const dir = (0, import_node_path7.join)(repoRoot, "tasks");
+  const dir = (0, import_node_path8.join)(repoRoot, "tasks");
   let entries;
   try {
     entries = await (0, import_promises.readdir)(dir);
@@ -12442,7 +12525,7 @@ async function readAllTasksForResume(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises.readFile)((0, import_node_path7.join)(dir, name), "utf8");
+    const raw = await (0, import_promises.readFile)((0, import_node_path8.join)(dir, name), "utf8");
     if (raw.length === 0) continue;
     out.push(JSON.parse(raw));
   }
