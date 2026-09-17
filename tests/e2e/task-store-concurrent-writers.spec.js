@@ -116,12 +116,36 @@ async function runConcurrentOps(repoDir, ops) {
     ]);
     let stderr = '';
     child.stderr.on('data', (d) => { stderr += d.toString(); });
-    return { op, resultsPath, child, getStderr: () => stderr };
+    let exitInfo = null;
+    child.on('exit', (code, signal) => { exitInfo = { code, signal }; });
+    return {
+      op, resultsPath, child, getStderr: () => stderr, getExitInfo: () => exitInfo,
+    };
   });
 
   // Wait for every child to report ready, then release them all at once.
+  //
+  // Review finding LOW-2 (TASK-235 fix round) — this used to be an UNBOUNDED
+  // synchronous busy-wait: a child that dies (crash, thrown error, unhandled
+  // rejection) before it ever reaches the writeFileSync('ready-...') call
+  // hard-blocked this whole test worker FOREVER, with no diagnostic at all —
+  // the failure mode was an indefinitely hung test run, not a readable error.
+  // A bounded deadline turns that into a named, actionable failure instead:
+  // it names which holderId(s) never reported ready, whether their process
+  // already exited (and with what code/signal), and their captured stderr.
+  const READY_BARRIER_TIMEOUT_MS = 15000;
+  const readyDeadline = Date.now() + READY_BARRIER_TIMEOUT_MS;
   const readyPaths = ops.map((op) => join(syncDir, `ready-${op.holderId}`));
   while (!readyPaths.every((p) => existsSync(p))) {
+    if (Date.now() > readyDeadline) {
+      const missing = children
+        .filter((c) => !existsSync(join(syncDir, `ready-${c.op.holderId}`)))
+        .map((c) => `${c.op.holderId} (exitInfo=${JSON.stringify(c.getExitInfo())}, stderr=${c.getStderr()})`);
+      throw new Error(
+        `runConcurrentOps: readiness barrier timed out after ${READY_BARRIER_TIMEOUT_MS}ms waiting for `
+        + `${missing.length} child(ren) to report ready: ${missing.join('; ')}`,
+      );
+    }
     // tight synchronous poll — no sleep-based coordination
   }
   writeFileSync(join(syncDir, 'go'), '1');

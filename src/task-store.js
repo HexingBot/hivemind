@@ -54,9 +54,10 @@ import {
 } from 'node:fs/promises';
 import {
   mkdirSync, readFileSync, existsSync, statSync,
-  openSync, closeSync, writeSync, fsyncSync, constants, unlinkSync,
+  openSync, closeSync, writeSync, fsyncSync, constants, unlinkSync, renameSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 import Ajv from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
@@ -266,38 +267,105 @@ function sleepMs(ms) {
  * TASKS_LOCK_MAX_WAIT_MS elapses (-> throws TaskMutationLockError). Mirrors
  * the exclusive-create + staleness-reclaim shape of src/session-lock.js's
  * acquire(), narrowed to this module's much shorter critical-section lifetime
- * (see TASKS_LOCK_STALE_MS above) and with no CAS-steal/content-check
- * machinery — a stale lock here means an abandoned critical section, not a
- * live foreign holder worth preserving, so a plain reclaim-and-retry is
- * proportionate (unlike session-lock.js, which protects a long-lived holder
- * identity worth not clobbering).
+ * (see TASKS_LOCK_STALE_MS above).
+ *
+ * Returns the OWNERSHIP TOKEN this call wrote into the lock file
+ * (`${pid}-${random}`, unique per acquisition — never reused, even by the
+ * same process across two calls). The caller (withTasksLock) must pass this
+ * token back to releaseTasksLock so release only ever unlinks a lock it
+ * actually still owns — see releaseTasksLock's doc comment for why this
+ * matters (review finding MEDIUM-1, TASK-235 fix round).
+ *
+ * TASK-235 fix round (review finding MEDIUM-1) — the original reclaim step
+ * here was a plain `statSync` + `unlinkSync`, and its own comment claimed
+ * "a competing reclaimer racing this same unlink is harmless: only one of
+ * them wins the next openSync(EXCL)". That claim was FALSE for a real
+ * interleaving: waiters A and B can both observe the SAME stale lock, both
+ * unlink it (the second unlink is a silent no-op on a missing file, it does
+ * not error), and then BOTH win their own subsequent openSync(O_CREAT|
+ * O_EXCL) — because each unlink-then-create is two separate syscalls with a
+ * window between them, not one atomic step. The comment is corrected here,
+ * not just the code: reclaim is now a single atomic `renameSync` of the
+ * stale lock to a per-token quarantine path. `rename` is atomic at the
+ * filesystem level, so of N concurrent reclaimers racing the SAME source
+ * path, exactly ONE rename can succeed — every other reclaimer's rename
+ * throws ENOENT (the source already vanished under it) and loops back to
+ * retry acquisition from scratch, instead of racing straight to unlink+
+ * recreate the way the old code did.
+ *
+ * SECOND-ORDER TOCTOU, found and closed during this same fix round (not
+ * present in the reviewer's finding text, but implied by it and confirmed by
+ * a throwaway reproduction script before shipping this): the `statSync`
+ * staleness check and the `renameSync` reclaim below are still two separate
+ * syscalls with a gap between them. In that gap, ANOTHER reclaimer can
+ * complete its ENTIRE cycle — rename the stale lock away, recreate a FRESH
+ * live lock at the same path — before THIS call's `renameSync` runs. Without
+ * a second check, this call would then rename away that OTHER holder's brand
+ * new, live lock (having "reclaimed" based on a staleness observation that
+ * was true a moment ago but is stale itself by the time it's acted on) — the
+ * exact class of bug this whole fix exists to close, just moved one syscall
+ * later. Closed by re-verifying staleness on the file this call ACTUALLY
+ * captured (via `statSync` on the quarantined copy, whose mtime survives the
+ * rename) rather than trusting the earlier, pre-rename observation: if the
+ * captured file turns out not to be genuinely stale, it is renamed BACK
+ * (best-effort) instead of discarded, so the real live holder's lock is
+ * restored rather than silently destroyed.
  */
 async function acquireTasksLock(repoRoot) {
   const dir = tasksDir(repoRoot);
   mkdirSync(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
   const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  const token = `${process.pid}-${randomBytes(6).toString('hex')}`;
   for (;;) {
     try {
       const fd = openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
       try {
-        const payload = Buffer.from(`${process.pid}\n`, 'utf8');
+        const payload = Buffer.from(`${token}\n`, 'utf8');
         writeSync(fd, payload, 0, payload.length);
         fsyncSync(fd);
       } finally {
         closeSync(fd);
       }
-      return;
+      return token;
     } catch (err) {
       if (!err || err.code !== 'EEXIST') throw err;
       let stat = null;
       try { stat = statSync(lockPath); } catch { /* vanished between EEXIST and stat — fine, loop */ }
       if (stat && (Date.now() - stat.mtimeMs) > TASKS_LOCK_STALE_MS) {
-        // Abandoned lock (holder crashed mid-critical-section) — reclaim and
-        // retry immediately. A competing reclaimer racing this same unlink is
-        // harmless: only one of them wins the next openSync(EXCL), the other
-        // just loops again.
-        try { unlinkSync(lockPath); } catch { /* raced with another reclaimer */ }
+        // Abandoned lock (holder crashed mid-critical-section, or a live
+        // holder overran the staleness window — see releaseTasksLock for how
+        // that second case is kept from cascading). Reclaim via atomic
+        // rename-away rather than a bare unlink: only one concurrent
+        // reclaimer's rename can succeed on the same source path (see this
+        // function's doc comment above for why the old unlink-based reclaim
+        // let two waiters both win).
+        const quarantinePath = `${lockPath}.stale.${token}`;
+        let renamed = false;
+        try {
+          renameSync(lockPath, quarantinePath);
+          renamed = true;
+        } catch {
+          // Lost the reclaim race (another reclaimer's rename won first, or a
+          // live holder refreshed the lock before we got here) — loop back
+          // and re-evaluate from scratch rather than assuming we own anything.
+        }
+        if (renamed) {
+          // Second-order TOCTOU check (see doc comment above) — re-verify
+          // staleness on the file we ACTUALLY captured, not on the earlier
+          // `stat` snapshot, before deciding it is safe to discard.
+          let qStat = null;
+          try { qStat = statSync(quarantinePath); } catch { /* we own it; should not vanish, but be defensive */ }
+          const genuinelyStale = qStat && (Date.now() - qStat.mtimeMs) > TASKS_LOCK_STALE_MS;
+          if (genuinelyStale) {
+            try { unlinkSync(quarantinePath); } catch { /* best-effort cleanup */ }
+          } else {
+            // We mistakenly captured a LIVE lock another reclaimer just
+            // (re)created in the gap between our stat and our rename — give
+            // it back rather than silently destroying an active holder's lock.
+            try { renameSync(quarantinePath, lockPath); } catch { /* best-effort restore */ }
+          }
+        }
         continue;
       }
       if (Date.now() >= deadline) {
@@ -312,8 +380,32 @@ async function acquireTasksLock(repoRoot) {
   }
 }
 
-function releaseTasksLock(repoRoot) {
-  try { unlinkSync(tasksLockPath(repoRoot)); } catch { /* best-effort — advisory lock, never throw on release */ }
+/**
+ * TASK-235 fix round (review finding MEDIUM-1) — release the tasks mutation
+ * lock, but ONLY IF the lock file currently on disk still carries the exact
+ * `token` this holder wrote at acquisition (see acquireTasksLock). Without
+ * this check, release was unconditional: if THIS holder's own critical
+ * section ever ran long enough to exceed TASKS_LOCK_STALE_MS, a waiter could
+ * legitimately reclaim the lock as abandoned and acquire it for itself — and
+ * this holder's own (unconditional) release would then unlink that WAITER's
+ * fresh lock instead of its own, letting a second mutation start while the
+ * first was still in its critical section (the exact defect this finding
+ * named: "the original holder's finally unlink then deletes the NEW holder's
+ * lock, cascading"). Comparing tokens before unlinking closes that: a
+ * mismatch means someone else already reclaimed this lock, so this call
+ * leaves it alone — best-effort, never throws (advisory lock semantics,
+ * unchanged from before this fix).
+ */
+function releaseTasksLock(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
+  try {
+    const current = readFileSync(lockPath, 'utf8').trim();
+    if (current !== token) return; // reclaimed by someone else — not ours to delete
+    unlinkSync(lockPath);
+  } catch {
+    // best-effort — advisory lock, never throw on release. Covers ENOENT
+    // (already reclaimed/removed by someone else) and any other read/unlink race.
+  }
 }
 
 /**
@@ -333,11 +425,11 @@ function releaseTasksLock(repoRoot) {
  * other, reads never do.
  */
 async function withTasksLock(repoRoot, fn) {
-  await acquireTasksLock(repoRoot);
+  const token = await acquireTasksLock(repoRoot);
   try {
     return await fn();
   } finally {
-    releaseTasksLock(repoRoot);
+    releaseTasksLock(repoRoot, token);
   }
 }
 
@@ -412,13 +504,44 @@ function buildIndexBytes(tasks, generatedAt) {
 
 /**
  * AC1 — drift detection between tasks/*.json (source of truth) and
- * tasks/index.json (regenerable summary). If the index disagrees with the
- * file set OR an index entry is missing one of the required summary fields,
- * regenerate index.json from the file set via atomicWriteFile. Otherwise this
- * is a no-op (happy path — no spurious mtime churn).
- *
- * Returns true if a repair was performed, false if the index was already in sync.
+ * tasks/index.json (regenerable summary): true iff the index disagrees with
+ * the file set (missing/extra keys) OR an index entry is missing one of the
+ * required summary fields, OR the index is absent/corrupt while tasks exist.
+ * Pure and synchronous — no write, no lock — so it is safe to call both
+ * OUTSIDE the lock (the cheap common-case check that lets a read never touch
+ * the lock at all) and again INSIDE the lock right before a repair write
+ * (see writeIndexLocked below, review finding MEDIUM-2).
  */
+function computeIndexDrift(idxPath, tasks) {
+  if (!existsSync(idxPath)) {
+    // No index yet: drift only if there ARE on-disk tasks to summarize — an
+    // empty repo with no tasks AND no index is a legitimate idle state.
+    return tasks.length > 0;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(idxPath, 'utf8'));
+  } catch {
+    return true; // corrupt index — always drift
+  }
+  const indexEntries = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const fileKeys = tasks.map((t) => t.key).sort();
+  const idxKeys = indexEntries.map((e) => e && e.key).filter(Boolean).sort();
+
+  if (fileKeys.length !== idxKeys.length) return true;
+  for (let i = 0; i < fileKeys.length; i++) {
+    if (fileKeys[i] !== idxKeys[i]) return true;
+  }
+  // Also check that every index entry carries the required summary fields.
+  for (const e of indexEntries) {
+    if (!e || typeof e.key !== 'string' || typeof e.title !== 'string'
+      || typeof e.status !== 'string' || typeof e.priority !== 'string') {
+      return true;
+    }
+  }
+  return false;
+}
+
 // TASK-235 — small shared helper for verifyAndRepairIndex's three write
 // branches below. Runs under withTasksLock so a read-triggered self-heal
 // rewrite can never race a genuine mutation's own (also lock-protected)
@@ -427,54 +550,32 @@ function buildIndexBytes(tasks, generatedAt) {
 // corrupt branches; the common "index already in sync" path (the vast
 // majority of calls) returns before ever reaching here and never touches the
 // lock — this is what keeps the read path (CU7) unaffected in the common case.
-async function writeIndexLocked(repoRoot, idxPath, tasks, stamp) {
-  await withTasksLock(repoRoot, () => atomicWriteFiles([
-    { target: idxPath, bytes: buildIndexBytes(tasks, stamp) },
-  ]));
+//
+// TASK-235 fix round (review finding MEDIUM-2) — `tasks` and the drift
+// verdict that triggered this call were both computed from an UNLOCKED read
+// (listTodos/listReady read the file set, then call verifyAndRepairIndex,
+// all before any lock is taken). A read-triggered repair racing a genuine,
+// lock-protected mutation could therefore win the lock SECOND, after the
+// mutation already wrote a fresher index.json, and overwrite it with this
+// call's stale, pre-mutation snapshot. Fixed by re-reading the task set AND
+// re-running the drift check INSIDE the lock, right before writing: if the
+// mutation that raced us already fixed (or changed) the drift, this call's
+// re-check sees no drift and skips the write entirely rather than clobbering
+// fresher content with stale content.
+async function writeIndexLocked(repoRoot, idxPath, stamp) {
+  await withTasksLock(repoRoot, async () => {
+    const freshTasks = await readAllTasks(repoRoot);
+    if (!computeIndexDrift(idxPath, freshTasks)) return; // a racing mutation already fixed it
+    await atomicWriteFiles([
+      { target: idxPath, bytes: buildIndexBytes(freshTasks, stamp) },
+    ]);
+  });
 }
 
 async function verifyAndRepairIndex(repoRoot, tasks, now = () => new Date().toISOString()) {
   const idxPath = indexFilePath(repoRoot);
-  if (!existsSync(idxPath)) {
-    // No index yet — only repair (write a fresh one) if there ARE on-disk tasks.
-    // An empty repo with no tasks AND no index is a legitimate idle state.
-    if (tasks.length === 0) return false;
-    await writeIndexLocked(repoRoot, idxPath, tasks, now());
-    return true;
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(readFileSync(idxPath, 'utf8'));
-  } catch {
-    // Corrupt index — regenerate.
-    await writeIndexLocked(repoRoot, idxPath, tasks, now());
-    return true;
-  }
-  const indexEntries = Array.isArray(parsed.tasks) ? parsed.tasks : [];
-  const fileKeys = tasks.map((t) => t.key).sort();
-  const idxKeys = indexEntries.map((e) => e && e.key).filter(Boolean).sort();
-
-  let drift = false;
-  if (fileKeys.length !== idxKeys.length) {
-    drift = true;
-  } else {
-    for (let i = 0; i < fileKeys.length; i++) {
-      if (fileKeys[i] !== idxKeys[i]) { drift = true; break; }
-    }
-  }
-  if (!drift) {
-    // Also check that every index entry carries the required summary fields.
-    for (const e of indexEntries) {
-      if (!e || typeof e.key !== 'string' || typeof e.title !== 'string'
-        || typeof e.status !== 'string' || typeof e.priority !== 'string') {
-        drift = true;
-        break;
-      }
-    }
-  }
-  if (!drift) return false;
-
-  await writeIndexLocked(repoRoot, idxPath, tasks, now());
+  if (!computeIndexDrift(idxPath, tasks)) return false;
+  await writeIndexLocked(repoRoot, idxPath, now());
   return true;
 }
 
@@ -696,8 +797,12 @@ function detectDependencyCycles(tasks) {
  *
  * @throws {DanglingDependencyError} If a dangling depends_on is found and no
  *   other ticket is ready.
- * @throws {DependencyCycleError} If a depends_on cycle is found (and no
- *   dangling reference), and no other ticket is ready.
+ * @throws {DependencyCycleError} If a depends_on cycle TOUCHING AT LEAST ONE
+ *   NON-DONE TICKET is found (and no dangling reference), and no other ticket
+ *   is ready. TASK-235 fix round (review finding LOW-1) — a cycle wholly
+ *   among 'done' tickets never blocks any live work, so it does not throw
+ *   here even when `ready` is otherwise empty; see the THROW-scoping note
+ *   right before the throw site below.
  */
 export async function listReady({ repoRoot }) {
   // Mirror the listTodos housekeeping so listReady is a safe stand-alone call
@@ -709,6 +814,15 @@ export async function listReady({ repoRoot }) {
   const byKey = new Map(tasks.map((t) => [t.key, t]));
   const cycles = detectDependencyCycles(tasks);
   const cycledKeys = new Set(cycles.flat());
+  // TASK-235 fix round (review finding LOW-1) — cycles that never touch a
+  // non-done ticket cannot block anything live (see the throw site below for
+  // why this only narrows the THROW, never the annotation).
+  const liveCycles = cycles.filter(
+    (cycle) => cycle.some((key) => {
+      const t = byKey.get(key);
+      return t && t.status !== 'done';
+    }),
+  );
 
   const dangling = [];
   const ready = [];
@@ -747,16 +861,30 @@ export async function listReady({ repoRoot }) {
             : ''),
         );
       }
-      throw new DependencyCycleError(
-        `listReady: found ${cycles.length} depends_on cycle(s), which can never resolve: `
-        + `${cycles.map((c) => c.join(' -> ')).join('; ')}. Break the cycle by removing or `
-        + 'correcting one of the depends_on entries in the loop — none of the tickets in a cycle '
-        + 'can ever reach "done" on their own.',
-      );
+      // TASK-235 fix round (review finding LOW-1) — only throw for a cycle
+      // that touches at least one NON-done ticket. A cycle wholly among
+      // 'done' tickets can never block any live work — throwing here would
+      // make a drained board (nothing else ready, nothing live blocked) read
+      // as an error with nothing a human can or needs to act on. This
+      // narrows the THROW only, not the annotation: every cycle found (live
+      // or done-only) is still reported via `ready.dependencyCycles` below.
+      if (liveCycles.length > 0) {
+        throw new DependencyCycleError(
+          `listReady: found ${liveCycles.length} depends_on cycle(s), which can never resolve: `
+          + `${liveCycles.map((c) => c.join(' -> ')).join('; ')}. Break the cycle by removing or `
+          + 'correcting one of the depends_on entries in the loop — none of the tickets in a cycle '
+          + 'can ever reach "done" on their own.',
+        );
+      }
+      // Only done-only cycles (or none) and nothing else ready: fall through
+      // to the annotation below on the empty `ready` array rather than
+      // throwing — see the comment above.
     }
-    // WG-H-012 — other tickets ARE ready; do not discard that real result.
-    // See the doc comment above for the reporting contract and its accepted
-    // residual (JSON-serialized callers that drop extra array properties).
+    // WG-H-012 — other tickets ARE ready, or the only cycles found are
+    // harmlessly wholly among done tickets; do not discard that real result
+    // or manufacture an error nothing live needs. See the doc comment above
+    // for the reporting contract and its accepted residual (JSON-serialized
+    // callers that drop extra array properties).
     if (dangling.length > 0) ready.danglingDependencies = dangling;
     if (cycles.length > 0) ready.dependencyCycles = cycles;
   }
