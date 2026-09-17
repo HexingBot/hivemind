@@ -1262,3 +1262,132 @@ describe('TASK-187 fix round LOW-2 — exception.author rejects privileged roles
     expect(after.comments[0].body).toMatch(/^\[CLOSE-EXCEPTION\]/);
   });
 });
+
+// ===========================================================================
+// WG2-234 (wargaming 2026-09-17, loop-back round) — two more locks for the
+// second wargaming pass's confirmed MEDIUM findings on the same close seam.
+// RED-GREEN PLANTED: each was run against a scratch snapshot of the pre-fix
+// src/task-store.js (via `git show HEAD:` into a temp copy, never by
+// reverting the real working tree) and observed to fail for its own reason
+// before landing — see the hand-off for the exact repro scripts.
+// ===========================================================================
+describe('WG2-M-03 — a [WARGAMING] marker mentioned mid-sentence or inside a quoted error message does not satisfy the wargaming-record guard', () => {
+  it('a comment quoting the guard\'s own error message ("[WARGAMING]" + "CU3" + "path" all present, but as a description, not a record) does NOT satisfy checkWargamingRecord', async () => {
+    // HARM: the guard's own error text, pasted back as a comment (a realistic
+    // accident — an agent quoting the previous failure to explain what it
+    // fixed), used to satisfy the very check it was quoting, letting a ticket
+    // close with NO real wargaming record at all.
+    const { transitionStatus, WargamingRecordError } = await import('../src/task-store.js');
+
+    const selfDefeating = 'task TASK-970\'s most recent "[WARGAMING]" comment names no approved case '
+      + '(e.g. "CU3") and no path/alternative it attacked — a wargaming record that names neither a '
+      + 'case nor a path is not a wargaming record (WG-H-003).';
+    const repoDir = makeTmpDir('af-wg2-m03-quoted');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-970': makeTask({
+          key: 'TASK-970',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body: selfDefeating },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-970', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a quoted description of the marker must not count as a real wargaming record')
+      .toBeInstanceOf(WargamingRecordError);
+    expect(readTaskFile(repoDir, 'TASK-970').status).toBe('in_review');
+  });
+
+  it('a mid-sentence mention ("pendiente: correr el [WARGAMING] de CU1..CU9 (paths)") does NOT satisfy checkWargamingRecord', async () => {
+    const { transitionStatus, WargamingRecordError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-wg2-m03-midsentence');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-971': makeTask({
+          key: 'TASK-971',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            {
+              author: 'orchestrator',
+              at: '2026-09-17T00:01:00Z',
+              body: 'pendiente: correr el [WARGAMING] de CU1..CU9 (paths)',
+            },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-971', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(WargamingRecordError);
+    expect(readTaskFile(repoDir, 'TASK-971').status).toBe('in_review');
+  });
+});
+
+describe('WG2-M-05 — a finding marker quoted inside another comment does not open or close a HIGH finding', () => {
+  it('[FINDING-RESOLVED: <id>] written inside a quoted process reminder does NOT resolve a real open [FINDING-HIGH: <id>]', async () => {
+    // HARM: a HIGH finding could be talked-away by a comment that merely
+    // QUOTES the resolution marker as an example of what not to write,
+    // instead of an actual fix landing — the close guard treated the mention
+    // as a real resolution.
+    const { closeTask, OpenHighFindingError } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-wg2-m05-quoted');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-972': makeTask({
+          key: 'TASK-972',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            {
+              author: 'orchestrator',
+              at: '2026-09-17T00:01:00Z',
+              body: '[WARGAMING] Atacado CU1 y su path de fallo. [FINDING-HIGH: WG-H-050] bug real sin arreglar.',
+            },
+            {
+              author: 'orchestrator',
+              at: '2026-09-17T00:02:00Z',
+              body: 'Recordatorio: NUNCA escribas "[FINDING-RESOLVED: WG-H-050]" sin haber arreglado el bug.',
+            },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-972',
+        comment: { author: 'orchestrator', body: deliveryBody({ ticket: 'TASK-972' }) },
+        linked_commits: ['abc1234'],
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a quoted resolution marker must not resolve a real HIGH finding').toBeInstanceOf(OpenHighFindingError);
+    expect(caught.message).toContain('WG-H-050');
+    expect(readTaskFile(repoDir, 'TASK-972').status).toBe('in_review');
+  });
+});

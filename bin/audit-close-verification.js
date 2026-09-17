@@ -130,7 +130,11 @@ export function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  const report = computeCloseVerificationReport(tasks);
+  // WG2-M-06 — re-resolve every done ticket's linked_commits against this
+  // repoRoot via real git, instead of trusting each ticket's stored
+  // linked_commits_verification record as data (see close-verification.js's
+  // module-header note for why that used to be forgeable).
+  const report = computeCloseVerificationReport(tasks, { repoRoot });
 
   if (asJson) {
     // eslint-disable-next-line no-console

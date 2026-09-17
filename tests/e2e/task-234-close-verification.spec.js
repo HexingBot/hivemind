@@ -15,6 +15,16 @@
 // comment on disk, the delivery-body locks failed by closing on an "OK" body,
 // the finding locks failed by closing with an open HIGH, and the sha locks
 // failed by accepting an invented sha as evidence.
+//
+// WG2-234-001/WG2-234-M04 (wargaming 2026-09-17, loop-back round) — two more
+// locks appended below for the second wargaming pass's confirmed HIGH/MEDIUM
+// findings: the invisible-Unicode filler bypass (WG2-H-01) and the
+// transition_status "reaches done with no delivery, indistinguishable from a
+// historical close" gap (WG2-M-04). Same red-green discipline: each was run
+// against a pre-fix snapshot of src/task-store.js (via `git show HEAD:` into
+// a scratch copy, never by reverting the real working tree — see the
+// hand-off for why `git stash` was avoided here) and observed to fail for
+// its own reason before landing.
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -308,5 +318,61 @@ describe('TASK-234 — the close seam, one lock per approved use case that broke
     const verdict = auditCloseVerification(historical);
     expect(verdict.status).toBe(CLOSE_VERIFICATION_STATUS.UNVERIFIABLE);
     expect(verdict.reason).toBe('no-close-verification-record');
+  });
+
+  it('WG2-H-01 — an invisible-Unicode filler ("OK" + U+200B under a heading) is rejected, not silently persisted as an empty close', async () => {
+    // HARM: a one-word-equivalent close (an invisible character away from the
+    // literal "OK" body WG-H-001 exists to reject) closed the ticket, and the
+    // PERSISTED comment (post-sanitize) then disagreed with the guard that
+    // let it through — a reader running auditCloseVerification on the same
+    // close it just approved got 'not-verified', not 'verified'.
+    const ZW = '​'; // zero-width space — also proven with U+2060/U+200E/U+E0001 by hand at review time
+    const repoDir = seed('af-234-wg2-h01', 'TASK-809');
+    const body = [
+      'ENTREGA — TASK-809', '',
+      `1. CASOS DE USO APROBADOS`, `OK${ZW}`, '',
+      `2. RESULTADO`, `OK${ZW}`, '',
+      `3. WARGAMING`, `CU1 camino${ZW}`, '',
+      `4. UAT`, `OK${ZW} verdict`,
+    ].join('\n');
+
+    let caught;
+    try {
+      await closeTask({
+        repoRoot: repoDir,
+        key: 'TASK-809',
+        comment: { author: 'orchestrator', body },
+        linked_commits: ['abc1234'],
+        commitVerifier: verifierReturning('verified'),
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'invisible-Unicode filler must be rejected exactly like "OK"').toBeInstanceOf(DeliveryBodyError);
+    expect(read(repoDir, 'TASK-809').status).toBe('in_review');
+  });
+
+  it('WG2-M-04 — transitionStatus reaching done writes a record that makes the close distinguishable from a historical one', async () => {
+    // HARM: a close reached via transition_status (no comment body, so no
+    // delivery to check) left NO linked_commits_verification at all — exactly
+    // what auditCloseVerification reads as "predates TASK-234's guards", so a
+    // TODAY close routed this way was mechanically pooled with the ~223
+    // historical closes instead of being flagged as incomplete.
+    const repoDir = seed('af-234-wg2-m04', 'TASK-810', {
+      linked_commits: ['abc1234'],
+      comments: [REVIEWER, wargamingComment()],
+    });
+
+    await transitionStatus({ repoRoot: repoDir, key: 'TASK-810', status: 'done' });
+    const after = read(repoDir, 'TASK-810');
+    expect(after.status).toBe('done');
+    expect(after.linked_commits_verification, 'a real closure event must leave a record, even an incomplete one')
+      .toBeTruthy();
+    expect(after.linked_commits_verification.commits).toEqual([]);
+
+    const verdict = auditCloseVerification(after, { repoRoot: process.cwd() });
+    expect(verdict.reason, 'must read as incomplete, never pooled with pre-TASK-234 historical closes')
+      .not.toBe('no-close-verification-record');
+    expect(verdict.status).toBe(CLOSE_VERIFICATION_STATUS.NOT_VERIFIED);
   });
 });

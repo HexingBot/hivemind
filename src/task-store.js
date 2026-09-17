@@ -1326,7 +1326,23 @@ export class OpenHighFindingError extends Error {
   }
 }
 
-const WARGAMING_MARKER_RE = /\[WARGAMING\]([\s\S]*)/;
+// WG2-M-03 (wargaming 2026-09-17) — ANCHORED to the start of the comment
+// (optional leading whitespace only), not matched anywhere in the text.
+// Before this fix the marker could be found mid-sentence ("pendiente: correr
+// el [WARGAMING] de CU1..CU9 (paths)") or inside a quoted description of the
+// marker itself (the guard's OWN WargamingRecordError message below, which
+// quotes "[WARGAMING]" and cites "CU3" as an example, satisfied its own
+// check when pasted verbatim as a comment) — in both cases the marker match
+// existed, but the comment was never genuinely OPENING with a wargaming
+// record, it was talking ABOUT the convention. Anchoring means only a
+// comment that truly starts with the marker is treated as a wargaming
+// record at all; the case/path regexes are then tested against the CAPTURED
+// group (the text after the marker) rather than the raw body, so the used
+// capture and the anchor work together. This still does not (and is not
+// meant to) catch a comment that opens with the marker and then explicitly
+// says wargaming was NOT run ("[WARGAMING] NO se corrio...") — full
+// negation-detection is a different, larger problem and out of scope here.
+const WARGAMING_MARKER_RE = /^\s*\[WARGAMING\]([\s\S]*)/;
 // A named case: "CU1", "CU 1", "caso 1" (the Orchestrator's own numbering
 // convention — see the use-case-list comment format documented in CLAUDE.md
 // Workflow step 2). A named path: the literal words this repo already uses
@@ -1346,6 +1362,19 @@ function wargamingComments(task) {
 }
 
 /**
+ * WG2-M-03 — extract the text AFTER the anchored `[WARGAMING]` marker (the
+ * capture group WARGAMING_MARKER_RE already takes), falling back to the raw
+ * body if the anchored regex somehow does not match (defensive only — every
+ * caller of this helper has already filtered through wargamingComments,
+ * whose own test uses the same anchored regex, so the fallback is dead code
+ * in practice, not a silent behavior change).
+ */
+function wargamingMarkerCapture(body) {
+  const m = WARGAMING_MARKER_RE.exec(body);
+  return m ? m[1] : body;
+}
+
+/**
  * TASK-234 — the PREDICATE behind checkWargamingRecord, extracted so
  * closeTask can use a valid `[WARGAMING]` comment as an ALTERNATIVE to the
  * closing body's own "3. WARGAMING" block instead of demanding both (see
@@ -1357,7 +1386,8 @@ export function hasValidWargamingComment(task) {
   const marked = wargamingComments(task);
   if (marked.length === 0) return false;
   const body = String(marked[marked.length - 1].body || '');
-  return WARGAMING_CASE_RE.test(body) && WARGAMING_PATH_RE.test(body);
+  const text = wargamingMarkerCapture(body);
+  return WARGAMING_CASE_RE.test(text) && WARGAMING_PATH_RE.test(text);
 }
 
 function checkWargamingRecord(task, resolvedException) {
@@ -1375,8 +1405,9 @@ function checkWargamingRecord(task, resolvedException) {
   }
   const last = marked[marked.length - 1];
   const body = String(last.body || '');
-  const hasCase = WARGAMING_CASE_RE.test(body);
-  const hasPath = WARGAMING_PATH_RE.test(body);
+  const text = wargamingMarkerCapture(body);
+  const hasCase = WARGAMING_CASE_RE.test(text);
+  const hasPath = WARGAMING_PATH_RE.test(text);
   if (!hasCase || !hasPath) {
     throw new WargamingRecordError(
       `task ${task.key}'s most recent "[WARGAMING]" comment names no ${!hasCase ? 'approved case (e.g. "CU3")' : ''}`
@@ -1397,6 +1428,34 @@ const FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
 const FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^\]]*)\]/gi;
 const DEGRADED_SEPARATOR_RE = /—|\s-\s/;
 
+// WG2-M-05 (wargaming 2026-09-17) — a finding marker mentioned inside a
+// fenced code block, an inline backtick span, or a double-quoted string is a
+// MENTION, not an assertion, and must not open or close a finding.
+// Reproduction before this fix: `[FINDING-HIGH: WG-H-050] bug real sin
+// arreglar`, followed by a process-reminder comment reading `Recordatorio:
+// NUNCA escribas "[FINDING-RESOLVED: WG-H-050]" sin haber arreglado el bug.`
+// closed WG-H-050 — the resolution marker was quoted, describing what NOT to
+// write, and the scan counted it anyway. Blanking these spans out (same
+// length, so no other match's index shifts) before scanning, rather than
+// special-casing each of the three regexes below, is the same shape of fix
+// WG2-M-03 needed for the wargaming marker, generalized: a marker only
+// counts when it appears as live prose, not quoted/fenced text ABOUT the
+// convention. Deliberately simple (no escape-sequence handling in the
+// double-quote regex, and quotes cannot span a newline) — comments here are
+// agent-authored prose, not a language needing string escaping; the
+// conservative failure mode is a real marker someone chose to needlessly
+// quote losing the block-until-resolved protection, never the reverse.
+const FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g;
+const BACKTICK_SPAN_RE = /`[^`\n]*`/g;
+const DOUBLE_QUOTED_SPAN_RE = /"[^"\n]*"/g;
+
+function blankQuotedAndFencedSpans(text) {
+  return text
+    .replace(FENCED_CODE_BLOCK_RE, (m) => ' '.repeat(m.length))
+    .replace(BACKTICK_SPAN_RE, (m) => ' '.repeat(m.length))
+    .replace(DOUBLE_QUOTED_SPAN_RE, (m) => ' '.repeat(m.length));
+}
+
 /**
  * TASK-234 (WG-H-004/WG-H-005) — throws OpenHighFindingError when any
  * `[FINDING-HIGH: <id>]` marker recorded on the task has no matching
@@ -1413,7 +1472,7 @@ function checkNoOpenHighFindings(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === 'done') return;
   const comments = Array.isArray(task.comments) ? task.comments : [];
-  const allText = comments.map((c) => String((c && c.body) || '')).join('\n');
+  const allText = blankQuotedAndFencedSpans(comments.map((c) => String((c && c.body) || '')).join('\n'));
 
   const opened = new Set();
   for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
@@ -1533,6 +1592,22 @@ function normalizeDeliveryText(s) {
   return String(s)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\p{Cf}/gu, '')
+    // WG2-H-01 (wargaming 2026-09-17) - also strips Unicode \p{Cf} FORMAT
+    // characters (zero-width space/joiner, word joiner, LRM/RLM bidi marks,
+    // the Unicode Tag block) as a SECOND, independent layer. The PRIMARY fix
+    // is that closeTask now validates the SANITIZED body -- see closeTask's
+    // `sanitizedBody`, which reuses the exact value it persists -- so this
+    // line is belt-and-suspenders, not the load-bearing fix: before either
+    // fix, a line reading "OK" + an invisible U+200B rendered identically to
+    // "OK" to DELIVERY_FILLER_RE (which only matches an EXACT,
+    // already-normalized string), so the filler was never recognized and the
+    // block read as "real content" with an invisible character doing the
+    // work. Stripping \p{Cf} here makes the delivery-body predicate itself
+    // immune to this class regardless of whether a future caller remembers to
+    // pre-sanitize -- the same class stripInvisibleChars
+    // (src/intake-sanitizer.js) already strips before a comment body is
+    // persisted.
     .replace(/[*_`#]/g, '')
     .trim()
     .toLowerCase();
@@ -2003,12 +2078,20 @@ function checkUatGuard(task) {
  * non-function, non-undefined value (null, false, a typo) is a bug, not a
  * bypass, and now throws instead of silently no-op'ing.
  *
- * Deliberately NO opt-out flag: harness mode's own no-op (getMode defaults
- * to 'harness' on any missing/corrupt pointer or bundle — see
- * src/operating-mode.js) already covers every legitimate case that needs to
- * skip the guard (a tmp test repo with no state/session.json), so a second,
- * explicit bypass mechanism would be an unnecessary escape hatch — see the
- * TASK-188 hand-off for the grep confirming no test needed one.
+ * Deliberately NO opt-out flag: the guard's own no-op already covers every
+ * LEGITIMATE case that needs to skip it — a tmp test repo (or any harness-
+ * mode repo) with no state/session.json at all, no active session, or a
+ * healthy bundle that simply declares no mode all resolve getMode to
+ * 'harness' silently and the guard no-ops (see src/operating-mode.js's
+ * getMode doc comment for the exact case table). A pointer or bundle that
+ * EXISTS but is corrupt is NOT part of that legitimate set — as of
+ * TASK-236, getMode throws a ModeStateError for that case instead of
+ * defaulting to 'harness', so this closeGuard call fails closed (the close
+ * attempt aborts) rather than silently skipping the guard. A second,
+ * explicit bypass mechanism would be an unnecessary escape hatch precisely
+ * because there is no scenario, corrupt or otherwise, where omitting one
+ * lets an unauthorized close through undetected — see the TASK-188
+ * hand-off for the grep confirming no test needed one.
  */
 function resolveCloseGuard(closeGuard) {
   if (closeGuard === undefined) return loopModeCloseGuard;
@@ -2100,10 +2183,19 @@ export async function transitionStatus({
       // a call that is already failing an older, more basic precondition keeps
       // failing with that same error. transitionStatus carries no comment body,
       // so the `[WARGAMING]` comment is the ONLY place a wargaming record can
-      // live on this path — this is what keeps "reach done via transition_status
-      // instead of close_task" from being a way around the delivery-body check
-      // closeTask applies (closeTask accepts either source; see
-      // findDeliveryBodyProblems).
+      // live on this path.
+      //
+      // WG2-M-04 (wargaming 2026-09-17) — CORRECTING A FALSE CLAIM this
+      // comment used to make: it said running these two checks here "keeps
+      // 'reach done via transition_status instead of close_task' from being a
+      // way around the delivery-body check closeTask applies". It does not —
+      // it only preserves the wargaming-record and no-open-HIGH-finding
+      // checks. checkDeliveryBody NEVER runs on this path (transitionStatus
+      // takes no comment body to check), so a genuine NEW closure reached
+      // through transitionStatus carries no delivery evidence at all. See the
+      // `linked_commits_verification` write below (right after `task.status =
+      // status`) for how that gap is now made mechanically visible instead of
+      // silently indistinguishable from a pre-TASK-234 historical close.
       checkWargamingRecord(task, resolvedException);
       checkNoOpenHighFindings(task, resolvedException);
     }
@@ -2126,6 +2218,29 @@ export async function transitionStatus({
     const stamp = now();
     task.status = status;
     task.updated_at = stamp;
+    // WG2-M-04 (wargaming 2026-09-17) — a genuine NEW closure reached through
+    // this path (not the no-op re-close returned above, and not a bypass via
+    // `exception`, which is its own auditable [CLOSE-EXCEPTION] marker below)
+    // carries no delivery body — transitionStatus takes none. Before this
+    // fix, that meant `linked_commits_verification` was left entirely ABSENT,
+    // which is EXACTLY what auditCloseVerification reads as "closed before
+    // TASK-234's guards existed (or outside closeTask)" — a close reached
+    // this way TODAY was mechanically indistinguishable from a 2026-07
+    // historical one. Recording a deliberately-incomplete record here (empty
+    // `commits`, a `reason` naming the route) gives auditCloseVerification a
+    // record to react to: it re-checks the ticket's actual last comment
+    // against the delivery-body predicate and — because that comment was
+    // never written as a delivery — correctly classifies the close as
+    // 'not-verified' rather than pooling it into 'unverifiable' next to the
+    // historical tickets that never had this field at all.
+    if (status === 'done' && previousStatus !== 'done' && !resolvedException) {
+      task.linked_commits_verification = {
+        at: stamp,
+        checked: false,
+        reason: 'transition-status-route: this call carries no comment body, so no delivery could be checked here',
+        commits: [],
+      };
+    }
     // Only append the exception marker when this call actually MOVED the
     // status — an idempotent re-close (previousStatus already === status,
     // i.e. already 'done') is not a new closure event, so recording a fresh
@@ -2321,7 +2436,21 @@ export async function closeTask({
     // content. A `[WARGAMING]` comment already on the ticket satisfies block
     // 3's case/path enumeration INSTEAD of the body repeating it (not in
     // addition to it) — a legitimate close never needs both.
-    checkDeliveryBody(comment.body, {
+    //
+    // WG2-H-01 (wargaming 2026-09-17) — validate the SANITIZED body, i.e.
+    // exactly the bytes this call is about to persist (see `newComment`
+    // below, which reuses `sanitizedBody` rather than re-sanitizing). Before
+    // this fix the check ran against the RAW `comment.body` while the store
+    // persisted `sanitizeCommentBody(comment.body)` — an invisible-Unicode
+    // filler ("OK" + U+200B under every heading) passed this raw check, and
+    // the PERSISTED comment then collapsed, once stripped, into the literal
+    // empty body WG-H-001/WG-H-002 exist to reject — leaving
+    // auditCloseVerification (which re-checks the persisted comment)
+    // permanently disagreeing with the guard that let the close through. The
+    // design is now "sanitize once, validate and persist the same value",
+    // never "validate raw, then store a different, sanitized value".
+    const sanitizedBody = sanitizeCommentBody(comment.body);
+    checkDeliveryBody(sanitizedBody, {
       taskKey: key,
       wargamingSatisfiedByComment: hasValidWargamingComment(task),
       resolvedException,
@@ -2350,7 +2479,11 @@ export async function closeTask({
     // transitionStatus: capture BEFORE the mutation below.
     const previousStatus = task.status;
     const stamp = now();
-    const newComment = { author: comment.author, at: stamp, body: sanitizeCommentBody(comment.body) };
+    // WG2-H-01 — reuse the SAME sanitized value the delivery-body check above
+    // just validated, rather than re-sanitizing comment.body a second time
+    // (which would be harmless here since sanitize is idempotent, but would
+    // reintroduce the "two call sites can drift" shape this fix removes).
+    const newComment = { author: comment.author, at: stamp, body: sanitizedBody };
     task.status = 'done';
     task.comments = Array.isArray(task.comments) ? [...task.comments, newComment] : [newComment];
     // Only append the exception marker when this call actually MOVED the
