@@ -47,6 +47,11 @@ import { makeTmpDir, cleanupAll } from './helpers/tmpRepo.js';
 // requires a recorded `[WARGAMING]` pass. Both fixtures come from one shared
 // helper so ~20 specs do not each grow their own drifting copy.
 import { deliveryBody, wargamingComment } from './helpers/deliveryBody.js';
+// TASK-238 — read the REAL TASK-234.json (read-only; never mutated by this
+// file) to exercise the fix against the actual comment that motivated the
+// ticket, per CLAUDE.md's Regla 1 ("program against the approved cases, not
+// a rederivation").
+import { REPO_ROOT } from './helpers/repoRoot.js';
 
 afterAll(cleanupAll);
 
@@ -1389,5 +1394,178 @@ describe('WG2-M-05 — a finding marker quoted inside another comment does not o
     expect(caught, 'a quoted resolution marker must not resolve a real HIGH finding').toBeInstanceOf(OpenHighFindingError);
     expect(caught.message).toContain('WG-H-050');
     expect(readTaskFile(repoDir, 'TASK-972').status).toBe('in_review');
+  });
+});
+
+// ===========================================================================
+// TASK-238 — FINDING_HIGH_RE's unbounded id capture ([^\]]+) let comment
+// PROSE that merely started with the marker's literal syntax swallow every
+// character up to the next unrelated `]` in the same comment, registering a
+// ~1190-char "id" (the real occurrence on TASK-234's own comments[3], offset
+// 3213) that no `[FINDING-RESOLVED: <id>]` could ever match, leaving the
+// ticket permanently incerrable. Fixed by bounding the id to "id shape" (no
+// whitespace, an explicit FINDING_ID_MAX_LEN) with a loose scan cap
+// distinguishing "nothing marker-shaped here at all" (runaway prose) from
+// "a marker was attempted but its id is malformed" (reported, never
+// silently dropped — AC4/CU3).
+// ===========================================================================
+describe('TASK-238 — FINDING_HIGH_RE id-shape bound and malformed-marker reporting', () => {
+  it('CU2 (real TASK-234 offset-3213 prose) — runaway prose starting with the marker syntax no longer registers a phantom open finding', async () => {
+    // HARM: without this fix, a reviewer's own prose describing the marker
+    // convention (never an intended finding) became an unresolvable open
+    // finding, permanently blocking the close of an otherwise-conforming
+    // ticket — exactly what happened to the real TASK-234.
+    const { transitionStatus, OpenHighFindingError, MalformedFindingMarkerError } =
+      await import('../src/task-store.js');
+
+    const real = JSON.parse(
+      readFileSync(join(REPO_ROOT, 'tasks', 'TASK-234.json'), 'utf8'),
+    );
+    const runawayProseComment = real.comments[3];
+    expect(runawayProseComment.body, 'fixture assumption: the real offending comment still carries the offset-3213 marker syntax')
+      .toContain('[FINDING-HIGH: aparece en EXACTAMENTE dos lugares');
+
+    const repoDir = makeTmpDir('af-238-cu2-runaway-prose');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-910': makeTask({
+          key: 'TASK-910',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            runawayProseComment,
+            // The real comment ALSO carries three legitimate, short HIGH ids
+            // (WG2-234-001, WG2-234-002, WG-H-050) alongside the offset-3213
+            // runaway prose — resolve those three here so this test isolates
+            // the runaway-prose behavior specifically, without also
+            // asserting on the (already-covered-elsewhere) legitimate-id path.
+            { author: 'orchestrator', at: '2026-09-17T00:05:00Z', body: '[FINDING-RESOLVED: WG2-234-001] arreglado.' },
+            { author: 'orchestrator', at: '2026-09-17T00:06:00Z', body: '[FINDING-RESOLVED: WG2-234-002] arreglado.' },
+            { author: 'orchestrator', at: '2026-09-17T00:07:00Z', body: '[FINDING-RESOLVED: WG-H-050] arreglado.' },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-910', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'the real offset-3213 prose must never be mistaken for an open or malformed finding')
+      .toBeUndefined();
+    expect(readTaskFile(repoDir, 'TASK-910').status).toBe('done');
+    // Belt and suspenders: neither error class fired, not just "no throw".
+    expect(caught).not.toBeInstanceOf(OpenHighFindingError);
+    expect(caught).not.toBeInstanceOf(MalformedFindingMarkerError);
+  });
+
+  it('CU4 (real board ids) — legitimate short ids from TASK-235/TASK-236 keep opening and resolving exactly as before', async () => {
+    // HARM: an over-correction of the id-shape bound could stop recognizing
+    // real, already-relied-upon ids on the live board (e.g. TASK-236's
+    // "WG4-236-002", TASK-235's "WG3-235-001"), silently un-resolving
+    // findings that were already closed and re-opening tickets that should
+    // stay done.
+    const { transitionStatus } = await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-238-cu4-real-ids');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-911': makeTask({
+          key: 'TASK-911',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body: '[FINDING-HIGH: WG4-236-002] hallazgo real.' },
+            { author: 'orchestrator', at: '2026-09-17T00:02:00Z', body: '[FINDING-HIGH: WG3-235-001] otro hallazgo real.' },
+            { author: 'orchestrator', at: '2026-09-17T00:03:00Z', body: '[FINDING-RESOLVED: WG4-236-002] arreglado.' },
+            { author: 'orchestrator', at: '2026-09-17T00:04:00Z', body: '[FINDING-RESOLVED: WG3-235-001] arreglado.' },
+          ],
+        }),
+      },
+    });
+
+    await transitionStatus({ repoRoot: repoDir, key: 'TASK-911', status: 'done' });
+    expect(readTaskFile(repoDir, 'TASK-911').status).toBe('done');
+  });
+
+  it('CU3 (malformed id: spaces/newline/over-length) — reported as a distinct MalformedFindingMarkerError, never silently folded into "no open findings"', async () => {
+    // HARM: a marker attempt with a malformed id (spaces, a newline, or an
+    // id past the length cap) could be silently dropped by the parser,
+    // indistinguishable from "nothing was ever attempted here" — losing the
+    // human's intent to flag something without any trace or error.
+    const { transitionStatus, OpenHighFindingError, MalformedFindingMarkerError } =
+      await import('../src/task-store.js');
+
+    const repoDir = makeTmpDir('af-238-cu3-malformed');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-912': makeTask({
+          key: 'TASK-912',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body: '[FINDING-HIGH: id con espacios] hallazgo real mal escrito.' },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-912', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'a malformed marker must block close with a DISTINCT error, not silently pass')
+      .toBeInstanceOf(MalformedFindingMarkerError);
+    expect(caught).not.toBeInstanceOf(OpenHighFindingError);
+    expect(caught.message).toContain('id con espacios');
+    expect(readTaskFile(repoDir, 'TASK-912').status).toBe('in_review');
+  });
+
+  it('CU6 (id-length evasion) — an id past the length cap still blocks the close loudly, never silently evading review', async () => {
+    // HARM: if an over-long id were silently dropped instead of reported, a
+    // real finding could be hidden from the close guard just by giving it an
+    // implausibly long id — the exact evasion channel this cap must not open.
+    const { transitionStatus, MalformedFindingMarkerError } = await import('../src/task-store.js');
+
+    const oversizedId = 'A'.repeat(45); // 5 chars past FINDING_ID_MAX_LEN (40)
+    const repoDir = makeTmpDir('af-238-cu6-length-evasion');
+    makeRepoSkeleton(repoDir, {
+      tasks: {
+        'TASK-913': makeTask({
+          key: 'TASK-913',
+          verification_tier: 'tests-after',
+          status: 'in_review',
+          linked_commits: ['abc1234'],
+          comments: [
+            { author: 'reviewer', at: '2026-09-17T00:00:00Z', body: 'APPROVE.' },
+            wargamingComment(),
+            { author: 'orchestrator', at: '2026-09-17T00:01:00Z', body: `[FINDING-HIGH: ${oversizedId}] hallazgo real con id inflado.` },
+          ],
+        }),
+      },
+    });
+
+    let caught;
+    try {
+      await transitionStatus({ repoRoot: repoDir, key: 'TASK-913', status: 'done' });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, 'an oversized id must still block the close loudly, never disappear silently')
+      .toBeInstanceOf(MalformedFindingMarkerError);
+    expect(readTaskFile(repoDir, 'TASK-913').status).toBe('in_review');
   });
 });
