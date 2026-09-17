@@ -1261,7 +1261,13 @@ function checkWargamingRecord(task, resolvedException) {
 
 const FINDING_HIGH_RE = /\[FINDING-HIGH:\s*([^\]]+)\]/gi;
 const FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
-const FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^—-]+)[—-]\s*(\S.*)\]/gi;
+// The whole marker body is captured, then split on the FIRST em-dash (or a
+// spaced hyphen) inside it. Matching the id with a "no dash" character class
+// instead would truncate every realistic id — "WG-H-005" and "R-1" both carry
+// hyphens — and quietly register the degradation against the wrong id, which
+// is worse than not registering it at all.
+const FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^\]]*)\]/gi;
+const DEGRADED_SEPARATOR_RE = /—|\s-\s/;
 
 /**
  * TASK-234 (WG-H-004/WG-H-005) — throws OpenHighFindingError when any
@@ -1286,7 +1292,12 @@ function checkNoOpenHighFindings(task, resolvedException) {
   const closed = new Set();
   for (const m of allText.matchAll(FINDING_RESOLVED_RE)) closed.add(m[1].trim().toUpperCase());
   for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
-    if (m[2] && m[2].trim() !== '') closed.add(m[1].trim().toUpperCase());
+    const inner = m[1] || '';
+    const sep = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep === -1) continue; // no separator at all: no justification recorded
+    const id = inner.slice(0, sep).trim();
+    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, '').trim();
+    if (id !== '' && justification !== '') closed.add(id.toUpperCase());
   }
   const open = [...opened].filter((id) => !closed.has(id));
   if (open.length > 0) {
