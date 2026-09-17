@@ -486,4 +486,123 @@ describe('TASK-236 WG-1 — getMode validates container SHAPE, not just the mode
     const result = await getMode({ repoRoot: root });
     expect(result).toBe('loop');
   });
+
+  // ---------------------------------------------------------------------------
+  // TASK-236 MEDIO-1 (WG-3 fix-round, 2026-09-17) — the sibling of WG-4 above:
+  // a BOM-prefixed BUNDLE, not only a BOM-prefixed pointer. Harm prevented:
+  // before this fix, stripBom was applied only in readPointerForMode; a
+  // BOM-prefixed bundle.session.json (an ordinary editor artifact, same class
+  // as WG-4) hit JSON.parse directly via readBundleSession and was
+  // indistinguishable from truncated JSON, hard-blocking every close in a
+  // repo whose bundle happened to carry one — an availability regression for
+  // a benign file, not an attack.
+  // ---------------------------------------------------------------------------
+  it('getMode_still_resolves_correctly_through_a_BOM_prefixed_bundle_file (MEDIO-1)', async () => {
+    const { getMode } = await import(OPERATING_MODE_URL);
+    const { root, id } = makeRepo({ bundleExtra: { mode: 'loop' } });
+    const bundlePath = join(root, 'state', 'sessions', id, 'session.json');
+    const original = JSON.parse(readFileSync(bundlePath, 'utf8'));
+    writeFileSync(bundlePath, '﻿' + JSON.stringify(original), 'utf8');
+    const result = await getMode({ repoRoot: root });
+    expect(result).toBe('loop');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-236 WG-3 (third wargaming pass, 2026-09-17, finding WG3-236-001) — the
+// WG-1 defense-in-depth resolved BOTH the bundle file and sessionsDir() via
+// realpathSync and compared the two resolved paths. That comparison is blind
+// to a symlink AT or ABOVE state/sessions/ itself: if the CONTAINER is the
+// symlink, both sides resolve through it and agree. These two locks pin the
+// adversary's exact reproduction — one for state/sessions/ symlinked, one for
+// state/ entire symlinked — proving getMode now denies (throws) instead of
+// silently reading and honoring an external file's declared mode.
+// ---------------------------------------------------------------------------
+describe('TASK-236 WG-3 — getMode denies when the CONTAINER (not the value) is a symlink escaping the repo', () => {
+  it('getMode_throws_when_state_sessions_itself_is_a_symlink_to_an_external_directory', async () => {
+    // Harm prevented: symlinking only state/sessions/ (leaving state/ and
+    // state/session.json real, local files) used to be enough to make
+    // getMode read and return an EXTERNAL file's declared `mode` — here
+    // 'loop' — as if it were this repo's own idle/loop state, because
+    // realpathSync(bundleFile) and realpathSync(sessionsDir) both resolved
+    // through the same symlink and agreed on containment.
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const id = '20260917T000000Z-c0ffee00';
+
+    const victim = makeTmpDir('af-om-wg3-sessions');
+    mkdirSync(join(victim, 'state'), { recursive: true });
+    writeFileSync(
+      join(victim, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: id, updated_at: '2026-09-17T00:00:00Z' }),
+      'utf8',
+    );
+
+    const external = makeTmpDir('af-om-wg3-ext-sessions');
+    mkdirSync(join(external, id), { recursive: true });
+    writeFileSync(
+      join(external, id, 'session.json'),
+      JSON.stringify({
+        schema_version: 2, session_id: id, mode: 'loop', updated_at: '2026-09-17T00:00:00Z',
+      }),
+      'utf8',
+    );
+
+    // state/sessions -> external (a directory OUTSIDE the repo).
+    symlinkSync(external, join(victim, 'state', 'sessions'));
+
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: victim });
+    } catch (err) {
+      caughtErr = err;
+    }
+    expect(
+      caughtErr,
+      'getMode must reject a symlinked state/sessions/, never read the external mode as if it were harness or loop',
+    ).toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_BUNDLE_CORRUPT');
+  });
+
+  it('getMode_throws_when_state_itself_is_a_symlink_to_an_external_directory', async () => {
+    // Harm prevented: symlinking state/ ENTIRE (pointer and bundle both then
+    // resolve through it) used to make getMode return whatever the external
+    // location declared — here 'harness' — silently, exactly the same as a
+    // legitimate idle repo with no local state/ at all.
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const id = '20260917T000000Z-dadfeed0';
+
+    const victim = makeTmpDir('af-om-wg3-state');
+
+    const external = makeTmpDir('af-om-wg3-ext-state');
+    writeFileSync(
+      join(external, 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: id, updated_at: '2026-09-17T00:00:00Z' }),
+      'utf8',
+    );
+    mkdirSync(join(external, 'sessions', id), { recursive: true });
+    writeFileSync(
+      join(external, 'sessions', id, 'session.json'),
+      JSON.stringify({
+        schema_version: 2, session_id: id, mode: 'harness', updated_at: '2026-09-17T00:00:00Z',
+      }),
+      'utf8',
+    );
+
+    // state -> external (a directory OUTSIDE the repo) — no local state/ dir at all.
+    symlinkSync(external, join(victim, 'state'));
+
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: victim });
+    } catch (err) {
+      caughtErr = err;
+    }
+    expect(
+      caughtErr,
+      'getMode must reject a symlinked state/, never silently resolve to the external file\'s harness/loop declaration',
+    ).toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_BUNDLE_CORRUPT');
+  });
 });

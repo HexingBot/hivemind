@@ -42,7 +42,9 @@
 //     for the composition-gap proof and its fix.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import {
+  mkdirSync, writeFileSync, readFileSync, symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -320,6 +322,107 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
     // The property that matters: still untouched, never MORE permissive
     // with a forged active_session_id than with sane state.
     expect(readTaskFileBytes(root, 'TASK-299')).toBe(before);
+  });
+
+  // ---------------------------------------------------------------------------
+  // TASK-236 WG-3 (third wargaming pass, 2026-09-17, finding WG3-236-001) —
+  // the container-symlink leg of the same CU2 property, now proved end-to-end
+  // through the close guard (not just getMode in isolation — that
+  // reproduction lives in tests/e2e/operating-mode.spec.js). CU1 above
+  // ('blocks close-to-done in unauthorized loop mode...') is the sane half of
+  // the adversary's decisive pair — a loop-mode bundle with no loop_auth
+  // denies; this is the corrupted half. Harm prevented: before this fix,
+  // symlinking state/sessions/ to an external directory whose bundle
+  // declared BOTH mode:'loop' AND loop_auth.auto_close_on_green_review: true
+  // made loopModeCloseGuard read and HONOR that external grant — the close
+  // CU1 proves is denied on a healthy bundle would have gone through
+  // UNGUARDED here, authorized entirely by a file outside the repo.
+  // ---------------------------------------------------------------------------
+  it('TASK-236 WG-3 — the SAME close stays denied when state/sessions is a symlink to an external directory granting auto_close_on_green_review', async () => {
+    const { transitionStatus } = await import(TASK_STORE_URL);
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { ModeStateError } = await import(pathToFileURL(join(__srcDir, 'operating-mode.js')).href);
+
+    const sessionId = '20260917T010101Z-abadcafe';
+    const root = makeTmpDir('af-closeguard-wg3-sessions');
+    mkdirSync(join(root, 'state'), { recursive: true });
+    writeFileSync(
+      join(root, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: sessionId, updated_at: '2026-09-17T01:00:00Z' }, null, 2),
+      'utf8',
+    );
+
+    const external = makeTmpDir('af-closeguard-wg3-ext-sessions');
+    mkdirSync(join(external, sessionId), { recursive: true });
+    writeFileSync(
+      join(external, sessionId, 'session.json'),
+      JSON.stringify({
+        schema_version: 2,
+        session_id: sessionId,
+        mode: 'loop',
+        loop_auth: { auto_close_on_green_review: true },
+        updated_at: '2026-09-17T01:00:00Z',
+      }, null, 2),
+      'utf8',
+    );
+
+    // state/sessions -> external (a directory OUTSIDE the repo).
+    symlinkSync(external, join(root, 'state', 'sessions'));
+
+    makeRepoSkeleton(root, { tasks: { 'TASK-300': makeTask('TASK-300') } });
+    const before = readTaskFileBytes(root, 'TASK-300');
+
+    await expect(
+      transitionStatus({
+        repoRoot: root, key: 'TASK-300', status: 'done', closeGuard: loopModeCloseGuard,
+      }),
+    ).rejects.toBeInstanceOf(ModeStateError);
+
+    // The property that matters: still untouched, exactly like CU1/CU2/WG-1 —
+    // never MORE permissive with a symlinked container than with sane state,
+    // regardless of what the external file declares.
+    expect(readTaskFileBytes(root, 'TASK-300')).toBe(before);
+  });
+
+  // ---------------------------------------------------------------------------
+  // TASK-236 WG-3 — readLoopAuth's OWN containment (see its doc comment in
+  // src/close-guard.js), exercised directly rather than through
+  // loopModeCloseGuard, so this proves the property even if a future caller
+  // reached readLoopAuth without going through getMode first. Harm prevented:
+  // before this fix, readLoopAuth had no containment of its own at all and
+  // would read and return an EXTERNAL bundle's loop_auth object verbatim —
+  // including a forged auto_close_on_green_review: true — as if it were this
+  // repo's own.
+  // ---------------------------------------------------------------------------
+  it('TASK-236 WG-3 — readLoopAuth itself denies (returns {}) when state/sessions is a symlink, independent of getMode', async () => {
+    const { readLoopAuth } = await import(CLOSE_GUARD_URL);
+
+    const sessionId = '20260917T020202Z-beefcafe';
+    const root = makeTmpDir('af-closeguard-wg3-readloopauth');
+    mkdirSync(join(root, 'state'), { recursive: true });
+    writeFileSync(
+      join(root, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: sessionId, updated_at: '2026-09-17T02:00:00Z' }, null, 2),
+      'utf8',
+    );
+
+    const external = makeTmpDir('af-closeguard-wg3-ext-readloopauth');
+    mkdirSync(join(external, sessionId), { recursive: true });
+    writeFileSync(
+      join(external, sessionId, 'session.json'),
+      JSON.stringify({
+        schema_version: 2,
+        session_id: sessionId,
+        loop_auth: { auto_close_on_green_review: true, uat_delegated_to_orchestrator: true },
+        updated_at: '2026-09-17T02:00:00Z',
+      }, null, 2),
+      'utf8',
+    );
+
+    symlinkSync(external, join(root, 'state', 'sessions'));
+
+    const result = readLoopAuth(root);
+    expect(result, 'readLoopAuth must never honor an external loop_auth object read through a symlinked container').toEqual({});
   });
 
   // ---------------------------------------------------------------------------

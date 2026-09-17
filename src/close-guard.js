@@ -12,7 +12,7 @@
 
 import { readPointer } from './pointer.js';
 import { readBundleSession } from './bundle.js';
-import { getMode } from './operating-mode.js';
+import { getMode, assertBundleContainerNotSymlinked } from './operating-mode.js';
 
 /**
  * Thrown when loop mode is active but the human has not granted
@@ -453,11 +453,39 @@ export function hasExplicitHumanVerdictMarker(task) {
  * so both guards read the exact same source of truth via the same
  * readPointer/readBundleSession primitives operating-mode.js and
  * loop-auth.js already use.
+ *
+ * TASK-236 WG-3 (finding WG3-236-001, 2026-09-17) — this function reads the
+ * bundle DIRECTLY via readBundleSession, bypassing getMode entirely, and
+ * historically carried NO containment of its own: a symlinked state/,
+ * state/sessions/, or per-session bundle directory made it read and return an
+ * EXTERNAL file's `loop_auth` object as if it were this repo's own —
+ * including `auto_close_on_green_review: true` an attacker or a broken
+ * worktree/backup script placed outside the repo, which loopModeCloseGuard
+ * would then honor. In the normal call path both loopModeCloseGuard and
+ * loopModeUatCommentGuard call getMode FIRST and only reach this function
+ * once getMode has already returned 'loop' — and getMode's own
+ * assertBundleContainerNotSymlinked (src/operating-mode.js) now denies a
+ * symlinked container before that can happen, so this function is currently
+ * unreachable with a symlinked container via either of its two callers. It
+ * gets the exact same check anyway, exported from operating-mode.js so both
+ * modules share one definition rather than two independently-maintained
+ * copies: (a) that is what "same containment as getMode" means literally,
+ * not "protected transitively by a caller's precondition that might change",
+ * and (b) a symlinked container throws inside the try below, which this
+ * function's existing catch converts to `{}` — an EMPTY loop_auth, which is
+ * the same safe/deny direction as every other corrupt-state case here (an
+ * empty loop_auth fails `auto_close_on_green_review !== true` and denies the
+ * close), never more permissive than the healthy-bundle case.
+ *
+ * Exported (not just used internally) so this containment can be pinned by a
+ * direct test that does not depend on getMode's own check running first —
+ * see tests/e2e/close-guard.spec.js's WG-3 block.
  */
-function readLoopAuth(repoRoot) {
+export function readLoopAuth(repoRoot) {
   try {
     const pointer = readPointer(repoRoot);
     if (pointer && pointer.active_session_id != null) {
+      assertBundleContainerNotSymlinked(repoRoot, pointer.active_session_id);
       const bundle = readBundleSession(repoRoot, pointer.active_session_id);
       return (bundle && bundle.loop_auth) || {};
     }
@@ -480,18 +508,38 @@ function readLoopAuth(repoRoot) {
  *     scalar, JSON `null`), an active_session_id whose format doesn't match
  *     what newSessionId produces (including a path-traversal attempt like
  *     `..`), an unrecognized schema_version, a ghost pointer naming a
- *     missing bundle, or a bundle directory/file that resolves outside
- *     state/sessions/ of this repo — now makes getMode THROW a
- *     ModeStateError instead of masking it as 'harness'. This function does
- *     not catch that error, so it propagates out of loopModeCloseGuard and
- *     the close attempt fails — denied, the same direction as an explicit
- *     LoopCloseGuardError, never silently permitted. (Before the WG-1
- *     fix-round, getMode's blanket 'harness' default on any error, plus its
- *     lack of any shape/format validation, meant a truncated bundle, a
- *     malformed pointer, or a path-traversing active_session_id could each
- *     disable this guard entirely, turning a close that a healthy bundle
- *     would have denied into one that silently succeeded — see
- *     src/operating-mode.js's getMode doc comment for the full case table.
+ *     missing bundle, or state/, state/sessions/, the session's own bundle
+ *     directory, or session.json itself being a symlink — now makes getMode
+ *     THROW a ModeStateError instead of masking it as 'harness'. This
+ *     function does not catch that error, so it propagates out of
+ *     loopModeCloseGuard and the close attempt fails — denied, the same
+ *     direction as an explicit LoopCloseGuardError, never silently
+ *     permitted. (Before the WG-1 fix-round, getMode's blanket 'harness'
+ *     default on any error, plus its lack of any shape/format validation,
+ *     meant a truncated bundle, a malformed pointer, or a path-traversing
+ *     active_session_id could each disable this guard entirely, turning a
+ *     close that a healthy bundle would have denied into one that silently
+ *     succeeded — see src/operating-mode.js's getMode doc comment for the
+ *     full case table.
+ *
+ *     TASK-236 WG-3 (2026-09-17, finding WG3-236-001) — two claims in THIS
+ *     paragraph, as it read before this fix-round, were themselves
+ *     falsified by a since-closed vector and are corrected here rather than
+ *     left standing: (1) "getMode defaults to 'harness' ONLY for the
+ *     legitimate idle case" was false whenever state/sessions/ (or state/
+ *     entire) was a symlink to an external directory — getMode then read
+ *     and returned THAT external file's declared mode (harness OR loop),
+ *     neither the legitimate-idle case nor a thrown error, a silent THIRD
+ *     outcome the two-branch description below did not account for; (2) the
+ *     "Two narrower, deliberately UNfixed limits remain" list right below
+ *     was, at that same moment, missing this exact vector as an unlisted
+ *     THIRD limit — it should have been named there, not silently omitted.
+ *     Both are corrected now that the vector is CLOSED (see
+ *     assertBundleContainerNotSymlinked, src/operating-mode.js), not by
+ *     adding it to the list below as a permanent limit: getMode's own case
+ *     table is once again the accurate, exhaustive description, and the
+ *     list immediately below is once again complete at two items.
+ *
  *     Two narrower, deliberately UNfixed limits remain, both accepted
  *     rather than closed: an attacker-written `mode: "harness"` is
  *     indistinguishable from a genuine one, since 'harness' is itself a

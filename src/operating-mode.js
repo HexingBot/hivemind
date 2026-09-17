@@ -5,13 +5,13 @@
 // mode ('harness' | 'loop') via the active bundle.  Uses the existing pointer
 // + bundle helpers so there is one atomic-write path for all session state.
 
-import { readFileSync, lstatSync, realpathSync } from 'node:fs';
-import { relative, isAbsolute, sep } from 'node:path';
+import { readFileSync, lstatSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { readPointer, pointerFilePath } from './pointer.js';
 import {
-  readBundleSession, readBundleSessionOrThrow, writeBundleSession, bundleSessionPath,
-  sessionsDir,
+  readBundleSessionOrThrow, writeBundleSession, bundleSessionPath,
+  sessionsDir, bundleDirFor,
 } from './bundle.js';
 
 // ---------------------------------------------------------------------------
@@ -80,14 +80,41 @@ export class ModeStateError extends Error {
 //     produce, is otherwise indistinguishable from truncated JSON and would
 //     needlessly hard-block every close in a repo that has never touched
 //     loop mode.
-//   - the realpath containment check inside getMode below — an additional
-//     defense-in-depth close for the same corrupt-container class: even with
-//     a format-valid session id, the bundle's session.json path is resolved
-//     via realpathSync and confirmed to actually live inside
-//     state/sessions/ of THIS repo before it is read, so a symlink placed at
-//     state/sessions/<id> (or at session.json itself) pointing outside the
-//     repo cannot make this function read and honor an arbitrary external
-//     file's `mode`.
+//   - assertBundleContainerNotSymlinked below — a defense-in-depth close for
+//     the same corrupt-container class: even with a format-valid session id,
+//     none of state/, state/sessions/, or the session's own bundle directory
+//     may itself be a symlink, so a symlink placed at any of those three
+//     specific paths pointing outside the repo cannot make this function
+//     read and honor an arbitrary external file's `mode`.
+//
+//     TASK-236 WG-3 (third wargaming pass, 2026-09-17, finding
+//     WG3-236-001) — this bullet originally described a REALPATH-based
+//     check: resolve the bundle file and sessionsDir() via realpathSync and
+//     compare the two resolved paths. That check is CLOSED, not merely
+//     patched, because its root cause was structural: it is blind to a
+//     symlink AT or ABOVE state/sessions/ itself. If state/sessions (or
+//     state/ entire) is a symlink to an external directory, realpathSync
+//     resolves BOTH sides of the comparison through that same symlink and
+//     they agree — relative() comes back "<id>/session.json" and the
+//     (wrong) conclusion is "contained", while getMode goes on to read and
+//     HONOR the external file's declared mode (WG-H-007's original class,
+//     reopened by a different root cause than the one WG-1 closed: the
+//     CONTAINER itself, not the value, was the escape hatch this time).
+//     lstatSync never follows a symlink — it reports the dirent AT that
+//     exact path — so checking state/, state/sessions/, and
+//     state/sessions/<id>/ individually with lstat, and refusing outright
+//     if ANY of them is itself a symlink rather than resolving through it
+//     and comparing destinations, closes the vector realpath comparison
+//     structurally could not: there is nothing left to fool when nothing is
+//     resolved. Rejecting a symlinked container is also the only choice
+//     consistent with this repo's real layout: worktree provisioning here
+//     only ever symlinks node_modules (see
+//     tests/e2e/git-worktree-handback.spec.js and
+//     tests/e2e/worktree-node-modules-provisioning.spec.js), never state/ or
+//     any of its descendants, so a symlink found at any of these three
+//     specific paths is never a legitimate worktree artifact — it can
+//     safely be denied outright, the same direction as every other
+//     corrupt-state case getMode already throws for.
 // ---------------------------------------------------------------------------
 const SESSION_ID_RE = /^\d{8}T\d{6}Z-[0-9a-f]{8}$/;
 
@@ -158,6 +185,55 @@ function readPointerForMode(repoRoot) {
   return parsed;
 }
 
+/**
+ * TASK-236 WG-3 (finding WG3-236-001, 2026-09-17) — reject outright, via
+ * lstat (never realpath), if state/, state/sessions/, or a session's own
+ * bundle directory (state/sessions/<sessionId>/) is itself a symlink. See
+ * the module-level WG-1/WG-3 block comment above for why lstat replaces the
+ * earlier realpath-based comparison and why rejecting a symlinked container
+ * cannot break a legitimate worktree setup (this repo only ever symlinks
+ * node_modules for worktree provisioning, never state/ or its descendants).
+ *
+ * Exported (not just used internally) so src/close-guard.js's readLoopAuth
+ * can apply the exact same containment before it reads loop_auth off the
+ * bundle directly — readLoopAuth does not go through getMode, so without
+ * this shared check it had no containment of its own (see readLoopAuth's own
+ * doc comment for the harm this closes).
+ *
+ * A missing path component (ENOENT) is not this function's concern — it
+ * returns silently and lets the caller's own missing-pointer/missing-bundle
+ * handling report that; only an EXISTING container that is a symlink, or one
+ * that cannot even be inspected, is rejected here.
+ */
+export function assertBundleContainerNotSymlinked(repoRoot, sessionId) {
+  const candidates = [
+    join(repoRoot, 'state'),
+    sessionsDir(repoRoot),
+    bundleDirFor(repoRoot, sessionId),
+  ];
+  for (const dir of candidates) {
+    let st;
+    try {
+      st = lstatSync(dir);
+    } catch (err) {
+      if (err && err.code === 'ENOENT') return; // nothing here yet — caller's own missing-bundle path handles it
+      throw new ModeStateError(
+        `getMode: ${dir} could not be inspected (${err.message})`,
+        'E_MODE_BUNDLE_CORRUPT',
+      );
+    }
+    if (st.isSymbolicLink()) {
+      throw new ModeStateError(
+        `getMode: ${dir} is a symlink — state/, state/sessions/, and a session's own bundle `
+          + "directory must be real directories, never a symlink (a symlinked container can make "
+          + "an external file's declared mode resolve as if it were this repo's own state, "
+          + 'bypassing containment entirely — WG3-236-001)',
+        'E_MODE_BUNDLE_CORRUPT',
+      );
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // getMode({ repoRoot }) → 'harness' | 'loop'
 //
@@ -190,20 +266,38 @@ function readPointerForMode(repoRoot) {
 //     which is also what rejects a path-traversal attempt like `..` or
 //     `../../../../../../tmp/x` before it is ever joined into a path
 //     (E_MODE_POINTER_INVALID); the pointer names a session whose bundle
-//     session.json does not exist, i.e. a ghost pointer, OR whose resolved
-//     real path is not actually inside state/sessions/ of this repo — e.g. a
-//     symlink escaping the repo (E_MODE_BUNDLE_MISSING); the bundle's own
-//     session.json exists but is not valid JSON, or is valid JSON that is
-//     not a plain object — e.g. `true`, `42`, `[]`, `"str"`
-//     (E_MODE_BUNDLE_CORRUPT); or the bundle IS a plain object and DOES
-//     declare a `mode` field, but the value is not one of OPERATING_MODES
-//     (e.g. 'loop' byte-corrupted in place to 'lo0p') (E_MODE_BUNDLE_INVALID).
-//     This last case is deliberately distinct from "no mode field at all"
-//     (legitimate harness, above): a bundle that never mentions `mode` is
-//     the documented idle/legacy shape, but a bundle that mentions `mode`
-//     with a value this code does not recognize is state that exists and
-//     cannot be trusted — the same distinguishability contract the other
-//     corrupt-state cases already apply.
+//     session.json does not exist, i.e. a ghost pointer (E_MODE_BUNDLE_MISSING);
+//     state/, state/sessions/, the session's own bundle directory, or
+//     session.json itself is a symlink — checked by lstat, never resolved,
+//     so a symlink AT or ABOVE state/sessions/ (not only at the per-session
+//     directory or the file) cannot be used to make this function read and
+//     honor an arbitrary external file's mode (E_MODE_BUNDLE_CORRUPT — see
+//     assertBundleContainerNotSymlinked above; TASK-236 WG-3, finding
+//     WG3-236-001, closed after the container-symlink class survived the
+//     WG-1 realpath-based check by escaping ABOVE the comparison instead of
+//     inside it); the bundle's own session.json exists but is not valid
+//     JSON, or is valid JSON that is not a plain object — e.g. `true`, `42`,
+//     `[]`, `"str"` (E_MODE_BUNDLE_CORRUPT); or the bundle IS a plain object
+//     and DOES declare a `mode` field, but the value is not one of
+//     OPERATING_MODES (e.g. 'loop' byte-corrupted in place to 'lo0p')
+//     (E_MODE_BUNDLE_INVALID). This last case is deliberately distinct from
+//     "no mode field at all" (legitimate harness, above): a bundle that
+//     never mentions `mode` is the documented idle/legacy shape, but a
+//     bundle that mentions `mode` with a value this code does not recognize
+//     is state that exists and cannot be trusted — the same
+//     distinguishability contract the other corrupt-state cases already
+//     apply.
+//
+// TASK-236 WG-3 (2026-09-17) — until this fix-round, "exactly two families
+// of outcome" above was FALSIFIED by the container-symlink vector: reading
+// through a symlinked state/sessions/ (or a symlinked state/ entire)
+// produced a THIRD, silent family — an externally-sourced 'harness' or
+// 'loop' value, read and returned as if it were this repo's own state,
+// neither the legitimate-idle case nor a thrown ModeStateError. With
+// assertBundleContainerNotSymlinked in place, that third family is closed:
+// every read this function performs is now confirmed, by lstat, to
+// terminate inside state/sessions/ of THIS repo before any of its content is
+// trusted, so the two-family claim is accurate again, not merely restated.
 //
 // Callers that do not catch ModeStateError (e.g. src/close-guard.js's
 // loopModeCloseGuard/loopModeUatCommentGuard) let it propagate, which aborts
@@ -265,16 +359,21 @@ export async function getMode({ repoRoot }) {
     );
   }
 
-  // TASK-236 WG-1 defense-in-depth — even with a format-valid session id,
-  // confirm the bundle's session.json REAL (symlink-resolved) path is
-  // actually inside state/sessions/ of this repo before trusting it. Without
-  // this, a symlink placed at state/sessions/<id> (or at session.json
-  // itself) pointing outside the repo would let this function read and
-  // honor an arbitrary external file's `mode`.
+  // TASK-236 WG-3 (finding WG3-236-001) — even with a format-valid session
+  // id, none of state/, state/sessions/, or the session's own bundle
+  // directory may itself be a symlink. This SUPERSEDES the WG-1
+  // defense-in-depth's realpath-based comparison (see
+  // assertBundleContainerNotSymlinked's own doc comment, and the module-level
+  // WG-1/WG-3 block comment near the top of this file, for why a realpath
+  // comparison of the bundle file against sessionsDir() cannot see a symlink
+  // AT or ABOVE state/sessions/ itself: resolving both sides through the same
+  // symlink makes them agree).
+  assertBundleContainerNotSymlinked(repoRoot, pointer.active_session_id);
+
   const bundleFilePath = bundleSessionPath(repoRoot, pointer.active_session_id);
-  let realBundleFile;
+  let bundleFileStat;
   try {
-    realBundleFile = realpathSync(bundleFilePath);
+    bundleFileStat = lstatSync(bundleFilePath);
   } catch (err) {
     if (err && err.code === 'ENOENT') {
       throw new ModeStateError(
@@ -289,31 +388,44 @@ export async function getMode({ repoRoot }) {
       'E_MODE_BUNDLE_CORRUPT',
     );
   }
-  const realSessionsDir = realpathSync(sessionsDir(repoRoot));
-  const relToSessionsDir = relative(realSessionsDir, realBundleFile);
-  if (relToSessionsDir === '' || relToSessionsDir === '..'
-      || relToSessionsDir.startsWith(`..${sep}`) || isAbsolute(relToSessionsDir)) {
+  if (bundleFileStat.isSymbolicLink()) {
     throw new ModeStateError(
-      `getMode: the bundle for session ${pointer.active_session_id} resolves outside `
-        + 'state/sessions/ of this repo (a symlink escaping the repo) and cannot be trusted',
+      `getMode: the bundle for session ${pointer.active_session_id} at ${bundleFilePath} is a `
+        + 'symlink and cannot be trusted (see assertBundleContainerNotSymlinked above for why a '
+        + 'symlinked container or file is rejected outright rather than resolved)',
+      'E_MODE_BUNDLE_CORRUPT',
+    );
+  }
+
+  let bundleRaw;
+  try {
+    bundleRaw = readFileSync(bundleFilePath, 'utf8');
+  } catch (err) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} exists but could not be `
+        + `read (${err.message})`,
       'E_MODE_BUNDLE_CORRUPT',
     );
   }
 
   let bundle;
   try {
-    bundle = readBundleSession(repoRoot, pointer.active_session_id);
+    // TASK-236 WG-3 MEDIO-1 — strip a leading BOM here too, the same as
+    // readPointerForMode already does for the pointer. This reads the bundle
+    // file directly (rather than delegating to bundle.js's readBundleSession,
+    // which does not strip a BOM and is outside this ticket's src/ surface)
+    // — readBundleSession's other job, migrateRetiredTestPhase, only touches
+    // workflow_step/loop_state.phase, neither of which getMode inspects, so
+    // reading here without it changes nothing getMode reads. Without this, a
+    // BOM-prefixed bundle.session.json — something ordinary editors produce,
+    // same as a BOM-prefixed pointer — is otherwise indistinguishable from
+    // truncated JSON and would needlessly hard-block every close whose
+    // bundle happens to carry one.
+    bundle = JSON.parse(stripBom(bundleRaw));
   } catch (err) {
-    if (err && err.code === 'ENOENT') {
-      throw new ModeStateError(
-        `getMode: the pointer names session ${pointer.active_session_id} but no bundle was `
-          + `found at ${bundleFilePath}`,
-        'E_MODE_BUNDLE_MISSING',
-      );
-    }
     throw new ModeStateError(
       `getMode: the bundle for session ${pointer.active_session_id} exists but could not be `
-        + `read (${err.message})`,
+        + `parsed (${err.message})`,
       'E_MODE_BUNDLE_CORRUPT',
     );
   }
