@@ -770,31 +770,55 @@ async function writeIndexLocked(repoRoot, idxPath, stamp) {
 }
 
 /**
- * TASK-235 (WG2-235-002, second wargaming pass) — returns one of three
- * distinguishable outcomes (TASK-192 empty-result contract: "could not
- * repair" must never collapse silently into "nothing to repair"):
- *   'in-sync'      — no drift found; nothing to do (the common case).
- *   'repaired'     — drift was found and the rewrite landed.
- *   'lock-timeout' — drift was found but the lock could not be acquired
- *                    within INDEX_REPAIR_MAX_WAIT_MS (a real writer is
- *                    active). The repair was SKIPPED, not silently treated
- *                    as fine — callers (listTodos/listReady) surface this via
- *                    an `indexRepairFailed` property on their return value
- *                    rather than swallowing it.
- * Only TaskMutationLockError is caught here — any other failure (a real fs
- * error, a corrupt write) still propagates, because that is not the
- * "optional maintenance lost a lock race" case this fix targets.
+ * TASK-235 (WG2-235-002, second wargaming pass) — returns an object with a
+ * distinguishable outcome (TASK-192 empty-result contract: "could not repair"
+ * must never collapse silently into "nothing to repair"):
+ *   { outcome: 'in-sync' }       — no drift found; nothing to do (the common case).
+ *   { outcome: 'repaired' }      — drift was found and the rewrite landed.
+ *   { outcome: 'lock-timeout' }  — drift was found but the lock could not be
+ *                                  acquired within INDEX_REPAIR_MAX_WAIT_MS (a
+ *                                  real writer is active).
+ *   { outcome: 'repair-failed', error } — drift was found and the repair was
+ *                                  ATTEMPTED but the write itself failed for
+ *                                  any reason other than the lock wait (EACCES
+ *                                  on a read-only checkout or restrictive
+ *                                  umask, ENOSPC on a full disk, a corrupt
+ *                                  index path, etc.).
+ * In every non-'in-sync'/'repaired' outcome the repair was SKIPPED or FAILED,
+ * never silently treated as fine — callers (listTodos/listReady) surface this
+ * via an `indexRepairFailed` property (and `indexRepairError` when the write
+ * itself failed) on their return value rather than swallowing it.
+ *
+ * WG3-235-001 (third wargaming pass, 2026-09-17): the earlier version caught
+ * ONLY TaskMutationLockError and re-threw every other failure, on the theory
+ * that a real fs error was not "the optional maintenance lost a lock race
+ * case". That theory was wrong — the maintenance is OPTIONAL, and its failure
+ * must never kill the legitimate READ that triggered it. Reproduced with zero
+ * concurrency: a drifted index on a board where tasks/ was not writable made
+ * listTodos and listReady THROW EACCES at ~48ms, so the read died because the
+ * optional self-heal write could not land — the same class of damage as the
+ * lock-race case this fix originally closed, reachable with a full disk, a
+ * read-only checkout, or a restrictive umask. The approved use-case list does
+ * not distinguish errno: an optional maintenance failure is reported, never
+ * fatal. The `error` is carried on the outcome so the caller can surface WHY
+ * (and so the TASK-192 "could not repair is never reported as fine" contract
+ * holds with the reason attached, not just a bare flag).
  */
 async function verifyAndRepairIndex(repoRoot, tasks, now = () => new Date().toISOString()) {
   const idxPath = indexFilePath(repoRoot);
-  if (!computeIndexDrift(idxPath, tasks)) return 'in-sync';
+  if (!computeIndexDrift(idxPath, tasks)) return { outcome: 'in-sync' };
   try {
     await writeIndexLocked(repoRoot, idxPath, now());
   } catch (err) {
-    if (err instanceof TaskMutationLockError) return 'lock-timeout';
-    throw err;
+    if (err instanceof TaskMutationLockError) return { outcome: 'lock-timeout' };
+    // WG3-235-001 — ANY other failure of this optional maintenance is
+    // reported, not propagated: the read's own result never depended on the
+    // rewrite landing. Kept distinguishable from 'lock-timeout' so a caller
+    // can tell "a real writer is active" apart from "the write could not
+    // land" — the remedy differs (retry later vs. fix the fs permissions).
+    return { outcome: 'repair-failed', error: err };
   }
-  return 'repaired';
+  return { outcome: 'repaired' };
 }
 
 // TASK-083 AC3 — only reap tmps older than this. atomicWriteFiles's phase-1/
@@ -889,7 +913,16 @@ export async function listTodos({ repoRoot }) {
   const result = tasks
     .filter((t) => t.status === 'todo')
     .sort(numericKeyOrder);
-  if (repairResult === 'lock-timeout') result.indexRepairFailed = true;
+  if (repairResult.outcome === 'lock-timeout') result.indexRepairFailed = true;
+  // WG3-235-001 — the write itself failed (EACCES/ENOSPC/etc.): the read still
+  // returns, but the failure is surfaced WITH its reason, never silently
+  // collapsed into a bare flag (TASK-192: "could not repair" ≠ "nothing to
+  // repair"). `repairResult.error` is the original Error so callers can log
+  // the actual errno.
+  if (repairResult.outcome === 'repair-failed') {
+    result.indexRepairFailed = true;
+    result.indexRepairError = repairResult.error;
+  }
   return result;
 }
 
@@ -1142,7 +1175,14 @@ export async function listReady({ repoRoot }) {
   // TASK-235 (WG2-235-002) — see listTodos's matching comment: the OPTIONAL
   // index self-heal is best-effort here too; a failed repair never throws out
   // of a read, it is only reported via this flag.
-  if (repairResult === 'lock-timeout') ready.indexRepairFailed = true;
+  if (repairResult.outcome === 'lock-timeout') ready.indexRepairFailed = true;
+  // WG3-235-001 — same contract as listTodos: an optional-maintenance write
+  // failure (EACCES/ENOSPC/etc.) must not kill this legitimate read; it is
+  // reported with its reason instead of propagating.
+  if (repairResult.outcome === 'repair-failed') {
+    ready.indexRepairFailed = true;
+    ready.indexRepairError = repairResult.error;
+  }
 
   return ready;
 }

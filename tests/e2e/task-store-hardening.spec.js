@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterAll } from 'vitest';
 import {
-  readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync, utimesSync,
+  readFileSync, writeFileSync, existsSync, readdirSync, statSync, rmSync, utimesSync, mkdirSync,
 } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -171,6 +171,62 @@ describe('AC1 — drift-detect-and-repair before listTodos', () => {
     expect(after.generated_at).toBe(before.generated_at);
     // Byte-identical: no churn whatsoever on the happy path.
     expect(afterBytes).toBe(beforeBytes);
+  });
+});
+
+// ===========================================================================
+// WG3-235-001 (third wargaming pass, 2026-09-17) — the optional index
+// self-heal is MAINTENANCE; its write failure must never kill the legitimate
+// read that triggered it. The second-pass fix caught only TaskMutationLockError
+// and re-threw every other failure, so a drifted index on a board where tasks/
+// was not writable made listTodos/listReady THROW (EACCES at ~48ms, zero
+// concurrency involved) — same class of damage as the lock-race case, reachable
+// with a full disk, a read-only checkout, or a restrictive umask.
+// ===========================================================================
+describe('WG3-235-001 — an optional index-repair write failure is reported, never fatal', () => {
+  // index.json is replaced by a DIRECTORY: renameSync(tmp, index.json) then
+  // fails with a real fs error (EISDIR/ENOTDIR) — deterministic, works even
+  // when the test runner runs as root (chmod-based EACCES would not), and it
+  // is exactly the "the write could not land for a reason other than the
+  // lock wait" class WG3-235-001 names.
+  it('listTodos returns the todos with indexRepairFailed+indexRepairError instead of throwing', async () => {
+    const { listTodos } = await import(PROD.taskStore);
+
+    const repoDir = makeTmpDir('af-ts9-repair-failed');
+    makeRepoSkeleton(repoDir, {
+      tasks: loadFixtureTasks(['TASK-101']),
+    });
+    // Corrupt the index PATH itself: a directory where the file must be.
+    // (makeRepoSkeleton writes no index.json, so nothing to remove first.)
+    mkdirSync(join(repoDir, 'tasks', 'index.json'));
+
+    const result = await listTodos({ repoRoot: repoDir });
+
+    // The read still returns the real on-disk todos — the repair failure
+    // never propagates out of listTodos.
+    expect(result.map((t) => t.key)).toEqual(['TASK-101']);
+    expect(result.indexRepairFailed).toBe(true);
+    // The reason is attached, not collapsed into a bare flag (TASK-192:
+    // "could not repair" ≠ "nothing to repair").
+    expect(result.indexRepairError).toBeInstanceOf(Error);
+  });
+
+  it('listReady returns the ready set with indexRepairFailed+indexRepairError instead of throwing', async () => {
+    const { listReady } = await import(PROD.taskStore);
+
+    const repoDir = makeTmpDir('af-ts9-repair-failed-ready');
+    makeRepoSkeleton(repoDir, {
+      tasks: loadFixtureTasks(['TASK-101', 'TASK-103']),
+    });
+    // Corrupt the index PATH itself (see the listTodos test above).
+    mkdirSync(join(repoDir, 'tasks', 'index.json'));
+
+    const ready = await listReady({ repoRoot: repoDir });
+
+    // Both fixture todos have no depends_on → both ready; the read survives.
+    expect(ready.map((t) => t.key).sort()).toEqual(['TASK-101', 'TASK-103']);
+    expect(ready.indexRepairFailed).toBe(true);
+    expect(ready.indexRepairError).toBeInstanceOf(Error);
   });
 });
 
