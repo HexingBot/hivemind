@@ -74,7 +74,8 @@
     },
     {
       "at": "2026-09-17T20:17:19.991Z",
-      "summary": "Cierre de TASK-233..TASK-237 con UAT delegado al Orquestador por instruccion explicita de Mato; cada paso registra lo observado. Las entregas se re-registraron despues del comentario de UAT porque el auditor mecanico lee el ultimo comentario como la entrega."
+      "decision": "Cerrar TASK-233..TASK-237 con el UAT delegado al Orquestador, registrando en cada paso lo observado.",
+      "rationale": "Mato instruyo explicitamente cerrar los cinco tickets en esta ronda y delego la verificacion; el sensor uat-audit exige un veredicto en todo cierre posterior al corte del 2026-09-09, no solo en los requires_uat. Las entregas se re-registraron despues del comentario de UAT porque bin/audit-close-verification.js lee el ULTIMO comentario como la entrega."
     }
   ],
   "subagent_results": [
