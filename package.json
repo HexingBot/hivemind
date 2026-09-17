@@ -17,6 +17,7 @@
     "check:manifests": "node scripts/verify-manifests.mjs",
     "audit:uat": "node bin/audit-uat.js",
     "audit:reviewer-verdict": "node bin/audit-reviewer-verdict.js",
+    "audit:close-verification": "node bin/audit-close-verification.js",
     "gate:uat": "node bin/ci-uat-gate.js",
     "bootstrap:brain": "node dist/brain-launch.cjs --health",
     "e2e:brain": "bash scripts/brain-smoke.sh"
