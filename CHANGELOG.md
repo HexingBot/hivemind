@@ -8,6 +8,45 @@ The single source of version truth is `.claude-plugin/plugin.json`. Because the
 plugin installs from this repository's `main` branch via the marketplace, a
 release is the `main` HEAD at the tagged version.
 
+## [0.23.0] — 2026-09-17
+
+TDD is eliminated — not narrowed, not re-tiered. v0.22.0 still shipped
+tests-first doctrine on the surfaces that actually drive the agents, and two
+process gates in front of the code: the manifest gate (`MANIFEST_REQUIRED_TIERS`
+required a manifest for `tests-after`, the default tier, i.e. practically all
+real work) and the six `impl-*` skills instructing "Generate/update it BEFORE
+code" in the very frontmatter that auto-loads them. Both are gone. The measured
+reason is the one this repository had already recorded twice: gating by process
+manufactured large volumes of tests that proved nothing, because a test written
+by the same agent that wrote the implementation, checked against its own code,
+confirms what that agent believed — not what the ticket asked for.
+
+What replaces it is an order of work with the real verification at the END:
+define the use cases and the paths of use → the human approves that list before
+any code exists → implement → tests-after → wargaming against the approved list
+→ UAT if asked for. The middle is the Developer's territory; there is no
+process box left to tick before implementing. The two ends are written down:
+`docs/PLANTILLA-PEDIDO.md` (the request the use cases are formed from) and
+`docs/PLANTILLA-ENTREGA.md` (what is delivered at the end).
+
+A QA-versus-Hivemind wargame drove this release. It broke the framework 23
+times with zero false positives, and those breaks became TASK-233..237:
+publishing the policy to the surface that executes it, the close guards, the
+task-store's concurrency, the operating mode's fail-open, and agent/skill
+parity. The close guards are the sharpest of these — a closing comment whose
+body was literally "OK" used to pass every guard. A close now requires a real
+delivery body, commit SHAs that resolve against git (re-resolved at audit time,
+never trusted from the stored record), and no open `[FINDING-HIGH: <id>]`
+marker. That marker convention is now published where the people recording
+findings actually read it, which it was not.
+
+Known state at the cut, stated rather than implied: the second wargaming pass
+left ten HIGH findings, and the loop-back in this release closes those of
+TASK-233, TASK-234 and TASK-236. TASK-235 (the lock has no heartbeat, so a
+critical section longer than the staleness window is reclaimed while live) and
+TASK-237 (mirror pairs with different names are unlocked) are recorded, open,
+and not fixed here. All five tickets remain `in_review`; none is closed.
+
 ## [0.22.0] — 2026-08-15
 
 A subagent finishes, reports that it is free, and delivers nothing. That was a

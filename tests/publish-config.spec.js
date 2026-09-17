@@ -41,8 +41,8 @@ const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 // RELEASE-CUT OBLIGATION: this pin is a deliberate drift lock on the published
 // version — it must be bumped in the SAME commit as .claude-plugin/plugin.json
 // whenever a release is cut. v0.21.0's cut updated it; v0.22.0's did not, which
-// shipped this spec red (fixed 2026-09-09).
-const EXPECTED_VERSION = '0.22.0';
+// shipped this spec red (fixed 2026-09-09). v0.23.0's cut updated it.
+const EXPECTED_VERSION = '0.23.0';
 const EXPECTED_MARKETPLACE_NAME = 'hivemind-marketplace';
 const EXPECTED_PLUGIN_NAME = 'hivemind';
 const EXPECTED_SOURCE = './';
