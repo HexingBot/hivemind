@@ -12491,6 +12491,11 @@ var __ajv = new import__2.default({ allErrors: true, strict: false });
 (0, import_ajv_formats2.default)(__ajv);
 var __validateTask = __ajv.compile(schema_default);
 var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
+var FINDING_MARKER_SCAN_CAP = 200;
+var FINDING_DEGRADED_SCAN_CAP = 500;
+var FINDING_HIGH_RE = new RegExp(`\\[FINDING-HIGH:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_RESOLVED_RE = new RegExp(`\\[FINDING-RESOLVED:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_DEGRADED_RE = new RegExp(`\\[FINDING-DEGRADED:\\s*([^\\]]{0,${FINDING_DEGRADED_SCAN_CAP}})\\]`, "gi");
 var KNOWN_BLANK_GLYPHS = "\u2800";
 var IGNORABLE_OR_BLANK_RE = new RegExp(
   `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,

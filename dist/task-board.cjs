@@ -8647,9 +8647,16 @@ function checkWargamingRecord(task, resolvedException) {
     );
   }
 }
-var FINDING_HIGH_RE = /\[FINDING-HIGH:\s*([^\]]+)\]/gi;
-var FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
-var FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^\]]*)\]/gi;
+var FINDING_ID_MAX_LEN = 40;
+var FINDING_MARKER_SCAN_CAP = 200;
+var FINDING_DEGRADED_SCAN_CAP = 500;
+function isValidFindingId(raw) {
+  const id = String(raw).trim();
+  return id.length > 0 && id.length <= FINDING_ID_MAX_LEN && !/\s/.test(id);
+}
+var FINDING_HIGH_RE = new RegExp(`\\[FINDING-HIGH:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_RESOLVED_RE = new RegExp(`\\[FINDING-RESOLVED:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_DEGRADED_RE = new RegExp(`\\[FINDING-DEGRADED:\\s*([^\\]]{0,${FINDING_DEGRADED_SCAN_CAP}})\\]`, "gi");
 var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
 var FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g;
 var BACKTICK_SPAN_RE = /`[^`\n]*`/g;
@@ -8657,22 +8664,54 @@ var DOUBLE_QUOTED_SPAN_RE = /"[^"\n]*"/g;
 function blankQuotedAndFencedSpans(text) {
   return text.replace(FENCED_CODE_BLOCK_RE, (m) => " ".repeat(m.length)).replace(BACKTICK_SPAN_RE, (m) => " ".repeat(m.length)).replace(DOUBLE_QUOTED_SPAN_RE, (m) => " ".repeat(m.length));
 }
+var MalformedFindingMarkerError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "MalformedFindingMarkerError";
+    this.code = "E_MALFORMED_FINDING_MARKER";
+  }
+};
 function checkNoOpenHighFindings(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === "done") return;
   const comments = Array.isArray(task.comments) ? task.comments : [];
   const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || ""))).join("\n");
   const opened = /* @__PURE__ */ new Set();
-  for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
   const closed = /* @__PURE__ */ new Set();
-  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) closed.add(m[1].trim().toUpperCase());
+  const malformed = [];
+  for (const m of allText.matchAll(FINDING_HIGH_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      opened.add(raw.trim().toUpperCase());
+    } else {
+      malformed.push(`FINDING-HIGH: "${raw.trim().slice(0, FINDING_ID_MAX_LEN)}..."`);
+    }
+  }
+  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      closed.add(raw.trim().toUpperCase());
+    } else {
+      malformed.push(`FINDING-RESOLVED: "${raw.trim().slice(0, FINDING_ID_MAX_LEN)}..."`);
+    }
+  }
   for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
     const inner = m[1] || "";
     const sep = inner.search(DEGRADED_SEPARATOR_RE);
     if (sep === -1) continue;
-    const id = inner.slice(0, sep).trim();
+    const rawId = inner.slice(0, sep);
+    if (!isValidFindingId(rawId)) {
+      malformed.push(`FINDING-DEGRADED: "${rawId.trim().slice(0, FINDING_ID_MAX_LEN)}..."`);
+      continue;
+    }
+    const id = rawId.trim();
     const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
     if (id !== "" && justification !== "") closed.add(id.toUpperCase());
+  }
+  if (malformed.length > 0) {
+    throw new MalformedFindingMarkerError(
+      `task ${task.key} has ${malformed.length} finding marker(s) that could not be parsed as a valid id (no spaces/newlines, at most ${FINDING_ID_MAX_LEN} chars): ${malformed.join("; ")} \u2014 this is distinct from "no open findings" (TASK-238/AC4): fix the marker's id (or rewrite the surrounding prose so it does not open with the literal marker syntax) before closing, so it is never silently dropped nor silently counted as an opened/resolved finding.`
+    );
   }
   const open = [...opened].filter((id) => !closed.has(id));
   if (open.length > 0) {
