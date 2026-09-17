@@ -52,7 +52,19 @@
 // harness script and its output.
 //
 // Test budget (Regla 3, self-applied): TASK-233 has 6 acceptance criteria;
-// the 5 `it` blocks below are within that cap, no justification needed.
+// the 6 `it` blocks below (5 original + 1 added in the wargaming loop-back
+// round for HIGH-3, commands/loop.md's positive gate) are within that cap,
+// no justification needed.
+//
+// WARGAMING LOOP-BACK (2026-09-17): an adversarial pass built 85 mutants
+// against this file + its helper and found HIGH-1 (retired policy live on
+// skills/impl-block-tasks/SKILL.md, fixed on that file, not here), HIGH-2
+// (hardcoded 5-file surface list, fixed via `enumerateConsumerSurfaces`
+// below), HIGH-3 (commands/loop.md had no positive lock, fixed via the new
+// describe block below using `hasLoopMdGates`), plus MEDIUM/LOW findings
+// fixed inside tests/helpers/policyPropagationChecks.js — see that file's
+// own header for the full per-finding account, including which findings
+// were deliberately left as documented limitations rather than "fixed".
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -60,13 +72,14 @@ import { join } from 'node:path';
 
 import { REPO_ROOT } from './helpers/repoRoot.js';
 import {
-  CONSUMER_SURFACES,
+  enumerateConsumerSurfaces,
   findForbiddenMatches,
   hasDeveloperRefusalGate,
   hasSkillDispatchHardStop,
   hasReviewerWargamingGate,
   hasSkillWargamingFinalStep,
   vitestAllConfigDefersE2eToWargaming,
+  hasLoopMdGates,
 } from './helpers/policyPropagationChecks.js';
 
 function load(relPath) {
@@ -82,10 +95,21 @@ function load(relPath) {
 // against it to implement without an approved use-case list, 3 of 3 times
 // observed. This is the sensor that would have caught the plugin going
 // stale before a human ever had to notice it live.
+//
+// Wargaming loop-back (2026-09-17), HIGH-2: the surface list used to be a
+// hardcoded 5-file array — 25 of ~30 shipped surfaces were invisible to this
+// scan. `enumerateConsumerSurfaces` reads agents/*.md, commands/*.md, and
+// skills/*/SKILL.md straight off disk (and throws, per the TASK-192
+// empty-result contract, if it finds zero — see the helper) so a new,
+// renamed, or previously-overlooked surface is scanned automatically instead
+// of needing a human to remember to add it to a list.
 describe('AC2 — zero retired tests-first-gate phrasing on any shipped consumer surface', () => {
-  it('no consumer surface (agents/, skills/, commands/) contains a retired tests-first-gate phrase', () => {
+  it('no consumer surface (agents/, commands/, skills/*/SKILL.md — enumerated from disk) contains a retired tests-first-gate phrase', () => {
+    const surfaces = enumerateConsumerSurfaces(REPO_ROOT);
+    expect(surfaces.length).toBeGreaterThan(0);
+
     const offenders = [];
-    for (const relPath of CONSUMER_SURFACES) {
+    for (const relPath of surfaces) {
       const text = load(relPath);
       const matches = findForbiddenMatches(text);
       if (matches.length > 0) offenders.push({ relPath, matches });
@@ -146,6 +170,27 @@ describe('AC2 — wargaming named as the final verification, in reviewer.md and 
       skillResult.ok,
       `skills/orchestrator-routing/SKILL.md must position the wargaming step between "Spawn the Reviewer" ` +
         `and "Update ticket", and state a HIGH wargaming finding blocks the close: ${JSON.stringify(skillResult)}`,
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
+// HIGH-3 (wargaming loop-back, 2026-09-17) — commands/loop.md carries BOTH
+// 2026-09-16 gates as actual loop steps, positioned correctly
+// ===========================================================================
+// Harm this prevents: commands/loop.md was in the old hardcoded surface list
+// but had NO positive lock — only the (now surface-wide) forbidden scan. An
+// adversary proved that reverting the file to the real, gates-free v0.22.0
+// content, or deleting its step-3 approval hard stop and step-6 wargaming
+// step wholesale, both stayed green. This is the surface where the gates
+// matter most: it is what an UNATTENDED loop actually reads before
+// dispatching a Developer with no human in the turn.
+describe('HIGH-3 — commands/loop.md carries the approval hard stop and the wargaming step', () => {
+  it('commands/loop.md positions the use-case-approval STOP before the Developer spawn, and the wargaming step (with its close-blocking rule) after it', () => {
+    const result = hasLoopMdGates(load('commands/loop.md'));
+    expect(
+      result.ok,
+      `commands/loop.md must carry both 2026-09-16 gates as positioned loop steps: ${JSON.stringify(result)}`,
     ).toBe(true);
   });
 });

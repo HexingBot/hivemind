@@ -48,7 +48,9 @@ One section per block (B-01 through B-20, in order). For each block:
 - [ ] ...
 
 ### Acceptance criteria
-- <Observable, **testable** outcome — phrased so a test-first (red-green) test can assert it>
+- <Observable, checkable outcome — phrased so it can be verified by running the behavior, then
+  locked with a regression test written AFTER it works (`tests-after`; TDD is eliminated — see
+  `agents/developer.md`'s "TDD ELIMINADO" section)>
 - <Observability: emits span `<feature.action>`; errors logged; latency metric if a key path>
 - ...
 
@@ -66,10 +68,12 @@ One section per block (B-01 through B-20, in order). For each block:
 
 ## Rules
 
-- Acceptance criteria must be **testable** (they become test-first tests — see
-  `.claude/shared/TDD.md`) and each must carry its **observability** requirement
-  (`.claude/shared/OBSERVABILITY.md`). UI tasks reuse **canonical components**
-  (`.claude/shared/UI_CONSISTENCY.md`) — never re-implement a shared input.
+- Acceptance criteria must be **observable and checkable** — implemented first, proven by
+  running the behavior, then locked with a minimal `tests-after` regression test (TDD is
+  eliminated from the process; see `agents/developer.md`'s "TDD ELIMINADO" section) — and each
+  must carry its **observability** requirement (`.claude/shared/OBSERVABILITY.md`). UI tasks
+  reuse **canonical components** (`.claude/shared/UI_CONSISTENCY.md`) — never re-implement a
+  shared input.
 - Tasks must be concrete ("Implement campaign list endpoint call and render results") not vague ("Build campaigns screen").
 - Category C blocks should be listed but marked clearly as **not estimable** — list known tasks and mark unknowns with `[MISSING_INFO]`.
 - Preserve effort ranges exactly as they appear in the estimation context — do not recalculate.
