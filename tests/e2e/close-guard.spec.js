@@ -43,7 +43,7 @@
 
 import { describe, it, expect, afterAll } from 'vitest';
 import {
-  mkdirSync, writeFileSync, readFileSync, symlinkSync,
+  mkdirSync, writeFileSync, readFileSync, symlinkSync, linkSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -423,6 +423,94 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
 
     const result = readLoopAuth(root);
     expect(result, 'readLoopAuth must never honor an external loop_auth object read through a symlinked container').toEqual({});
+  });
+
+  // ---------------------------------------------------------------------------
+  // TASK-236 WG-4 (fourth wargaming pass, 2026-09-17, finding WG4-236-002) —
+  // the container-symlink containment closed by WG3-236-001 was NOT uniform:
+  // the shared helper lstat'd only the three DIRECTORIES while the bundle
+  // FILE's own lstat lived inside getMode, so readLoopAuth — which shares the
+  // helper but reads the bundle itself — had no containment at all for a
+  // session.json that was itself a symlink to an external file. Measured by
+  // the adversary: 87919 iterations, 28878 loop reads, 7963 honoring the
+  // external loop_auth verbatim. The fix moved the FILE-level check (symlink
+  // AND, per the adversary's own proposed candado, nlink>1 hardlinks) into
+  // the shared helper, so every caller gets the same check. These two tests
+  // prove readLoopAuth now DENIES both shapes end-to-end.
+  // ---------------------------------------------------------------------------
+  it('TASK-236 WG-4 — readLoopAuth denies when session.json itself is a symlink to an external authed file', async () => {
+    const { readLoopAuth } = await import(CLOSE_GUARD_URL);
+
+    const sessionId = '20260917T030303Z-deadbeef';
+    const root = makeTmpDir('af-closeguard-wg4-filesymlink');
+    mkdirSync(join(root, 'state', 'sessions', sessionId), { recursive: true });
+    writeFileSync(
+      join(root, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: sessionId, updated_at: '2026-09-17T03:00:00Z' }, null, 2),
+      'utf8',
+    );
+
+    const external = makeTmpDir('af-closeguard-wg4-ext-file');
+    const externalBundle = join(external, 'external-session.json');
+    writeFileSync(
+      externalBundle,
+      JSON.stringify({
+        schema_version: 2,
+        session_id: sessionId,
+        mode: 'loop',
+        loop_auth: { auto_close_on_green_review: true, uat_delegated_to_orchestrator: true },
+        updated_at: '2026-09-17T03:00:00Z',
+      }, null, 2),
+      'utf8',
+    );
+
+    // The bundle FILE itself, not any directory, is the symlink.
+    symlinkSync(externalBundle, join(root, 'state', 'sessions', sessionId, 'session.json'));
+
+    const result = readLoopAuth(root);
+    expect(
+      result,
+      'readLoopAuth must never honor an external loop_auth read through a symlinked session.json FILE — ' +
+      'WG4-236-002: the file-level lstat now lives in the shared helper',
+    ).toEqual({});
+  });
+
+  it('TASK-236 WG-4 — readLoopAuth denies when session.json is hardlinked to an external authed file (nlink > 1)', async () => {
+    const { readLoopAuth } = await import(CLOSE_GUARD_URL);
+
+    const sessionId = '20260917T040404Z-cafebabe';
+    const root = makeTmpDir('af-closeguard-wg4-hardlink');
+    mkdirSync(join(root, 'state', 'sessions', sessionId), { recursive: true });
+    writeFileSync(
+      join(root, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: sessionId, updated_at: '2026-09-17T04:00:00Z' }, null, 2),
+      'utf8',
+    );
+
+    const external = makeTmpDir('af-closeguard-wg4-ext-hardlink');
+    const externalBundle = join(external, 'external-session.json');
+    writeFileSync(
+      externalBundle,
+      JSON.stringify({
+        schema_version: 2,
+        session_id: sessionId,
+        mode: 'loop',
+        loop_auth: { auto_close_on_green_review: true, uat_delegated_to_orchestrator: true },
+        updated_at: '2026-09-17T04:00:00Z',
+      }, null, 2),
+      'utf8',
+    );
+
+    // Hardlink: lstat's type check alone cannot see it (a hardlinked regular
+    // file IS an ordinary regular file); the nlink>1 candado is what denies.
+    linkSync(externalBundle, join(root, 'state', 'sessions', sessionId, 'session.json'));
+
+    const result = readLoopAuth(root);
+    expect(
+      result,
+      'readLoopAuth must never honor an external loop_auth read through a hardlinked session.json FILE — ' +
+      'WG4-236-002: nlink>1 is rejected by the shared helper',
+    ).toEqual({});
   });
 
   // ---------------------------------------------------------------------------

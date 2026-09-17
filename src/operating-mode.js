@@ -187,31 +187,37 @@ function readPointerForMode(repoRoot) {
 
 /**
  * TASK-236 WG-3 (finding WG3-236-001, 2026-09-17) — reject outright, via
- * lstat (never realpath), if state/, state/sessions/, or a session's own
- * bundle directory (state/sessions/<sessionId>/) is itself a symlink. See
- * the module-level WG-1/WG-3 block comment above for why lstat replaces the
+ * lstat (never realpath), if state/, state/sessions/, a session's own bundle
+ * directory (state/sessions/<sessionId>/), or that directory's session.json
+ * FILE (added WG-4, finding WG4-236-002) is itself a symlink. See the
+ * module-level WG-1/WG-3 block comment above for why lstat replaces the
  * earlier realpath-based comparison and why rejecting a symlinked container
  * cannot break a legitimate worktree setup (this repo only ever symlinks
  * node_modules for worktree provisioning, never state/ or its descendants).
+ * The session.json file is additionally rejected when its own `nlink > 1`
+ * (a hardlink) — see the function body's own comment for why lstat's type
+ * check alone cannot see a hardlink and why the extra check is low-risk.
  *
  * Exported (not just used internally) so src/close-guard.js's readLoopAuth
- * can apply the exact same containment before it reads loop_auth off the
- * bundle directly — readLoopAuth does not go through getMode, so without
- * this shared check it had no containment of its own (see readLoopAuth's own
- * doc comment for the harm this closes).
+ * applies the exact same containment — including the file-level check —
+ * before it reads loop_auth off the bundle directly: readLoopAuth does not
+ * go through getMode, so without this one shared function it would need its
+ * own, separately-maintained copy of the same checks (see readLoopAuth's own
+ * doc comment for the harm an out-of-sync copy caused before WG-4).
  *
  * A missing path component (ENOENT) is not this function's concern — it
  * returns silently and lets the caller's own missing-pointer/missing-bundle
- * handling report that; only an EXISTING container that is a symlink, or one
- * that cannot even be inspected, is rejected here.
+ * handling report that; only an EXISTING container or file that is a
+ * symlink (or, for the file, hardlinked) or cannot even be inspected is
+ * rejected here.
  */
 export function assertBundleContainerNotSymlinked(repoRoot, sessionId) {
-  const candidates = [
+  const dirCandidates = [
     join(repoRoot, 'state'),
     sessionsDir(repoRoot),
     bundleDirFor(repoRoot, sessionId),
   ];
-  for (const dir of candidates) {
+  for (const dir of dirCandidates) {
     let st;
     try {
       st = lstatSync(dir);
@@ -231,6 +237,67 @@ export function assertBundleContainerNotSymlinked(repoRoot, sessionId) {
         'E_MODE_BUNDLE_CORRUPT',
       );
     }
+  }
+
+  // TASK-236 WG-4 (fourth wargaming pass, 2026-09-17, finding WG4-236-002) —
+  // the session's own session.json FILE gets the identical lstat check, in
+  // this same shared function, so every caller of
+  // assertBundleContainerNotSymlinked is contained the same way for the file,
+  // not only for the three directories above it. Before this round the
+  // file-level symlink check lived only inside getMode's own body (a second
+  // lstat that function never shared with anyone), so readLoopAuth below —
+  // which calls this function but then reads the bundle itself via
+  // readBundleSession, never going through getMode — had no containment at
+  // all for a session.json that was itself a symlink to an external file,
+  // even when the three directories around it were all real. The adversary's
+  // measured race (87919 iterations, 7963 honoring the external file's
+  // loop_auth verbatim) is exactly this gap; moving the check here, rather
+  // than adding a second copy inside readLoopAuth, is what makes "the same
+  // check" literally true instead of two independently-maintained copies
+  // that can drift.
+  //
+  // A plain hardlink to an external file is invisible to this lstat's
+  // `isSymbolicLink()` test (a hardlinked regular file is, by construction,
+  // an ordinary regular file — `lstat` cannot tell it apart from a genuine
+  // one by type). The adversary's own proposed candado is what closes that
+  // neighboring gap: `st.nlink > 1` for a regular file that is supposed to
+  // be this session's sole, privately-written session.json. Every
+  // session.json this repo's own writers ever produce (writeBundleSession,
+  // via atomicWriteFile's write-then-rename) is written fresh and is never
+  // hardlinked anywhere else, so a real bundle's file always reports
+  // `nlink === 1`; creating a second link to it requires the same in-repo
+  // write access that would let an attacker edit the file directly, so this
+  // is a cheap, low-risk candado, not a load-bearing security boundary on
+  // its own — see the ticket hand-off for the availability checks run
+  // against it (worktree provisioning, symlinked repoRoot, a directory above
+  // repoRoot symlinked, and a read-only repo all still start correctly).
+  const filePath = bundleSessionPath(repoRoot, sessionId);
+  let fileSt;
+  try {
+    fileSt = lstatSync(filePath);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return; // no bundle file yet — caller's own missing-bundle path handles it
+    throw new ModeStateError(
+      `getMode: ${filePath} could not be inspected (${err.message})`,
+      'E_MODE_BUNDLE_CORRUPT',
+    );
+  }
+  if (fileSt.isSymbolicLink()) {
+    throw new ModeStateError(
+      `getMode: ${filePath} is a symlink — a session's own session.json must be a real file, `
+        + "never a symlink (the same containment WG3-236-001 applies to its parent directories "
+        + 'now also applies to the file itself — WG4-236-002)',
+      'E_MODE_BUNDLE_CORRUPT',
+    );
+  }
+  if (fileSt.nlink > 1) {
+    throw new ModeStateError(
+      `getMode: ${filePath} has ${fileSt.nlink} hard links — a session's own session.json must `
+        + 'be an ordinary, singly-linked file (a hardlink to an external file cannot be told apart '
+        + "from this repo's own bundle content by lstat's type alone, so it is rejected outright "
+        + 'rather than trusted)',
+      'E_MODE_BUNDLE_CORRUPT',
+    );
   }
 }
 

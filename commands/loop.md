@@ -238,7 +238,7 @@ instead of `auto_close_on_green_review`, and only fires when the Bash command ma
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('fs'),path=require('path');let input='';process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{let payload;try{payload=JSON.parse(input);}catch{process.exit(0);}const cmd=(payload.tool_input&&payload.tool_input.command)||'';if(!/\\\\bgit\\\\s+push\\\\b/.test(cmd)){process.exit(0);}try{const root=process.cwd();const ptr=JSON.parse(fs.readFileSync(path.join(root,'state','session.json'),'utf8'));const sid=ptr.active_session_id;if(!sid){process.exit(0);}const bundle=JSON.parse(fs.readFileSync(path.join(root,'state','sessions',sid,'session.json'),'utf8'));if(bundle.mode!=='loop'){process.exit(0);}const authed=bundle.loop_auth&&bundle.loop_auth.auto_push_after_close===true;if(authed){process.exit(0);}console.error('Gate 1 (push): loop mode is active and auto_push_after_close is not granted — push blocked. Ask the human to authorize auto_push_after_close, or push manually in harness mode.');process.exit(2);}catch(_err){process.exit(0);}});\""
+            "command": "node -e \"// Push Gate 1 hook — WG4-236-001 (4th wargaming pass, 2026-09-17).\n// Reads the same pointer/bundle files loopModeCloseGuard reads, with the SAME\n// containment (never trust a symlinked/hardlinked container or file), and\n// fails CLOSED on corruption: a push is more destructive than a close, and a\n// bundle that cannot be verified must never be treated as authorized.\nconst fs = require('fs');\nconst path = require('path');\n\nlet input = '';\nprocess.stdin.on('data', function (d) { input += d; });\nprocess.stdin.on('end', function () {\n  let payload;\n  try { payload = JSON.parse(input); } catch (e) { process.exit(0); }\n  const cmd = (payload.tool_input && payload.tool_input.command) || '';\n  if (!/\\\\bgit\\\\s+push\\\\b/.test(cmd)) process.exit(0);\n\n  const root = process.cwd();\n  const pointerPath = path.join(root, 'state', 'session.json');\n\n  let ptr;\n  try {\n    ptr = JSON.parse(fs.readFileSync(pointerPath, 'utf8'));\n  } catch (err) {\n    // No state/ at all (ENOENT) = harness mode, no session, nothing to gate.\n    if (err && err.code === 'ENOENT') process.exit(0);\n    // Any other pointer read/parse failure is CORRUPTION, not absence: a\n    // session may be live under a bundle we cannot verify. Fail closed.\n    console.error('Gate 1 (push): state/session.json is unreadable or corrupt — cannot verify loop authorization, push blocked.');\n    process.exit(2);\n  }\n\n  const sid = ptr && ptr.active_session_id;\n  if (!sid) process.exit(0); // no active session — nothing to gate\n\n  const bundleDir = path.join(root, 'state', 'sessions', sid);\n  const bundlePath = path.join(bundleDir, 'session.json');\n\n  // WG4-236-002 containment — lstat (never realpath) each container AND the\n  // bundle file itself; a symlinked container/file can point authorization\n  // reads at external content. Same checks assertBundleContainerNotSymlinked\n  // performs for closeGuard, applied here because this hook reads the bundle\n  // directly (it cannot import the repo's src/ — this is a portable recipe).\n  const dirs = [path.join(root, 'state'), path.join(root, 'state', 'sessions'), bundleDir];\n  for (let i = 0; i < dirs.length; i++) {\n    const dir = dirs[i];\n    let st;\n    try {\n      st = fs.lstatSync(dir);\n    } catch (err) {\n      if (err && err.code === 'ENOENT') {\n        console.error('Gate 1 (push): ' + dir + ' is missing — session state is corrupt, push blocked.');\n        process.exit(2);\n      }\n      console.error('Gate 1 (push): cannot inspect ' + dir + ' (' + (err.code || err.message) + ') — push blocked.');\n      process.exit(2);\n    }\n    if (st.isSymbolicLink()) {\n      console.error('Gate 1 (push): ' + dir + ' is a symlink — a session container must be a real directory, push blocked.');\n      process.exit(2);\n    }\n  }\n  let fileSt;\n  try {\n    fileSt = fs.lstatSync(bundlePath);\n  } catch (err) {\n    console.error('Gate 1 (push): ' + bundlePath + ' is missing — the active session has no bundle, push blocked.');\n    process.exit(2);\n  }\n  if (fileSt.isSymbolicLink()) {\n    console.error('Gate 1 (push): ' + bundlePath + ' is a symlink — a session bundle must be a real file, push blocked.');\n    process.exit(2);\n  }\n  if (fileSt.nlink > 1) {\n    console.error('Gate 1 (push): ' + bundlePath + ' has ' + fileSt.nlink + ' hard links — a session bundle must be singly-linked, push blocked.');\n    process.exit(2);\n  }\n\n  let bundle;\n  try {\n    bundle = JSON.parse(fs.readFileSync(bundlePath, 'utf8'));\n  } catch (e) {\n    console.error('Gate 1 (push): the active session bundle is unreadable or corrupt — cannot verify loop authorization, push blocked. Ask the human to authorize auto_push_after_close, or push manually in harness mode.');\n    process.exit(2);\n  }\n\n  if (bundle.mode !== 'loop') process.exit(0);\n  const authed = bundle.loop_auth && bundle.loop_auth.auto_push_after_close === true;\n  if (authed) process.exit(0);\n  console.error('Gate 1 (push): loop mode is active and auto_push_after_close is not granted — push blocked. Ask the human to authorize auto_push_after_close, or push manually in harness mode.');\n  process.exit(2);\n});\""
           }
         ]
       }
@@ -247,13 +247,23 @@ instead of `auto_close_on_green_review`, and only fires when the Bash command ma
 }
 ```
 
+
 Notes on the recipe:
 - Exit code `2` is Claude Code's "block the tool call" signal; the `stderr` text
   (the `console.error` line) is surfaced back to the model as the block reason.
-- Any read failure (no active session, corrupt pointer/bundle, malformed JSON) falls
-  through to `process.exit(0)` — **allow** — mirroring `loopModeCloseGuard`'s
-  fail-open-to-harness default rather than fail-closed, so a missing/corrupt session
-  never wedges an otherwise-legitimate push.
+- **Fail-open only for legitimate absence, fail-closed for corruption** (WG4-236-001,
+  4th wargaming pass, 2026-09-17): the hook allows (`exit 0`) only when there is
+  genuinely nothing to gate — no `state/` at all (harness mode), no active session id,
+  a non-loop bundle, or a non-push command. EVERYTHING else is **blocked** (`exit 2`):
+  a corrupt/unreadable pointer or bundle, a missing session directory/bundle, and —
+  matching `assertBundleContainerNotSymlinked`'s containment in `src/operating-mode.js`
+  — any symlinked container (`state/`, `state/sessions/`, the session's own directory)
+  or a symlinked/hardlinked `session.json` file, because those can point the
+  authorization read at external content. A push is more destructive than a close:
+  a bundle that cannot be verified must never be treated as authorized. (The earlier
+  version fell through to `exit 0` on ANY read failure, which let an externally-
+  symlinked `state/sessions/` with a remote `auto_push_after_close: true` sail through
+  and also let a truncated bundle pass — the exact fail-open this round closes.)
 - The matcher fires on every `Bash` call and filters internally to commands matching
   `git push`; non-push Bash calls pass through untouched (`process.exit(0)` before any
   file read).
