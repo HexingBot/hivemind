@@ -120,13 +120,89 @@
 // list. Read-only: `existsSync`/`readdirSync` only, no write call anywhere.
 // ---------------------------------------------------------------------------
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
+
+// ---------------------------------------------------------------------------
+// WARGAMING LOOP-BACK, 3rd PASS (2026-09-17, WG2-233-001 + two MEDIUM edges)
+// — findings fixed in THIS round, layered on top of the 2026-09-17 round
+// documented immediately below:
+// ---------------------------------------------------------------------------
+//   HIGH (WG2-233-001) → the retired-doctrine phrase this file exists to
+//             catch ("phrased so a test-first (red-green) test can assert
+//             it") had NO pattern at all — neither "test-first" nor
+//             "red-green" appears in any of the 8 forbidden literals, so a
+//             verbatim restoration of that line stayed green. Fixed: a new
+//             literal `test-first-red-green-outcome-phrasing` below, scoped
+//             to the bare hyphenated token `test-first` ONLY (see that
+//             pattern's own comment for why "red-green" itself is
+//             deliberately NOT part of the trigger — that word is legitimate,
+//             live policy). Second half of the same finding: the dangling
+//             `.claude/shared/TDD.md` pointer was only reachable through
+//             `findTddRevivalMatches`'s allowlist-gated scan, so planting it
+//             next to unrelated "TDD is eliminated" prose silenced it by
+//             adjacency. Fixed: `tdd-md-dangling-pointer` below is a plain
+//             literal in FORBIDDEN_PATTERNS, unconditional, with no allowlist
+//             to be silenced by.
+//   MEDIUM (surface count) → `enumerateConsumerSurfaces` only read ONE level
+//             (agents/*.md, commands/*.md, skills/*/SKILL.md) — 30 of the 37
+//             real shipped `.md` surfaces, missing every `references/*.md`
+//             (7 real files) and any nested skill directory. Fixed: rewritten
+//             below as a recursive walk of all three roots, collecting every
+//             `.md` file at any depth.
+//   MEDIUM (loop.md anchor) → `hasLoopMdGates`'s phrase-position checks ran
+//             over the WHOLE file, so an adversary could paste a
+//             "historical appendix (derogado, NO rige)" block containing the
+//             four required phrases, in order, anywhere BEFORE the real
+//             step list, while gutting the real steps inside the Step 2
+//             fence — `text.indexOf` finds the decoy occurrences first and
+//             the ordering check is satisfied by them. Fixed: the check now
+//             extracts ONLY the fenced pseudocode block that follows the
+//             "### Step 2 — Loop until done" heading (`extractLoopStepsBlock`
+//             below) and searches exclusively inside that span — content
+//             placed anywhere else in the file, decoy or real, is invisible
+//             to it.
+//   Measured, NOT worsened (false positives already present before this
+//   round — see the ticket hand-off for the exact before/after counts):
+//     - `write-tests-first-instruction` used to fire on a correct
+//       PROHIBITION ("Do not write the tests first under any tier."). Fixed
+//       with a negative lookbehind for the negation cue immediately before
+//       "write" — see that pattern's own comment.
+//     - `findTddRevivalMatches` used to fire on two legitimate retrospective
+//       sentences that name "tdd" alongside a prescriptive-sounding cue word
+//       ("tests-after", "default") purely by co-occurrence, not because they
+//       instruct defaulting to tdd. Fixed by widening
+//       TDD_ALLOWLIST_STEMS — see the two new stems' own comments.
+// ---------------------------------------------------------------------------
 
 /**
- * Enumerates every shipped instruction surface under `repoRoot`:
- * every `agents/<name>.md`, `commands/<name>.md`, and `skills/<name>/SKILL.md`.
- * Returns relative paths (posix-style, forward slashes) sorted for
- * deterministic output.
+ * Recursively collects every `.md` file under `dir`, returning paths
+ * relative to `repoRoot` in posix style (forward slashes), so the same
+ * output shape works on any OS. Read-only (`readdirSync` only).
+ */
+function walkMdFiles(dir, repoRoot) {
+  const results = [];
+  if (!existsSync(dir)) return results;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const abs = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...walkMdFiles(abs, repoRoot));
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      results.push(relative(repoRoot, abs).split(sep).join('/'));
+    }
+  }
+  return results;
+}
+
+/**
+ * Enumerates every shipped instruction surface under `repoRoot`: every
+ * `.md` file anywhere under `agents/`, `commands/`, or `skills/` — at ANY
+ * depth, not just the top level. This is what makes a nested skill
+ * directory (`skills/<group>/<nested>/SKILL.md`) and a progressive-
+ * disclosure `references/*.md` file (7 real ones exist under `skills/` as
+ * of the 2026-09-17 round: hive-adversarial-improve-current-project x2,
+ * hive-self-improve-current-project x2, mcp-server x3) visible to the scan
+ * instead of silently skipped. Returns paths sorted for deterministic
+ * output.
  *
  * TASK-192 empty-result contract: a genuinely empty repo (no agents/,
  * commands/, or skills/ at all) is not a plausible state for this project —
@@ -136,30 +212,11 @@ import { join } from 'node:path';
  * silent green.
  */
 export function enumerateConsumerSurfaces(repoRoot) {
-  const surfaces = [];
-
-  const agentsDir = join(repoRoot, 'agents');
-  if (existsSync(agentsDir)) {
-    for (const f of readdirSync(agentsDir)) {
-      if (f.endsWith('.md')) surfaces.push(`agents/${f}`);
-    }
-  }
-
-  const commandsDir = join(repoRoot, 'commands');
-  if (existsSync(commandsDir)) {
-    for (const f of readdirSync(commandsDir)) {
-      if (f.endsWith('.md')) surfaces.push(`commands/${f}`);
-    }
-  }
-
-  const skillsDir = join(repoRoot, 'skills');
-  if (existsSync(skillsDir)) {
-    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const skillFile = join(skillsDir, entry.name, 'SKILL.md');
-      if (existsSync(skillFile)) surfaces.push(`skills/${entry.name}/SKILL.md`);
-    }
-  }
+  const surfaces = [
+    ...walkMdFiles(join(repoRoot, 'agents'), repoRoot),
+    ...walkMdFiles(join(repoRoot, 'commands'), repoRoot),
+    ...walkMdFiles(join(repoRoot, 'skills'), repoRoot),
+  ];
 
   if (surfaces.length === 0) {
     throw new Error(
@@ -241,10 +298,83 @@ export const FORBIDDEN_PATTERNS = [
   },
   {
     name: 'write-tests-first-instruction',
-    re: /\bwrite (the )?tests? first\b/i,
+    // Negative lookbehind added in the 2026-09-17 loop-back round: the bare
+    // form used to fire on a correct PROHIBITION too — "Do not write the
+    // tests first under any tier." is enunciating the CURRENT policy
+    // (TDD eliminated), not reinstating it, but the old unconditional regex
+    // could not tell the difference. The lookbehind excludes the exact
+    // negation cue word(s) immediately preceding "write" (English + the two
+    // Spanish forms this repo actually uses elsewhere); it deliberately does
+    // NOT attempt general negation detection anywhere in the sentence — see
+    // MEDIUM-4 in this file's 2026-09-16-round header for why that is out of
+    // scope. A real instruction like "You must write the tests first" is
+    // still caught: "must " is not a negation cue.
+    re: /(?<!\b(?:do not|don't|never|avoid|nunca|no debe[sn]?|jamás)\s)\bwrite (the )?tests? first\b/i,
     harm:
       'reintroduces a bare "write the tests first" instruction under a phrasing that does not ' +
       'mention "tdd" at all, evading the tdd-anchored scan below',
+  },
+  {
+    name: 'test-first-red-green-outcome-phrasing',
+    // WG2-233-001 (2026-09-17): the mutant that survived the 3rd wargaming
+    // pass restored, verbatim, the old task-template line "...phrased so a
+    // test-first (red-green) test can assert it" — none of the other 8
+    // literals, and none of findTddRevivalMatches (it is `tdd`-anchored,
+    // and this sentence never says "tdd"), had any pattern for either
+    // "test-first" or "red-green".
+    //
+    // DELIBERATE SCOPE: this pattern triggers on the bare hyphenated token
+    // `test-first` ONLY — it does NOT match "red-green" or "red-green
+    // planting" in any form. Those phrases are LIVE, CORRECT policy
+    // (agents/developer.md's "Red-green planting" section, required by
+    // CLAUDE.md's Testing section): every new test/spec/lock must still be
+    // proved able to fail by reverting the fix and confirming red, then
+    // restored — that is a practice performed AFTER the implementation
+    // exists, not an ordering rule. What is forbidden is "test-FIRST"
+    // (write/derive the test before the code exists) — a distinct, retired
+    // concept. A blind trigger on "red-green" alone would have gone red on
+    // agents/developer.md's OWN compliant "Red-green planting" section and
+    // on `agents/reviewer.md`'s "Red-green planting still applies..." line
+    // — i.e. it would have broken correct, currently-shipped policy text,
+    // which is exactly the outcome this ticket's briefing warned against.
+    //
+    // Corpus check performed before adding this pattern (2026-09-17): the
+    // bare hyphenated token `test-first` (singular, with hyphen) has ZERO
+    // legitimate occurrences anywhere under agents/, commands/, skills/, or
+    // CLAUDE.md — every live mention of the retired concept uses the plural
+    // "tests-first" (e.g. "ni tests-first bajo ningun nombre"), which this
+    // pattern does NOT match (`tests-first` does not contain the substring
+    // `test-first` — the extra `s` breaks the hyphen adjacency). A plain,
+    // unhyphenated "test first" (two words, no hyphen) was deliberately
+    // NOT added to this pattern either: `agents/reviewer.md` legitimately
+    // contains "...never by ordering the test first" inside a correct
+    // negated sentence, so widening the trigger to the unhyphenated form
+    // would have reintroduced exactly the false-positive class this round
+    // was told to fix, not create a new one.
+    re: /\btest-first\b/i,
+    harm:
+      'reintroduces the retired tests-first task-authoring instruction ("phrase the outcome so a ' +
+      'test-first test can assert it"), which tells whoever authors the next task template to ' +
+      'write the test before the implementation — the exact ordering CLAUDE.md eliminated',
+  },
+  {
+    name: 'tdd-md-dangling-pointer',
+    // WG2-233-001, second half: the pointer to the retired doctrine doc
+    // `.claude/shared/TDD.md` was only reachable via findTddRevivalMatches's
+    // \btdd\b-anchored, allowlist-gated scan — so planting the pointer next
+    // to unrelated "TDD is eliminated" prose silenced it (the allowlist stem
+    // /elimin/i matched the nearby legitimate sentence, not the pointer
+    // itself, but the window-based check can't tell those apart). This is a
+    // plain, unconditional literal instead — no allowlist to be silenced by.
+    // `.claude/shared/` only contains MINIMALISM.md and OBSERVABILITY.md
+    // (confirmed on disk as of 2026-09-17); TDD.md does not exist, so any
+    // surviving pointer to it is dead at best and a retired-doctrine re-read
+    // at worst if a stale copy exists anywhere else.
+    re: /\.claude\/shared\/TDD\.md/i,
+    harm:
+      'reinstates a pointer to a tests-first doctrine doc that no longer exists — following it ' +
+      'either 404s for the reader or, if a stale copy survives elsewhere, re-teaches retired ' +
+      'tests-first doctrine as if it were still authoritative',
   },
   {
     name: 'escribi-tests-primero-instruction',
@@ -302,6 +432,16 @@ const TDD_ALLOWLIST_STEMS = [
   /cerrados como/i, // Spanish "closed as [tdd]"
   /closed as/i,
   /ran as/i,
+  // Two stems added in the 2026-09-17 loop-back round — MEASURED false
+  // positives, not hypothetical (see the ticket hand-off for the exact
+  // before/after run). Both cover legitimate retrospective sentences that
+  // mention "tdd" alongside a co-occurring prescriptive-cue word
+  // (TDD_PRESCRIPTIVE_CUES below has both /default/i and /tests-after/i)
+  // purely because the sentence is ENUMERATING the current tier alongside
+  // the retired one, not instructing anyone to default to it:
+  /\bya se fue\b/i, // "El tier tdd ya se fue del enum; hoy todo es tests-after o uat-only."
+  /cerr[oó]\s+\d+\s+tickets?/i, // "TASK-212 cerro 100 tickets con tier tdd; el default hoy es tests-after."
+  /closed \d+ tickets?/i, // English equivalent of the stem above, same shape
 ];
 
 // Prescriptive cues — presence near a bare "tdd" mention that indicates an
@@ -316,7 +456,16 @@ const TDD_PRESCRIPTIVE_CUES = [
   /impli/i, // implies / implica
   /assum/i, // assume / assumed
   /se asume/i,
-  /\bfirst\b/i,
+  // Hyphen-excluding boundary (2026-09-17 loop-back round, real false
+  // positive surfaced by widening enumerateConsumerSurfaces to
+  // skills/mcp-server/references/tool-contract.md, previously unscanned):
+  // plain \b treats a hyphen as a word boundary too, so "RESUME-FIRST" (an
+  // unrelated compound term naming the session-resume protocol) tripped the
+  // bare /\bfirst\b/i cue purely by having "FIRST" as its second half. The
+  // exclusion covers both letters/digits/underscore AND the hyphen on both
+  // sides, so a real prescriptive "first" (space-delimited, e.g. "tdd comes
+  // first") still matches.
+  /(?<![\w-])first(?![\w-])/i,
   /primero/i,
   /precede/i,
   /preceder/i,
@@ -467,6 +616,32 @@ export function vitestAllConfigDefersE2eToWargaming(vitestAllText) {
   return { ok: !stillInstructsPreHandoff && mentionsWargamingDeferral, stillInstructsPreHandoff, mentionsWargamingDeferral };
 }
 
+// commands/loop.md's real step list lives inside ONE fenced pseudocode block,
+// immediately after the "### Step 2 — Loop until done, stopped, or stuck"
+// heading. `extractLoopStepsBlock` (2026-09-17 loop-back round, MEDIUM edge)
+// returns ONLY that block's contents — nothing before it, nothing after it,
+// and nothing inside any OTHER fence in the file. This is what closes the
+// adversary's "historical appendix" bypass: pasting a
+// "APENDICE HISTORICO (derogado, NO rige)" section BEFORE the real step
+// list, containing the four required phrases in the expected relative
+// order, used to satisfy `hasLoopMdGates` via `text.indexOf` finding the
+// decoy occurrences first — even while the REAL step 3/6 inside the fence
+// had been gutted. An appendix placed anywhere outside this one specific
+// fence is now structurally invisible to the check: `extractLoopStepsBlock`
+// returns '' if the heading or its fence can't be found, and the four
+// phrase lookups below run against that extracted span only.
+function extractLoopStepsBlock(text) {
+  const headingMatch = text.match(/^###\s*Step 2\s*[—-]\s*Loop until done/m);
+  if (!headingMatch) return '';
+  const afterHeading = text.slice(headingMatch.index + headingMatch[0].length);
+  const fenceStart = afterHeading.indexOf('```');
+  if (fenceStart === -1) return '';
+  const afterFenceOpen = afterHeading.slice(fenceStart + 3);
+  const fenceEnd = afterFenceOpen.indexOf('```');
+  if (fenceEnd === -1) return '';
+  return afterFenceOpen.slice(0, fenceEnd);
+}
+
 /**
  * commands/loop.md must carry BOTH 2026-09-16 gates as actual loop steps,
  * not only as general prose (HIGH-3): the mandatory use-case-approval STOP
@@ -475,9 +650,15 @@ export function vitestAllConfigDefersE2eToWargaming(vitestAllText) {
  * before the hard-stop-gate/close step, with the "blocks the close" rule
  * stated. Reverting this file to a gates-free version, or deleting either
  * step wholesale, must go RED here.
+ *
+ * 2026-09-17 loop-back round: checks now run ONLY inside the Step 2 fenced
+ * step list (see `extractLoopStepsBlock` above) instead of over the whole
+ * file — closes the "historical appendix placed before the real steps"
+ * bypass described in the WG2-233-001 hand-off's MEDIUM edge 2.
  */
 export function hasLoopMdGates(loopMdText) {
-  const text = stripHtmlCommentsOnly(loopMdText);
+  const withoutComments = stripHtmlCommentsOnly(loopMdText);
+  const text = extractLoopStepsBlock(withoutComments);
 
   const approvalPhrase = "STOP for the human's EXPLICIT";
   const devSpawnPhrase = 'Spawn the Developer subagent, briefed with the approved use-case list';
