@@ -140,11 +140,28 @@ describe('AC2 — zero retired tests-first-gate phrasing on any shipped consumer
   // never scanned — a retired-policy phrase planted there would ship to a
   // consumer with zero sensor coverage. Locks the recursive walk's real
   // count against silent regression back to the one-level version.
-  it('enumerateConsumerSurfaces recurses into skills/*/references/*.md, not only skills/*/SKILL.md', () => {
+  //
+  // B1 (4th wargaming loop-back, 2026-09-17): these used to be exact `toBe`
+  // assertions (37 / 7) — an EXACT hardcoded count that would go red on any
+  // new, legitimate `.md` file added anywhere under the scanned roots, with
+  // zero policy violation involved (the same "suite size tracks product
+  // surface, not ticket count" anti-pattern CLAUDE.md's Test retirement
+  // policy names for tests/use-cases/). Loosened to floors: this still
+  // catches an ENUMERATION regression (the count dropping — e.g. a root
+  // silently stops being scanned) without going red on legitimate growth.
+  // The floors also now cover `.claude/agents/` + `.claude/skills/` (M2,
+  // added in this same round — see `enumerateConsumerSurfaces`'s own
+  // comment): 66 real `.md` files exist across all five scanned roots as of
+  // 2026-09-17 (37 plugin-root + 29 under `.claude/`), 14 of them under a
+  // `references/` directory (7 + 7, framework-only skills mirroring the
+  // `-current-project` ones under `.claude/skills/`).
+  it('enumerateConsumerSurfaces recurses into skills/*/references/*.md and into .claude/agents|skills, not only the plugin-root SKILL.md files', () => {
     const surfaces = enumerateConsumerSurfaces(REPO_ROOT);
-    expect(surfaces.length).toBe(37);
+    expect(surfaces.length).toBeGreaterThanOrEqual(66);
     const referencesSurfaces = surfaces.filter((s) => s.includes('/references/'));
-    expect(referencesSurfaces.length).toBe(7);
+    expect(referencesSurfaces.length).toBeGreaterThanOrEqual(14);
+    const claudeSurfaces = surfaces.filter((s) => s.startsWith('.claude/'));
+    expect(claudeSurfaces.length).toBeGreaterThanOrEqual(29);
   });
 });
 
@@ -192,6 +209,89 @@ describe('WG2-233-001 — the test-first (red-green) mutant is caught, and real 
     expect(findForbiddenMatches(fp1)).toEqual([]);
     expect(findForbiddenMatches(fp2)).toEqual([]);
     expect(findForbiddenMatches(fp3)).toEqual([]);
+  });
+});
+
+// ===========================================================================
+// WG4-233-001 + M3 (4th wargaming pass, 2026-09-17) — typographic variants of
+// the SAME retired collocation, and the false positive the 3rd pass's fix
+// introduced
+// ===========================================================================
+// Harm this prevents: the 3rd pass's bare `\btest-first\b` token match was
+// evaded by four typographic variants a real author trips on by accident —
+// space instead of hyphen, the plural "tests-first", the U+2011 non-breaking
+// hyphen, and a line-broken "test-\nfirst" — and the dangling-pointer literal
+// was evaded by any rewrite of the `.claude/shared/TDD.md` path prefix or
+// separator. Both reintroduce the retired doctrine with the sensor reporting
+// green. Also locks the M3 regression (a correct, live sentence about
+// red-green planting must NOT go red) against the collocation redesign that
+// fixed it.
+describe('WG4-233-001 + M3 (4th pass) — typographic variants of test-first (red-green) and the TDD.md pointer, without new false positives', () => {
+  it('catches space/plural/U+2011/linebreak variants of "test-first (red-green)", and any TDD.md path-prefix/separator rewrite', () => {
+    const variants = [
+      'phrased so a test first (red green) test can assert it', // spaces instead of hyphens
+      'phrased so a tests-first (red-green) test can assert it', // plural
+      'phrased so a test‑first (red‑green) test can assert it', // U+2011 non-breaking hyphen
+      'phrased so a test-\nfirst (red-green) test can assert it', // line break inside the token
+    ];
+    for (const text of variants) {
+      expect(findForbiddenMatches(text), text).toContain('test-first-red-green-outcome-phrasing');
+    }
+
+    const pointerVariants = [
+      'shared/TDD.md', // no .claude prefix
+      '../shared/TDD.md', // relative prefix
+      'docs/shared/TDD.md', // different path entirely
+      'shared\\TDD.md', // Windows separator
+      'TDD.md', // bare filename
+    ];
+    for (const text of pointerVariants) {
+      expect(findForbiddenMatches(text), text).toContain('tdd-md-dangling-pointer');
+    }
+  });
+
+  // Harm this prevents (M3): the 3rd pass added a negation lookbehind to
+  // `write-tests-first-instruction` but not to the bare `test-first` token
+  // match, so prose correctly STATING current policy ("red-green planting is
+  // AFTER the fact, never test-first") went red — the exact false-positive
+  // class this file's own header says the sensor must not produce.
+  it('does not flag correct prose that names "test-first" only to deny it, with no "(red-green)" collocated', () => {
+    const correctProse =
+      'Red-green planting is not a test-first rule: the red run is captured after the fact, ' +
+      'never by writing the test-first.';
+    expect(findForbiddenMatches(correctProse)).toEqual([]);
+  });
+});
+
+// ===========================================================================
+// WG4-233-002 (4th wargaming pass, 2026-09-17) — CU4's forbidden half must
+// catch every measured realistic reintroduction, and its positive half must
+// require the real config, not a lone comment
+// ===========================================================================
+// Harm this prevents: a Developer or Reviewer reading vitest.config.all.js
+// for guidance is misled into running the full e2e-including suite at every
+// hand-off again — the exact wall-clock waste the 2026-09-16 decision
+// eliminated — and a near-empty decoy config with no real `include` glob
+// used to be reported fully compliant off a single comment.
+describe('WG4-233-002 — vitest.config.all.js: all 7 measured reintroductions of the retired instruction go red, and a comment-only decoy does not pass as compliant', () => {
+  it('flags all 7 measured realistic reintroductions of "run e2e before hand-off/the review"', () => {
+    const reintroductions = [
+      'This config runs the full suite before hand-off, per the old policy.',
+      'The e2e tier must complete prior to hand-off.',
+      'Developers must run this before handing off their ticket.',
+      'This suite is executed before hand off by every Developer.',
+      'Este archivo corre esto antes del hand-off, siempre.',
+      'Every per-ticket gate must execute tests/e2e/** before the review.',
+      'The Developer runs this before hand-off on every ticket.',
+    ];
+    for (const text of reintroductions) {
+      expect(vitestAllConfigDefersE2eToWargaming(text).stillInstructsPreHandoff, text).toBe(true);
+    }
+  });
+
+  it('does not report a comment-only, no-real-config decoy as compliant', () => {
+    const decoy = '// wargaming step\nexport default {};';
+    expect(vitestAllConfigDefersE2eToWargaming(decoy).ok).toBe(false);
   });
 });
 

@@ -119,7 +119,7 @@
 // Consumer-surface enumeration (HIGH-2) — read from disk, not a hand-kept
 // list. Read-only: `existsSync`/`readdirSync` only, no write call anywhere.
 // ---------------------------------------------------------------------------
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 // ---------------------------------------------------------------------------
@@ -173,20 +173,174 @@ import { join, relative, sep } from 'node:path';
 //       instruct defaulting to tdd. Fixed by widening
 //       TDD_ALLOWLIST_STEMS — see the two new stems' own comments.
 // ---------------------------------------------------------------------------
+//
+// ===========================================================================
+// WARGAMING LOOP-BACK, 4th PASS (2026-09-17, TASK-233 re-spawn #3) — findings
+// WG4-233-001 (typographic-variant half only) and WG4-233-002 fixed here;
+// M3 fixed as a side effect of WG4-233-001's redesign; M2 and M4 fixed;
+// M1 and the paraphrase/semantic-inversion half of WG4-233-001 deliberately
+// NOT fixed — see the named-limitation comments at each site below.
+// ===========================================================================
+//   WG4-233-002 (CU4 near-vacuous) → `vitestAllConfigDefersE2eToWargaming`
+//             depended on ONE literal ("runs this before hand-off") for the
+//             forbidden half, and a bare "wargaming step" token match for the
+//             positive half (satisfiable by a lone comment in a two-line
+//             decoy file with no real config). Fixed: the forbidden half is
+//             now a verb+before+target composition tolerant of word order,
+//             "prior to", "handing off", "hand off" (no hyphen), Spanish
+//             ("corre ... antes del ..."), and a hand-off-word-free form
+//             ("execute ... before the review"); the positive half now also
+//             requires the file to have REAL config shape (`defineConfig(` +
+//             the actual `tests/**/*.spec.js` include glob) AND the
+//             deferral statement to co-occur with `tests/e2e` nearby, not a
+//             bare token anywhere in the file.
+//   WG4-233-001 (typographic half only; paraphrase/inversion half is a NAMED
+//             LIMITATION, see below) → `test-first-red-green-outcome-phrasing`
+//             was a bare `\btest-first\b` token match, evaded by "test first"
+//             (space), "tests-first" (plural), U+2011 non-breaking hyphen,
+//             and a line-broken "test-\nfirst". Fixed: redesigned as a
+//             COLLOCATION match — `test(s)-first` immediately followed by
+//             `(red-green)`, both sides tolerant of a wide separator class
+//             (space/newline/tab, underscore, ASCII hyphen, and the Unicode
+//             hyphen/dash block U+2010-U+2015 plus U+2212 MINUS SIGN) — which
+//             is what the actual retired phrase looks like verbatim, so the
+//             typo-tolerant match still only fires on THIS text, not on any
+//             bare mention of "tests-first" elsewhere (which is live, correct
+//             policy vocabulary throughout this repo). This redesign is ALSO
+//             what fixes M3 below (see that entry) — requiring the
+//             collocation, instead of the bare token, means the legitimate
+//             "not a test-first rule" / "never by writing the test-first"
+//             sentences no longer match at all, with no lookbehind needed.
+//             The dangling-pointer half: `tdd-md-dangling-pointer` was
+//             anchored to the exact literal `.claude/shared/TDD.md`, evaded
+//             by any path rewrite (`shared/TDD.md`, `../shared/TDD.md`,
+//             `docs/shared/TDD.md`, a Windows `\` separator, or the bare
+//             filename). Fixed: now a plain `\bTDD\.md\b` filename match with
+//             no path-prefix requirement at all — `.claude/shared/` is
+//             confirmed (2026-09-17) to contain only MINIMALISM.md and
+//             OBSERVABILITY.md, so ANY mention of the filename `TDD.md`
+//             anywhere on a shipped surface is dangling by construction.
+//   M3 (new false positive from the 3rd pass) → fixed as a direct
+//             consequence of the WG4-233-001 redesign above: the negation
+//             lookbehind was added to `write-tests-first-instruction` in the
+//             3rd pass but NOT to the bare `\btest-first\b` pattern, so
+//             "Red-green planting is not a test-first rule: ... never by
+//             writing the test-first." (both correct, live policy prose)
+//             went red. Requiring the `(red-green)` collocation removes the
+//             false positive without a second lookbehind: neither occurrence
+//             in that sentence is followed by `(red-green)`.
+//   M2 (six .claude/-only skills unscanned) → `enumerateConsumerSurfaces`
+//             only read the plugin-root `agents/`, `commands/`, `skills/`
+//             trees; the six skills that ship ONLY under `.claude/skills/`
+//             (claude-headless, gh-cli-issue-reporting, hive-self-improve,
+//             hive-adversarial-improve, hivemind-assimilate-skill,
+//             ui-ux-pro-max — framework-only skills, see CLAUDE.md's
+//             "Framework-only vs current-project skills") had zero sensor
+//             coverage from EITHER this sensor or the parity guards (parity
+//             only compares MIRRORED pairs; these six have no plugin-root
+//             mirror to compare against). Fixed: `.claude/agents/` and
+//             `.claude/skills/` are now additional enumeration roots,
+//             alongside the three plugin-root ones.
+//
+//             COORDINATION NOTE — two neighboring sensors, do not merge:
+//             `tests/helpers/agentInstructionGuardChecks.js` (TASK-237,
+//             mechanism B) ALSO scans `.claude/skills/**` and its
+//             `references/`. The two are NOT the same check and must not be
+//             folded into one: THIS file (`policyPropagationChecks.js`)
+//             hunts for RETIRED doctrine surviving or being reintroduced
+//             (dead policy that should be GONE — "absent means tdd",
+//             test-first, the TDD.md pointer). `agentInstructionGuardChecks.js`
+//             hunts for prose that CONTRADICTS the policy that is currently
+//             LIVE (a gate rephrased with an exemption clause, an inverted
+//             rule) — a materially different detection target, built by a
+//             parallel spawn on TASK-237. Both independently arrived at
+//             scanning `.claude/skills/**` because both were missing the
+//             same six framework-only skills; that is a coincidence of
+//             surface, not of purpose.
+//   M4 (enumerator blind spots) → three fixed in `walkMdFiles`: (a) the
+//             `.md` extension check was exact-case, so `README.MD` (upper-
+//             case extension) was silently skipped — now compared
+//             case-insensitively; (b) a `Dirent` for a symlink reports
+//             `false` for BOTH `isDirectory()` and `isFile()` (the type
+//             reflects the LINK itself, not its target), so a symlinked
+//             `.md` file or a symlinked directory was silently invisible to
+//             the walk — now resolved via `statSync` (which follows the
+//             link) whenever `entry.isSymbolicLink()`; (c) a symlink cycle
+//             (a symlinked directory pointing back at an ancestor) is guarded
+//             against via a `visitedRealDirs` set keyed by `realpathSync`,
+//             so a pathological loop cannot hang the walk.
+//   B1 (hardcoded surface count) → the spec's exact `toBe(37)` / `toBe(7)`
+//             assertions put the whole sensor in the red on ANY new
+//             legitimate `.md` file anywhere under the four scanned roots,
+//             with no policy violation involved — the exact "grows with
+//             ticket count instead of product surface" anti-pattern
+//             CLAUDE.md's Test retirement policy names for `tests/use-cases/`.
+//             Fixed in the spec file: both assertions are now
+//             `toBeGreaterThanOrEqual` floors (with a comment explaining
+//             why), which still catches an ENUMERATION regression (the
+//             count dropping) without going red on legitimate growth.
+//   NOT FIXED, DELIBERATE (per this round's explicit Orchestrator scope
+//   decision, not an oversight):
+//     - WG4-233-001's PARAPHRASE and SEMANTIC-INVERSION half ("spec-first",
+//       "test-driven", "Write a failing test first", the two Spanish
+//       paraphrases, and any rewording that keeps the retired MEANING while
+//       changing the WORDS). A keyword/regex scan cannot decide semantic
+//       equivalence, and three consecutive wargaming rounds chasing each new
+//       wording is a race this file cannot win by adding more literals. See
+//       MEDIUM-4 above (2026-09-16 round) for the same limitation already
+//       documented for gate INVERSION — this is the same shape of gap,
+//       extended to the forbidden-phrase side. The control that DOES close
+//       this gap is the one that found it three times running: the
+//       adversarial wargaming pass plus human review, not this file.
+//     - MEDIUM M1 (loop.md decoy moved INSIDE the real Step-2 fence) — see
+//       `hasLoopMdGates`'s own comment below for why this is positional by
+//       nature and left as a named limitation rather than "fixed".
+// ---------------------------------------------------------------------------
 
 /**
  * Recursively collects every `.md` file under `dir`, returning paths
  * relative to `repoRoot` in posix style (forward slashes), so the same
- * output shape works on any OS. Read-only (`readdirSync` only).
+ * output shape works on any OS. Read-only (`readdirSync`/`statSync`/
+ * `realpathSync` only — no write call anywhere).
+ *
+ * M4 (4th wargaming loop-back, 2026-09-17): the extension check is
+ * case-insensitive (`README.MD` used to be silently skipped by an exact-case
+ * `.endsWith('.md')`); a symlinked `.md` file or symlinked directory is
+ * resolved via `statSync` (a `Dirent` for a symlink reports `false` for BOTH
+ * `isDirectory()` and `isFile()` — the type reflects the link itself, not
+ * its target, so both used to be silently invisible); and a symlink cycle
+ * is guarded against via `visitedRealDirs` keyed by `realpathSync` so a
+ * pathological loop cannot hang the walk.
  */
-function walkMdFiles(dir, repoRoot) {
+function walkMdFiles(dir, repoRoot, visitedRealDirs = new Set()) {
   const results = [];
   if (!existsSync(dir)) return results;
+
+  let realDir;
+  try {
+    realDir = realpathSync(dir);
+  } catch {
+    return results;
+  }
+  if (visitedRealDirs.has(realDir)) return results;
+  visitedRealDirs.add(realDir);
+
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const abs = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...walkMdFiles(abs, repoRoot));
-    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+    let isDir = entry.isDirectory();
+    let isFile = entry.isFile();
+    if (entry.isSymbolicLink()) {
+      try {
+        const st = statSync(abs);
+        isDir = st.isDirectory();
+        isFile = st.isFile();
+      } catch {
+        continue; // broken symlink target — nothing to scan
+      }
+    }
+    if (isDir) {
+      results.push(...walkMdFiles(abs, repoRoot, visitedRealDirs));
+    } else if (isFile && entry.name.toLowerCase().endsWith('.md')) {
       results.push(relative(repoRoot, abs).split(sep).join('/'));
     }
   }
@@ -195,14 +349,26 @@ function walkMdFiles(dir, repoRoot) {
 
 /**
  * Enumerates every shipped instruction surface under `repoRoot`: every
- * `.md` file anywhere under `agents/`, `commands/`, or `skills/` — at ANY
- * depth, not just the top level. This is what makes a nested skill
- * directory (`skills/<group>/<nested>/SKILL.md`) and a progressive-
- * disclosure `references/*.md` file (7 real ones exist under `skills/` as
- * of the 2026-09-17 round: hive-adversarial-improve-current-project x2,
- * hive-self-improve-current-project x2, mcp-server x3) visible to the scan
- * instead of silently skipped. Returns paths sorted for deterministic
- * output.
+ * `.md` file anywhere under `agents/`, `commands/`, `skills/` — the
+ * plugin-root trees actually shipped to a consumer — AND, since the 4th
+ * wargaming loop-back (2026-09-17, M2), `.claude/agents/` and
+ * `.claude/skills/` too. The `.claude/` addition is NOT redundant with the
+ * plugin-root scan: six skills ship ONLY under `.claude/skills/` with no
+ * plugin-root mirror at all (claude-headless, gh-cli-issue-reporting,
+ * hive-self-improve, hive-adversarial-improve, hivemind-assimilate-skill,
+ * ui-ux-pro-max — see CLAUDE.md's "Framework-only vs current-project
+ * skills"), so they had ZERO sensor coverage before this round: not from
+ * this scan (didn't read `.claude/` at all) and not from the parity guards
+ * either (parity only compares a MIRRORED pair; a one-sided file has no
+ * pair to diff against). See the "COORDINATION NOTE" in this file's 4th-pass
+ * header comment for the neighboring `agentInstructionGuardChecks.js`
+ * sensor, which independently also scans `.claude/skills/**` for a
+ * different purpose.
+ *
+ * Recurses at ANY depth (nested skill dirs, progressive-disclosure
+ * `references/*.md`), is case-insensitive on the `.md` extension, and
+ * follows symlinked files/dirs — see `walkMdFiles`'s own comment. Returns
+ * paths sorted for deterministic output.
  *
  * TASK-192 empty-result contract: a genuinely empty repo (no agents/,
  * commands/, or skills/ at all) is not a plausible state for this project —
@@ -216,12 +382,14 @@ export function enumerateConsumerSurfaces(repoRoot) {
     ...walkMdFiles(join(repoRoot, 'agents'), repoRoot),
     ...walkMdFiles(join(repoRoot, 'commands'), repoRoot),
     ...walkMdFiles(join(repoRoot, 'skills'), repoRoot),
+    ...walkMdFiles(join(repoRoot, '.claude', 'agents'), repoRoot),
+    ...walkMdFiles(join(repoRoot, '.claude', 'skills'), repoRoot),
   ];
 
   if (surfaces.length === 0) {
     throw new Error(
       'enumerateConsumerSurfaces found ZERO shipped instruction surfaces under agents/, ' +
-        'commands/, skills/ at repoRoot=' +
+        'commands/, skills/, .claude/agents/, .claude/skills/ at repoRoot=' +
         repoRoot +
         ' — this is almost certainly a broken enumeration (wrong repoRoot, a moved or ' +
         'renamed directory), not a legitimate empty state. Failing loudly per the TASK-192 ' +
@@ -316,61 +484,86 @@ export const FORBIDDEN_PATTERNS = [
   },
   {
     name: 'test-first-red-green-outcome-phrasing',
-    // WG2-233-001 (2026-09-17): the mutant that survived the 3rd wargaming
-    // pass restored, verbatim, the old task-template line "...phrased so a
-    // test-first (red-green) test can assert it" — none of the other 8
-    // literals, and none of findTddRevivalMatches (it is `tdd`-anchored,
-    // and this sentence never says "tdd"), had any pattern for either
-    // "test-first" or "red-green".
+    // WG2-233-001 (2026-09-17, 3rd pass): the mutant that survived restored,
+    // verbatim, the old task-template line "...phrased so a test-first
+    // (red-green) test can assert it" — none of the other 8 literals, and
+    // none of findTddRevivalMatches (it is `tdd`-anchored, and this sentence
+    // never says "tdd"), had any pattern for either "test-first" or
+    // "red-green".
     //
-    // DELIBERATE SCOPE: this pattern triggers on the bare hyphenated token
-    // `test-first` ONLY — it does NOT match "red-green" or "red-green
-    // planting" in any form. Those phrases are LIVE, CORRECT policy
-    // (agents/developer.md's "Red-green planting" section, required by
-    // CLAUDE.md's Testing section): every new test/spec/lock must still be
-    // proved able to fail by reverting the fix and confirming red, then
-    // restored — that is a practice performed AFTER the implementation
-    // exists, not an ordering rule. What is forbidden is "test-FIRST"
-    // (write/derive the test before the code exists) — a distinct, retired
-    // concept. A blind trigger on "red-green" alone would have gone red on
-    // agents/developer.md's OWN compliant "Red-green planting" section and
-    // on `agents/reviewer.md`'s "Red-green planting still applies..." line
-    // — i.e. it would have broken correct, currently-shipped policy text,
-    // which is exactly the outcome this ticket's briefing warned against.
+    // WG4-233-001 + M3 (2026-09-17, 4th pass): the 3rd pass's bare
+    // `\btest-first\b` token match was evaded by four typographic variants
+    // of the SAME text a real author trips on by accident — "test first"
+    // (space instead of hyphen), "tests-first" (plural), the U+2011
+    // non-breaking hyphen, and a line-broken "test-\nfirst" — and it ALSO
+    // produced a new false positive (M3): "Red-green planting is not a
+    // test-first rule: ... never by writing the test-first." (correct, live
+    // policy prose) went red, because a bare-token match cannot tell
+    // "test-first" used to correctly DENY the retired ordering apart from
+    // "test-first" used to reinstate it.
     //
-    // Corpus check performed before adding this pattern (2026-09-17): the
-    // bare hyphenated token `test-first` (singular, with hyphen) has ZERO
-    // legitimate occurrences anywhere under agents/, commands/, skills/, or
-    // CLAUDE.md — every live mention of the retired concept uses the plural
-    // "tests-first" (e.g. "ni tests-first bajo ningun nombre"), which this
-    // pattern does NOT match (`tests-first` does not contain the substring
-    // `test-first` — the extra `s` breaks the hyphen adjacency). A plain,
-    // unhyphenated "test first" (two words, no hyphen) was deliberately
-    // NOT added to this pattern either: `agents/reviewer.md` legitimately
-    // contains "...never by ordering the test first" inside a correct
-    // negated sentence, so widening the trigger to the unhyphenated form
-    // would have reintroduced exactly the false-positive class this round
-    // was told to fix, not create a new one.
-    re: /\btest-first\b/i,
+    // REDESIGNED as a COLLOCATION match: `test(s)-first` immediately
+    // followed by `(red-green)` (or `(red green)`), both sides tolerant of
+    // a wide separator class — ASCII space/tab/newline, underscore, ASCII
+    // hyphen, the Unicode hyphen/dash block U+2010-U+2015 (covers U+2011
+    // NON-BREAKING HYPHEN), and U+2212 MINUS SIGN — plus up to 10
+    // characters of slack between "first" and the opening paren (covers a
+    // line break there too). This is what the actual retired phrase looks
+    // like verbatim, typos and all, so it still fires on every realistic
+    // reintroduction of THAT text while leaving every other live mention of
+    // "tests-first" (the correct, current vocabulary for "eliminated"
+    // policy prose — see MEDIUM-4/WG4-233-001's paraphrase note above)
+    // completely alone.
+    //
+    // This redesign is ALSO the M3 fix, with no separate negation lookbehind
+    // needed: neither "not a test-first rule" nor "writing the test-first."
+    // is followed by "(red-green)", so the collocation requirement excludes
+    // both without having to name them.
+    //
+    // DELIBERATE SCOPE, unchanged from the 3rd pass: this does NOT match
+    // "red-green" or "Red-green planting" on its own — that is LIVE,
+    // CORRECT policy (agents/developer.md's "Red-green planting" section,
+    // required by CLAUDE.md's Testing section). What is forbidden is
+    // "test-FIRST ... (red-green)" as a COLLOCATION — the retired
+    // instruction to phrase task outcomes so a test can be derived before
+    // the implementation exists — not the correct, unrelated practice of
+    // proving a test can fail, performed AFTER the implementation exists.
+    //
+    // NOT covered, by design (see this file's 4th-pass header "NOT FIXED,
+    // DELIBERATE" note): paraphrases that drop the "test-first" token
+    // entirely (spec-first, test-driven, "escribe el test antes...") or
+    // that invert a correct sentence's meaning while keeping its words. A
+    // keyword scan cannot decide semantic equivalence; that gap is named,
+    // not silently left open.
+    re: /\btests?[\s_\-‐-―−]+first\b[\s\S]{0,10}\(\s*red[\s_\-‐-―−]+green\s*\)/i,
     harm:
       'reintroduces the retired tests-first task-authoring instruction ("phrase the outcome so a ' +
-      'test-first test can assert it"), which tells whoever authors the next task template to ' +
-      'write the test before the implementation — the exact ordering CLAUDE.md eliminated',
+      'test-first (red-green) test can assert it"), which tells whoever authors the next task ' +
+      'template to write the test before the implementation — the exact ordering CLAUDE.md eliminated',
   },
   {
     name: 'tdd-md-dangling-pointer',
-    // WG2-233-001, second half: the pointer to the retired doctrine doc
-    // `.claude/shared/TDD.md` was only reachable via findTddRevivalMatches's
-    // \btdd\b-anchored, allowlist-gated scan — so planting the pointer next
-    // to unrelated "TDD is eliminated" prose silenced it (the allowlist stem
-    // /elimin/i matched the nearby legitimate sentence, not the pointer
-    // itself, but the window-based check can't tell those apart). This is a
-    // plain, unconditional literal instead — no allowlist to be silenced by.
-    // `.claude/shared/` only contains MINIMALISM.md and OBSERVABILITY.md
-    // (confirmed on disk as of 2026-09-17); TDD.md does not exist, so any
-    // surviving pointer to it is dead at best and a retired-doctrine re-read
-    // at worst if a stale copy exists anywhere else.
-    re: /\.claude\/shared\/TDD\.md/i,
+    // WG2-233-001, second half (3rd pass): the pointer to the retired
+    // doctrine doc `.claude/shared/TDD.md` was only reachable via
+    // findTddRevivalMatches's \btdd\b-anchored, allowlist-gated scan — so
+    // planting the pointer next to unrelated "TDD is eliminated" prose
+    // silenced it by adjacency (the allowlist stem /elimin/i matched the
+    // nearby legitimate sentence, not the pointer itself, but the
+    // window-based check can't tell those apart).
+    //
+    // WG4-233-001 (4th pass): the literal `.claude/shared/TDD.md` anchor was
+    // itself evadable by any path rewrite that keeps the filename but
+    // changes the prefix or separator — `shared/TDD.md`, `../shared/TDD.md`,
+    // `docs/shared/TDD.md`, a Windows `shared\TDD.md` separator, or the bare
+    // filename `TDD.md` with no path at all — every one of those still
+    // points at the same nonexistent, retired-doctrine file. Fixed: matches
+    // the FILENAME alone, with no path-prefix requirement whatsoever.
+    // `.claude/shared/` is confirmed (2026-09-17) to contain only
+    // MINIMALISM.md and OBSERVABILITY.md — TDD.md does not exist anywhere
+    // in this repo — so any surviving mention of that filename on a shipped
+    // surface is dangling by construction, regardless of how it is spelled
+    // as a path.
+    re: /\bTDD\.md\b/i,
     harm:
       'reinstates a pointer to a tests-first doctrine doc that no longer exists — following it ' +
       'either 404s for the reader or, if a stale copy survives elsewhere, re-teaches retired ' +
@@ -604,16 +797,60 @@ export function hasSkillWargamingFinalStep(skillText) {
   return { ok: positioned && blocksClose, positioned, blocksClose };
 }
 
+// Separator class shared with the test-first/red-green collocation pattern
+// above — ASCII whitespace, underscore, ASCII hyphen, the Unicode
+// hyphen/dash block, and the Unicode minus sign — reused here so a wrapped
+// or typo'd rendering of the same words doesn't dodge the scan either.
+const CONNECTOR_SEP = '[\\s_\\-\\u2010-\\u2015\\u2212]*';
+
 /**
  * vitest.config.all.js must no longer instruct that the Developer runs the
  * full (e2e-including) suite before hand-off — that execution moved to the
  * wargaming step (2026-09-16 decision, WG-H-017).
+ *
+ * WG4-233-002 (4th wargaming loop-back, 2026-09-17): the previous version
+ * depended on a single literal ("runs this before hand-off") for the
+ * forbidden half and a bare "wargaming step" token anywhere in the file for
+ * the positive half — 6 of 7 measured realistic reintroductions of the
+ * retired instruction survived as green, and a two-line decoy file with no
+ * real config, just a comment mentioning the phrase, was reported compliant.
+ * Both halves are rebuilt below.
+ *
+ * FORBIDDEN half: a run/execute verb (English or Spanish), followed within
+ * a bounded window by a "before"/"prior to" cue (English or Spanish),
+ * followed within a smaller window by a hand-off/review target — tolerant
+ * of "hand-off"/"hand off"/"handoff"/"handing off", and of a target that
+ * never says "hand-off" at all ("before the review"). This is a
+ * composition, not a single literal, specifically so that reordering or
+ * lightly rewording the same instruction does not evade it the way the
+ * single-literal version did.
+ *
+ * POSITIVE half: requires the file to have REAL functional config shape
+ * (`defineConfig(` plus the actual `tests/**\/*.spec.js` include glob) —
+ * closing the decoy-comment loophole, since a stub with no real config
+ * fails this regardless of what its comments say — AND an explicit
+ * deferral statement where `tests/e2e` and `wargaming step` co-occur near
+ * each other, not a bare "wargaming step" token anywhere in the file.
  */
 export function vitestAllConfigDefersE2eToWargaming(vitestAllText) {
   const text = stripFencesAndComments(vitestAllText);
-  const stillInstructsPreHandoff = /runs this before hand-off/i.test(text);
-  const mentionsWargamingDeferral = /wargaming step/i.test(text);
-  return { ok: !stillInstructsPreHandoff && mentionsWargamingDeferral, stillInstructsPreHandoff, mentionsWargamingDeferral };
+
+  const runVerb = '(?:runs?|ran|running|executes?|executed|executing|corre(?:mos|n)?|corriendo)';
+  const beforeCue = `(?:before|prior${CONNECTOR_SEP}to|antes${CONNECTOR_SEP}de(?:l)?)`;
+  const target = '(?:hand[\\s\\-_]?off|handing[\\s\\-_]?off|the review|revisi[oó]n)';
+  const compositionRe = new RegExp(`\\b${runVerb}\\b[\\s\\S]{0,100}\\b${beforeCue}\\b[\\s\\S]{0,60}\\b${target}\\b`, 'i');
+  // Stand-alone "prior to hand-off" (or its variants) is forbidden even with
+  // no run/execute verb nearby — a sentence can imply the instruction
+  // without repeating the verb (e.g. "the e2e tier, prior to hand-off").
+  const priorToStandaloneRe = new RegExp(`\\bprior${CONNECTOR_SEP}to\\b[\\s\\S]{0,60}\\b${target}\\b`, 'i');
+  const stillInstructsPreHandoff = compositionRe.test(text) || priorToStandaloneRe.test(text);
+
+  const hasRealConfigShape = /defineConfig\s*\(/.test(text) && /tests\/\*\*\/\*\.spec\.js/.test(text);
+  const mentionsWargamingDeferral =
+    /tests\/e2e[\s\S]{0,300}wargaming step/i.test(text) || /wargaming step[\s\S]{0,300}tests\/e2e/i.test(text);
+
+  const ok = hasRealConfigShape && !stillInstructsPreHandoff && mentionsWargamingDeferral;
+  return { ok, hasRealConfigShape, stillInstructsPreHandoff, mentionsWargamingDeferral };
 }
 
 // commands/loop.md's real step list lives inside ONE fenced pseudocode block,
@@ -651,10 +888,30 @@ function extractLoopStepsBlock(text) {
  * stated. Reverting this file to a gates-free version, or deleting either
  * step wholesale, must go RED here.
  *
- * 2026-09-17 loop-back round: checks now run ONLY inside the Step 2 fenced
- * step list (see `extractLoopStepsBlock` above) instead of over the whole
- * file — closes the "historical appendix placed before the real steps"
- * bypass described in the WG2-233-001 hand-off's MEDIUM edge 2.
+ * 2026-09-17 loop-back round (3rd pass): checks now run ONLY inside the
+ * Step 2 fenced step list (see `extractLoopStepsBlock` above) instead of
+ * over the whole file — closes the "historical appendix placed BEFORE the
+ * real steps" bypass described in the WG2-233-001 hand-off's MEDIUM edge 2.
+ *
+ * NOT FIXED, DELIBERATE (4th pass, MEDIUM M1, 2026-09-17): the 3rd pass's
+ * fix only moved the blind spot, it did not close it. The decoy no longer
+ * works OUTSIDE the extracted fence, but it still works INSIDE it: empty
+ * out ONLY the real step 3/step 6 content and paste a decoy block (e.g. a
+ * "NOTA HISTORICA (derogada)" aside) containing the four expected phrases,
+ * in order, elsewhere WITHIN the same Step 2 fence — `extractLoopStepsBlock`
+ * extracts the whole fence indiscriminately, so `text.indexOf` inside this
+ * function still finds the decoy occurrences instead of noticing the real
+ * ones are gone. This is accepted as a named limitation, not fixed here, per
+ * this ticket's explicit Orchestrator scope decision: the underlying defect
+ * is POSITIONAL by nature (this function proves ORDER of phrase occurrence,
+ * never that a given occurrence is the CANONICAL one — that would require
+ * parsing the step list into actual step boundaries, a materially larger
+ * change than a loop-back-sized fix), and the same class of gap
+ * (word-order/keyword matching cannot detect semantic substitution) is
+ * already documented as out of scope for `test-first-red-green-outcome-
+ * phrasing` above. A reader must NOT treat a green result from this
+ * function as proof the real step 3/6 content is intact — only that the
+ * four required phrases occur, in order, SOMEWHERE inside the Step 2 fence.
  */
 export function hasLoopMdGates(loopMdText) {
   const withoutComments = stripHtmlCommentsOnly(loopMdText);
