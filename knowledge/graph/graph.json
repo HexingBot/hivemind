@@ -1692,6 +1692,30 @@
       "type": "task",
       "ref": "tasks/TASK-230.json",
       "label": "Decision de Mato: que hacer con el gate de manifiestos previo al codigo"
+    },
+    {
+      "id": "task-233",
+      "type": "task",
+      "ref": "tasks/TASK-233.json",
+      "label": "RAIZ: publicar la politica a la superficie que la ejecuta (propagacion del plugin)"
+    },
+    {
+      "id": "task-235",
+      "type": "task",
+      "ref": "tasks/TASK-235.json",
+      "label": "Concurrencia del task-store: el segundo escritor que la premisa omite (bin/task-board.js)"
+    },
+    {
+      "id": "task-236",
+      "type": "task",
+      "ref": "tasks/TASK-236.json",
+      "label": "Fail-open del modo: corromper un archivo de estado convierte un cierre DENEGADO en PERMITIDO"
+    },
+    {
+      "id": "task-237",
+      "type": "task",
+      "ref": "tasks/TASK-237.json",
+      "label": "Paridad: project-context.md exento del unico mecanismo de coherencia, y los pares no lockeados"
     }
   ],
   "edges": [
