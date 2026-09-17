@@ -13,7 +13,9 @@
 // Disk I/O / tmpdir → slow tier: tests/e2e/.
 
 import { describe, it, expect, afterAll } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import {
+  mkdirSync, writeFileSync, readFileSync, symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
@@ -349,5 +351,139 @@ describe('TASK-236 review MEDIUM-1 — getMode rejects a declared-but-unrecogniz
     const { root } = makeRepo(); // bundle has no `mode` field
     const result = await getMode({ repoRoot: root });
     expect(result).toBe('harness');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-236 wargaming fix-round WG-1 (2026-09-17) — getMode validated the
+// `mode` VALUE but never the SHAPE of the containers it reads. Four
+// surviving fail-open vectors, reproduced by the adversary end-to-end
+// against the pre-fix code (each returned plain 'harness', byte-identical
+// to a repo with no state/ at all, while the equivalent sane loop bundle
+// correctly denied the close): a pointer that parses to a non-object
+// (array/scalar), a dangling symlink at state/session.json, an
+// active_session_id shaped as a path-traversal attempt, and a bundle that
+// parses to a non-object. Each lock below names the harm it prevents and
+// was proved red by temporarily reverting its corresponding check in
+// src/operating-mode.js (see the hand-off for the exact revert/restore
+// steps) before being restored and left green here.
+// ---------------------------------------------------------------------------
+describe('TASK-236 WG-1 — getMode validates container SHAPE, not just the mode value', () => {
+  it('getMode_throws_when_the_pointer_parses_to_a_JSON_array', async () => {
+    // Harm prevented: a pointer file corrupted/replaced with a JSON array
+    // (still truthy, still lacks .active_session_id) used to satisfy the
+    // `!pointer || pointer.active_session_id == null` short-circuit and
+    // read back as ordinary idle harness — silently disabling the loop-mode
+    // close guard exactly like every other vector in this block.
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const tmp = makeTmpDir('af-om-wg1');
+    mkdirSync(join(tmp, 'state'), { recursive: true });
+    writeFileSync(join(tmp, 'state', 'session.json'), '[]', 'utf8');
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: tmp });
+    } catch (err) {
+      caughtErr = err;
+    }
+    expect(caughtErr, 'getMode must reject a pointer that parses to a non-object, never fall back to harness').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_POINTER_INVALID');
+  });
+
+  it('getMode_throws_when_state_session_json_is_a_dangling_symlink', async () => {
+    // Harm prevented: existsSync (used by src/pointer.js's readPointer)
+    // FOLLOWS symlinks and reports `false` for a broken one, so a dangling
+    // symlink at state/session.json read back identically to "no pointer
+    // file at all" — idle, not corrupt.
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const r = makeTmpDir('af-om-wg1');
+    mkdirSync(join(r, 'state'), { recursive: true });
+    symlinkSync(join(r, 'state', 'nonexistent-target.json'), join(r, 'state', 'session.json'));
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: r });
+    } catch (err) {
+      caughtErr = err;
+    }
+    expect(caughtErr, 'getMode must reject a dangling symlink, never fall back to harness').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_POINTER_CORRUPT');
+  });
+
+  it('getMode_throws_when_active_session_id_is_a_path_traversal_attempt', async () => {
+    // Harm prevented: an unvalidated active_session_id joined straight into
+    // a filesystem path let '..' re-read state/session.json ITSELF as the
+    // "bundle", and a deeper '../../../../../../tmp/x' escape an arbitrary
+    // file outside the repo and have this function honor ITS `mode` —
+    // turning a denied close into a permitted one based on attacker- or
+    // accident-controlled content entirely outside state/.
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const { root } = makeRepo();
+    writeFileSync(
+      join(root, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: '..', updated_at: '2026-09-17T00:00:00Z' }),
+      'utf8',
+    );
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: root });
+    } catch (err) {
+      caughtErr = err;
+    }
+    expect(caughtErr, 'getMode must reject a malformed active_session_id, never join it into a path').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_POINTER_INVALID');
+  });
+
+  it('getMode_throws_when_the_bundle_session_json_parses_to_a_scalar', async () => {
+    // Harm prevented (also closes WG-2, the unnamed TypeError on a `null`
+    // bundle): a bundle that parses to a scalar/array/null used to have its
+    // `.mode` field read off silently — property access on a primitive or
+    // array never throws, so `bundle.mode` was simply `undefined` and this
+    // fell through to the legitimate-harness return, or (for JSON `null`)
+    // threw a bare, uncoded TypeError indistinguishable from a programming
+    // bug.
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const { root, id } = makeRepo();
+    writeFileSync(join(root, 'state', 'sessions', id, 'session.json'), '42', 'utf8');
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: root });
+    } catch (err) {
+      caughtErr = err;
+    }
+    expect(caughtErr, 'getMode must reject a non-object bundle, never fall back to harness').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_BUNDLE_CORRUPT');
+
+    // WG-2 specifically: a bundle that parses to JSON `null` must be the
+    // SAME named error, never a bare TypeError.
+    writeFileSync(join(root, 'state', 'sessions', id, 'session.json'), 'null', 'utf8');
+    let nullErr;
+    try {
+      await getMode({ repoRoot: root });
+    } catch (err) {
+      nullErr = err;
+    }
+    expect(nullErr).toBeInstanceOf(ModeStateError);
+    expect(nullErr.code).toBe('E_MODE_BUNDLE_CORRUPT');
+  });
+
+  it('getMode_still_resolves_correctly_through_a_BOM_prefixed_pointer_file (WG-4)', async () => {
+    // Harm prevented: a leading UTF-8 BOM — something ordinary editors
+    // produce — is not valid JSON syntax on its own and, once pointer/bundle
+    // shape validation exists, would otherwise be indistinguishable from
+    // truncated JSON and hard-block EVERY close in a repo that has never
+    // touched loop mode. Stripping it keeps a benign editor artifact from
+    // becoming an availability regression.
+    const { getMode } = await import(OPERATING_MODE_URL);
+    const { root, id } = makeRepo({ bundleExtra: { mode: 'loop' } });
+    const pointerPath = join(root, 'state', 'session.json');
+    const withBom = '﻿' + JSON.stringify({
+      schema_version: 2, active_session_id: id, updated_at: '2026-09-17T00:00:00Z',
+    });
+    writeFileSync(pointerPath, withBom, 'utf8');
+    const result = await getMode({ repoRoot: root });
+    expect(result).toBe('loop');
   });
 });

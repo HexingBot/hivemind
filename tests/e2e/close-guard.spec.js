@@ -285,6 +285,44 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // TASK-236 wargaming fix-round WG-1 (2026-09-17) — the path-traversal leg
+  // of the same CU2 property. Before the fix, an active_session_id of `..`
+  // made getMode re-read state/session.json ITSELF as the "bundle" (its own
+  // schema_version/active_session_id fields are simply absent as far as
+  // bundle-shape reads go, so `bundle.mode` was undefined) and returned
+  // 'harness' silently, disabling loopModeCloseGuard's `mode !== 'loop'`
+  // no-op path — the exact same "corrupted state turns a denied close into
+  // a permitted one" harm CU2 already locks for truncated JSON, now locked
+  // for a forged active_session_id too.
+  // ---------------------------------------------------------------------------
+  it('TASK-236 WG-1 — the SAME close stays denied when active_session_id is a path-traversal attempt', async () => {
+    const { transitionStatus } = await import(TASK_STORE_URL);
+    const { loopModeCloseGuard } = await import(CLOSE_GUARD_URL);
+    const { ModeStateError } = await import(pathToFileURL(join(__srcDir, 'operating-mode.js')).href);
+
+    const { root } = makeRepoWithMode({ mode: 'loop', loopAuth: {} });
+    makeRepoSkeleton(root, { tasks: { 'TASK-299': makeTask('TASK-299') } });
+    const before = readTaskFileBytes(root, 'TASK-299');
+
+    // Forge the pointer to name '..' as the active session id.
+    writeFileSync(
+      join(root, 'state', 'session.json'),
+      JSON.stringify({ schema_version: 2, active_session_id: '..', updated_at: '2026-09-17T00:00:00Z' }, null, 2),
+      'utf8',
+    );
+
+    await expect(
+      transitionStatus({
+        repoRoot: root, key: 'TASK-299', status: 'done', closeGuard: loopModeCloseGuard,
+      }),
+    ).rejects.toBeInstanceOf(ModeStateError);
+
+    // The property that matters: still untouched, never MORE permissive
+    // with a forged active_session_id than with sane state.
+    expect(readTaskFileBytes(root, 'TASK-299')).toBe(before);
+  });
+
+  // ---------------------------------------------------------------------------
   // TASK-188 AC1/AC3 — the composition gap. Historically this exact scenario
   // (omitting closeGuard entirely, in loop mode with
   // auto_close_on_green_review false) succeeded — task-store.js treated a

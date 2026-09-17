@@ -475,17 +475,29 @@ function readLoopAuth(repoRoot) {
  *     TASK-236 (WG-H-007, wargaming 2026-09-16), getMode defaults to
  *     'harness' ONLY for the legitimate idle case (no pointer, no active
  *     session, or a healthy bundle that simply does not declare a mode). A
- *     pointer or bundle that EXISTS but is corrupt (truncated JSON, a ghost
- *     pointer naming a missing bundle, or an unrecognized schema_version)
- *     now makes getMode THROW a ModeStateError instead of masking it as
- *     'harness'. This function does not catch that error, so it propagates
- *     out of loopModeCloseGuard and the close attempt fails — denied, the
- *     same direction as an explicit LoopCloseGuardError, never silently
- *     permitted. (Before this fix, getMode's blanket 'harness' default on
- *     any error meant a truncated bundle disabled this guard entirely,
- *     turning a close that a healthy bundle would have denied into one that
- *     silently succeeded — see src/operating-mode.js's getMode doc comment
- *     for the full case table.)
+ *     pointer or bundle that EXISTS but is corrupt — truncated/invalid JSON,
+ *     a pointer or bundle that parses but is not a JSON object (an array, a
+ *     scalar, JSON `null`), an active_session_id whose format doesn't match
+ *     what newSessionId produces (including a path-traversal attempt like
+ *     `..`), an unrecognized schema_version, a ghost pointer naming a
+ *     missing bundle, or a bundle directory/file that resolves outside
+ *     state/sessions/ of this repo — now makes getMode THROW a
+ *     ModeStateError instead of masking it as 'harness'. This function does
+ *     not catch that error, so it propagates out of loopModeCloseGuard and
+ *     the close attempt fails — denied, the same direction as an explicit
+ *     LoopCloseGuardError, never silently permitted. (Before the WG-1
+ *     fix-round, getMode's blanket 'harness' default on any error, plus its
+ *     lack of any shape/format validation, meant a truncated bundle, a
+ *     malformed pointer, or a path-traversing active_session_id could each
+ *     disable this guard entirely, turning a close that a healthy bundle
+ *     would have denied into one that silently succeeded — see
+ *     src/operating-mode.js's getMode doc comment for the full case table.
+ *     Two narrower, deliberately UNfixed limits remain, both accepted
+ *     rather than closed: an attacker-written `mode: "harness"` is
+ *     indistinguishable from a genuine one, since 'harness' is itself a
+ *     legitimate explicit value; and duplicate JSON keys in a pointer or
+ *     bundle resolve by plain `JSON.parse` last-key-wins semantics, not by
+ *     any validation this module performs.)
  *   - mode !== 'loop' (including 'harness' or no active session) -> resolves
  *     without throwing (no-op).
  *   - mode === 'loop' -> reads the active bundle's loop_auth directly (the

@@ -28,6 +28,34 @@ describe('TASK-236 CU8 — close-guard.js no longer claims the harness default i
     expect(source).not.toContain("already defaults to 'harness' on any missing/corrupt pointer or bundle");
   });
 
+  // TASK-236 wargaming fix-round WG-3 (2026-09-17) — src/mcp-server.js and
+  // src/task-board.js both used to carry "(getMode defaults to 'harness', a
+  // no-op), so this is safe" as their justification for composing
+  // loopModeCloseGuard unconditionally — stale in the milder direction once
+  // getMode could throw on corrupt state. Harm prevented: a reader trusting
+  // the stale comment would believe corrupt state is silently absorbed as a
+  // no-op, when the real (still-safe) reason is that corrupt state now
+  // aborts the transition instead. Locks the retired phrasing's absence in
+  // both call sites so a future edit cannot silently reintroduce it.
+  it('the stale "getMode defaults to \'harness\', a no-op, so this is safe" framing is gone from mcp-server.js and task-board.js', () => {
+    const mcpServerSource = readFileSync(join(__thisDir, '..', 'src', 'mcp-server.js'), 'utf8');
+    const taskBoardSource = readFileSync(join(__thisDir, '..', 'src', 'task-board.js'), 'utf8');
+    expect(mcpServerSource).not.toContain("getMode defaults to 'harness', a no-op");
+    expect(taskBoardSource).not.toContain("defaults to 'harness', a no-op");
+  });
+
+  // TASK-236 wargaming fix-round WG-3 — src/operating-mode.js's own setMode
+  // comment used to claim "getMode above is deliberately NOT migrated — it
+  // already swallows every error and defaults to 'harness'", 30 lines below
+  // getMode's OWN corrected doc comment stating the opposite — a
+  // self-contradiction within one file. Harm prevented: a reader landing on
+  // the setMode comment first would believe getMode still swallows every
+  // error, the exact pre-fix behavior this whole ticket removed.
+  it('the stale "getMode above is deliberately NOT migrated — it already swallows every error" claim is gone from operating-mode.js', () => {
+    const operatingModeSource = readFileSync(join(__thisDir, '..', 'src', 'operating-mode.js'), 'utf8');
+    expect(operatingModeSource).not.toContain('it already swallows every error and');
+  });
+
   it('the corrected behavior is documented: getMode throws a named ModeStateError, stated near its own mention', () => {
     // TASK-236 LOW-2 (review 2026-09-17) — the prior /getMode.*throw/is was
     // near-vacuous: with the /s (dotAll) flag it matches "getMode" ANYWHERE

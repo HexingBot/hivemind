@@ -1379,10 +1379,16 @@ export function createBoardServer({ repoRoot } = {}) {
         try {
           // TASK-099 (AC3) — loopModeCloseGuard is composed unconditionally,
           // mirroring src/mcp-server.js's transition_status/close_task tools:
-          // it decides for itself whether loop mode is even active (getMode
-          // defaults to 'harness', a no-op), so this is safe in harness mode
-          // / with no active session and only bites when status === 'done'
-          // AND loop mode is active AND unauthorized. TASK-187 — `exception`
+          // it decides for itself whether loop mode is even active. In
+          // harness mode / with no active session, getMode resolves
+          // 'harness' (a no-op) so this is safe there; as of TASK-236, a
+          // pointer/bundle that EXISTS but is corrupt makes getMode throw a
+          // ModeStateError instead, which is not caught here, so the
+          // transition fails (denied) rather than silently proceeding —
+          // see src/operating-mode.js's getMode doc comment for the full
+          // case table. Either way this only *permits* the close when
+          // status === 'done' AND loop mode is active AND authorized.
+          // TASK-187 — `exception`
           // (optional `{ reason, author? }` in the request body) is forwarded
           // straight through to transitionStatus's own escape-hatch param;
           // this endpoint adds no board-specific handling of it.
