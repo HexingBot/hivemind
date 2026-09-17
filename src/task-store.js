@@ -1675,6 +1675,20 @@ function checkWargamingRecord(task, resolvedException) {
 
 const FINDING_HIGH_RE = /\[FINDING-HIGH:\s*([^\]]+)\]/gi;
 const FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
+// NAMED LIMIT (THIRD wargaming pass, 2026-09-17, WG3 medium/low list) — a
+// `[FINDING-RESOLVED: <id>]` marker written inside a NEGATING sentence
+// ("Todavia NO corresponde poner [FINDING-RESOLVED: R-1]; el bug sigue
+// vivo.") still resolves the finding, because the marker is live prose (not
+// quoted/fenced) exactly like a genuine resolution would be. Evaluated and
+// NOT fixed this round: a cheap "look for a negation word near the marker"
+// heuristic was considered and rejected on the same false-positive risk the
+// blockQuotedAndFencedSpans doc comment already flags for the wargaming
+// marker — "no" and "todavia no" appear constantly in legitimate prose that
+// is NOT negating the marker itself ("Se resolvio, no queda nada
+// pendiente. [FINDING-RESOLVED: R-1]" must NOT be treated as negated). A
+// correct fix needs real negation-scope parsing, not a keyword window, and
+// is out of scope for this ticket's surface. Left as a named, open gap for a
+// future ticket, not resolved in silence.
 // The whole marker body is captured, then split on the FIRST em-dash (or a
 // spaced hyphen) inside it. Matching the id with a "no dash" character class
 // instead would truncate every realistic id — "WG-H-005" and "R-1" both carry
@@ -1727,7 +1741,23 @@ function checkNoOpenHighFindings(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === 'done') return;
   const comments = Array.isArray(task.comments) ? task.comments : [];
-  const allText = blankQuotedAndFencedSpans(comments.map((c) => String((c && c.body) || '')).join('\n'));
+  // WG3-234-001 (THIRD wargaming pass, 2026-09-17) — blank PER COMMENT, never
+  // on the join()-ed concatenation. FENCED_CODE_BLOCK_RE's `[\s\S]*?` matches
+  // across newlines, so blanking the joined text let an unmatched ``` left
+  // open in one comment pair up with the FIRST ``` of a LATER comment's own
+  // fenced block, blanking every comment in between -- including a
+  // [FINDING-HIGH: ...] marker sitting between them. Reproduced two ways: (a)
+  // a stray fence in an earlier comment pairing with a stray fence in a
+  // LATER comment, with the real marker comment sandwiched between the two;
+  // (b) no second stray fence needed at all -- a developer hand-off leaves a
+  // single unmatched ``` and the reviewer's OWN comment (which legitimately
+  // carries a real ```...``` code block AFTER its own marker) supplies the
+  // closing pair, blanking the reviewer's own marker inside their own
+  // comment. Blanking per comment means an unmatched ``` never has anything
+  // outside that SAME comment's own text to pair with -- BACKTICK_SPAN_RE and
+  // DOUBLE_QUOTED_SPAN_RE already could not cross this boundary (neither
+  // matches a newline), so only the triple-backtick regex needed this fix.
+  const allText = comments.map((c) => blankQuotedAndFencedSpans(String((c && c.body) || ''))).join('\n');
 
   const opened = new Set();
   for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
@@ -1841,28 +1871,87 @@ const DELIVERY_HEADING_RE = /^[\s>*_-]*(?:#{1,6}\s*)?[*_\s]*([1-9])\s*[.):-]\s*(
 // the same empty close as four headings with nothing under them).
 const DELIVERY_FILLER_RE = /^(?:ok|okay|n\/?a|na|nada|tbd|todo|pendiente|x|s\/?d|\.+|…|-+|_+|\?+)$/;
 
+// WG2-234-001 (THIRD wargaming pass, 2026-09-17) — WG2-H-01's \p{Cf} strip
+// only closed the "format" category. Reproduced end-to-end, closing a real
+// ticket with an "OK"-equivalent block 1 under every one of the four
+// headings: HANGUL FILLER (U+3164, category Lo — a LETTER, not Cf), HANGUL
+// CHOSEONG FILLER (U+115F, Lo), HALFWIDTH HANGUL FILLER (U+FFA0, Lo),
+// VARIATION SELECTOR-16 (U+FE0F, Mn), a supplementary-plane VARIATION
+// SELECTOR (U+E0100, Mn), and BRAILLE PATTERN BLANK (U+2800, So). None of the
+// six is Cf, so appending one to "OK" produced a normalized string that no
+// longer exact-matched DELIVERY_FILLER_RE, and the block read as real
+// content.
+//
+// THE CHOICE, STATED EXPLICITLY (per the ticket's "pensalo y decidi vos,
+// pero decilo explicito"). Two shapes were on the table:
+//
+//   (a) keep growing a literal codepoint denylist (add U+3164, U+115F, ...
+//       one at a time) — REJECTED. A denylist of specific codepoints is
+//       always one character behind: the NEXT Unicode version can mint a new
+//       invisible/blank codepoint this file has never heard of, and nothing
+//       here would catch it until it was reproduced in anger and patched in,
+//       same as this round.
+//   (b) invert to a MINIMUM-COUNT-OF-VISIBLE-CHARACTERS floor on the whole
+//       block — TRIED, then REJECTED on measurement, not on principle. This
+//       repo's own legitimate fixtures close with content shorter than the
+//       known filler words themselves: tests/helpers/deliveryBody.js's real
+//       call sites override `result` with bodies as short as "Shipped."/
+//       "Landed."/"Re-closed." (6-8 real letters), while "pendiente" (a
+//       recognized filler word) is 9 letters. No length floor can
+//       simultaneously admit "Shipped." and reject "pendiente" — the floor
+//       would have to sit BELOW the shortest legitimate real content, which
+//       makes it no floor at all against filler padded to that same length.
+//   (c) delegate to Unicode's OWN classification of ignorability, via the
+//       `\p{Default_Ignorable_Code_Point}` property — CHOSEN. This is the
+//       inversion that actually holds: instead of a denylist keyed to the
+//       SPECIFIC codepoints personally seen exploited ((a), always one
+//       instance behind), this keys to the CATEGORY Unicode itself already
+//       maintains for "this codepoint is designed to have no visible glyph
+//       of its own" — variation selectors, joiners, format controls, and
+//       (measured directly, see the regression lock) BOTH Hangul filler
+//       characters despite their misleading Lo general category. A naive
+//       "is it \p{L}, a letter" allowlist would NOT have excluded
+//       U+3164/U+115F/U+FFA0 (they test true for \p{L}) — Default_Ignorable
+//       is not fooled by this, because Unicode tracks ignorability
+//       independently of general category, for exactly this reason. Any
+//       FUTURE codepoint Unicode marks ignorable is covered automatically,
+//       with no further edit needed here. `\p{M}` (ALL combining marks, not
+//       just the Latin range ̀-ͯ this file used to strip) is unioned
+//       in for the same "delegate to the category, not the instance" reason.
+//       `\p{Z}` (Unicode space separators) was tried and reverted: it also
+//       matches the plain ASCII space (U+0020, category Zs) that separates
+//       every word of every heading and every real content line, and this
+//       same function normalizes headings too -- stripping it collapsed
+//       "CASOS DE USO" to "casosdeuso" and broke DELIVERY_BLOCKS' own
+//       `\s+`-anchored keyword match, misreporting every block as entirely
+//       missing rather than filler. Not worth the exotic-Unicode-space edge
+//       case this predicate does not need for any of the six reproduced
+//       repros.
+//
+// WHAT (c) HONESTLY DOES NOT COVER. U+2800 BRAILLE PATTERN BLANK is NOT
+// Default_Ignorable — Unicode treats it as a real, assigned Braille cell
+// character (a sighted reader sees an empty cell; that is not the same as
+// Unicode calling it a formatting control), so the property alone misses it.
+// It is curated in by hand below (the one line the broad property cannot
+// give us) — the same "one char behind" limitation (a) has, admitted rather
+// than hidden, for the single known character where the general mechanism
+// does not reach. A future character with the same "assigned, but renders
+// blank in common fonts" shape would need the same hand curation. Padding
+// with a REAL, repeated word ("OK OK OK OK") is also not caught by any of
+// this — that is a plausibility judgment, which this structural predicate
+// has never claimed to make (see this section's own docstring further
+// above, "cannot tell a truthful delivery from a fluent lie").
+const KNOWN_BLANK_GLYPHS = '⠀'; // BRAILLE PATTERN BLANK — see above.
+const IGNORABLE_OR_BLANK_RE = new RegExp(
+  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`, 'gu',
+);
+
 // Accent/emphasis-insensitive normalization, so "3. WARGAMING", "### 3.
 // Wargaming" and "3) Wargaming — el reporte" all resolve to the same block.
 function normalizeDeliveryText(s) {
   return String(s)
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\p{Cf}/gu, '')
-    // WG2-H-01 (wargaming 2026-09-17) - also strips Unicode \p{Cf} FORMAT
-    // characters (zero-width space/joiner, word joiner, LRM/RLM bidi marks,
-    // the Unicode Tag block) as a SECOND, independent layer. The PRIMARY fix
-    // is that closeTask now validates the SANITIZED body -- see closeTask's
-    // `sanitizedBody`, which reuses the exact value it persists -- so this
-    // line is belt-and-suspenders, not the load-bearing fix: before either
-    // fix, a line reading "OK" + an invisible U+200B rendered identically to
-    // "OK" to DELIVERY_FILLER_RE (which only matches an EXACT,
-    // already-normalized string), so the filler was never recognized and the
-    // block read as "real content" with an invisible character doing the
-    // work. Stripping \p{Cf} here makes the delivery-body predicate itself
-    // immune to this class regardless of whether a future caller remembers to
-    // pre-sanitize -- the same class stripInvisibleChars
-    // (src/intake-sanitizer.js) already strips before a comment body is
-    // persisted.
+    .replace(IGNORABLE_OR_BLANK_RE, '')
     .replace(/[*_`#]/g, '')
     .trim()
     .toLowerCase();

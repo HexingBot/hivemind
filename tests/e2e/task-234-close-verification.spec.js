@@ -25,6 +25,14 @@
 // a scratch copy, never by reverting the real working tree — see the
 // hand-off for why `git stash` was avoided here) and observed to fail for
 // its own reason before landing.
+//
+// WG3-234-001/WG3-234-002 (THIRD wargaming pass, 2026-09-17, loop-back round)
+// — two more locks for the two HIGH findings that survived the second round:
+// six invisible/blank Unicode codepoints OUTSIDE \p{Cf} (Default Ignorable
+// characters plus one curated Braille exception) that still padded "OK" past
+// the filler check, and the fenced-code-span blanker pairing an unmatched
+// ``` fence ACROSS a comment-join boundary and erasing a live
+// [FINDING-HIGH: ...] marker in between. Same red-green discipline as above.
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -374,5 +382,107 @@ describe('TASK-234 — the close seam, one lock per approved use case that broke
     expect(verdict.reason, 'must read as incomplete, never pooled with pre-TASK-234 historical closes')
       .not.toBe('no-close-verification-record');
     expect(verdict.status).toBe(CLOSE_VERIFICATION_STATUS.NOT_VERIFIED);
+  });
+
+  // WG3-234-001/WG3-234-002 (THIRD wargaming pass, 2026-09-17, loop-back round)
+  // — two more locks for the two confirmed HIGH findings that survived the
+  // second round. RED-GREEN PLANTED against a pre-fix scratch copy of
+  // src/task-store.js (via `git show HEAD:` into a temp file, never the real
+  // working tree — same discipline as the WG2 round's comment above): both
+  // were observed to fail for their own reason (an "OK"-equivalent body
+  // closing; an open HIGH finding closing) before this fix landed.
+  it('WG3-234-001 — six invisible/blank Unicode glyphs OUTSIDE \\p{Cf} still cannot pad "OK" into real content', async () => {
+    // HARM: the WG2-H-01 fix only stripped \p{Cf}. Any codepoint Unicode
+    // classifies as invisible/blank through a DIFFERENT mechanism (Default
+    // Ignorable, a combining mark, or the one curated Braille exception)
+    // still let a one-word-equivalent close through — a close that proves
+    // nothing landed as if it were a real, checked delivery.
+    const glyphs = {
+      'U+3164 HANGUL FILLER': 'ㅤ',
+      'U+FE0F VARIATION SELECTOR-16': '️',
+      'U+2800 BRAILLE PATTERN BLANK': '⠀',
+      'U+115F HANGUL CHOSEONG FILLER': 'ᅟ',
+      'U+FFA0 HALFWIDTH HANGUL FILLER': 'ﾠ',
+      'U+E0100 VARIATION SELECTOR SUPPLEMENT': String.fromCodePoint(0xe0100),
+    };
+    for (const [label, glyph] of Object.entries(glyphs)) {
+      const repoDir = seed('af-234-wg3-001', 'TASK-811');
+      let caught;
+      try {
+        await closeTask({
+          repoRoot: repoDir,
+          key: 'TASK-811',
+          comment: {
+            author: 'orchestrator',
+            body: deliveryBody({
+              ticket: 'TASK-811',
+              cases: `OK${glyph}`,
+              result: `OK${glyph}`,
+              wargaming: `CU1 camino${glyph}`,
+              uat: `OK${glyph} verdict`,
+            }),
+          },
+          linked_commits: ['abc1234'],
+          commitVerifier: verifierReturning('verified'),
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught, `${label} must be rejected exactly like "OK"`).toBeInstanceOf(DeliveryBodyError);
+      expect(read(repoDir, 'TASK-811').status, label).toBe('in_review');
+    }
+  });
+
+  it('WG3-234-002 — a fenced-code span is blanked PER COMMENT, never across the comment join, so a loose fence cannot erase a HIGH finding', async () => {
+    // HARM: a loose ``` fence in one comment paired with a ``` fence in a
+    // LATER comment across the whole concatenated comment history, blanking
+    // every comment in between — including a real [FINDING-HIGH: ...]
+    // marker. That let a registered HIGH finding close silently, with no
+    // trace that it had ever been erased rather than resolved.
+    const REVIEWER_APPROVE = { author: 'reviewer', at: '2026-09-17T00:30:00Z', body: 'APPROVE.' };
+    const close = (repoDir) => closeTask({
+      repoRoot: repoDir,
+      key: 'TASK-812',
+      comment: { author: 'orchestrator', body: deliveryBody({ ticket: 'TASK-812' }) },
+      linked_commits: ['abc1234'],
+      commitVerifier: verifierReturning('verified'),
+    });
+
+    // Variant (a), con complice: a stray opening fence in an early comment,
+    // the marker in the middle, a stray CLOSING fence in a later comment.
+    const repoA = seed('af-234-wg3-002a', 'TASK-812', {
+      comments: [
+        REVIEWER_APPROVE,
+        { author: 'developer', at: '2026-09-17T00:00:00Z', body: 'hand-off con un cerco suelto:\n```\nsome code' },
+        {
+          author: 'reviewer',
+          at: '2026-09-17T00:01:00Z',
+          body: '[WARGAMING] Atacado CU1 y su path de fallo. [FINDING-HIGH: WG3-234-A] el cierre no valida nada.',
+        },
+        { author: 'orchestrator', at: '2026-09-17T00:02:00Z', body: 'otro comentario con cerco de cierre:\n```\nmore code' },
+      ],
+    });
+    await expect(close(repoA), 'variant (a): the marker must still block the close').rejects.toBeInstanceOf(OpenHighFindingError);
+    expect(read(repoA, 'TASK-812').status).toBe('in_review');
+
+    // Variant (b), sin complice: only ONE stray fence anywhere (the
+    // developer's) — the reviewer's own comment supplies its own COMPLETE
+    // fenced block AFTER its own marker, which is what paired with the
+    // developer's stray fence under the old join-then-blank logic.
+    const repoB = seed('af-234-wg3-002b', 'TASK-812', {
+      comments: [
+        REVIEWER_APPROVE,
+        { author: 'developer', at: '2026-09-17T00:00:00Z', body: 'hand-off con un cerco suelto:\n```\nsome code' },
+        {
+          author: 'reviewer',
+          at: '2026-09-17T00:01:00Z',
+          body: '[WARGAMING] Atacado CU1 y su path de fallo. [FINDING-HIGH: WG3-234-B] el cierre no valida nada.\n'
+            + 'Evidencia:\n```\nconsole.log(1)\n```',
+        },
+      ],
+    });
+    await expect(close(repoB), 'variant (b): no complice comment needed — the reviewer\'s own fence must not erase its own marker')
+      .rejects.toBeInstanceOf(OpenHighFindingError);
+    expect(read(repoB, 'TASK-812').status).toBe('in_review');
   });
 });
