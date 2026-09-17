@@ -40,6 +40,7 @@ import { join } from 'node:path';
 
 import { makeRepoSkeleton } from './helpers/fixtures.js';
 import { makeTmpDir, cleanupAll } from './helpers/tmpRepo.js';
+import { deliveryBody } from './helpers/deliveryBody.js';
 import { REPO_ROOT } from './helpers/repoRoot.js';
 import { TASK_FILENAME_RE } from '../src/task-store.js';
 import { stripInvisibleChars } from '../src/intake-sanitizer.js';
@@ -153,7 +154,10 @@ describe('TASK-201 AC2/AC5 — closeTask strips its own comment.body before pers
     await closeTask({
       repoRoot: repoDir,
       key: 'TASK-702',
-      comment: { author: 'developer', body: `Shipped.${hidden}` },
+      // TASK-234 — the closing comment must carry the delivery blocks; the
+      // hidden tag-block payload rides on the end of a CONFORMING body so this
+      // spec keeps testing sanitization and not the new delivery-body check.
+      comment: { author: 'developer', body: `${deliveryBody({ ticket: 'TASK-702' })}${hidden}` },
       linked_commits: ['abc1234'],
     });
 
@@ -164,7 +168,7 @@ describe('TASK-201 AC2/AC5 — closeTask strips its own comment.body before pers
     ).toBe(0);
     const task = JSON.parse(raw);
     expect(task.status).toBe('done');
-    expect(task.comments[task.comments.length - 1].body).toBe('Shipped.');
+    expect(task.comments[task.comments.length - 1].body).toBe(deliveryBody({ ticket: 'TASK-702' }));
   });
 });
 

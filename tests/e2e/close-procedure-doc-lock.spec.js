@@ -29,6 +29,7 @@ import { join } from 'node:path';
 import { REPO_ROOT } from '../helpers/repoRoot.js';
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
 import { makeRepoSkeleton } from '../helpers/fixtures.js';
+import { deliveryBody } from '../helpers/deliveryBody.js';
 import {
   transitionStatus, appendComment, closeTask,
   InvalidPredecessorStateError, CloseEvidenceError,
@@ -126,7 +127,11 @@ async function runProcedure(repoDir, key, steps) {
       await closeTask({
         repoRoot: repoDir,
         key,
-        comment: { author: 'orchestrator', body: 'Closing per review.' },
+        // TASK-234 — the closing comment IS the delivery: closeTask rejects a
+        // body that does not carry docs/PLANTILLA-ENTREGA.md's four numbered
+        // blocks with real content. Built from the shared fixture helper so
+        // this lock drives the REAL precondition, not a spec-local guess at it.
+        comment: { author: 'orchestrator', body: deliveryBody({ ticket: key }) },
         linked_commits: ['abc1234'],
       });
     } else {

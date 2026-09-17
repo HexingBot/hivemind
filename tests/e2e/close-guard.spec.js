@@ -44,6 +44,15 @@ import { dirname } from 'node:path';
 
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
 import { makeRepoSkeleton } from '../helpers/fixtures.js';
+// TASK-234 — closeTask now requires the closing comment to carry the delivery
+// blocks of docs/PLANTILLA-ENTREGA.md, and transitionStatus(status:'done')
+// requires a recorded `[WARGAMING]` pass. These specs exercise the LOOP-MODE
+// guards, so both come from the shared fixture helper (same isolation
+// rationale as makeTask's default in_review/reviewer-comment state below).
+import { deliveryBody, wargamingComment } from '../helpers/deliveryBody.js';
+
+/** A conforming delivery body carrying this spec's own one-line summary. */
+const closingBody = (key, summary) => deliveryBody({ ticket: key, result: `   - ${summary}` });
 
 afterAll(cleanupAll);
 
@@ -121,7 +130,10 @@ function makeTask(key) {
     depends_on: [],
     linked_commits: ['abc1234'],
     linked_prs: [],
-    comments: [{ author: 'reviewer', at: '2026-07-01T00:30:00Z', body: 'APPROVE.' }],
+    comments: [
+      { author: 'reviewer', at: '2026-07-01T00:30:00Z', body: 'APPROVE.' },
+      wargamingComment('2026-07-01T00:40:00Z'), // TASK-234 — see the header note
+    ],
     created_at: '2026-07-01T00:00:00Z',
     updated_at: '2026-07-01T00:00:00Z',
     jira_key: null,
@@ -307,7 +319,7 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
 
     await expect(
       closeTask({
-        repoRoot: root, key: 'TASK-216', comment: { author: 'developer', body: 'Ship it.' },
+        repoRoot: root, key: 'TASK-216', comment: { author: 'developer', body: closingBody('TASK-216', 'Ship it.') },
       }),
     ).rejects.toBeInstanceOf(LoopCloseGuardError);
 
@@ -347,7 +359,14 @@ describe('AC2 — transitionStatus composed with loopModeCloseGuard', () => {
 // TRUE throughout this section so every case below isolates Gate 2 alone.
 // ===========================================================================
 function makeUatTask(key, comments = []) {
-  return { ...makeTask(key), verification_tier: 'uat-only', comments };
+  // TASK-234 — the wargaming record travels with the fixture (same isolation
+  // rationale as makeTask above): these specs are about Gate 2, not about the
+  // wargaming requirement transitionStatus(status:'done') now enforces.
+  return {
+    ...makeTask(key),
+    verification_tier: 'uat-only',
+    comments: [...comments, wargamingComment('2026-07-01T00:40:00Z')],
+  };
 }
 
 // TASK-196 (AC6) — DELEGATED_UAT_COMMENT below (and OVERALL_FAIL_UAT_COMMENT /
@@ -767,7 +786,7 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -802,7 +821,7 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'UAT passed. Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -830,7 +849,7 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -860,7 +879,7 @@ describe('TASK-186 — round-3b adversarial probes replayed as permanent regress
 
     await expect(
       mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'Closing.') },
       }),
     ).resolves.not.toThrow();
   });
@@ -928,7 +947,7 @@ describe('TASK-186 fix round (HIGH) — R1/R2/R3: preamble/postscript/padded-ste
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'UAT passed. Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -965,7 +984,7 @@ describe('TASK-186 fix round (HIGH) — R1/R2/R3: preamble/postscript/padded-ste
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'UAT passed. Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -1002,7 +1021,7 @@ describe('TASK-186 fix round (HIGH) — R1/R2/R3: preamble/postscript/padded-ste
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'UAT passed. Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -1129,7 +1148,7 @@ describe('TASK-186 fix round (HIGH) — P0: label-free failure phrased without F
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'UAT passed. Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -1256,7 +1275,7 @@ describe('TASK-186 fix round (HIGH, third round) — E1/E2: trailing prose ON th
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'UAT passed. Closing.') },
       });
     } catch (err) {
       caught = err;
@@ -1288,7 +1307,7 @@ describe('TASK-186 fix round (HIGH, third round) — E1/E2: trailing prose ON th
     let caught;
     try {
       await mcpCloseTask({
-        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: 'UAT passed. Closing.' },
+        repoRoot: root, key: t.key, comment: { author: 'orchestrator', body: closingBody(t.key, 'UAT passed. Closing.') },
       });
     } catch (err) {
       caught = err;

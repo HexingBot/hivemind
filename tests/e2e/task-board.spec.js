@@ -33,6 +33,7 @@ import http from 'node:http';
 
 import { createBoardServer } from '../../src/task-board.js';
 import { makeRepoSkeleton } from '../helpers/fixtures.js';
+import { wargamingComment } from '../helpers/deliveryBody.js';
 
 // ---------------------------------------------------------------------------
 // Fixture tasks (inline — keeps the e2e spec self-contained).
@@ -452,7 +453,15 @@ const FIXTURE_TASK_IN_REVIEW = {
   depends_on: [],
   linked_commits: ['abc1234'],
   linked_prs: [],
-  comments: [{ author: 'reviewer', at: '2026-07-01T00:30:00Z', body: 'APPROVE.' }],
+  comments: [
+    { author: 'reviewer', at: '2026-07-01T00:30:00Z', body: 'APPROVE.' },
+    // TASK-234 — the board's status endpoint goes through transitionStatus,
+    // which now requires a recorded wargaming pass to reach 'done' (that path
+    // carries no closing comment, so the marker comment is the only place the
+    // record can live). This spec's subject is the loop-mode close guard, so
+    // the fixture satisfies the new precondition up front.
+    wargamingComment('2026-07-01T00:40:00Z'),
+  ],
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
   jira_key: null,

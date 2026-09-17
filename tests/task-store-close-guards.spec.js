@@ -42,6 +42,11 @@ import { join } from 'node:path';
 
 import { makeRepoSkeleton } from './helpers/fixtures.js';
 import { makeTmpDir, cleanupAll } from './helpers/tmpRepo.js';
+// TASK-234 — closeTask now requires the closing comment to carry the delivery
+// blocks of docs/PLANTILLA-ENTREGA.md, and transitionStatus(status:'done')
+// requires a recorded `[WARGAMING]` pass. Both fixtures come from one shared
+// helper so ~20 specs do not each grow their own drifting copy.
+import { deliveryBody, wargamingComment } from './helpers/deliveryBody.js';
 
 afterAll(cleanupAll);
 
@@ -129,7 +134,10 @@ describe('AC1 — transitionStatus enforces the uat-only done-guard', () => {
           key: 'TASK-202',
           verification_tier: 'uat-only',
           status: 'in_review', // TASK-187 AC2 — done requires this predecessor state
-          comments: [{ author: 'uat', at: '2026-07-01T01:00:00Z', body: 'all steps PASS' }],
+          comments: [
+            { author: 'uat', at: '2026-07-01T01:00:00Z', body: 'all steps PASS' },
+            wargamingComment(), // TASK-234 — transitionStatus to done requires a recorded wargaming pass
+          ],
         }),
       },
     });
@@ -149,7 +157,10 @@ describe('AC1 — transitionStatus enforces the uat-only done-guard', () => {
           key: 'TASK-203',
           verification_tier: 'tests-after',
           status: 'in_review', // TASK-187 AC2
-          comments: [{ author: 'reviewer', at: '2026-07-01T01:00:00Z', body: 'APPROVE.' }], // TASK-187 AC3
+          comments: [
+            { author: 'reviewer', at: '2026-07-01T01:00:00Z', body: 'APPROVE.' }, // TASK-187 AC3
+            wargamingComment(), // TASK-234
+          ],
           linked_commits: ['abc1234'], // TASK-187 AC3
         }),
       },
@@ -343,7 +354,7 @@ describe('TASK-222 AC4/AC5/AC6 — harness-mode checkUatGuard requires real per-
     await closeTask({
       repoRoot: repoDir,
       key: 'TASK-974',
-      comment: { author: 'orchestrator', body: 'Closing.' },
+      comment: { author: 'orchestrator', body: deliveryBody({ ticket: 'TASK-974' }) },
     });
     expect(readTaskFile(repoDir, 'TASK-974').status).toBe('done');
   });
@@ -377,7 +388,7 @@ describe('AC3 — closeTask applies transition + comment + commits + prs + index
     await closeTask({
       repoRoot: repoDir,
       key: 'TASK-205',
-      comment: { author: 'developer', body: 'Ship it.' },
+      comment: { author: 'developer', body: deliveryBody({ ticket: 'TASK-205' }) },
       linked_commits: ['abc1234'],
       linked_prs: ['https://example.com/pr/1'],
       now: () => fixedNow,
@@ -388,7 +399,10 @@ describe('AC3 — closeTask applies transition + comment + commits + prs + index
     expect(after.updated_at).toBe(fixedNow);
     expect(after.comments).toHaveLength(2);
     expect(after.comments[0].author).toBe('reviewer'); // preserved, in order
-    expect(after.comments[1]).toMatchObject({ author: 'developer', body: 'Ship it.' });
+    expect(after.comments[1]).toMatchObject({
+      author: 'developer',
+      body: deliveryBody({ ticket: 'TASK-205' }),
+    });
     expect(after.linked_commits).toContain('abc1234');
     expect(after.linked_prs).toContain('https://example.com/pr/1');
 
@@ -754,7 +768,7 @@ describe('TASK-186 AC2/AC6 — harness-mode checkUatGuard requires a recognizabl
     await closeTask({
       repoRoot: repoDir,
       key: 'TASK-904',
-      comment: { author: 'orchestrator', body: 'Closing.' },
+      comment: { author: 'orchestrator', body: deliveryBody({ ticket: 'TASK-904' }) },
     });
     expect(readTaskFile(repoDir, 'TASK-904').status).toBe('done');
   });
@@ -827,7 +841,7 @@ describe('TASK-188 AC2/AC4 — A6 probe replay: closeTask rejects a self-authore
     await closeTask({
       repoRoot: repoDir,
       key: 'TASK-911',
-      comment: { author: 'orchestrator', body: 'Reviewer approved. Closing.' },
+      comment: { author: 'orchestrator', body: deliveryBody({ ticket: 'TASK-911' }) },
       linked_commits: ['abc1234'], // TASK-187 AC3 — tests-after tier requires non-empty linked_commits too
     });
 
@@ -1007,7 +1021,7 @@ describe('TASK-187 — A5/P9 probe replay: done requires a valid predecessor sta
     await closeTask({
       repoRoot: repoDir,
       key: 'TASK-952',
-      comment: { author: 'developer', body: 'Shipped per review.' },
+      comment: { author: 'developer', body: deliveryBody({ ticket: 'TASK-952' }) },
       linked_commits: ['abc1234'],
     });
 

@@ -53,6 +53,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { createServer } from '../../src/mcp-server.js';
 import { makeRepoSkeleton } from '../helpers/fixtures.js';
+import { wargamingComment } from '../helpers/deliveryBody.js';
 
 // Tool results are { content: [{ type:'text', text:'<json>' }] }. Parse helper.
 function parse(result) {
@@ -158,6 +159,9 @@ describe('TASK-026 — MCP task-store server (in-memory round-trip)', () => {
     const taskPath = join(repoRoot, 'tasks', `${key}.json`);
     const seeded = JSON.parse(readFileSync(taskPath, 'utf8'));
     seeded.linked_commits = ['abc1234'];
+    // TASK-234 — transitionStatus to 'done' also requires a recorded
+    // `[WARGAMING]` pass; same "not this test's subject" rationale as above.
+    seeded.comments = [...(seeded.comments || []), wargamingComment()];
     writeFileSync(taskPath, JSON.stringify(seeded, null, 2) + '\n', 'utf8');
 
     // transition_status -> done returns { ok: true }.

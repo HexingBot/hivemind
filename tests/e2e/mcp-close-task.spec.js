@@ -46,6 +46,11 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { createServer } from '../../src/mcp-server.js';
 import { makeRepoSkeleton } from '../helpers/fixtures.js';
+// TASK-234 — close_task now requires the closing comment to carry the delivery
+// blocks of docs/PLANTILLA-ENTREGA.md, and transition_status to 'done'
+// requires a recorded `[WARGAMING]` pass. Both come from the shared fixture
+// helper so every spec in the repo closes with the same shape.
+import { deliveryBody, wargamingComment } from '../helpers/deliveryBody.js';
 
 function parse(result) {
   return JSON.parse(result.content[0].text);
@@ -194,6 +199,13 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
       name: 'transition_status',
       arguments: { key, status: 'in_review' },
     });
+    // TASK-234 — transition_status to 'done' carries no comment body, so the
+    // `[WARGAMING]` record comment is the only place the wargaming pass can be
+    // recorded on this path.
+    await client.callTool({
+      name: 'append_comment',
+      arguments: { key, author: 'orchestrator', body: wargamingComment().body },
+    });
 
     const transitioned = await client.callTool({
       name: 'transition_status',
@@ -267,6 +279,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     const taskPath = join(repoRoot, 'tasks', `${key}.json`);
     const seeded = JSON.parse(readFileSync(taskPath, 'utf8'));
     seeded.linked_commits = ['abc1234'];
+    seeded.comments = [...(seeded.comments || []), wargamingComment()]; // TASK-234
     writeFileSync(taskPath, JSON.stringify(seeded, null, 2) + '\n', 'utf8');
 
     const transitioned = await client.callTool({
@@ -308,7 +321,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
       name: 'close_task',
       arguments: {
         key,
-        comment: { author: 'developer', body: 'Shipped.' },
+        comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) },
         linked_commits: ['abc1234'],
         linked_prs: ['https://example.com/pr/9'],
       },
@@ -322,7 +335,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
     expect(task.linked_prs).toContain('https://example.com/pr/9');
     const last = task.comments[task.comments.length - 1];
     expect(last.author).toBe('developer');
-    expect(last.body).toBe('Shipped.');
+    expect(last.body).toBe(deliveryBody({ ticket: key, result: '   - Shipped.' }));
 
     const idx = JSON.parse(readFileSync(join(repoRoot, 'tasks', 'index.json'), 'utf8'));
     const entry = idx.tasks.find((t) => t.key === key);
@@ -354,7 +367,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         name: 'close_task',
         arguments: {
           key,
-          comment: { author: 'developer', body: 'Shipped.' },
+          comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) },
           linked_commits: ['not-a-real-sha!'],
         },
       });
@@ -392,7 +405,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         name: 'close_task',
         arguments: {
           key,
-          comment: { author: 'developer', body: 'Shipped.' },
+          comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) },
         },
       });
       if (res && res.isError) surfaced = true;
@@ -435,7 +448,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         name: 'close_task',
         arguments: {
           key,
-          comment: { author: 'developer', body: 'Shipped.' },
+          comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) },
         },
       });
       if (res && res.isError) surfaced = true;
@@ -494,7 +507,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         name: 'close_task',
         arguments: {
           key,
-          comment: { author: 'orchestrator', body: 'Shipped.' },
+          comment: { author: 'orchestrator', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) },
         },
       });
       if (res && res.isError) surfaced = true;
@@ -573,7 +586,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
       try {
         const res = await client.callTool({
           name: 'close_task',
-          arguments: { key, comment: { author: 'uat', body: 'All steps PASS.' } },
+          arguments: { key, comment: { author: 'uat', body: deliveryBody({ ticket: key, result: `   - All steps PASS.` }) } },
         });
         if (res && res.isError) surfaced = true;
       } catch {
@@ -603,7 +616,14 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
         name: 'close_task',
         arguments: {
           key,
-          comment: { author: 'uat', body: 'All steps PASS — verified by Orchestrator at the human\'s request.' },
+          comment: {
+            author: 'uat',
+            body: deliveryBody({
+              ticket: key,
+              uat: '   - Solicitado: si\n'
+                + '   - All steps PASS — verified by Orchestrator at the human\'s request.',
+            }),
+          },
         },
       });
       expect(res.isError).toBeFalsy();
@@ -620,7 +640,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
 
       const res = await client.callTool({
         name: 'close_task',
-        arguments: { key, comment: { author: 'uat', body: 'All steps PASS.' } },
+        arguments: { key, comment: { author: 'uat', body: deliveryBody({ ticket: key, result: `   - All steps PASS.` }) } },
       });
       expect(res.isError).toBeFalsy();
 
@@ -638,7 +658,7 @@ describe('TASK-082 — MCP: uat-only guard, loop-mode guard, close_task tool', (
 
       const res = await client.callTool({
         name: 'close_task',
-        arguments: { key, comment: { author: 'orchestrator', body: 'Shipped.' } },
+        arguments: { key, comment: { author: 'orchestrator', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) } },
       });
       expect(res.isError).toBeFalsy();
 
@@ -731,7 +751,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
 
     const result = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
+      arguments: { key, comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) }, linked_commits: ['abc1234'] },
     });
     expect(result.isError).toBeFalsy();
     const parsed = parse(result);
@@ -768,7 +788,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
 
     const first = parse(await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
+      arguments: { key, comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) }, linked_commits: ['abc1234'] },
     }));
     expect(first.graph_node).toBe('created');
 
@@ -779,7 +799,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
     // — no further in_review/evidence seeding needed here.
     const second = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Re-closed.' } },
+      arguments: { key, comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Re-closed.` }) } },
     });
     expect(second.isError).toBeFalsy();
     expect(parse(second).graph_node).toBe('exists');
@@ -821,7 +841,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
 
     const result = parse(await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
+      arguments: { key, comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) }, linked_commits: ['abc1234'] },
     }));
     expect(result.ok).toBe(true);
     expect(result.graph_node).toBe('exists');
@@ -861,7 +881,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
 
     const result = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
+      arguments: { key, comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) }, linked_commits: ['abc1234'] },
     });
     expect(result.isError).toBeFalsy();
     const parsed = parse(result);
@@ -871,7 +891,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
     const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
     expect(task.status).toBe('done');
     const last = task.comments[task.comments.length - 1];
-    expect(last.body).toBe('Shipped.');
+    expect(last.body).toBe(deliveryBody({ ticket: key, result: '   - Shipped.' }));
   });
 
   // -------------------------------------------------------------------------
@@ -902,7 +922,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
 
     const result = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'developer', body: 'Shipped.' }, linked_commits: ['abc1234'] },
+      arguments: { key, comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) }, linked_commits: ['abc1234'] },
     });
     expect(result.isError).toBeFalsy();
     const parsed = parse(result);
@@ -941,7 +961,7 @@ describe('TASK-171 (KB-GRAPH-4) — close_task auto-creates the task graph node'
     try {
       const res = await client.callTool({
         name: 'close_task',
-        arguments: { key, comment: { author: 'developer', body: 'Shipped.' } },
+        arguments: { key, comment: { author: 'developer', body: deliveryBody({ ticket: key, result: `   - Shipped.` }) } },
       });
       if (res && res.isError) surfaced = true;
     } catch {
@@ -1018,6 +1038,19 @@ describe('TASK-175 item 9 — recordTaskGraphNode direct unit coverage', () => {
 // by-implication — a bogus sha is now OBSERVABLE in the response — without
 // the false-negative risk a hard block would carry in degraded git
 // environments (shallow clones, rebased history, sandboxes with no git).
+//
+// TASK-234 (WG-H-011, 2026-09-16) SUPERSEDES the "never blocking" half of that
+// decision, deliberately and on a human-approved case (CU8). The wargaming
+// pass measured what advisory-only cost in practice: an invented-but-
+// well-formed sha still SATISFIED the close evidence a reader takes as proof
+// the work landed, because nothing on the ticket recorded that it had never
+// been resolved. src/task-store.js's closeTask now runs the same check as a
+// THREE-state gate (src/commit-existence.js): 'not-found' REJECTS the close
+// (LinkedCommitNotFoundError), 'unverifiable' does NOT — which is what keeps
+// TASK-188's real concern (degraded git environments) covered: those produce
+// 'unverifiable', never 'not-found'. The MCP layer's advisory
+// linked_commits_verification response is UNCHANGED and still reported; what
+// changed is that a resolvable-and-absent sha no longer reaches it.
 // ===========================================================================
 describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advisory-verified, not silently trusted', () => {
   let repoRoot;
@@ -1042,7 +1075,7 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
     if (repoRoot) rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  it('P8 — a bogus sha is flagged missing, a real sha is flagged present, and the close still succeeds (advisory-only, never blocking)', async () => {
+  it('P8/WG-H-011 — a real sha closes and is recorded "verified"; a bogus sha BLOCKS the close (TASK-234 supersedes advisory-only)', async () => {
     execFileSync('git', ['init', '-q'], { cwd: repoRoot });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoRoot });
     execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoRoot });
@@ -1070,12 +1103,31 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
       name: 'append_comment', arguments: { key, author: 'reviewer', body: 'APPROVE.' },
     });
 
+    // TASK-234 (CU8) — the bogus shas now BLOCK the close instead of riding
+    // along as evidence. HARM THIS PREVENTS: a ticket recorded as done with
+    // linked commits nobody can find, read forever after as proof the work
+    // landed.
+    const blocked = await client.callTool({
+      name: 'close_task',
+      arguments: {
+        key,
+        comment: { author: 'orchestrator', body: deliveryBody({ ticket: key, result: `   - Landed.` }) },
+        linked_commits: [realSha, '0000000000000000000000000000000000000000', 'deadbeef'],
+      },
+    });
+    expect(blocked.isError, 'a linked_commits sha git resolves as absent must block the close').toBe(true);
+    const stillOpen = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
+    expect(stillOpen.status).toBe('in_review');
+    expect(stillOpen.linked_commits).toEqual([]);
+
+    // The REAL sha alone closes, is reported present by the MCP layer's
+    // advisory check, and is recorded 'verified' on the ticket itself.
     const result = await client.callTool({
       name: 'close_task',
       arguments: {
         key,
-        comment: { author: 'orchestrator', body: 'Landed.' },
-        linked_commits: [realSha, '0000000000000000000000000000000000000000', 'deadbeef'],
+        comment: { author: 'orchestrator', body: deliveryBody({ ticket: key, result: `   - Landed.` }) },
+        linked_commits: [realSha],
       },
     });
     expect(result.isError).toBeFalsy();
@@ -1083,14 +1135,14 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
     expect(parsed.ok).toBe(true);
     expect(parsed.linked_commits_verification.checked).toBe(true);
     expect(parsed.linked_commits_verification.present).toEqual([realSha]);
-    expect(parsed.linked_commits_verification.missing.sort()).toEqual(
-      ['0000000000000000000000000000000000000000', 'deadbeef'].sort(),
-    );
+    expect(parsed.linked_commits_verification.missing).toEqual([]);
 
-    // Advisory-only: the bogus shas do NOT block the close.
     const task = parse(await client.callTool({ name: 'get_task', arguments: { key } }));
     expect(task.status).toBe('done');
-    expect(task.linked_commits).toContain('deadbeef');
+    expect(task.linked_commits).toEqual([realSha]);
+    expect(task.linked_commits_verification.commits).toEqual([
+      { sha: realSha, state: 'verified' },
+    ]);
   });
 
   it('control — a repoRoot with no .git reports checked:false, reason:"not-a-git-repo" (never mislabels as "missing")', async () => {
@@ -1113,7 +1165,7 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
     const result = await client.callTool({
       name: 'close_task',
       arguments: {
-        key, comment: { author: 'orchestrator', body: 'Landed.' }, linked_commits: ['abc1234'],
+        key, comment: { author: 'orchestrator', body: deliveryBody({ ticket: key, result: `   - Landed.` }) }, linked_commits: ['abc1234'],
       },
     });
     const parsed = parse(result);
@@ -1152,7 +1204,7 @@ describe('TASK-188 AC6/AC7 — P8 probe replay: linked_commits existence is advi
 
     const result = await client.callTool({
       name: 'close_task',
-      arguments: { key, comment: { author: 'orchestrator', body: 'Landed.' } },
+      arguments: { key, comment: { author: 'orchestrator', body: deliveryBody({ ticket: key, result: `   - Landed.` }) } },
     });
     const parsed = parse(result);
     expect(parsed.linked_commits_verification).toEqual({
