@@ -2,15 +2,17 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "active",
-  "updated_at": "2026-09-17T20:17:19.991Z",
+  "updated_at": "2026-09-17T20:35:08.502Z",
   "active_task": "TASK-238",
   "workflow_step": "impl",
-  "next_action": "Recibir el hand-off del Developer de TASK-238, correr su pasada adversarial final, cerrarlo con entrega, y empujar los commits a origin/main.",
-  "handoff_summary": "Ronda de cierre del 2026-09-17. Cerrados CINCO tickets con su pasada adversarial final y su entrega conforme a docs/PLANTILLA-ENTREGA.md: TASK-233, TASK-234, TASK-235, TASK-236 y TASK-237. Los HIGH de las pasadas previas quedaron con FINDING-RESOLVED verificado, el UAT delegado por Mato se registro paso por paso con lo observado (TASK-233 7/7, TASK-234 10/10, y los otros tres para satisfacer el sensor uat-audit que audita todo cierre posterior al corte), y bin/audit-close-verification.js reporta 5 verificados y 0 no verificados. Los nodos de grafo de los cinco tickets quedaron backfilleados. Queda TASK-238 (el parseo del id de marcador que convertia prosa en hallazgo basura) en manos del Developer.",
+  "next_action": "Recibir el segundo hand-off de TASK-238, re-revisar, correr la pasada adversarial de verificacion de cierre, cerrarlo con entrega, y empujar los commits a origin/main (el push quedo bloqueado por el harness; lo empuja Hermes con la via del token).",
+  "handoff_summary": "Ronda de cierre del 2026-09-17. CERRADOS cinco tickets con pasada adversarial final y entrega conforme a docs/PLANTILLA-ENTREGA.md: TASK-233, TASK-234, TASK-235, TASK-236, TASK-237. Board: 5 cierres verificados, 0 no verificados, 0 violaciones de UAT accionables. ABIERTO TASK-238 (in_review): la primera entrega del Developer (18ec45a + 55dbef8) volvio con REQUEST-CHANGES del reviewer y ROJO del wargaming; tres HIGH abiertos bloquean el cierre — R-1 (evidencia de red-green planting imposible para el spec CU4), WG5-238-001 (REGRESION: un marcador de mas de 200 chars entre corchetes se descarta en silencio y el ticket cierra, donde el codigo viejo bloqueaba; demostrado corregible sin romper CU2 con un contraejemplo que corre en /tmp/wg238/fix) y WG5-238-002 (una degradacion con justificacion invisible cierra el hallazgo). Loop-back despachado al Developer con los tres HIGH mas cuatro medios y tres bajos.",
   "open_questions": [
     "TASK-238 AC3 — DECISION DE MATO: el comentario de wargaming de TASK-234 tiene prosa en el offset 3213 que arranca con la sintaxis literal [FINDING-HIGH: y se come 1196 chars hasta el proximo corchete. La opcion por defecto es NO tocar el texto historico y arreglar el parser; la alternativa es que Mato autorice corregir la prosa del comentario. El fix del parser en si NO necesita decision suya, solo la aprobacion de la lista de casos de uso que pide la politica para superficie peligrosa."
   ],
-  "blockers": [],
+  "blockers": [
+    "El push a origin/main esta bloqueado por el permiso del harness: los commits quedan locales."
+  ],
   "decisions": [
     {
       "at": "2026-09-16T17:05:36.528Z",
@@ -76,6 +78,11 @@
       "at": "2026-09-17T20:17:19.991Z",
       "decision": "Cerrar TASK-233..TASK-237 con el UAT delegado al Orquestador, registrando en cada paso lo observado.",
       "rationale": "Mato instruyo explicitamente cerrar los cinco tickets en esta ronda y delego la verificacion; el sensor uat-audit exige un veredicto en todo cierre posterior al corte del 2026-09-09, no solo en los requires_uat. Las entregas se re-registraron despues del comentario de UAT porque bin/audit-close-verification.js lee el ULTIMO comentario como la entrega."
+    },
+    {
+      "at": "2026-09-17T20:35:08.502Z",
+      "decision": "Loop-back de TASK-238 en vez de cerrarlo: los tres HIGH bloquean, y el HIGH del wargaming es una regresion introducida por el propio fix.",
+      "rationale": "El reviewer habia clasificado la banda de descarte silencioso como residual forzado por CU2; la pasada adversarial falsifico esa afirmacion con un contraejemplo corriendo, asi que el hallazgo sube a HIGH y se arregla en vez de registrarse como residual aceptado."
     }
   ],
   "subagent_results": [
