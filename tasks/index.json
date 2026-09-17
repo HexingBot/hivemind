@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T20:10:02.425Z",
+  "generated_at": "2026-09-17T20:11:19.876Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1366,7 +1366,7 @@
     {
       "key": "TASK-233",
       "title": "RAIZ: publicar la politica a la superficie que la ejecuta (propagacion del plugin)",
-      "status": "in_review",
+      "status": "done",
       "priority": "high"
     },
     {

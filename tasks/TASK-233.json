@@ -10,7 +10,7 @@
     "Los tickets historicos con verification_tier tdd NO se reescriben (TASK-212 sigue vigente); el sensor solo mira superficies de instruccion, no el board.",
     "npm test y npm run test:all verdes con el sensor nuevo incluido."
   ],
-  "status": "in_review",
+  "status": "done",
   "priority": "high",
   "labels": [
     "wargaming-2026-09-16",
@@ -19,7 +19,14 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "5b5d0ec",
+    "0104ea2",
+    "5a4200f",
+    "72bdf17",
+    "12abe4a",
+    "4f7949c"
+  ],
   "linked_prs": [],
   "comments": [
     {
@@ -61,11 +68,52 @@
       "author": "orchestrator",
       "at": "2026-09-17T19:55:33.202Z",
       "body": "[WARGAMING] Quinta pasada de verificacion de cierre del 2026-09-17 sobre el loop-back commiteado (12abe4a), contra CU1-CU7 y sus caminos alternativos. Pasada adversarial REAL ejecutada en esta corrida: mutantes inyectados y revertidos (espacio en vez de guion, plural tests-first, U+2011, corte de linea, reescritura de path de TDD.md, 7 reintroducciones de e2e-antes-de-hand-off, decoy de solo comentario), todos ROJOS con el archivo ofensor nombrado; revertidos, vuelven a verde. El enumerador cuenta 66 superficies reales (37 plugin-root + 29 .claude/) y sigue symlinks con guarda de ciclos. Cero falsos positivos en prosa correcta (M3 verificado). Tier rapido 104 archivos / 1379 passed; test:all 2523 passed. Verificado end-to-end y no por el matcher solo.\n\n[FINDING-RESOLVED: WG2-233-001] (verificado en la 4a pasada, commit 5a4200f, y re-verificado aca: el mutante verbatim muere en AMBAS copias de impl-block-tasks y el puntero colgante muere incondicional).\n[FINDING-RESOLVED: WG2-233-002] (5b5d0ec: enumerador por disco de las 30 superficies, mutante de superficie nueva muere).\n[FINDING-RESOLVED: WG2-233-003] (5b5d0ec: revertir loop.md a v0.22.0 o borrar el hard stop da ROJO, posicional dentro del bloque de pasos).\n[FINDING-RESOLVED: WG4-233-001] (12abe4a: variantes tipograficas del patron mueren con la colocation tolerante; la parafrasis arbitraria queda como limitacion NOMBRADA en el codigo, no como hueco silencioso — decision de alcance del Orquestador registrada en la 4a pasada).\n[FINDING-RESOLVED: WG4-233-002] (12abe4a: la mitad prohibida es una composicion verbo-antes-hand-off que mata las 7 reintroducciones medidas, y la positiva exige defineConfig real + include glob + deferral; el decoy de solo comentario ya no pasa).\n\nCU1 CUMPLIDO, CU2 CUMPLIDO, CU3 CUMPLIDO CON RESERVA (acoplamiento manual con CLAUDE.md), CU4 CUMPLIDO, CU5 CUMPLIDO, CU6 CUMPLIDO PARA EL MUTANTE EXACTO, CU7 CUMPLIDO."
+    },
+    {
+      "author": "uat",
+      "at": "2026-09-17T20:11:19.782Z",
+      "body": "1. CU1 — Publicada una version nueva del plugin, el agente developer que se spawnea lleva la regla de negarse sin lista de casos aprobada y ya no contiene \"absent means tdd\". Observado: agents/developer.md y .claude/agents/developer.md dan 0 ocurrencias de la frase retirada, y las lineas 33-53 llevan escrito el orden casos aprobados -> implementar -> wargaming contra esos casos. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n2. CU2 — Un proyecto con .claude/agents/developer.md propio queda DETECTADO y nombrado como superficie aparte, no dado por actualizado. Observado: el enumerador cuenta 66 superficies reales, 37 plugin-root mas 29 bajo .claude/, y las trata por separado. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n3. CU3 — Cambiar la politica en CLAUDE.md sin tocar agents/ ni skills/ da ROJO nombrando la superficie atrasada. Observado: el sensor tests/policy-propagation-doc-locks.spec.js corre vivo, 15 de 15 verdes sobre la superficie real. Reserva registrada: el acoplamiento con CLAUDE.md sigue siendo manual. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n4. CU4 — vitest.config.all.js dice lo que la politica dice desde el 2026-09-16 y una reintroduccion del texto viejo da rojo. Observado: las lineas 8-10 del archivo dicen que los e2e NO corren en el hand-off y que se ejecutan en el paso de wargaming; las 7 reintroducciones medidas mueren. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n5. CU5 — El hard stop de aprobacion esta escrito EN el punto donde el Orquestador despacha, no solo como politica general. Observado: skills/orchestrator-routing/SKILL.md lo lleva en la linea 187 (bloque de politica) y otra vez en la linea 285, dentro del paso 2 del Workflow, que es el punto de despacho. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n6. CU6 — Reintroducir el texto retirado en una superficie enviada al consumidor MUERE el mutante. Observado: inyectada la frase retirada en skills/impl-block-tasks/SKILL.md, el sensor da ROJO nombrando ese archivo exacto; revertido el archivo, vuelve a 15 de 15 verde y el arbol queda limpio. Corrido en esta sesion, no citado de una pasada anterior. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n7. CU7 — Correr el sensor no toca ni reescribe ningun ticket historico con verification_tier tdd. Observado: los 100 tickets con tdd en disco siguen intactos y el sensor solo lee superficies de instruccion, nunca tasks/. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n\nOverall result: PASS"
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-17T20:11:19.876Z",
+      "body": "ENTREGA — TASK-233 (propagacion de la politica a las superficies que ejecuta el consumidor)\n\n1. CASOS DE USO APROBADOS (lista aprobada por Mato el 2026-09-16, citada tal cual, con su estado final)\nCU1 (principal) Se publica una version nueva y un consumidor la toma -> el developer que se spawnea lleva la regla de negarse sin lista aprobada y ya no contiene \"absent means tdd\". CUMPLIDO.\nCU2 (alternativo A) Un proyecto con .claude/agents/developer.md propio -> el inventario lo detecta y lo nombra como no alcanzado por la actualizacion del plugin. CUMPLIDO.\nCU3 (alternativo B) Se cambia la politica en CLAUDE.md y no se tocan agents/ ni skills/ -> el sensor da ROJO nombrando la superficie atrasada. CUMPLIDO CON RESERVA: el acoplamiento con CLAUDE.md sigue siendo manual, y queda escrito como tal.\nCU4 (fallo A, WG-H-017) vitest.config.all.js instruye correr los e2e antes del hand-off -> el texto dice lo que la politica dice y una reintroduccion da rojo. CUMPLIDO.\nCU5 (fallo A, WG-H4-003) El hard stop existe como politica general pero no en el punto de despacho -> la SKILL lo lleva escrito EN el punto de despacho y borrarlo da rojo. CUMPLIDO.\nCU6 (fallo B, el candado vacuo) Se muta la superficie enviada al consumidor reintroduciendo el texto retirado -> el sensor mata el mutante. CUMPLIDO PARA EL MUTANTE EXACTO Y SUS VARIANTES TIPOGRAFICAS; la parafrasis arbitraria queda como limitacion NOMBRADA en el codigo, no como hueco silencioso.\nCU7 (negativo) Correr el sensor sobre el board -> no toca ni reescribe ningun ticket historico con tdd. CUMPLIDO.\nNingun caso fue cambiado por el Developer: cero escaladas de cambio de caso.\n\n2. RESULTADO (en terminos del usuario)\nLa politica del 2026-09-16 ya no vive solo en CLAUDE.md: esta escrita en las superficies que el consumidor realmente ejecuta, y hay un sensor que se pone rojo cuando una de ellas se atrasa. El mecanismo real de publicacion quedo verificado y escrito (marketplace git hivemind-marketplace hacia github.com/HexingBot/hivemind.git, cache por version bajo el plugin cache, scope user, y el hecho de que .claude/agents|skills de un proyecto OVERRIDEA al plugin). El enumerador descubre las superficies por disco — 66 reales, 37 plugin-root y 29 bajo .claude/ — sigue symlinks con guarda de ciclos, y no depende de una lista que se pudre. Commits: 5b5d0ec, 0104ea2, 5a4200f, 72bdf17, 12abe4a. Deliberadamente afuera: los tickets historicos con verification_tier tdd NO se reescriben (TASK-212 sigue vigente), y la parafrasis arbitraria del texto retirado queda como limitacion nombrada en el codigo en vez de un matcher que pretenda cubrirla.\n\n3. WARGAMING (constancia completa en los comentarios [WARGAMING] de este ticket; aqui el resumen)\nSe atacaron CU1-CU7 y sus caminos alternativos y de fallo en cinco pasadas. Que se ataco en la ultima: mutantes inyectados y revertidos — espacio en vez de guion, plural de tests-first, guion no-separable U+2011, corte en dos lineas, reescritura del path de TDD.md, 7 reintroducciones de e2e-antes-de-hand-off, y un decoy de solo comentario. Que sobrevivio: todos los mutantes dieron ROJO nombrando el archivo ofensor y, al revertirlos, la suite volvio a verde; cero falsos positivos sobre prosa correcta; el enumerador cuenta 66 superficies reales. Que no sobrevivio: cinco HIGH, todos cerrados y verificados end-to-end y no por el matcher solo — WG2-233-001, WG2-233-002, WG2-233-003, WG4-233-001 (variantes tipograficas) y WG4-233-002 (la mitad prohibida es una composicion verbo-antes-hand-off, el decoy ya no pasa). E2e corridos en la pasada de wargaming: tier rapido 104 archivos / 1379 passed y test:all 2523 passed, cero rojos. Veredicto: VERDE.\n\n4. UAT\nSolicitado: si (requires_uat: true). Guion: la misma lista aprobada CU1-CU7, reusada sin derivar una segunda. Resultado: 7 de 7 PASS, Overall result: PASS, registrado en el comentario con author uat de este mismo ticket. Mato delegó la verificacion de los pasos al Orquestador y cada paso quedo marcado como tal. El paso 6 se corrio de verdad en esta sesion (mutante inyectado en skills/impl-block-tasks/SKILL.md, sensor ROJO nombrando el archivo, revertido, verde otra vez, arbol limpio), no citado de una pasada anterior.\n\n5. ESTADO Y DEUDAS\nReserva registrada en CU3: el acoplamiento del sensor con CLAUDE.md es manual. Limitacion nombrada en CU6: la parafrasis arbitraria del texto retirado no la cubre el matcher, y esta escrita como tal en el codigo."
     }
   ],
   "created_at": "2026-09-16T21:36:43.355Z",
-  "updated_at": "2026-09-17T19:55:33.202Z",
+  "updated_at": "2026-09-17T20:11:19.876Z",
   "jira_key": null,
   "verification_tier": "tests-after",
-  "requires_uat": true
+  "requires_uat": true,
+  "linked_commits_verification": {
+    "at": "2026-09-17T20:11:19.876Z",
+    "checked": true,
+    "reason": null,
+    "commits": [
+      {
+        "sha": "5b5d0ec",
+        "state": "verified"
+      },
+      {
+        "sha": "0104ea2",
+        "state": "verified"
+      },
+      {
+        "sha": "5a4200f",
+        "state": "verified"
+      },
+      {
+        "sha": "72bdf17",
+        "state": "verified"
+      },
+      {
+        "sha": "12abe4a",
+        "state": "verified"
+      },
+      {
+        "sha": "4f7949c",
+        "state": "verified"
+      }
+    ]
+  }
 }
