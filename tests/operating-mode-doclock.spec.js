@@ -28,8 +28,19 @@ describe('TASK-236 CU8 — close-guard.js no longer claims the harness default i
     expect(source).not.toContain("already defaults to 'harness' on any missing/corrupt pointer or bundle");
   });
 
-  it('the corrected behavior is documented: getMode throws on corrupt state and this module does not catch it', () => {
-    expect(source).toMatch(/getMode.*throw/is);
-    expect(source.toLowerCase()).toContain('modestateerror');
+  it('the corrected behavior is documented: getMode throws a named ModeStateError, stated near its own mention', () => {
+    // TASK-236 LOW-2 (review 2026-09-17) — the prior /getMode.*throw/is was
+    // near-vacuous: with the /s (dotAll) flag it matches "getMode" ANYWHERE
+    // in the file followed by "throw" ANYWHERE later, which a file full of
+    // unrelated throw statements (LoopCloseGuardError, UatDelegationGuardError,
+    // UatCommentGuardError) satisfies regardless of whether getMode's own
+    // corrected behavior was ever documented — it would have passed
+    // PRE-fix too. This bounds "throw" and "ModeStateError" to a 200-char
+    // window after "getMode" so the match can only succeed when the source
+    // actually states, close to a mention of getMode, that it throws a
+    // ModeStateError — proved red against the pre-fix source (see the LOW-2
+    // hand-off note: reconstructed via `git show <fix-sha>~1:src/close-guard.js`
+    // into a temp file, never checked out into the working tree).
+    expect(source).toMatch(/getMode[\s\S]{0,200}?throws?[\s\S]{0,200}?ModeStateError/i);
   });
 });

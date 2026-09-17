@@ -313,3 +313,41 @@ describe('TASK-236 CU7 — getMode rejects an unrecognized pointer schema_versio
     expect(caughtErr.code).toBe('E_MODE_POINTER_INVALID');
   });
 });
+
+// ---------------------------------------------------------------------------
+// TASK-236 review MEDIUM-1 (2026-09-17) — a bundle that IS valid JSON and
+// DOES declare a `mode` field, but with a value outside OPERATING_MODES
+// (e.g. 'loop' byte-corrupted in place to 'lo0p'), used to silently return
+// 'harness' — the same silent-degradation shape CU3/CU7 already close for a
+// corrupt bundle / unrecognized schema_version, left open for a declared-
+// but-garbage mode value. Harm prevented: this collapsed "no mode declared"
+// (legitimate idle state, CU5) and "mode declared but garbage" into one
+// indistinguishable 'harness' outcome, which is the same failure shape that
+// let a corrupted state file silently disable the loop-mode close guard.
+// ---------------------------------------------------------------------------
+describe('TASK-236 review MEDIUM-1 — getMode rejects a declared-but-unrecognized mode value', () => {
+  it('getMode_throws_a_named_ModeStateError_when_bundle_mode_is_an_unrecognized_value', async () => {
+    const { getMode, ModeStateError } = await import(OPERATING_MODE_URL);
+    const { root } = makeRepo({ bundleExtra: { mode: 'lo0p' } });
+
+    let caughtErr;
+    try {
+      await getMode({ repoRoot: root });
+    } catch (err) {
+      caughtErr = err;
+    }
+
+    expect(caughtErr, 'getMode must reject an unrecognized declared mode, never fall back to harness').toBeDefined();
+    expect(caughtErr).toBeInstanceOf(ModeStateError);
+    expect(caughtErr.code).toBe('E_MODE_BUNDLE_INVALID');
+  });
+
+  it('getMode_still_returns_harness_when_the_bundle_declares_no_mode_field_at_all', async () => {
+    // CRITICAL negative case (CU5, cold start): confirms the MEDIUM-1 fix
+    // did not regress the legitimate "no mode declared" default.
+    const { getMode } = await import(OPERATING_MODE_URL);
+    const { root } = makeRepo(); // bundle has no `mode` field
+    const result = await getMode({ repoRoot: root });
+    expect(result).toBe('harness');
+  });
+});

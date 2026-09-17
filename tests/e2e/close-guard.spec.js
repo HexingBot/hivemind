@@ -12,8 +12,13 @@
 //         'LoopCloseGuardError'`, `.code === 'LOOP_CLOSE_GUARD_DENIED'`.
 //       * `loopModeCloseGuard({ repoRoot, task, key })` — async function.
 //         Reads the active bundle's `mode` (via src/operating-mode.js's
-//         getMode, which already defaults to 'harness' on any missing/corrupt
-//         pointer or bundle) and, when mode === 'loop', reads
+//         getMode, which defaults to 'harness' ONLY on a legitimately absent
+//         mode/session — no pointer, no active_session_id, or a bundle that
+//         simply does not declare `mode`; as of TASK-236, getMode THROWS a
+//         named ModeStateError instead on any pointer/bundle state that
+//         EXISTS but is corrupt or unrecognized, and this guard does not
+//         catch that error, so it propagates and aborts the close) and,
+//         when mode === 'loop', reads
 //         bundle.loop_auth directly (same readPointer/readBundleSession
 //         primitives src/operating-mode.js and src/loop-auth.js already use —
 //         this module reads bundle state itself; it does NOT need a new

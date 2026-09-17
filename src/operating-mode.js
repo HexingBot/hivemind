@@ -62,9 +62,17 @@ export class ModeStateError extends Error {
 //     the pointer declares a schema_version other than the one this code
 //     understands (E_MODE_POINTER_INVALID); the pointer names a session
 //     whose bundle directory/session.json does not exist, i.e. a ghost
-//     pointer (E_MODE_BUNDLE_MISSING); or the bundle's own session.json
+//     pointer (E_MODE_BUNDLE_MISSING); the bundle's own session.json
 //     exists but is not valid JSON — truncated or otherwise corrupted
-//     (E_MODE_BUNDLE_CORRUPT).
+//     (E_MODE_BUNDLE_CORRUPT); or the bundle IS valid JSON and DOES declare
+//     a `mode` field, but the value is not one of OPERATING_MODES (e.g.
+//     'loop' byte-corrupted in place to 'lo0p') (E_MODE_BUNDLE_INVALID).
+//     This last case is deliberately distinct from "no mode field at all"
+//     (legitimate harness, above): a bundle that never mentions `mode` is
+//     the documented idle/legacy shape, but a bundle that mentions `mode`
+//     with a value this code does not recognize is state that exists and
+//     cannot be trusted — the same distinguishability contract the other
+//     three corrupt-state cases already apply.
 //
 // Callers that do not catch ModeStateError (e.g. src/close-guard.js's
 // loopModeCloseGuard/loopModeUatCommentGuard) let it propagate, which aborts
@@ -84,6 +92,25 @@ export async function getMode({ repoRoot }) {
     );
   }
 
+  // TASK-236 LOW-3 (review 2026-09-17) — two DELIBERATE silent-'harness'
+  // edges live in this short-circuit and the ordering below; write down why
+  // so a future pass does not "fix" them by accident:
+  //   (a) a pointer that parses to a non-object, or one that parses fine but
+  //       simply lacks `active_session_id` (a legacy v1 pointer shape, which
+  //       predates schema_version and active_session_id both), bypasses ALL
+  //       validation below via this `== null` short-circuit and returns
+  //       'harness' with no error.
+  //   (b) the schema_version check right below is ordered AFTER this
+  //       short-circuit, so `{schema_version: 999, active_session_id: null}`
+  //       ALSO returns 'harness' silently instead of hitting
+  //       E_MODE_POINTER_INVALID — schema_version is never even inspected
+  //       when there's no active session to report on.
+  // Both are correct as written, not oversights: they are what lets a
+  // legacy v1 state file (no active_session_id at all) keep reading as
+  // ordinary idle harness instead of a hard error, per AC5 and this
+  // ticket's own out-of-scope note (v1→v2 migration is not this ticket's
+  // job). The schema_version/ghost-bundle/corrupt-bundle checks below only
+  // ever fire once there IS a real active_session_id to validate against.
   if (!pointer || pointer.active_session_id == null) return 'harness';
 
   if (pointer.schema_version !== 2) {
@@ -112,7 +139,24 @@ export async function getMode({ repoRoot }) {
     );
   }
 
-  return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : 'harness';
+  // TASK-236 MEDIUM-1 (review 2026-09-17) — `bundle.mode == null` (no `mode`
+  // field at all) is the legitimate, silent 'harness' default (CU5). A
+  // bundle that DOES declare `mode` but with a value outside
+  // OPERATING_MODES is corrupt state, not idle state, and must be a named
+  // error like the other three corrupt-state cases above — the prior
+  // "anything not recognized silently becomes harness" collapsed "no mode
+  // declared" and "mode declared but garbage" into one indistinguishable
+  // outcome, which is exactly the TASK-192 distinguishability contract this
+  // whole ticket exists to restore.
+  if (bundle.mode != null && !OPERATING_MODES.includes(bundle.mode)) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} declares an unrecognized `
+        + `mode (${JSON.stringify(bundle.mode)}, expected one of: ${OPERATING_MODES.join(', ')})`,
+      'E_MODE_BUNDLE_INVALID',
+    );
+  }
+
+  return bundle.mode == null ? 'harness' : bundle.mode;
 }
 
 // ---------------------------------------------------------------------------
