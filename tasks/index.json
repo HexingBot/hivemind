@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T17:19:46.675Z",
+  "generated_at": "2026-09-17T19:55:33.625Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1372,7 +1372,7 @@
     {
       "key": "TASK-234",
       "title": "Guardas de cierre: el doble cierre escribe, el cuerpo \"OK\" pasa, y un HIGH no bloquea",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "high"
     },
     {
