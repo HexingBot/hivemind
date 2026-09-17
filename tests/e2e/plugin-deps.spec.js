@@ -424,6 +424,14 @@ describe('DOC — runtime facts that motivate bundling over NODE_PATH', () => {
     // invisible-Unicode guard). intake-sanitizer.js itself has zero imports
     // (pure functions only), so no further transitive copy is needed.
     copyFileSync(join(REPO_ROOT, 'src', 'intake-sanitizer.js'), join(srcDir, 'intake-sanitizer.js'));
+    // TASK-234 — task-store.js now imports commit-existence.js directly
+    // (verifyCommitExistence as closeTask's default commitVerifier, the
+    // three-state sha check). It imports only node:child_process, so no
+    // further transitive copy is needed. Omitting it made this describe
+    // block's ESM-resolution test fail with a real ERR_MODULE_NOT_FOUND on
+    // commit-existence.js — the fixture's closure has to mirror the module's
+    // real one or the test stops measuring what it exists to measure.
+    copyFileSync(join(REPO_ROOT, 'src', 'commit-existence.js'), join(srcDir, 'commit-existence.js'));
     copyFileSync(join(REPO_ROOT, 'tasks', 'schema.json'), join(tasksDir, 'schema.json'));
     return { root, srcDir };
   }
