@@ -26659,6 +26659,23 @@ var FINDING_HIGH_RE = new RegExp(`\\[FINDING-HIGH:\\s*([^\\]]{1,${FINDING_MARKER
 var FINDING_RESOLVED_RE = new RegExp(`\\[FINDING-RESOLVED:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
 var FINDING_DEGRADED_RE = new RegExp(`\\[FINDING-DEGRADED:\\s*([^\\]]{0,${FINDING_DEGRADED_SCAN_CAP}})\\]`, "gi");
 var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
+var ID_SHAPE_WITH_SEPARATOR_RE = /^[A-Za-z0-9]+(?:[-._/][A-Za-z0-9]+)+$/;
+function isLikelyMarkerAttempt(token) {
+  return ID_SHAPE_WITH_SEPARATOR_RE.test(token) || token.length > FINDING_ID_MAX_LEN;
+}
+var LONGFORM_ATTEMPT_RE = new RegExp("\\[FINDING-(HIGH|RESOLVED|DEGRADED):\\s*([^\\s\\]]+)", "gi");
+var DASH_LOOKALIKE_RE = /‑/g;
+function normalizeFindingId(raw) {
+  return String(raw).trim().normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").toUpperCase();
+}
+function hasVisibleJustification(text) {
+  return String(text).normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").replace(/[-—\s]+/g, "").length > 0;
+}
+function truncatePreview(raw) {
+  const trimmed = String(raw).trim();
+  const sliced = trimmed.slice(0, FINDING_ID_MAX_LEN);
+  return sliced + (trimmed.length > FINDING_ID_MAX_LEN ? "..." : "");
+}
 var FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g;
 var BACKTICK_SPAN_RE = /`[^`\n]*`/g;
 var DOUBLE_QUOTED_SPAN_RE = /"[^"\n]*"/g;
@@ -26676,24 +26693,24 @@ function checkNoOpenHighFindings(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === "done") return;
   const comments = Array.isArray(task.comments) ? task.comments : [];
-  const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || ""))).join("\n");
+  const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || "")).replace(DASH_LOOKALIKE_RE, "-")).join("\n");
   const opened = /* @__PURE__ */ new Set();
   const closed = /* @__PURE__ */ new Set();
   const malformed = [];
   for (const m of allText.matchAll(FINDING_HIGH_RE)) {
     const raw = m[1];
     if (isValidFindingId(raw)) {
-      opened.add(raw.trim().toUpperCase());
+      opened.add(normalizeFindingId(raw));
     } else {
-      malformed.push(`FINDING-HIGH: "${raw.trim().slice(0, FINDING_ID_MAX_LEN)}..."`);
+      malformed.push(`FINDING-HIGH: "${truncatePreview(raw)}"`);
     }
   }
   for (const m of allText.matchAll(FINDING_RESOLVED_RE)) {
     const raw = m[1];
     if (isValidFindingId(raw)) {
-      closed.add(raw.trim().toUpperCase());
+      closed.add(normalizeFindingId(raw));
     } else {
-      malformed.push(`FINDING-RESOLVED: "${raw.trim().slice(0, FINDING_ID_MAX_LEN)}..."`);
+      malformed.push(`FINDING-RESOLVED: "${truncatePreview(raw)}"`);
     }
   }
   for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
@@ -26702,12 +26719,23 @@ function checkNoOpenHighFindings(task, resolvedException) {
     if (sep === -1) continue;
     const rawId = inner.slice(0, sep);
     if (!isValidFindingId(rawId)) {
-      malformed.push(`FINDING-DEGRADED: "${rawId.trim().slice(0, FINDING_ID_MAX_LEN)}..."`);
+      malformed.push(`FINDING-DEGRADED: "${truncatePreview(rawId)}"`);
       continue;
     }
-    const id = rawId.trim();
     const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
-    if (id !== "" && justification !== "") closed.add(id.toUpperCase());
+    if (rawId.trim() !== "" && hasVisibleJustification(justification)) {
+      closed.add(normalizeFindingId(rawId));
+    }
+  }
+  const wellFormedStarts = /* @__PURE__ */ new Set();
+  for (const re of [FINDING_HIGH_RE, FINDING_RESOLVED_RE, FINDING_DEGRADED_RE]) {
+    for (const m of allText.matchAll(re)) wellFormedStarts.add(m.index);
+  }
+  for (const m of allText.matchAll(LONGFORM_ATTEMPT_RE)) {
+    if (wellFormedStarts.has(m.index)) continue;
+    const token = m[2];
+    if (!isLikelyMarkerAttempt(token)) continue;
+    malformed.push(`FINDING-${m[1].toUpperCase()}: "${truncatePreview(token)}" (no se encontro "]" de cierre dentro del scan cap, o sin el separador documentado, pero el primer token tiene forma de id)`);
   }
   if (malformed.length > 0) {
     throw new MalformedFindingMarkerError(
