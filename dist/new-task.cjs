@@ -7724,6 +7724,7 @@ var import_node_process = require("node:process");
 var import_promises = require("node:fs/promises");
 var import_node_fs2 = require("node:fs");
 var import_node_path2 = require("node:path");
+var import_node_crypto2 = require("node:crypto");
 var import__ = __toESM(require__(), 1);
 var import_ajv_formats2 = __toESM(require_dist(), 1);
 
@@ -7822,7 +7823,32 @@ var schema_default = {
       type: "array",
       items: { type: "string" },
       default: [],
-      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE only (/^[0-9a-f]{7,40}$/i, TASK-082) \u2014 it does NOT verify the sha resolves to a real commit (TASK-188 AC6: closeTask is a pure state-store function with no git dependency, deliberately). src/mcp-server.js's close_task tool runs a best-effort, advisory-only existence check (git cat-file, never blocking the close) and reports the result as linked_commits_verification in its response, distinguishing 'verified present/missing' from 'could not verify' (no git binary, or repoRoot is not a git work tree) rather than implying every recorded sha is trustworthy."
+      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE (/^[0-9a-f]{7,40}$/i, TASK-082) AND, since TASK-234 (WG-H-011, wargaming 2026-09-16), its EXISTENCE: closeTask resolves every final sha through an injectable verifier (src/commit-existence.js, `git cat-file -e <sha>^{commit}`) and REJECTS the close with LinkedCommitNotFoundError when git ran and said no such commit. This supersedes TASK-188 AC6's 'closeTask is a pure state-store function with no git dependency' decision \u2014 WG-H-011 measured what that cost (an invented-but-well-formed sha satisfied the close evidence a reader takes as proof the work landed); the dependency is now admitted behind the `commitVerifier` seam, so a caller without git still closes. A sha git could NOT check (no git binary, repoRoot not a work tree, git error) is recorded as 'unverifiable' and never blocks the close \u2014 see linked_commits_verification, where every outcome is persisted per-sha. src/mcp-server.js's close_task tool additionally reports its own advisory linked_commits_verification in the tool RESPONSE (a separate, response-only object \u2014 not this stored field)."
+    },
+    linked_commits_verification: {
+      type: "object",
+      additionalProperties: false,
+      required: ["at", "commits"],
+      description: "TASK-234 (WG-H-011/WG-H-020) \u2014 the per-sha outcome of closeTask's existence check over the FINAL linked_commits, recorded at close time so a verified close is mechanically distinguishable from an unverified one afterwards (bin/audit-close-verification.js reads exactly this). Written ONLY by closeTask, and only on a real close (never on the no-op re-close path). Its ABSENCE on a done ticket means the ticket closed before this field existed (or was hand-edited) \u2014 the audit reports that as 'unverifiable', never as verified and never as a failure: TASK-234 AC7 forbids retroactively re-judging the ~208 historical done tickets.",
+      properties: {
+        at: { type: "string", format: "date-time", description: "When the check ran (same stamp as the close itself)." },
+        checked: { type: "boolean", description: "false = git could not be consulted at all; `reason` names why and every entry in `commits` is 'unverifiable'." },
+        reason: { type: ["string", "null"], description: "Why nothing could be checked: 'none-linked' (no shas to check, not an error), 'git-unavailable' (no git binary), 'not-a-git-repo'. Null when checked is true." },
+        commits: {
+          type: "array",
+          description: "One entry per sha in the ticket's final linked_commits. THREE states, never two (CLAUDE.md's Empty-result contract, TASK-192): 'cannot know' is its own recorded outcome and is never collapsed into 'verified' or 'not-found'.",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["sha", "state"],
+            properties: {
+              sha: { type: "string" },
+              state: { type: "string", enum: ["verified", "not-found", "unverifiable"] },
+              reason: { type: ["string", "null"] }
+            }
+          }
+        }
+      }
     },
     linked_prs: {
       type: "array",
@@ -8008,18 +8034,19 @@ async function acquireTasksLock(repoRoot) {
   (0, import_node_fs2.mkdirSync)(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
   const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  const token = `${process.pid}-${(0, import_node_crypto2.randomBytes)(6).toString("hex")}`;
   for (; ; ) {
     try {
       const fd = (0, import_node_fs2.openSync)(lockPath, import_node_fs2.constants.O_CREAT | import_node_fs2.constants.O_EXCL | import_node_fs2.constants.O_WRONLY, 384);
       try {
-        const payload = Buffer.from(`${process.pid}
+        const payload = Buffer.from(`${token}
 `, "utf8");
         (0, import_node_fs2.writeSync)(fd, payload, 0, payload.length);
         (0, import_node_fs2.fsyncSync)(fd);
       } finally {
         (0, import_node_fs2.closeSync)(fd);
       }
-      return;
+      return token;
     } catch (err) {
       if (!err || err.code !== "EEXIST") throw err;
       let stat = null;
@@ -8028,9 +8055,31 @@ async function acquireTasksLock(repoRoot) {
       } catch {
       }
       if (stat && Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS) {
+        const quarantinePath = `${lockPath}.stale.${token}`;
+        let renamed = false;
         try {
-          (0, import_node_fs2.unlinkSync)(lockPath);
+          (0, import_node_fs2.renameSync)(lockPath, quarantinePath);
+          renamed = true;
         } catch {
+        }
+        if (renamed) {
+          let qStat = null;
+          try {
+            qStat = (0, import_node_fs2.statSync)(quarantinePath);
+          } catch {
+          }
+          const genuinelyStale = qStat && Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS;
+          if (genuinelyStale) {
+            try {
+              (0, import_node_fs2.unlinkSync)(quarantinePath);
+            } catch {
+            }
+          } else {
+            try {
+              (0, import_node_fs2.renameSync)(quarantinePath, lockPath);
+            } catch {
+            }
+          }
         }
         continue;
       }
@@ -8043,18 +8092,21 @@ async function acquireTasksLock(repoRoot) {
     }
   }
 }
-function releaseTasksLock(repoRoot) {
+function releaseTasksLock(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
   try {
-    (0, import_node_fs2.unlinkSync)(tasksLockPath(repoRoot));
+    const current = (0, import_node_fs2.readFileSync)(lockPath, "utf8").trim();
+    if (current !== token) return;
+    (0, import_node_fs2.unlinkSync)(lockPath);
   } catch {
   }
 }
 async function withTasksLock(repoRoot, fn) {
-  await acquireTasksLock(repoRoot);
+  const token = await acquireTasksLock(repoRoot);
   try {
     return await fn();
   } finally {
-    releaseTasksLock(repoRoot);
+    releaseTasksLock(repoRoot, token);
   }
 }
 function numericKeyOrder(a, b) {

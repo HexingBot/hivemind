@@ -11207,8 +11207,8 @@ module.exports = __toCommonJS(mcp_server_exports);
 var import_promises3 = require("node:fs/promises");
 var import_node_path7 = require("node:path");
 var import_node_url = require("node:url");
-var import_node_child_process = require("node:child_process");
-var import_node_crypto2 = require("node:crypto");
+var import_node_child_process2 = require("node:child_process");
+var import_node_crypto3 = require("node:crypto");
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -25429,6 +25429,7 @@ var StdioServerTransport = class {
 var import_promises = require("node:fs/promises");
 var import_node_fs4 = require("node:fs");
 var import_node_path4 = require("node:path");
+var import_node_crypto2 = require("node:crypto");
 var import__ = __toESM(require__(), 1);
 var import_ajv_formats3 = __toESM(require_dist(), 1);
 
@@ -25527,7 +25528,32 @@ var schema_default = {
       type: "array",
       items: { type: "string" },
       default: [],
-      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE only (/^[0-9a-f]{7,40}$/i, TASK-082) \u2014 it does NOT verify the sha resolves to a real commit (TASK-188 AC6: closeTask is a pure state-store function with no git dependency, deliberately). src/mcp-server.js's close_task tool runs a best-effort, advisory-only existence check (git cat-file, never blocking the close) and reports the result as linked_commits_verification in its response, distinguishing 'verified present/missing' from 'could not verify' (no git binary, or repoRoot is not a git work tree) rather than implying every recorded sha is trustworthy."
+      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE (/^[0-9a-f]{7,40}$/i, TASK-082) AND, since TASK-234 (WG-H-011, wargaming 2026-09-16), its EXISTENCE: closeTask resolves every final sha through an injectable verifier (src/commit-existence.js, `git cat-file -e <sha>^{commit}`) and REJECTS the close with LinkedCommitNotFoundError when git ran and said no such commit. This supersedes TASK-188 AC6's 'closeTask is a pure state-store function with no git dependency' decision \u2014 WG-H-011 measured what that cost (an invented-but-well-formed sha satisfied the close evidence a reader takes as proof the work landed); the dependency is now admitted behind the `commitVerifier` seam, so a caller without git still closes. A sha git could NOT check (no git binary, repoRoot not a work tree, git error) is recorded as 'unverifiable' and never blocks the close \u2014 see linked_commits_verification, where every outcome is persisted per-sha. src/mcp-server.js's close_task tool additionally reports its own advisory linked_commits_verification in the tool RESPONSE (a separate, response-only object \u2014 not this stored field)."
+    },
+    linked_commits_verification: {
+      type: "object",
+      additionalProperties: false,
+      required: ["at", "commits"],
+      description: "TASK-234 (WG-H-011/WG-H-020) \u2014 the per-sha outcome of closeTask's existence check over the FINAL linked_commits, recorded at close time so a verified close is mechanically distinguishable from an unverified one afterwards (bin/audit-close-verification.js reads exactly this). Written ONLY by closeTask, and only on a real close (never on the no-op re-close path). Its ABSENCE on a done ticket means the ticket closed before this field existed (or was hand-edited) \u2014 the audit reports that as 'unverifiable', never as verified and never as a failure: TASK-234 AC7 forbids retroactively re-judging the ~208 historical done tickets.",
+      properties: {
+        at: { type: "string", format: "date-time", description: "When the check ran (same stamp as the close itself)." },
+        checked: { type: "boolean", description: "false = git could not be consulted at all; `reason` names why and every entry in `commits` is 'unverifiable'." },
+        reason: { type: ["string", "null"], description: "Why nothing could be checked: 'none-linked' (no shas to check, not an error), 'git-unavailable' (no git binary), 'not-a-git-repo'. Null when checked is true." },
+        commits: {
+          type: "array",
+          description: "One entry per sha in the ticket's final linked_commits. THREE states, never two (CLAUDE.md's Empty-result contract, TASK-192): 'cannot know' is its own recorded outcome and is never collapsed into 'verified' or 'not-found'.",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["sha", "state"],
+            properties: {
+              sha: { type: "string" },
+              state: { type: "string", enum: ["verified", "not-found", "unverifiable"] },
+              reason: { type: ["string", "null"] }
+            }
+          }
+        }
+      }
     },
     linked_prs: {
       type: "array",
@@ -25765,7 +25791,13 @@ async function getMode({ repoRoot }) {
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
-  return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
+  if (bundle.mode != null && !OPERATING_MODES.includes(bundle.mode)) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} declares an unrecognized mode (${JSON.stringify(bundle.mode)}, expected one of: ${OPERATING_MODES.join(", ")})`,
+      "E_MODE_BUNDLE_INVALID"
+    );
+  }
+  return bundle.mode == null ? "harness" : bundle.mode;
 }
 
 // src/close-guard.js
@@ -25907,6 +25939,42 @@ async function loopModeUatCommentGuard({ repoRoot, author }) {
   }
 }
 
+// src/commit-existence.js
+var import_node_child_process = require("node:child_process");
+var COMMIT_STATE = {
+  VERIFIED: "verified",
+  NOT_FOUND: "not-found",
+  UNVERIFIABLE: "unverifiable"
+};
+function verifyCommitExistence(repoRoot, shas) {
+  const list = Array.isArray(shas) ? shas.filter((s) => typeof s === "string") : [];
+  if (list.length === 0) {
+    return { checked: false, reason: "none-linked", commits: [] };
+  }
+  try {
+    (0, import_node_child_process.execFileSync)("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoRoot, stdio: "pipe" });
+  } catch (err) {
+    const reason = err && err.code === "ENOENT" ? "git-unavailable" : "not-a-git-repo";
+    return {
+      checked: false,
+      reason,
+      commits: list.map((sha) => ({ sha, state: COMMIT_STATE.UNVERIFIABLE, reason }))
+    };
+  }
+  const commits = list.map((sha) => {
+    try {
+      (0, import_node_child_process.execFileSync)("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: repoRoot, stdio: "pipe" });
+      return { sha, state: COMMIT_STATE.VERIFIED, reason: null };
+    } catch (err) {
+      if (err && typeof err.status === "number") {
+        return { sha, state: COMMIT_STATE.NOT_FOUND, reason: null };
+      }
+      return { sha, state: COMMIT_STATE.UNVERIFIABLE, reason: "git-error" };
+    }
+  });
+  return { checked: true, reason: null, commits };
+}
+
 // src/task-store.js
 var STATUSES = ["todo", "in_progress", "in_review", "blocked", "done"];
 var PRIORITIES = ["low", "medium", "high", "critical"];
@@ -25956,18 +26024,19 @@ async function acquireTasksLock(repoRoot) {
   (0, import_node_fs4.mkdirSync)(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
   const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  const token = `${process.pid}-${(0, import_node_crypto2.randomBytes)(6).toString("hex")}`;
   for (; ; ) {
     try {
       const fd = (0, import_node_fs4.openSync)(lockPath, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
       try {
-        const payload = Buffer.from(`${process.pid}
+        const payload = Buffer.from(`${token}
 `, "utf8");
         (0, import_node_fs4.writeSync)(fd, payload, 0, payload.length);
         (0, import_node_fs4.fsyncSync)(fd);
       } finally {
         (0, import_node_fs4.closeSync)(fd);
       }
-      return;
+      return token;
     } catch (err) {
       if (!err || err.code !== "EEXIST") throw err;
       let stat = null;
@@ -25976,9 +26045,31 @@ async function acquireTasksLock(repoRoot) {
       } catch {
       }
       if (stat && Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS) {
+        const quarantinePath = `${lockPath}.stale.${token}`;
+        let renamed = false;
         try {
-          (0, import_node_fs4.unlinkSync)(lockPath);
+          (0, import_node_fs4.renameSync)(lockPath, quarantinePath);
+          renamed = true;
         } catch {
+        }
+        if (renamed) {
+          let qStat = null;
+          try {
+            qStat = (0, import_node_fs4.statSync)(quarantinePath);
+          } catch {
+          }
+          const genuinelyStale = qStat && Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS;
+          if (genuinelyStale) {
+            try {
+              (0, import_node_fs4.unlinkSync)(quarantinePath);
+            } catch {
+            }
+          } else {
+            try {
+              (0, import_node_fs4.renameSync)(quarantinePath, lockPath);
+            } catch {
+            }
+          }
         }
         continue;
       }
@@ -25991,18 +26082,21 @@ async function acquireTasksLock(repoRoot) {
     }
   }
 }
-function releaseTasksLock(repoRoot) {
+function releaseTasksLock(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
   try {
-    (0, import_node_fs4.unlinkSync)(tasksLockPath(repoRoot));
+    const current = (0, import_node_fs4.readFileSync)(lockPath, "utf8").trim();
+    if (current !== token) return;
+    (0, import_node_fs4.unlinkSync)(lockPath);
   } catch {
   }
 }
 async function withTasksLock(repoRoot, fn) {
-  await acquireTasksLock(repoRoot);
+  const token = await acquireTasksLock(repoRoot);
   try {
     return await fn();
   } finally {
-    releaseTasksLock(repoRoot);
+    releaseTasksLock(repoRoot, token);
   }
 }
 function numericKeyOrder(a, b) {
@@ -26045,49 +26139,43 @@ function buildIndexBytes(tasks, generatedAt) {
   })).sort(numericKeyOrder);
   return JSON.stringify({ generated_at: generatedAt, tasks: summary }, null, 2) + "\n";
 }
-async function writeIndexLocked(repoRoot, idxPath, tasks, stamp) {
-  await withTasksLock(repoRoot, () => atomicWriteFiles([
-    { target: idxPath, bytes: buildIndexBytes(tasks, stamp) }
-  ]));
-}
-async function verifyAndRepairIndex(repoRoot, tasks, now = () => (/* @__PURE__ */ new Date()).toISOString()) {
-  const idxPath = indexFilePath(repoRoot);
+function computeIndexDrift(idxPath, tasks) {
   if (!(0, import_node_fs4.existsSync)(idxPath)) {
-    if (tasks.length === 0) return false;
-    await writeIndexLocked(repoRoot, idxPath, tasks, now());
-    return true;
+    return tasks.length > 0;
   }
   let parsed;
   try {
     parsed = JSON.parse((0, import_node_fs4.readFileSync)(idxPath, "utf8"));
   } catch {
-    await writeIndexLocked(repoRoot, idxPath, tasks, now());
     return true;
   }
   const indexEntries = Array.isArray(parsed.tasks) ? parsed.tasks : [];
   const fileKeys = tasks.map((t) => t.key).sort();
   const idxKeys = indexEntries.map((e) => e && e.key).filter(Boolean).sort();
-  let drift = false;
-  if (fileKeys.length !== idxKeys.length) {
-    drift = true;
-  } else {
-    for (let i = 0; i < fileKeys.length; i++) {
-      if (fileKeys[i] !== idxKeys[i]) {
-        drift = true;
-        break;
-      }
+  if (fileKeys.length !== idxKeys.length) return true;
+  for (let i = 0; i < fileKeys.length; i++) {
+    if (fileKeys[i] !== idxKeys[i]) return true;
+  }
+  for (const e of indexEntries) {
+    if (!e || typeof e.key !== "string" || typeof e.title !== "string" || typeof e.status !== "string" || typeof e.priority !== "string") {
+      return true;
     }
   }
-  if (!drift) {
-    for (const e of indexEntries) {
-      if (!e || typeof e.key !== "string" || typeof e.title !== "string" || typeof e.status !== "string" || typeof e.priority !== "string") {
-        drift = true;
-        break;
-      }
-    }
-  }
-  if (!drift) return false;
-  await writeIndexLocked(repoRoot, idxPath, tasks, now());
+  return false;
+}
+async function writeIndexLocked(repoRoot, idxPath, stamp) {
+  await withTasksLock(repoRoot, async () => {
+    const freshTasks = await readAllTasks(repoRoot);
+    if (!computeIndexDrift(idxPath, freshTasks)) return;
+    await atomicWriteFiles([
+      { target: idxPath, bytes: buildIndexBytes(freshTasks, stamp) }
+    ]);
+  });
+}
+async function verifyAndRepairIndex(repoRoot, tasks, now = () => (/* @__PURE__ */ new Date()).toISOString()) {
+  const idxPath = indexFilePath(repoRoot);
+  if (!computeIndexDrift(idxPath, tasks)) return false;
+  await writeIndexLocked(repoRoot, idxPath, now());
   return true;
 }
 var TMP_SWEEP_MIN_AGE_MS = 6e4;
@@ -26184,6 +26272,12 @@ async function listReady({ repoRoot }) {
   const byKey = new Map(tasks.map((t) => [t.key, t]));
   const cycles = detectDependencyCycles(tasks);
   const cycledKeys = new Set(cycles.flat());
+  const liveCycles = cycles.filter(
+    (cycle) => cycle.some((key) => {
+      const t = byKey.get(key);
+      return t && t.status !== "done";
+    })
+  );
   const dangling = [];
   const ready = [];
   for (const t of tasks) {
@@ -26213,9 +26307,11 @@ async function listReady({ repoRoot }) {
           `listReady: ${parts.join("; ")}. Fix the dangling depends_on reference(s) (typo, or the dependency was deleted) \u2014 a ticket can never become ready while it points at a task that does not exist.` + (cycles.length > 0 ? ` Also found ${cycles.length} depends_on cycle(s): ${cycles.map((c) => c.join(" -> ")).join("; ")}.` : "")
         );
       }
-      throw new DependencyCycleError(
-        `listReady: found ${cycles.length} depends_on cycle(s), which can never resolve: ${cycles.map((c) => c.join(" -> ")).join("; ")}. Break the cycle by removing or correcting one of the depends_on entries in the loop \u2014 none of the tickets in a cycle can ever reach "done" on their own.`
-      );
+      if (liveCycles.length > 0) {
+        throw new DependencyCycleError(
+          `listReady: found ${liveCycles.length} depends_on cycle(s), which can never resolve: ${liveCycles.map((c) => c.join(" -> ")).join("; ")}. Break the cycle by removing or correcting one of the depends_on entries in the loop \u2014 none of the tickets in a cycle can ever reach "done" on their own.`
+        );
+      }
     }
     if (dangling.length > 0) ready.danglingDependencies = dangling;
     if (cycles.length > 0) ready.dependencyCycles = cycles;
@@ -26309,6 +26405,177 @@ function checkCloseEvidence(task, linkedCommits, resolvedException) {
       `task ${task.key} is verification_tier "${tier}" and cannot close without BOTH a pre-existing reviewer-authored comment (present: ${hasReviewer}) AND a non-empty linked_commits (present: ${hasCommits}) \u2014 see CLAUDE.md's evidence-proportional-to-tier close rule. Record the reviewer verdict via \`append_comment({ author: "reviewer", ... })\` BEFORE closing, and pass the commit sha(s) to \`close_task\`'s \`linked_commits\` \u2014 this is the compliant path, not the exception. Only for a genuine exception (never as a routine substitute for the above) \u2014 pass \`exception: { reason }\` to use the documented escape hatch.`
     );
   }
+}
+var WargamingRecordError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "WargamingRecordError";
+    this.code = "E_WARGAMING_RECORD_REQUIRED";
+  }
+};
+var OpenHighFindingError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "OpenHighFindingError";
+    this.code = "E_OPEN_HIGH_FINDING";
+  }
+};
+var WARGAMING_MARKER_RE = /\[WARGAMING\]([\s\S]*)/;
+var WARGAMING_CASE_RE = /\bCU\s?\d+\b|\bcaso\s*\d+/i;
+var WARGAMING_PATH_RE = /\bpaths?\b|\bcaminos?\b|\balternativ\w*|\bfallo\w*/i;
+function wargamingComments(task) {
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  return comments.filter((c) => c && WARGAMING_MARKER_RE.test(String(c.body || "")));
+}
+function hasValidWargamingComment(task) {
+  const marked = wargamingComments(task);
+  if (marked.length === 0) return false;
+  const body = String(marked[marked.length - 1].body || "");
+  return WARGAMING_CASE_RE.test(body) && WARGAMING_PATH_RE.test(body);
+}
+function checkWargamingRecord(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  const marked = wargamingComments(task);
+  if (marked.length === 0) {
+    throw new WargamingRecordError(
+      `task ${task.key} has no comment carrying a "[WARGAMING]" marker \u2014 CLAUDE.md's Workflow step 6 requires the adversarial wargaming pass to run, and its outcome to be recorded, AFTER the review and BEFORE close. Record it via \`append_comment\` (e.g. author: "orchestrator") with a body starting "[WARGAMING]" that names the attacked case(s) and path(s) before closing \u2014 or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
+    );
+  }
+  const last = marked[marked.length - 1];
+  const body = String(last.body || "");
+  const hasCase = WARGAMING_CASE_RE.test(body);
+  const hasPath = WARGAMING_PATH_RE.test(body);
+  if (!hasCase || !hasPath) {
+    throw new WargamingRecordError(
+      `task ${task.key}'s most recent "[WARGAMING]" comment names no ${!hasCase ? 'approved case (e.g. "CU3")' : ""}${!hasCase && !hasPath ? " and no" : ""}${!hasPath ? " path/alternative it attacked" : ""} \u2014 a wargaming record that names neither a case nor a path is not a wargaming record (WG-H-003). Record what was actually attacked, or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
+    );
+  }
+}
+var FINDING_HIGH_RE = /\[FINDING-HIGH:\s*([^\]]+)\]/gi;
+var FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
+var FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^\]]*)\]/gi;
+var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
+function checkNoOpenHighFindings(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const allText = comments.map((c) => String(c && c.body || "")).join("\n");
+  const opened = /* @__PURE__ */ new Set();
+  for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
+  const closed = /* @__PURE__ */ new Set();
+  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) closed.add(m[1].trim().toUpperCase());
+  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
+    const inner = m[1] || "";
+    const sep = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep === -1) continue;
+    const id = inner.slice(0, sep).trim();
+    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
+    if (id !== "" && justification !== "") closed.add(id.toUpperCase());
+  }
+  const open = [...opened].filter((id) => !closed.has(id));
+  if (open.length > 0) {
+    throw new OpenHighFindingError(
+      `task ${task.key} has ${open.length} open HIGH-severity finding(s) with no recorded resolution: ${open.join(", ")} \u2014 a HIGH finding (from review or wargaming) blocks close exactly like a HIGH review finding already blocks Workflow step 6 (WG-H-004). Resolve it (\`[FINDING-RESOLVED: <id>]\`) or record a justified downgrade (\`[FINDING-DEGRADED: <id> \u2014 <reason>]\`, WG-H-005 \u2014 a bare marker with no justification text does not count) before closing \u2014 or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
+    );
+  }
+}
+var DeliveryBodyError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "DeliveryBodyError";
+    this.code = "E_DELIVERY_BODY";
+  }
+};
+var LinkedCommitNotFoundError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "LinkedCommitNotFoundError";
+    this.code = "E_LINKED_COMMIT_NOT_FOUND";
+  }
+};
+var DELIVERY_BLOCKS = [
+  { n: 1, label: "1. CASOS DE USO APROBADOS", keyword: /^casos\s+de\s+uso\b/ },
+  { n: 2, label: "2. RESULTADO", keyword: /^resultado\b/ },
+  { n: 3, label: "3. WARGAMING", keyword: /^wargaming\b/ },
+  { n: 4, label: "4. UAT", keyword: /^uat\b/ }
+];
+var DELIVERY_HEADING_RE = /^[\s>*_-]*(?:#{1,6}\s*)?[*_\s]*([1-9])\s*[.):-]\s*(.+?)\s*$/;
+var DELIVERY_FILLER_RE = /^(?:ok|okay|n\/?a|na|nada|tbd|todo|pendiente|x|s\/?d|\.+|…|-+|_+|\?+)$/;
+function normalizeDeliveryText(s) {
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[*_`#]/g, "").trim().toLowerCase();
+}
+function stripLeadingMarker(line) {
+  return String(line).replace(/^[\s>]*(?:[-*•+]|\d{1,2}[.)])\s*/, "").trim();
+}
+function hasRealContent(lines) {
+  return lines.some((line) => {
+    const stripped = stripLeadingMarker(line);
+    if (stripped === "") return false;
+    const normalized = normalizeDeliveryText(stripped).replace(/[.:;,!?]+$/, "");
+    if (normalized === "") return false;
+    return !DELIVERY_FILLER_RE.test(normalized);
+  });
+}
+function parseDeliveryBlocks(body) {
+  const blocks = /* @__PURE__ */ new Map();
+  let current = null;
+  for (const line of String(body ?? "").split(/\r?\n/)) {
+    const m = DELIVERY_HEADING_RE.exec(line);
+    if (m) {
+      const n = Number(m[1]);
+      const rest = normalizeDeliveryText(m[2]);
+      const block = DELIVERY_BLOCKS.find((b) => b.n === n && b.keyword.test(rest));
+      if (block) {
+        if (!blocks.has(block.n)) blocks.set(block.n, { label: block.label, content: [] });
+        current = blocks.get(block.n);
+        continue;
+      }
+    }
+    if (current) current.content.push(line);
+  }
+  return blocks;
+}
+var UAT_VERDICT_RE = /\bverdict\b|\bveredicto\b|\bpass\b|\bfail\b/i;
+var UAT_NOT_REQUESTED_RE = /\bno\s+solicitad\w*|\bsolicitado\s*:?\s*no\b|\bnot\s+requested\b|\bno\s+requerid\w*/i;
+function findDeliveryBodyProblems(body, { wargamingSatisfiedByComment = false } = {}) {
+  const problems = [];
+  const blocks = parseDeliveryBlocks(body);
+  for (const spec of DELIVERY_BLOCKS) {
+    const block = blocks.get(spec.n);
+    if (!block) {
+      problems.push(`block "${spec.label}" is missing entirely`);
+      continue;
+    }
+    if (!hasRealContent(block.content)) {
+      problems.push(`block "${spec.label}" has no real content under its heading`);
+      continue;
+    }
+    const text = block.content.join("\n");
+    if (spec.n === 3 && !wargamingSatisfiedByComment) {
+      const hasCase = WARGAMING_CASE_RE.test(text);
+      const hasPath = WARGAMING_PATH_RE.test(text);
+      if (!hasCase || !hasPath) {
+        problems.push(
+          `block "${spec.label}" names ${hasCase ? "" : 'no approved case (e.g. "CU3")'}${!hasCase && !hasPath ? " and " : ""}${hasPath ? "" : 'no attacked path (e.g. "path"/"camino"/"alternativo"/"fallo")'} \u2014 a wargaming report that names neither a case nor a path is not a wargaming report (WG-H-003)`
+        );
+      }
+    }
+    if (spec.n === 4 && !UAT_VERDICT_RE.test(text) && !UAT_NOT_REQUESTED_RE.test(text)) {
+      problems.push(
+        `block "${spec.label}" neither records a verdict nor states that UAT was not requested (write the verdicts, or the template's explicit "UAT no solicitado" line with the reason)`
+      );
+    }
+  }
+  return problems;
+}
+function checkDeliveryBody(body, { taskKey, wargamingSatisfiedByComment = false, resolvedException } = {}) {
+  if (resolvedException) return;
+  const problems = findDeliveryBodyProblems(body, { wargamingSatisfiedByComment });
+  if (problems.length === 0) return;
+  throw new DeliveryBodyError(
+    `task ${taskKey}'s closing comment does not carry a delivery (docs/PLANTILLA-ENTREGA.md): ${problems.join("; ")}. The closing comment IS the delivery \u2014 fill the four numbered blocks ("1. CASOS DE USO APROBADOS", "2. RESULTADO", "3. WARGAMING", "4. UAT") with what actually happened, or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
+  );
 }
 var AcceptanceCriteriaError = class extends Error {
   constructor(message) {
@@ -26408,7 +26675,10 @@ async function transitionStatus({
       await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
       checkDonePredecessorState(task, resolvedException);
       checkCloseEvidence(task, task.linked_commits, resolvedException);
+      checkWargamingRecord(task, resolvedException);
+      checkNoOpenHighFindings(task, resolvedException);
     }
+    if (status === "done" && task.status === "done") return;
     const previousStatus = task.status;
     const stamp = now();
     task.status = status;
@@ -26464,7 +26734,8 @@ async function closeTask({
   linked_prs = [],
   now = () => (/* @__PURE__ */ new Date()).toISOString(),
   closeGuard,
-  exception
+  exception,
+  commitVerifier = verifyCommitExistence
 }) {
   if (!COMMENT_AUTHORS.includes(comment && comment.author)) {
     throw new Error(
@@ -26486,12 +26757,28 @@ async function closeTask({
     checkDonePredecessorState(task, resolvedException);
     const existingLinkedCommits = Array.isArray(task.linked_commits) ? task.linked_commits : [];
     checkCloseEvidence(task, [...existingLinkedCommits, ...linked_commits], resolvedException);
+    checkNoOpenHighFindings(task, resolvedException);
     for (const sha of linked_commits) {
       if (typeof sha !== "string" || !COMMIT_SHA_RE.test(sha)) {
         throw new Error(
           `invalid commit sha ${JSON.stringify(sha)} \u2014 must match ${COMMIT_SHA_RE}`
         );
       }
+    }
+    if (task.status === "done") return;
+    checkDeliveryBody(comment.body, {
+      taskKey: key,
+      wargamingSatisfiedByComment: hasValidWargamingComment(task),
+      resolvedException
+    });
+    const finalLinkedCommits = [...existingLinkedCommits, ...linked_commits];
+    const verification = commitVerifier(repoRoot, finalLinkedCommits);
+    const verifiedCommits = Array.isArray(verification && verification.commits) ? verification.commits : [];
+    const notFound = verifiedCommits.filter((c) => c.state === COMMIT_STATE.NOT_FOUND);
+    if (notFound.length > 0 && !resolvedException) {
+      throw new LinkedCommitNotFoundError(
+        `task ${key} cannot close: linked_commits contains ${notFound.length} sha(s) that do not exist in this repository \u2014 ${notFound.map((c) => c.sha).join(", ")}. A well-formed sha is not evidence; record the real commit sha(s) this ticket landed, or use the documented \`exception: { reason }\` escape hatch for a genuine exception (e.g. commits that live in another repository).`
+      );
     }
     const previousStatus = task.status;
     const stamp = now();
@@ -26508,6 +26795,16 @@ async function closeTask({
     }
     task.linked_commits = Array.isArray(task.linked_commits) ? [...task.linked_commits, ...linked_commits] : [...linked_commits];
     task.linked_prs = Array.isArray(task.linked_prs) ? [...task.linked_prs, ...linked_prs] : [...linked_prs];
+    task.linked_commits_verification = {
+      at: stamp,
+      checked: Boolean(verification && verification.checked),
+      reason: verification && verification.reason || null,
+      commits: verifiedCommits.map((c) => ({
+        sha: c.sha,
+        state: c.state,
+        ...c.reason ? { reason: c.reason } : {}
+      }))
+    };
     task.updated_at = stamp;
     validateTaskOrThrow(task);
     await atomicWriteFiles([
@@ -27078,7 +27375,7 @@ function verifyLinkedCommits(repoRoot, shas) {
     };
   }
   try {
-    (0, import_node_child_process.execFileSync)("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoRoot, stdio: "pipe" });
+    (0, import_node_child_process2.execFileSync)("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoRoot, stdio: "pipe" });
   } catch (err) {
     return {
       checked: false,
@@ -27091,7 +27388,7 @@ function verifyLinkedCommits(repoRoot, shas) {
   const missing = [];
   for (const sha of list) {
     try {
-      (0, import_node_child_process.execFileSync)("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: repoRoot, stdio: "pipe" });
+      (0, import_node_child_process2.execFileSync)("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: repoRoot, stdio: "pipe" });
       present.push(sha);
     } catch {
       missing.push(sha);
@@ -27106,7 +27403,7 @@ function verifyLinkedCommits(repoRoot, shas) {
 }
 async function computeBuildStamp(filePath) {
   const bytes = await (0, import_promises3.readFile)(filePath);
-  return { path: filePath, sha256: (0, import_node_crypto2.createHash)("sha256").update(bytes).digest("hex") };
+  return { path: filePath, sha256: (0, import_node_crypto3.createHash)("sha256").update(bytes).digest("hex") };
 }
 async function checkBundleFreshness(buildStamp, repoRoot) {
   if (!buildStamp) {

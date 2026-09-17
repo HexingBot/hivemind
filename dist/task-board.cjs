@@ -7737,6 +7737,7 @@ var import_node_path6 = require("node:path");
 var import_promises = require("node:fs/promises");
 var import_node_fs4 = require("node:fs");
 var import_node_path4 = require("node:path");
+var import_node_crypto2 = require("node:crypto");
 var import__ = __toESM(require__(), 1);
 var import_ajv_formats2 = __toESM(require_dist(), 1);
 
@@ -7835,7 +7836,32 @@ var schema_default = {
       type: "array",
       items: { type: "string" },
       default: [],
-      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE only (/^[0-9a-f]{7,40}$/i, TASK-082) \u2014 it does NOT verify the sha resolves to a real commit (TASK-188 AC6: closeTask is a pure state-store function with no git dependency, deliberately). src/mcp-server.js's close_task tool runs a best-effort, advisory-only existence check (git cat-file, never blocking the close) and reports the result as linked_commits_verification in its response, distinguishing 'verified present/missing' from 'could not verify' (no git binary, or repoRoot is not a git work tree) rather than implying every recorded sha is trustworthy."
+      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE (/^[0-9a-f]{7,40}$/i, TASK-082) AND, since TASK-234 (WG-H-011, wargaming 2026-09-16), its EXISTENCE: closeTask resolves every final sha through an injectable verifier (src/commit-existence.js, `git cat-file -e <sha>^{commit}`) and REJECTS the close with LinkedCommitNotFoundError when git ran and said no such commit. This supersedes TASK-188 AC6's 'closeTask is a pure state-store function with no git dependency' decision \u2014 WG-H-011 measured what that cost (an invented-but-well-formed sha satisfied the close evidence a reader takes as proof the work landed); the dependency is now admitted behind the `commitVerifier` seam, so a caller without git still closes. A sha git could NOT check (no git binary, repoRoot not a work tree, git error) is recorded as 'unverifiable' and never blocks the close \u2014 see linked_commits_verification, where every outcome is persisted per-sha. src/mcp-server.js's close_task tool additionally reports its own advisory linked_commits_verification in the tool RESPONSE (a separate, response-only object \u2014 not this stored field)."
+    },
+    linked_commits_verification: {
+      type: "object",
+      additionalProperties: false,
+      required: ["at", "commits"],
+      description: "TASK-234 (WG-H-011/WG-H-020) \u2014 the per-sha outcome of closeTask's existence check over the FINAL linked_commits, recorded at close time so a verified close is mechanically distinguishable from an unverified one afterwards (bin/audit-close-verification.js reads exactly this). Written ONLY by closeTask, and only on a real close (never on the no-op re-close path). Its ABSENCE on a done ticket means the ticket closed before this field existed (or was hand-edited) \u2014 the audit reports that as 'unverifiable', never as verified and never as a failure: TASK-234 AC7 forbids retroactively re-judging the ~208 historical done tickets.",
+      properties: {
+        at: { type: "string", format: "date-time", description: "When the check ran (same stamp as the close itself)." },
+        checked: { type: "boolean", description: "false = git could not be consulted at all; `reason` names why and every entry in `commits` is 'unverifiable'." },
+        reason: { type: ["string", "null"], description: "Why nothing could be checked: 'none-linked' (no shas to check, not an error), 'git-unavailable' (no git binary), 'not-a-git-repo'. Null when checked is true." },
+        commits: {
+          type: "array",
+          description: "One entry per sha in the ticket's final linked_commits. THREE states, never two (CLAUDE.md's Empty-result contract, TASK-192): 'cannot know' is its own recorded outcome and is never collapsed into 'verified' or 'not-found'.",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["sha", "state"],
+            properties: {
+              sha: { type: "string" },
+              state: { type: "string", enum: ["verified", "not-found", "unverifiable"] },
+              reason: { type: ["string", "null"] }
+            }
+          }
+        }
+      }
     },
     linked_prs: {
       type: "array",
@@ -8039,7 +8065,13 @@ async function getMode({ repoRoot }) {
       "E_MODE_BUNDLE_CORRUPT"
     );
   }
-  return OPERATING_MODES.includes(bundle.mode) ? bundle.mode : "harness";
+  if (bundle.mode != null && !OPERATING_MODES.includes(bundle.mode)) {
+    throw new ModeStateError(
+      `getMode: the bundle for session ${pointer.active_session_id} declares an unrecognized mode (${JSON.stringify(bundle.mode)}, expected one of: ${OPERATING_MODES.join(", ")})`,
+      "E_MODE_BUNDLE_INVALID"
+    );
+  }
+  return bundle.mode == null ? "harness" : bundle.mode;
 }
 
 // src/close-guard.js
@@ -8211,18 +8243,19 @@ async function acquireTasksLock(repoRoot) {
   (0, import_node_fs4.mkdirSync)(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
   const deadline = Date.now() + TASKS_LOCK_MAX_WAIT_MS;
+  const token = `${process.pid}-${(0, import_node_crypto2.randomBytes)(6).toString("hex")}`;
   for (; ; ) {
     try {
       const fd = (0, import_node_fs4.openSync)(lockPath, import_node_fs4.constants.O_CREAT | import_node_fs4.constants.O_EXCL | import_node_fs4.constants.O_WRONLY, 384);
       try {
-        const payload = Buffer.from(`${process.pid}
+        const payload = Buffer.from(`${token}
 `, "utf8");
         (0, import_node_fs4.writeSync)(fd, payload, 0, payload.length);
         (0, import_node_fs4.fsyncSync)(fd);
       } finally {
         (0, import_node_fs4.closeSync)(fd);
       }
-      return;
+      return token;
     } catch (err) {
       if (!err || err.code !== "EEXIST") throw err;
       let stat = null;
@@ -8231,9 +8264,31 @@ async function acquireTasksLock(repoRoot) {
       } catch {
       }
       if (stat && Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS) {
+        const quarantinePath = `${lockPath}.stale.${token}`;
+        let renamed = false;
         try {
-          (0, import_node_fs4.unlinkSync)(lockPath);
+          (0, import_node_fs4.renameSync)(lockPath, quarantinePath);
+          renamed = true;
         } catch {
+        }
+        if (renamed) {
+          let qStat = null;
+          try {
+            qStat = (0, import_node_fs4.statSync)(quarantinePath);
+          } catch {
+          }
+          const genuinelyStale = qStat && Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS;
+          if (genuinelyStale) {
+            try {
+              (0, import_node_fs4.unlinkSync)(quarantinePath);
+            } catch {
+            }
+          } else {
+            try {
+              (0, import_node_fs4.renameSync)(quarantinePath, lockPath);
+            } catch {
+            }
+          }
         }
         continue;
       }
@@ -8246,18 +8301,21 @@ async function acquireTasksLock(repoRoot) {
     }
   }
 }
-function releaseTasksLock(repoRoot) {
+function releaseTasksLock(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
   try {
-    (0, import_node_fs4.unlinkSync)(tasksLockPath(repoRoot));
+    const current = (0, import_node_fs4.readFileSync)(lockPath, "utf8").trim();
+    if (current !== token) return;
+    (0, import_node_fs4.unlinkSync)(lockPath);
   } catch {
   }
 }
 async function withTasksLock(repoRoot, fn) {
-  await acquireTasksLock(repoRoot);
+  const token = await acquireTasksLock(repoRoot);
   try {
     return await fn();
   } finally {
-    releaseTasksLock(repoRoot);
+    releaseTasksLock(repoRoot, token);
   }
 }
 function numericKeyOrder(a, b) {
@@ -8381,6 +8439,74 @@ function checkCloseEvidence(task, linkedCommits, resolvedException) {
     );
   }
 }
+var WargamingRecordError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "WargamingRecordError";
+    this.code = "E_WARGAMING_RECORD_REQUIRED";
+  }
+};
+var OpenHighFindingError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "OpenHighFindingError";
+    this.code = "E_OPEN_HIGH_FINDING";
+  }
+};
+var WARGAMING_MARKER_RE = /\[WARGAMING\]([\s\S]*)/;
+var WARGAMING_CASE_RE = /\bCU\s?\d+\b|\bcaso\s*\d+/i;
+var WARGAMING_PATH_RE = /\bpaths?\b|\bcaminos?\b|\balternativ\w*|\bfallo\w*/i;
+function wargamingComments(task) {
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  return comments.filter((c) => c && WARGAMING_MARKER_RE.test(String(c.body || "")));
+}
+function checkWargamingRecord(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  const marked = wargamingComments(task);
+  if (marked.length === 0) {
+    throw new WargamingRecordError(
+      `task ${task.key} has no comment carrying a "[WARGAMING]" marker \u2014 CLAUDE.md's Workflow step 6 requires the adversarial wargaming pass to run, and its outcome to be recorded, AFTER the review and BEFORE close. Record it via \`append_comment\` (e.g. author: "orchestrator") with a body starting "[WARGAMING]" that names the attacked case(s) and path(s) before closing \u2014 or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
+    );
+  }
+  const last = marked[marked.length - 1];
+  const body = String(last.body || "");
+  const hasCase = WARGAMING_CASE_RE.test(body);
+  const hasPath = WARGAMING_PATH_RE.test(body);
+  if (!hasCase || !hasPath) {
+    throw new WargamingRecordError(
+      `task ${task.key}'s most recent "[WARGAMING]" comment names no ${!hasCase ? 'approved case (e.g. "CU3")' : ""}${!hasCase && !hasPath ? " and no" : ""}${!hasPath ? " path/alternative it attacked" : ""} \u2014 a wargaming record that names neither a case nor a path is not a wargaming record (WG-H-003). Record what was actually attacked, or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
+    );
+  }
+}
+var FINDING_HIGH_RE = /\[FINDING-HIGH:\s*([^\]]+)\]/gi;
+var FINDING_RESOLVED_RE = /\[FINDING-RESOLVED:\s*([^\]]+)\]/gi;
+var FINDING_DEGRADED_RE = /\[FINDING-DEGRADED:\s*([^\]]*)\]/gi;
+var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
+function checkNoOpenHighFindings(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const allText = comments.map((c) => String(c && c.body || "")).join("\n");
+  const opened = /* @__PURE__ */ new Set();
+  for (const m of allText.matchAll(FINDING_HIGH_RE)) opened.add(m[1].trim().toUpperCase());
+  const closed = /* @__PURE__ */ new Set();
+  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) closed.add(m[1].trim().toUpperCase());
+  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
+    const inner = m[1] || "";
+    const sep = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep === -1) continue;
+    const id = inner.slice(0, sep).trim();
+    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
+    if (id !== "" && justification !== "") closed.add(id.toUpperCase());
+  }
+  const open = [...opened].filter((id) => !closed.has(id));
+  if (open.length > 0) {
+    throw new OpenHighFindingError(
+      `task ${task.key} has ${open.length} open HIGH-severity finding(s) with no recorded resolution: ${open.join(", ")} \u2014 a HIGH finding (from review or wargaming) blocks close exactly like a HIGH review finding already blocks Workflow step 6 (WG-H-004). Resolve it (\`[FINDING-RESOLVED: <id>]\`) or record a justified downgrade (\`[FINDING-DEGRADED: <id> \u2014 <reason>]\`, WG-H-005 \u2014 a bare marker with no justification text does not count) before closing \u2014 or use the documented \`exception: { reason }\` escape hatch for a genuine exception.`
+    );
+  }
+}
 var AcceptanceCriteriaError = class extends Error {
   constructor(message) {
     super(message);
@@ -8479,7 +8605,10 @@ async function transitionStatus({
       await resolveCloseGuard(closeGuard)({ repoRoot, task, key });
       checkDonePredecessorState(task, resolvedException);
       checkCloseEvidence(task, task.linked_commits, resolvedException);
+      checkWargamingRecord(task, resolvedException);
+      checkNoOpenHighFindings(task, resolvedException);
     }
+    if (status === "done" && task.status === "done") return;
     const previousStatus = task.status;
     const stamp = now();
     task.status = status;
