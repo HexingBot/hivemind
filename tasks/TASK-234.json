@@ -12,7 +12,7 @@
     "Ningun ticket historico ya done se re-valida retroactivamente ni queda un-rewritable: las guardas nuevas rigen para cierres NUEVOS.",
     "Candados de regresion para cada rotura, reusando las reproducciones del wargaming. npm test y test:all verdes."
   ],
-  "status": "in_review",
+  "status": "done",
   "priority": "high",
   "labels": [
     "wargaming-2026-09-16",
@@ -20,7 +20,15 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "906649e",
+    "a29f039",
+    "3eb4e86",
+    "2ce8150",
+    "720ed9c",
+    "b1586b6",
+    "4f7949c"
+  ],
   "linked_prs": [],
   "comments": [
     {
@@ -62,11 +70,61 @@
       "author": "orchestrator",
       "at": "2026-09-17T19:55:33.625Z",
       "body": "[FINDING-RESOLVED: APARECE EN EXACTAMENTE DOS LUGARES DE TODO\nEL REPO: LOS COMENTARIOS Y REGEXES DEL PROPIO SRC/TASK-STORE.JS, Y\nTESTS/E2E/TASK-234-CLOSE-VERIFICATION.SPEC.JS. CERO ARCHIVOS MARKDOWN LO CONTIENEN -- NI CLAUDE.MD,\nNI AGENTS/REVIEWER.MD, NI SKILLS/ORCHESTRATOR-ROUTING/SKILL.MD, NI DOCS/PLANTILLA-ENTREGA.MD, NI\nLAS DESCRIPCIONES DE LAS TOOLS CLOSE_TASK / APPEND_COMMENT DEL MCP. MIENTRAS TANTO AGENTS/REVIEWER.MD\nINSTRUYE REGISTRAR LOS HALLAZGOS BAJO ENCABEZADOS            EN PROSA. REPRODUCCION: UN COMENTARIO\nDE REVIEWER QUE DICE                                                                                \nMAS UNA ENTREGA CONFORME -> CIERRA. TAL COMO ESTA DESPLEGADA, CU6 BLOQUEA UNA ENTRADA SINTETICA Y\nNADA DE LO QUE UN REVIEWER REAL PRODUCE. LA CONVENCION EXISTE EN EL CODIGO Y EN NINGUN LADO DONDE\nLA LEA QUIEN REGISTRA LOS HALLAZGOS.\n\nMEDIOS (NO BLOQUEAN; VAN EN EL MISMO LOOP-BACK):\n- WG2-234-M03: EL PREDICADO DE WARGAMING ACEPTA UN COMENTARIO QUE DICE QUE EL WARGAMING NO SE HIZO.\n  HASVALIDWARGAMINGCOMMENT CAPTURA EL TEXTO DESPUES DEL MARCADOR Y DESCARTA LA CAPTURA, TESTEANDO\n  LOS REGEX CONTRA EL CUERPO ENTERO, ASI QUE LA POSICION ES IRRELEVANTE. PASAN: \"[WARGAMING]\nEste id es el artefacto de deteccion capturado por el regex de marcadores: prosa citada dentro del hallazgo WG2-234-002 (el finding describe el marcador de ejemplo que solo existe en el codigo y en el spec). No es un hallazgo separado; el fix del regex es TASK-238. Resuelto como lo que es: cita textual, no finding."
+    },
+    {
+      "author": "uat",
+      "at": "2026-09-17T20:16:03.352Z",
+      "body": "1. CU1 — Cierre legitimo (ticket en in_review, comentario de reviewer, entrega con los cuatro bloques con contenido real, wargaming que nombra casos y paths); se espera que cierre. Observado: cuatro cierres reales en esta sesion (TASK-233/235/236/237) pasaron todas las guardas y quedaron en disco con su indice regenerado. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n2. CU2 — Un segundo closeTask sobre un ticket ya done; se espera que NO escriba nada. Observado: en sandbox con git real, el archivo del ticket quedo BYTE-IDENTICO antes y despues del segundo cierre (ni comentario, ni linked_commits, ni updated_at). Verificado por el Orquestador a pedido del humano. Verdict: PASS\n3. CU3 — Cierre con los cuatro encabezados de la plantilla y nada debajo; se espera rechazo nombrando el bloque vacio. Observado: E_DELIVERY_BODY nombrando los bloques. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n4. CU4 — Cierre con el cuerpo literal \"OK\"; se espera rechazo con error nombrado. Observado: E_DELIVERY_BODY. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n5. CU5 — Cierre cuyo bloque de wargaming no nombra ni un caso ni un path atacado; se espera rechazo. Observado: el predicado devuelve el problema WG-H-003 nombrando que no hay caso ni path. Registrado tal cual el limite documentado: cuando el ticket YA tiene una constancia [WARGAMING] como comentario, el bloque 3 de la entrega no tiene que repetir la enumeracion y el predicado lo acepta; el rechazo aplica a la entrega sin constancia. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n6. CU6 — Hay un hallazgo HIGH registrado en el ticket y se intenta cerrar; se espera que BLOQUEE. Observado: con [FINDING-HIGH: PRUEBA-1] plantado en sandbox, el cierre dio E_OPEN_HIGH_FINDING nombrando el hallazgo. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n7. CU7 — Se degrada un HIGH; se espera que la degradacion exija justificacion registrada y quede detectable. Observado: la degradacion con justificacion vacia sigue BLOQUEANDO (E_OPEN_HIGH_FINDING); con justificacion real, cierra y la justificacion queda escrita en el ticket. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n8. CU8 — linked_commits con un SHA de forma valida pero inexistente; se espera distinguirlo de uno que existe y reportar \"no verificable\" cuando no se puede saber. Observado, los tres estados: en un repo git real el SHA inventado deadbee dio E_LINKED_COMMIT_NOT_FOUND, el SHA real cerro, y en un directorio sin .git el mismo SHA inventado quedo como no verificable en vez de rechazado o aceptado en silencio. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n9. CU9 — Un lector abre el board y quiere distinguir un cierre verificado de uno que no lo esta, sin que la herramienta colapse \"no se puede saber\" en \"verificado\". Observado: node bin/audit-close-verification.js sobre el board real reporta 227 examinados, 4 verificados, 223 no verificables y 0 no verificados, con la linea QUALIFIED diciendo explicitamente que los no verificables NO son un pass. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n10. CU10 — Se toca un ticket historico ya done; se espera que siga siendo escribible. Observado: en esta misma sesion se les appendio comentario de UAT y la entrega re-registrada a TASK-235, TASK-236 y TASK-237 ya cerrados, sin error. Verificado por el Orquestador a pedido del humano. Verdict: PASS\n\nOverall result: PASS"
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-17T20:16:47.049Z",
+      "body": "CORRECCION DE UN ARTEFACTO PROPIO DEL ORQUESTADOR (2026-09-17, cierre de TASK-234).\n\nEl paso 6 del comentario de UAT de este ticket cita, como PROSA VIVA y no entre cercos, el id sintetico\nPRUEBA-1 que se planto en un sandbox de /tmp para verificar que un hallazgo HIGH bloquea el cierre. La\nguarda hizo exactamente lo que tiene que hacer: leyo esa cita como un hallazgo abierto sobre el ticket\nreal y BLOQUEO el cierre con E_OPEN_HIGH_FINDING. No es un falso positivo de la guarda; es un error de\nredaccion del Orquestador, y es la misma clase de defecto que TASK-238 arregla de raiz — una cita que se\nlee como una asercion.\n\nSe deja constancia en vez de reescribir el comentario anterior: los comentarios son append-only y el\ntexto historico no se toca, la misma decision que ya rige para el id basura de la cuarta pasada.\n\n[FINDING-RESOLVED: PRUEBA-1] No existe tal hallazgo sobre este ticket. PRUEBA-1 fue un hallazgo\nsintetico plantado por el Orquestador en un sandbox de /tmp (nunca en el repo real) para verificar el\ncaso de uso CU6, y el resultado de esa verificacion fue el esperado: con el marcador presente el cierre\ndio E_OPEN_HIGH_FINDING nombrando el id, y con la degradacion vacia siguio bloqueando. Lo que quedo en\neste ticket es la cita de ese id dentro del texto del paso 6, no un defecto abierto del producto."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-09-17T20:16:50.544Z",
+      "body": "ENTREGA — TASK-234 (las guardas de cierre: que un cierre pruebe algo)\n\n1. CASOS DE USO APROBADOS (lista aprobada por Mato el 2026-09-16, citada tal cual, con su estado final)\nCU1 (principal) Cierre legitimo -> cierra. CUMPLIDO.\nCU2 (alternativo A, WG-H-006) Segundo closeTask sobre un ticket ya done -> no escribe nada, y el comentario del codigo deja de afirmar \"Not a loophole\" y dice lo que hace. CUMPLIDO.\nCU3 (alternativo B, WG-H-002) Los cuatro encabezados y nada debajo -> rechazado con error nombrado. CUMPLIDO.\nCU4 (fallo A, WG-H-001) Cuerpo literal \"OK\" -> rechazado con error nombrado. CUMPLIDO.\nCU5 (fallo A, WG-H-003) Bloque de wargaming que no nombra ni un caso ni un path -> rechazado. CUMPLIDO, con el limite documentado: si el ticket ya tiene la constancia [WARGAMING] como comentario, el bloque 3 no repite la enumeracion y el predicado lo acepta.\nCU6 (fallo B, WG-H-004) Hallazgo HIGH registrado en el ticket -> BLOQUEA el cierre. CUMPLIDO.\nCU7 (fallo C, WG-H-005) Degradar un HIGH -> exige justificacion registrada y queda detectable. CUMPLIDO.\nCU8 (fallo D, WG-H-011) SHA con forma valida pero inexistente -> se distingue del que existe, y lo no verificable se reporta como tal. CUMPLIDO Y MEDIDO en los tres estados.\nCU9 (legibilidad, WG-H-020) Forma mecanica de distinguir un cierre verificado -> existe y nunca colapsa \"no se puede saber\" en \"verificado\". CUMPLIDO.\nCU10 (negativo) Un ticket historico ya done sigue siendo escribible. CUMPLIDO.\nNingun caso fue cambiado por el Developer: cero escaladas de cambio de caso.\n\n2. RESULTADO (en terminos del usuario)\nCerrar un ticket ya no es escribir \"listo\". El cierre exige una entrega con los cuatro bloques de docs/PLANTILLA-ENTREGA.md con contenido real (un \"OK\", los encabezados vacios, o un wargaming que no dice que ataco, se rechazan con un error que nombra el bloque); un hallazgo HIGH registrado en el ticket bloquea el cierre y solo se cierra resolviendolo o degradandolo CON justificacion escrita; un SHA inventado en linked_commits se distingue de uno real y, cuando no se puede verificar, se dice \"no verificable\" en vez de aceptarlo en silencio; y un segundo cierre sobre un ticket ya done no escribe nada. Ademas hay una forma mecanica de leer el board: node bin/audit-close-verification.js separa verificados, no verificables y no verificados sin sumarlos nunca en un solo numero. Commits: 906649e, a29f039, 3eb4e86, 2ce8150, 720ed9c, b1586b6. Deliberadamente afuera: ningun ticket historico ya done se re-valida retroactivamente (AC7) — las guardas rigen para cierres nuevos.\n\n3. WARGAMING (constancia completa en los comentarios [WARGAMING] de este ticket; aqui el resumen)\nSe atacaron CU1-CU10 y sus caminos alternativos y de fallo en cuatro pasadas, mas una quinta de verificacion de cierre corrida por el Orquestador en esta sesion. Que se ataco en la cuarta: los seis glifos invisibles fuera de la categoria Cf (HANGUL FILLER U+3164, U+115F, U+FFA0, VARIATION SELECTOR-16, un selector del plano suplementario, y BRAILLE PATTERN BLANK) usados para disfrazar un cuerpo \"OK\" bajo los cuatro encabezados, y el blanqueo de cercos entre comentarios. Que sobrevivio: los seis dan RECHAZO E_DELIVERY_BODY nombrando el bloque, el control con OK pelado tambien rechaza, el cerco suelto de un comentario anterior ya no empareja con el bloque de codigo de uno posterior, y el formulario en limpio de la plantilla sigue cerrando. Que no sobrevivio: tres HIGH cerrados y verificados — WG2-234-001 (la CLASE de invisibles, delegando en Default_Ignorable_Code_Point mas la curacion puntual de U+2800), WG2-234-002 (la convencion de marcadores publicada donde la lee quien registra los hallazgos) y WG-H-050. Que se ataco en la quinta, en esta sesion y no citado de antes: se plantaron un HIGH sintetico, una degradacion vacia y una justificada, un segundo cierre sobre un done, un SHA inventado en repo con git y otro sin git, y los cuerpos vacio / \"OK\" / wargaming mudo — los resultados estan paso por paso en el comentario de UAT de este ticket. E2e corridos en la pasada: tests/e2e/task-234-close-verification.spec.js, tests/task-store-close-guards.spec.js y tests/e2e/close-procedure-doc-lock.spec.js, 58 de 58 verdes; test:all 2523 passed en la pasada anterior. Veredicto: VERDE.\nNota sobre el id basura: la cuarta aparicion de la sintaxis del marcador en el comentario de wargaming es PROSA CITADA dentro del hallazgo WG2-234-002, no un hallazgo separado. El texto historico queda INTACTO por decision registrada, y el arreglo estructural del parseo es TASK-238.\n\n4. UAT\nSolicitado: si (requires_uat: true). Guion: la misma lista aprobada CU1-CU10, reusada sin derivar una segunda. Resultado: 10 de 10 PASS, Overall result: PASS, registrado en el comentario con author uat inmediatamente anterior a esta entrega. Mato delegó la verificacion de los pasos al Orquestador y cada paso quedo marcado como tal, con lo observado en cada uno.\n\n5. ESTADO Y DEUDAS\nLimite documentado en CU5: con constancia [WARGAMING] en el ticket, el bloque 3 de la entrega no repite la enumeracion de casos y paths. Medio residual ya registrado en la cuarta pasada: el predicado de wargaming testea sus patrones contra el cuerpo entero, asi que la posicion del texto es irrelevante. Deuda derivada, con ticket propio: TASK-238 (el parseo del id del marcador)."
     }
   ],
   "created_at": "2026-09-16T21:36:43.407Z",
-  "updated_at": "2026-09-17T19:55:33.625Z",
+  "updated_at": "2026-09-17T20:16:50.544Z",
   "jira_key": null,
   "verification_tier": "tests-after",
-  "requires_uat": true
+  "requires_uat": true,
+  "linked_commits_verification": {
+    "at": "2026-09-17T20:16:50.544Z",
+    "checked": true,
+    "reason": null,
+    "commits": [
+      {
+        "sha": "906649e",
+        "state": "verified"
+      },
+      {
+        "sha": "a29f039",
+        "state": "verified"
+      },
+      {
+        "sha": "3eb4e86",
+        "state": "verified"
+      },
+      {
+        "sha": "2ce8150",
+        "state": "verified"
+      },
+      {
+        "sha": "720ed9c",
+        "state": "verified"
+      },
+      {
+        "sha": "b1586b6",
+        "state": "verified"
+      },
+      {
+        "sha": "4f7949c",
+        "state": "verified"
+      }
+    ]
+  }
 }

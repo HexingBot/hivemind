@@ -1700,6 +1700,12 @@
       "label": "RAIZ: publicar la politica a la superficie que la ejecuta (propagacion del plugin)"
     },
     {
+      "id": "task-234",
+      "type": "task",
+      "ref": "tasks/TASK-234.json",
+      "label": "Guardas de cierre: el doble cierre escribe, el cuerpo \"OK\" pasa, y un HIGH no bloquea"
+    },
+    {
       "id": "task-235",
       "type": "task",
       "ref": "tasks/TASK-235.json",
