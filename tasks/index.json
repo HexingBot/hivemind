@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T20:34:07.934Z",
+  "generated_at": "2026-09-18T00:30:50.443Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1396,7 +1396,7 @@
     {
       "key": "TASK-238",
       "title": "FINDING_HIGH_RE convierte prosa en un id de hallazgo basura y deja el ticket incerrable",
-      "status": "in_review",
+      "status": "done",
       "priority": "high"
     }
   ]
