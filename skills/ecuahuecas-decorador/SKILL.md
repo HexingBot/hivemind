@@ -1,15 +1,15 @@
 ---
 name: ecuahuecas-decorador
-description: Carga cuando Mato envía texto crudo de una reseña de ecuahuecas por Telegram y pide decorarlo. Reescribe la reseña en 3 estilos (Formal/descriptivo, Jerga ecuatoriana/directa, Corto/viral), Mato elige, y el texto elegido se guarda en Firestore como reseña final.
+description: Carga cuando Mato envía texto crudo de una reseña de ecuahuecas por Telegram y pide decorarlo. Reescribe la reseña en 4 estilos (Formal/descriptivo, Jerga ecuatoriana/directa, Corto/viral, Ejecutivo/Arquitecto de software), Mato elige, y el texto elegido se guarda en Firestore como reseña final.
 ---
 
 # Decorador de Reseñas — Ecuahuecas
 
 Este skill transforma el texto crudo de una reseña de ecuahuecas (restaurantes ecuatorianos) en
-**3 versiones estilizadas** para que Mato elija la que mejor encaje. El flujo completo es:
+**4 versiones estilizadas** para que Mato elija la que mejor encaje. El flujo completo es:
 
 1. Mato envía el texto crudo de la reseña por Telegram
-2. El skill recibe el texto y lo reescribe en 3 estilos
+2. El skill recibe el texto y lo reescribe en 4 estilos
 3. Mato elige qué versión usar
 4. El texto elegido se persiste en Firestore como la reseña final del local
 
@@ -21,12 +21,12 @@ Este skill transforma el texto crudo de una reseña de ecuahuecas (restaurantes 
 Puede incluir: qué se pidió, sabor, atención, ambiente, precio, ubicación, recomendaciones.
 Puede ser una frase suelta, un párrafo largo, o viñetas.
 
-**Output para Mato:** 3 versiones del mismo texto, claramente separadas y numeradas,
+**Output para Mato:** 4 versiones del mismo texto, claramente separadas y numeradas,
 para que Mato responda con el número de la elegida.
 
 ---
 
-## Los 3 estilos — prompt de transformación
+## Los 4 estilos — prompt de transformación
 
 Cada estilo se aplica por separado al mismo texto de entrada.
 El skill **nunca añade información que no esté en el original** — solo cambia tono, estructura
@@ -91,6 +91,37 @@ Texto original:
 ---TEXTO_CRUDO---
 ```
 
+### 4. Ejecutivo / Arquitecto de software
+
+```
+Reescribe el siguiente texto como lo escribiría un arquitecto de software
+senior o un CTO: alguien que evalúa la hueca como quien evalúa un sistema
+en producción, y que reporta a pares técnicos que no tienen tiempo que perder.
+
+Reglas de estilo:
+- Vocabulario preciso. Cada palabra carga información. Cero relleno.
+- Frases cortas. Impacto por brevedad, no por adjetivo.
+- Combina las dos capas: el valor (¿vale la pena ir? ¿por qué?)
+  y la profundidad técnica (qué exactamente hace bueno o malo al plato)
+- **El "por qué" antes del "cómo"**: abre con el juicio y su razón,
+  después el detalle que lo sostiene. Nunca al revés.
+- Usa analogías de ingeniería cuando el original las habilite, sin forzarlas:
+  sistemas distribuidos (la cocina como servicio bajo carga, la fila como cola
+  de pedidos, la hora pico como pico de tráfico), tolerancia a fallos (qué pasa
+  cuando el plato estrella se acaba, si el local degrada con gracia o se cae),
+  diseño por contrato (la carta es el contrato: qué promete y si lo cumple;
+  la precondición del cliente, la poscondición del plato)
+- Una sola analogía por reseña. Dos ya es disfraz, no claridad.
+- Sin emojis. Sin jerga. Sin hype.
+- Si algo falla, nómbralo como se nombra un defecto: qué falló,
+  bajo qué condición, y qué consecuencia tuvo para el comensal
+- Estructura: veredicto → la razón → la evidencia concreta → el costo/beneficio
+- Extensión: equivalente al original, sin inflar
+
+Texto original:
+---TEXTO_CRUDO---
+```
+
 ---
 
 ## Flujo operativo para el agente
@@ -103,10 +134,10 @@ Si pide explícitamente decorar otro contenido, confirma antes de proceder.
 Valida que el texto tenga contenido sustancial (>10 caracteres). Si está vacío o es muy corto,
 pide a Mato que amplíe.
 
-### Paso 2 — Aplicar los 3 estilos
+### Paso 2 — Aplicar los 4 estilos
 
-Toma el texto de entrada y sustitúyelo en `---TEXTO_CRUDO---` en cada uno de los 3 prompts.
-Genera las 3 versiones.
+Toma el texto de entrada y sustitúyelo en `---TEXTO_CRUDO---` en cada uno de los 4 prompts.
+Genera las 4 versiones.
 
 Presenta el resultado a Mato así:
 
@@ -122,14 +153,17 @@ Presenta el resultado a Mato así:
 ── 3. CORTO / VIRAL ──
 [versión generada]
 
+── 4. EJECUTIVO / ARQUITECTO DE SOFTWARE ──
+[versión generada]
+
 ═════════════════════════
 
-Mato, ¿cuál te gusta? Responde 1, 2 o 3.
+Mato, ¿cuál te gusta? Responde 1, 2, 3 o 4.
 ```
 
 ### Paso 3 — Recibir la elección
 
-Mato responde con el número (1, 2 o 3) o con un comentario ("la 2 pero cambia X").
+Mato responde con el número (1, 2, 3 o 4) o con un comentario ("la 2 pero cambia X").
 - Si es solo un número: ese texto es el definitivo.
 - Si hay un comentario adicional (ej. "la 2 pero suena muy fuerte, suaviza"): aplica el ajuste
   sobre la versión elegida y muestra el resultado corregido, pidiendo confirmación.
@@ -140,7 +174,7 @@ Una vez confirmado, el texto elegido se guarda en Firestore como la reseña fina
 Cada documento debe incluir al menos:
 - `restaurant_id` o `nombre_del_local`
 - `texto_resena` (el texto decorado final)
-- `estilo_usado` (1, 2 o 3)
+- `estilo_usado` (1, 2, 3 o 4)
 - `created_at` / `updated_at`
 
 El agente que ejecute este paso debe tener las credenciales de Firestore o usar el MCP server
@@ -191,7 +225,7 @@ Notas operativas:
 ## Notas importantes
 
 - **Fidelidad sobre estilo.** Ninguna versión debe inventar platos, precios ni experiencias
-  que no estén en el original. Si el original es muy escueto, las 3 versiones serán escuetas
+  que no estén en el original. Si el original es muy escueto, las 4 versiones serán escuetas
   también — el estilo cambia el tono, no alarga el contenido.
 - **No traducir.** Siempre en español ecuatoriano. No mezcles jergas de otros países.
 - **Firestore no es responsabilidad de este skill.** Este skill produce el texto final;
