@@ -1722,6 +1722,12 @@
       "type": "task",
       "ref": "tasks/TASK-237.json",
       "label": "Paridad: project-context.md exento del unico mecanismo de coherencia, y los pares no lockeados"
+    },
+    {
+      "id": "task-239",
+      "type": "task",
+      "ref": "tasks/TASK-239.json",
+      "label": "Botón de donación del sitio: popup con monto editable (receta de Wrecker, PayPal.me)"
     }
   ],
   "edges": [

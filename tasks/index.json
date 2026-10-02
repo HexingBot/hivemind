@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-18T00:30:50.443Z",
+  "generated_at": "2026-10-02T03:36:26.097Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1398,6 +1398,12 @@
       "title": "FINDING_HIGH_RE convierte prosa en un id de hallazgo basura y deja el ticket incerrable",
       "status": "done",
       "priority": "high"
+    },
+    {
+      "key": "TASK-239",
+      "title": "Botón de donación del sitio: popup con monto editable (receta de Wrecker, PayPal.me)",
+      "status": "done",
+      "priority": "medium"
     }
   ]
 }

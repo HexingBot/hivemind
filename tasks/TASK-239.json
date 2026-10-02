@@ -1,0 +1,74 @@
+{
+  "key": "TASK-239",
+  "title": "Botón de donación del sitio: popup con monto editable (receta de Wrecker, PayPal.me)",
+  "description": "Pedido del humano, a partir de la receta que Wrecker dejó en el bridge (canal hub, msg_0020, su TASK-065). Antes el botón ♥ DONATE de docs/index.html era un enlace directo a https://paypal.me/josematovelle1 sin monto, y el humano reportó que solo dejaba donar 5 USD. El humano confirmó el usuario de PayPal josematovelle1. El sitio es bilingüe (diccionario T en/es) y render() regenera el HTML al cambiar de idioma. Límites: PayPal.me no lleva concepto ni nota, y el sufijo USD fuerza dólares.\n\nNOTA DE NUMERACIÓN: este trabajo se hizo primero como \"TASK-220\" en una copia local desactualizada, sin saber que ese número ya existía en origin/main para otro ticket. Se renumeró a TASK-239 al integrar. Los tres commits (5bfb527, 2093e04, ff5ccdf) todavía dicen \"TASK-220\" en el mensaje, porque no se reescribieron: se refieren a ESTE ticket, no al TASK-220 de origin.\n\nProceso: los casos de uso se aprobaron sobre la marcha y no antes del código. El humano pidió el arreglo con la receta de Wrecker, aprobó los AC por implicación al pedirlo y enmendó el AC3 y agregó el botón superior durante la UAT. Se deja constancia de que el paso de aprobación previa de la política del 2026-09-16 no se cumplió en el orden prescrito.",
+  "acceptance_criteria": [
+    "AC1: El botón ♥ DONATE/♥ DONAR ya no navega directo: abre un <dialog> propio con showModal(), con un campo numérico (type=number, inputmode=numeric, min=1, step=1) cuyo valor inicial es 5, y una línea que muestra la URL exacta que se va a abrir, actualizada al escribir.",
+    "AC2: La URL se arma como https://paypal.me/josematovelle1/<n>USD con n = monto escrito redondeado hacia abajo (7.9 -> 7USD). Vacío, 0, negativo o no numérico deshabilita/rechaza la confirmación y muestra un mensaje de error (EN: 'Enter an amount of 1 USD or more'; ES equivalente).",
+    "AC3: 'Go to PayPal' (y su versión ES) abre la URL en otra pestaña con noopener/noreferrer y cierra el popup. El popup se cierra SOLO con ✕, Cancel o Escape; un clic fuera NO lo cierra (pedido del humano: arrastrar para seleccionar el monto y soltar fuera lo cerraba). El foco vuelve al botón de donar que lo abrió.",
+    "AC4: Accesibilidad: el diálogo tiene etiqueta accesible, el foco queda dentro del diálogo mientras está abierto, y el botón de donar anuncia a lectores de pantalla que abre PayPal en una pestaña nueva. Todos los textos nuevos existen en EN y ES y respetan el cambio de idioma.",
+    "AC5: Limpieza y visibilidad: no quedan en docs/ referencias a paypal.com/donate ni correos de PayPal; el popup es coherente con el estilo del sitio; y hay un botón ♥ DONATE visible arriba (barra EN/ES) además del del pie (pedido del humano durante la UAT)."
+  ],
+  "status": "done",
+  "priority": "medium",
+  "labels": [
+    "site",
+    "docs",
+    "bridge-request"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [
+    "5bfb527",
+    "2093e04",
+    "ff5ccdf"
+  ],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "reviewer",
+      "at": "2026-10-02T03:36:01.546Z",
+      "body": "Two light reviews, both APPROVE, run on the original SHAs. 04ab5ed covers AC1 to AC5 with no HIGH or MEDIUM findings. 71bd0e8+10d7495 cover the amended AC3 and the top-bar button, also with no HIGH or MEDIUM. When integrating with origin/main they were cherry-picked as 5bfb527, 2093e04 and ff5ccdf. The Orchestrator compared the +/- lines of each pair and they are identical. LOWs: the sr-only span's button has no position:relative; an amount above MAX_SAFE_INTEGER shows the 1 USD message; the popup CSS is injected at runtime. tests/docs.spec.js 2/2."
+    },
+    {
+      "author": "uat",
+      "at": "2026-10-02T03:36:04.949Z",
+      "body": "1. Tocar ♥ DONATE abre el popup con monto 5 y la línea https://paypal.me/josematovelle1/5USD (AC1). Verdict: PASS\n2. Escribir 7.9 actualiza la línea a .../7USD (AC2). Verdict: PASS\n3. Vacío, 0 o -3 muestran 'Enter an amount of 1 USD or more' y deshabilitan 'Go to PayPal' (AC2). Verdict: PASS\n4. Con 10, 'Go to PayPal' abre PayPal en otra pestaña con 10 USD y cierra el popup (AC3). Verdict: PASS\n5. Se cierra con ✕, Cancel y Escape; un clic fuera NO lo cierra (AC3). Verdict: PASS\n6. Con el popup abierto, Tab no saca el foco del popup (AC4). Verdict: PASS\n7. En ES los textos salen en español y el botón sigue funcionando (AC4). Verdict: PASS\n8. Hay un ♥ DONATE visible arriba, en la barra EN/ES, que abre el mismo popup (AC5). Verdict: PASS\nOverall result: PASS"
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-02T03:36:07.005Z",
+      "body": "[WARGAMING] Se atacó el CU2 por el path de entrada inválida: donateUrl se probó en node con '', '0', '-3', 'abc', '0.9', '1e21', '7.9' y '  12 '. Los inválidos dan null, 7.9 da 7 y '  12 ' da 12. Se atacó el CU4 por el path de re-render al cambiar de idioma, y el CU1 buscando XSS en los textos interpolados. Todo sobrevivió. No hubo una pasada de wargame adversarial aparte: estos ataques los corrieron el developer y los reviewers, y el comportamiento en el navegador lo cubrió la UAT del humano."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-02T03:36:26.097Z",
+      "body": "1. CASOS DE USO APROBADOS\nReferencia: los AC del ticket (CU1-CU5 = AC1-AC5), pedidos por el humano el 2026-10-01 a partir de la receta de Wrecker (bridge hub msg_0020). El humano confirmó el usuario josematovelle1. La aprobación fue implícita en el pedido, no previa al código (ver la descripción).\n- CU1 cumplido.\n- CU2 cumplido.\n- CU3 cambiado: el clic fuera NO cierra el popup. Lo pidió el humano en la UAT y el AC quedó enmendado.\n- CU4 cumplido.\n- CU5 cambiado: se agregó el botón superior, a pedido del humano en la UAT.\n\n2. RESULTADO\nAhora el visitante puede elegir cuánto donar. ♥ DONATE (arriba, en la barra EN/ES, y en el pie) abre un popup con el monto editable, que arranca en 5, y abre https://paypal.me/josematovelle1/<n>USD en otra pestaña. Archivo: docs/index.html. Commits: 5bfb527, 2093e04 y ff5ccdf. Sus mensajes dicen TASK-220 por la colisión de numeración explicada en la descripción. Quedó afuera a propósito la nota o concepto del pago, porque PayPal.me no la admite. Se le avisó a Wrecker de la mejora del clic fuera (bridge msg_0021).\n\n3. WARGAMING\nSe atacó el CU2 por el path de entrada inválida (vacío, 0, negativo, letras, 0.9, 1e21), el CU4 por el path de re-render al cambiar de idioma y el CU1 con XSS en los textos. Todo sobrevivió. Hubo dos reviews light, los dos APPROVE, sin hallazgos HIGH ni MEDIUM. tests/docs.spec.js da 2/2. npm test sobre main integrado: 1384 pasan y 5 fallan. Ninguna de las 5 fallas la causa este cambio: 4 fallan igual en un worktree limpio de origin/main (graph-freshness, mirror-pairs allowlist, plugin-scaffold global skills, uat-audit) y la quinta (mirror-pairs byte-identical) se debe a un __pycache__ local e ignorado en .claude/skills/watch. No hay e2e que toquen docs/. Veredicto: PASS.\n\n4. UAT\nUAT de 8 pasos hecha por el humano en el navegador, toda PASS (ver el comentario uat).\n\n5. ESTADO Y DEUDAS\nLOWs no accionados: el position:relative del sr-only, el mensaje para montos mayores a MAX_SAFE_INTEGER y el CSS inyectado en runtime. Las 4 fallas que ya estaban en origin/main quedan sin ticket."
+    }
+  ],
+  "created_at": "2026-10-02T03:35:40.367Z",
+  "updated_at": "2026-10-02T03:36:26.097Z",
+  "jira_key": null,
+  "verification_tier": "uat-only",
+  "requires_uat": true,
+  "marker": "[EXPLICIT]",
+  "linked_commits_verification": {
+    "at": "2026-10-02T03:36:26.097Z",
+    "checked": true,
+    "reason": null,
+    "commits": [
+      {
+        "sha": "5bfb527",
+        "state": "verified"
+      },
+      {
+        "sha": "2093e04",
+        "state": "verified"
+      },
+      {
+        "sha": "ff5ccdf",
+        "state": "verified"
+      }
+    ]
+  }
+}
