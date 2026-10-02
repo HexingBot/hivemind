@@ -455,8 +455,7 @@ function fillDonate() {
 document.getElementById("donAmt").addEventListener("input", donUpdate);
 document.getElementById("donX").addEventListener("click", () => donDlg.close());
 document.getElementById("donCancel").addEventListener("click", () => donDlg.close());
-// Backdrop click: the form fills the dialog, so a click whose target is the dialog itself is outside it.
-donDlg.addEventListener("click", ev => { if (ev.target === donDlg) donDlg.close(); });
+// No backdrop-click close on purpose: drag-selecting the amount and releasing outside the dialog would close it.
 donDlg.addEventListener("close", () => { const b = document.getElementById("donateBtn"); if (b) b.focus(); });
 document.getElementById("donForm").addEventListener("submit", ev => {
   ev.preventDefault();
