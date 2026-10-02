@@ -304,7 +304,8 @@ function render() {
     </div>`).join("");
 
   document.getElementById("app").innerHTML = `
-  <div style="max-width:1080px; margin:0 auto; display:flex; justify-content:flex-end; gap:6px; padding:14px 2px 0;">
+  <div style="max-width:1080px; margin:0 auto; display:flex; justify-content:flex-end; align-items:center; gap:6px; padding:14px 2px 0;">
+    <button type="button" id="donateBtnTop" data-donate style="${PS} font-size:10px; letter-spacing:1px; padding:9px 12px; margin-right:auto; cursor:pointer; background:#ffb85c; color:#05060a; border:2px solid #ffd39a; box-shadow:3px 3px 0 #7a3d00;">${esc(t.btnDonate)}<span style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;"> (${esc(t.donSr)})</span></button>
     <button onclick="setLang('en')" style="${PS} font-size:10px; letter-spacing:1px; padding:9px 12px; cursor:pointer; background:${enBg}; color:${enFg}; border:2px solid #ff9a1f;">EN</button>
     <button onclick="setLang('es')" style="${PS} font-size:10px; letter-spacing:1px; padding:9px 12px; cursor:pointer; background:${esBg}; color:${esFg}; border:2px solid #b07fff;">ES</button>
   </div>
@@ -394,7 +395,7 @@ function render() {
     <p style="font-size:20px; color:#9fb4d8; margin:0 auto 22px; max-width:760px; line-height:1.45;">${esc(t.footer)} (<span style="color:#ff9a1f;">/hivemind:task-status</span>).</p>
     <a href="skills.html" style="${PS} font-size:12px; padding:14px 20px; background:#0d1220; color:#8bd6ff; border:3px solid #2b4a66; box-shadow:4px 4px 0 #061019; display:inline-block; margin:0 12px 12px 0;">&#128214; SKILLS &amp; PACKS</a>
     <a href="releases.html" style="${PS} font-size:12px; padding:14px 20px; background:#0d1220; color:#b07fff; border:3px solid #3a2b66; box-shadow:4px 4px 0 #1a1030; display:inline-block; margin:0 12px 12px 0;">&#9733; ${esc(t.relNotes.toUpperCase())}</a>
-    <button type="button" id="donateBtn" style="${PS} font-size:12px; padding:14px 20px; background:#ffb85c; color:#05060a; border:3px solid #ffd39a; box-shadow:4px 4px 0 #7a3d00; display:inline-block; cursor:pointer;">${esc(t.btnDonate)}<span style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;"> (${esc(t.donSr)})</span></button>
+    <button type="button" id="donateBtn" data-donate style="${PS} font-size:12px; padding:14px 20px; background:#ffb85c; color:#05060a; border:3px solid #ffd39a; box-shadow:4px 4px 0 #7a3d00; display:inline-block; cursor:pointer;">${esc(t.btnDonate)}<span style="position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap;"> (${esc(t.donSr)})</span></button>
   </div>`;
   fillDonate();
 }
@@ -456,7 +457,9 @@ document.getElementById("donAmt").addEventListener("input", donUpdate);
 document.getElementById("donX").addEventListener("click", () => donDlg.close());
 document.getElementById("donCancel").addEventListener("click", () => donDlg.close());
 // No backdrop-click close on purpose: drag-selecting the amount and releasing outside the dialog would close it.
-donDlg.addEventListener("close", () => { const b = document.getElementById("donateBtn"); if (b) b.focus(); });
+// Focus returns to whichever donate button (top bar or footer) opened the dialog.
+let donOpener = "donateBtn";
+donDlg.addEventListener("close", () => { const b = document.getElementById(donOpener); if (b) b.focus(); });
 document.getElementById("donForm").addEventListener("submit", ev => {
   ev.preventDefault();
   const url = donUpdate();
@@ -464,9 +467,11 @@ document.getElementById("donForm").addEventListener("submit", ev => {
   window.open(url, "_blank", "noopener,noreferrer");
   donDlg.close();
 });
-// Delegated: #donateBtn is recreated by every render().
+// Delegated: the [data-donate] buttons are recreated by every render().
 document.addEventListener("click", ev => {
-  if (ev.target.closest && ev.target.closest("#donateBtn")) {
+  const btn = ev.target.closest && ev.target.closest("[data-donate]");
+  if (btn) {
+    donOpener = btn.id;
     document.getElementById("donAmt").value = "5";
     donUpdate();
     donDlg.showModal();
