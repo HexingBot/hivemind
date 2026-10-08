@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-02T03:36:26.097Z",
+  "generated_at": "2026-10-08T17:09:05.105Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1403,6 +1403,12 @@
       "key": "TASK-239",
       "title": "Botón de donación del sitio: popup con monto editable (receta de Wrecker, PayPal.me)",
       "status": "done",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-240",
+      "title": "Wargaming engine per project: Wrecker (/wrecker:wargame) or hivemind default",
+      "status": "todo",
       "priority": "medium"
     }
   ]

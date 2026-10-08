@@ -1,0 +1,43 @@
+{
+  "key": "TASK-240",
+  "title": "Wargaming engine per project: Wrecker (/wrecker:wargame) or hivemind default",
+  "description": "Each project chooses its wargaming engine: Wrecker (via its MCP and the /wrecker:wargame skill, which lives in Wrecker's plugin) or hivemind's default (hive-adversarial-improve). Hivemind asks at least once per project and saves the choice in PROJECT.md (wargame_engine: wrecker | hivemind). Starts with a pilot of Wrecker on TASK-239. Coordinated with Wrecker over the bridge (hub msg_0023-0025). Human also suggested Wrecker add a 'short wargame' mode for prototyping (sent in msg_0025).",
+  "acceptance_criteria": [
+    "CU1: With no wargame_engine setting, hivemind asks 'Wrecker or default?' at init or at the first wargaming step and saves the answer in PROJECT.md; if skipped, nothing is saved and it asks again next time, never choosing silently.",
+    "CU2: With the setting present, no question is asked and the saved engine is used.",
+    "CU3: Changing the setting (edit PROJECT.md or ask the orchestrator) makes the next wargaming use the new engine.",
+    "CU4: With Wrecker chosen, /wrecker:wargame runs: one spec per approved use case, lint, session; the result is recorded on the ticket including what was not attacked; counterexample/contradiction/dead_end become FINDING-HIGH to triage, gap becomes a non-blocking question.",
+    "CU5: With Wrecker chosen but its MCP not connected, hivemind says so plainly, does not silently fall back or close as verified, and offers: fix the connection or use the default this once.",
+    "CU6: A spec that fails lint is fixed and re-linted; Wrecker never runs on an invalid spec.",
+    "CU7: A session cut at the 120s limit is resumed (resume_session_id), not counted as finished.",
+    "CU8: With default chosen, today's hive-adversarial-improve wargaming runs unchanged.",
+    "CU9: Pilot: Wrecker runs on TASK-239's approved use cases (live anchor on the site if reachable) and its results are compared with TASK-239's recorded wargaming report."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "wargaming",
+    "wrecker"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [
+    {
+      "author": "orchestrator",
+      "at": "2026-10-08T17:09:02.586Z",
+      "body": "PEDIDO (completado contra docs/PLANTILLA-PEDIDO.md)\n1. Objetivo: que cada proyecto elija su motor de wargaming, Wrecker (MCP + /wrecker:wargame) o el default de hivemind, preguntado al menos una vez por proyecto.\n2. Actor: el orquestador de hivemind en el paso de wargaming; el humano elige el motor.\n3. Problema: Wrecker se está construyendo justamente para wargaming; hivemind usa su propia skill.\n4. Caminos: sin ajuste (pregunta, guarda / omite y vuelve a preguntar); con ajuste (usa); cambio de ajuste; Wrecker elegido (specs, lint, sesión, registro); Wrecker sin MCP (avisa, no cae al default en silencio); spec inválido (corrige, re-lint); sesión cortada a 120 s (reanuda); default elegido (sin cambios); piloto con TASK-239.\n5. Hecho: el ajuste queda en PROJECT.md y el wargaming del ticket corre con el motor elegido, con el resultado registrado.\n6. Restricciones: /wrecker:wargame vive en el plugin de Wrecker (decisión del humano); el plugin público de Wrecker está pendiente (su TASK-071); MCP de Wrecker en scope local, no en el .mcp.json que se distribuye.\n7. Fuera de alcance: que Wrecker lea código/diff; el modo 'short wargame' (sugerido a Wrecker en hub msg_0025, lo construye Wrecker)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-08T17:09:05.105Z",
+      "body": "CASOS DE USO APROBADOS por el humano el 2026-10-08 (\"approve as written\"): CU1-CU9 tal cual figuran en acceptance_criteria. En la misma respuesta el humano pidió sugerirle a Wrecker por el bridge un modo \"short wargame\" para prototipos (enviado, hub msg_0025) y decidió que /wrecker:wargame vive en el plugin de Wrecker."
+    }
+  ],
+  "created_at": "2026-10-08T17:08:52.240Z",
+  "updated_at": "2026-10-08T17:09:05.105Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "requires_uat": true
+}
