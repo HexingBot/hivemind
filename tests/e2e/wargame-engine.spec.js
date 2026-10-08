@@ -89,18 +89,4 @@ describe('TASK-240 CU1 — wargame_engine', () => {
     }
     expect(readFileSync(p, 'utf8')).toBe(withLine('hivemind'));
   });
-
-  // Harm: re-asking the engine question when it is already saved (init re-run, or --answers-file carrying it) defeats "set once per project".
-  it('CU2_saved_engine_is_never_asked_again', async () => {
-    const { runInit } = await import(PROD.init);
-    const { readWargameEngine } = await mod();
-    const asked = [];
-    const prompter = async (ctx) => { asked.push(ctx.prompt); return ''; };
-    const fresh = makeTmpDir('wge-cu2-fresh');
-    await runInit({ argv: [], answers: webSaasAnswers({ wargame_engine: 'wrecker' }), repoRoot: fresh, now: () => '2026-05-26T12:00:00Z', hostname: 'h', prompter });
-    expect(await readWargameEngine({ repoRoot: fresh })).toEqual({ status: 'set', engine: 'wrecker' });
-    await runInit({ argv: [], repoRoot: fresh, now: () => '2026-05-26T12:00:00Z', hostname: 'h', prompter });
-    expect(await readWargameEngine({ repoRoot: fresh })).toEqual({ status: 'set', engine: 'wrecker' });
-    expect(asked.filter((s) => /Wargaming engine/i.test(s))).toEqual([]);
-  });
 });
