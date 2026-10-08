@@ -1,0 +1,825 @@
+{
+  "adapter": "runner",
+  "usecase": "UC-DONATE",
+  "viewport": "desktop",
+  "actions": {
+    "click_donate_footer": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "goto",
+          "path": "/#uc-donate"
+        },
+        {
+          "op": "click",
+          "locator": {
+            "css": "#relpopOk, body:not(:has(#relpopOk)) #app > div:last-child > p:first-of-type"
+          }
+        },
+        {
+          "op": "click",
+          "locator": {
+            "css": "#donateBtn"
+          }
+        },
+        {
+          "op": "wait_for",
+          "locator": {
+            "css": "#donDlg"
+          }
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "amount_valid",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "paypal.me/josematovelle1/"
+        },
+        {
+          "world_path": "url_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "https://paypal.me/"
+        },
+        {
+          "world_path": "error_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donErr"
+          },
+          "contains": "USD"
+        },
+        {
+          "world_path": "go_enabled",
+          "from": "visible",
+          "locator": {
+            "css": "#donGo:enabled"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        },
+        {
+          "world_path": "lang",
+          "from": "text",
+          "locator": {
+            "css": "#donateBtnTop"
+          },
+          "contains": "DONATE",
+          "value": "en"
+        },
+        {
+          "world_path": "lang",
+          "from": "text",
+          "locator": {
+            "css": "#donateBtnTop"
+          },
+          "contains": "DONAR",
+          "value": "es"
+        }
+      ]
+    },
+    "click_donate_top": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "goto",
+          "path": "/#uc-donate"
+        },
+        {
+          "op": "click",
+          "locator": {
+            "css": "#relpopOk, body:not(:has(#relpopOk)) #app > div:last-child > p:first-of-type"
+          }
+        },
+        {
+          "op": "click",
+          "locator": {
+            "css": "#donateBtnTop"
+          }
+        },
+        {
+          "op": "wait_for",
+          "locator": {
+            "css": "#donDlg"
+          }
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "amount_valid",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "paypal.me/josematovelle1/"
+        },
+        {
+          "world_path": "url_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "https://paypal.me/"
+        },
+        {
+          "world_path": "error_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donErr"
+          },
+          "contains": "USD"
+        },
+        {
+          "world_path": "go_enabled",
+          "from": "visible",
+          "locator": {
+            "css": "#donGo:enabled"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        },
+        {
+          "world_path": "lang",
+          "from": "text",
+          "locator": {
+            "css": "#donateBtnTop"
+          },
+          "contains": "DONATE",
+          "value": "en"
+        },
+        {
+          "world_path": "lang",
+          "from": "text",
+          "locator": {
+            "css": "#donateBtnTop"
+          },
+          "contains": "DONAR",
+          "value": "es"
+        }
+      ]
+    },
+    "switch_to_es": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "goto",
+          "path": "/#uc-donate"
+        },
+        {
+          "op": "click",
+          "locator": {
+            "css": "#relpopOk, body:not(:has(#relpopOk)) #app > div:last-child > p:first-of-type"
+          }
+        },
+        {
+          "op": "click",
+          "locator": {
+            "role": "button",
+            "name": "ES",
+            "exact": true
+          }
+        },
+        {
+          "op": "wait_for",
+          "locator": {
+            "css": "#donateBtnTop"
+          }
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "lang",
+          "from": "text",
+          "locator": {
+            "css": "#donateBtnTop"
+          },
+          "contains": "DONATE",
+          "value": "en"
+        },
+        {
+          "world_path": "lang",
+          "from": "text",
+          "locator": {
+            "css": "#donateBtnTop"
+          },
+          "contains": "DONAR",
+          "value": "es"
+        },
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        }
+      ]
+    },
+    "type_valid_amount": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "fill",
+          "locator": {
+            "css": "#donAmt"
+          },
+          "value": "7.9"
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "amount_valid",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "paypal.me/josematovelle1/"
+        },
+        {
+          "world_path": "url_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "https://paypal.me/"
+        },
+        {
+          "world_path": "error_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donErr"
+          },
+          "contains": "USD"
+        },
+        {
+          "world_path": "go_enabled",
+          "from": "visible",
+          "locator": {
+            "css": "#donGo:enabled"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        }
+      ]
+    },
+    "type_invalid_amount": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "fill",
+          "locator": {
+            "css": "#donAmt"
+          },
+          "value": "0"
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "amount_valid",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "paypal.me/josematovelle1/"
+        },
+        {
+          "world_path": "url_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "https://paypal.me/"
+        },
+        {
+          "world_path": "error_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donErr"
+          },
+          "contains": "USD"
+        },
+        {
+          "world_path": "go_enabled",
+          "from": "visible",
+          "locator": {
+            "css": "#donGo:enabled"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        }
+      ]
+    },
+    "press_tab": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "press",
+          "key": "Tab"
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        }
+      ]
+    },
+    "go_with_default_amount": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "click",
+          "locator": {
+            "css": "#donGo"
+          }
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": []
+    },
+    "click_go_to_paypal": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "click",
+          "locator": {
+            "css": "#donGo"
+          }
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": []
+    },
+    "confirm_with_invalid_amount": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "press",
+          "locator": {
+            "css": "#donAmt"
+          },
+          "key": "Enter"
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "amount_valid",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "paypal.me/josematovelle1/"
+        },
+        {
+          "world_path": "url_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donUrl"
+          },
+          "contains": "https://paypal.me/"
+        },
+        {
+          "world_path": "error_shown",
+          "from": "text",
+          "locator": {
+            "css": "#donErr"
+          },
+          "contains": "USD"
+        },
+        {
+          "world_path": "go_enabled",
+          "from": "visible",
+          "locator": {
+            "css": "#donGo:enabled"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        },
+        {
+          "world_path": "paypal_opened",
+          "from": "url",
+          "regex": "^http://localhost:8239/",
+          "value": false
+        }
+      ]
+    },
+    "close_with_x": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "click",
+          "locator": {
+            "css": "#donX"
+          }
+        },
+        {
+          "op": "wait_for",
+          "locator": {
+            "css": "#donDlg"
+          },
+          "state": "hidden"
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        },
+        {
+          "world_path": "paypal_opened",
+          "from": "url",
+          "regex": "^http://localhost:8239/",
+          "value": false
+        }
+      ]
+    },
+    "click_cancel": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "click",
+          "locator": {
+            "css": "#donCancel"
+          }
+        },
+        {
+          "op": "wait_for",
+          "locator": {
+            "css": "#donDlg"
+          },
+          "state": "hidden"
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        },
+        {
+          "world_path": "paypal_opened",
+          "from": "url",
+          "regex": "^http://localhost:8239/",
+          "value": false
+        }
+      ]
+    },
+    "press_escape": {
+      "mutates": false,
+      "timeout_ms": 2000,
+      "steps": [
+        {
+          "op": "press",
+          "key": "Escape"
+        },
+        {
+          "op": "wait_for",
+          "locator": {
+            "css": "#donDlg"
+          },
+          "state": "hidden"
+        }
+      ],
+      "expect": {
+        "url": "^http://localhost:8239/"
+      },
+      "extract": [
+        {
+          "world_path": "dialog_open",
+          "from": "visible",
+          "locator": {
+            "css": "#donDlg"
+          }
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": ":is(#donateBtn, #donateBtnTop):focus, body:not(:has(:is(#donateBtn, #donateBtnTop):focus)) h1"
+          },
+          "regex": "DONATE|DONAR",
+          "value": "opener"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "#donDlg:focus-within #donTitle, body:not(:has(#donDlg:focus-within)) h1"
+          },
+          "regex": "SUPPORT|APOYA",
+          "value": "dialog"
+        },
+        {
+          "world_path": "focus",
+          "from": "text",
+          "locator": {
+            "css": "body:not(:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within)) h1, body:has(:is(#donateBtn, #donateBtnTop, #donDlg):focus-within) #donTitle"
+          },
+          "regex": "^HIVEMIND$",
+          "value": "page"
+        },
+        {
+          "world_path": "paypal_opened",
+          "from": "url",
+          "regex": "^http://localhost:8239/",
+          "value": false
+        }
+      ]
+    }
+  }
+}
