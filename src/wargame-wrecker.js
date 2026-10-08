@@ -6,7 +6,7 @@
 //
 // Finding shape (read from Wrecker's real output, report.md / wargameFindings):
 //   { finding_id, type, step_cited, count, plausibility, verified,
-//     explanation, play }          — `type` is the "kind"; `kind` is also accepted.
+//     explanation, play }          — `type` is the kind (only `type` is read).
 // Mapping (CU4):
 //   counterexample | contradiction | dead_end -> FINDING-HIGH marker (blocks the
 //        close until triaged: FINDING-RESOLVED, or FINDING-DEGRADED + reason).
@@ -80,8 +80,10 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
       const step = tok(f.step_cited);
       if (HIGH_KINDS.has(kind)) {
         let id = markerId(f, caseId, seq);
-        if (seen.has(id)) id = fallbackId(caseId, seq);
-        seen.add(id);
+        // Dedup on the close guard's normalization (it upper-cases ids), so F-1 and f-1 cannot
+        // become two markers that one RESOLVED closes together.
+        for (let n = 0; seen.has(id.toUpperCase()); n++) id = `${fallbackId(caseId, seq).slice(0, ID_MAX - 3)}${n ? `-${n}` : ''}`;
+        seen.add(id.toUpperCase());
         highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
       } else if (kind === 'gap') {
         const endStep = /^end/i.test(String(step));

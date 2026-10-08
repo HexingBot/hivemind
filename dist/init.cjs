@@ -9304,8 +9304,8 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
       const step = tok(f.step_cited);
       if (HIGH_KINDS.has(kind)) {
         let id = markerId(f, caseId, seq);
-        if (seen.has(id)) id = fallbackId(caseId, seq);
-        seen.add(id);
+        for (let n = 0; seen.has(id.toUpperCase()); n++) id = `${fallbackId(caseId, seq).slice(0, ID_MAX - 3)}${n ? `-${n}` : ""}`;
+        seen.add(id.toUpperCase());
         highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
       } else if (kind === "gap") {
         const endStep = /^end/i.test(String(step));

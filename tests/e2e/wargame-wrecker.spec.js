@@ -46,7 +46,7 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(err?.code).toBe('E_OPEN_HIGH_FINDING');
     const triaged = ['F-1', 'F-2', 'F-3'].map((id, i) => c('orchestrator',
       i === 0 ? `[FINDING-RESOLVED: ${id}]` : `[FINDING-DEGRADED: ${id} — false positive, spec models it]`, 5 + i));
-    expect((await tryClose('TASK-902', [...base, ...open, ...triaged]))?.code).not.toBe('E_OPEN_HIGH_FINDING');
+    expect(await tryClose('TASK-902', [...base, ...open, ...triaged])).toBeNull();
 
     const gapsOnly = buildWreckerRecord({ cases: [{ case: 'CU4', path: 'main', coverage: cov, findings: [f('gap', 'F-9')] }] });
     expect(gapsOnly.high_markers).toEqual([]);
@@ -70,6 +70,9 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(() => buildWreckerRecord({ cases: [] })).toThrow(/nothing ran/);
     expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', coverage: cov }] })).toThrow(/findings/);
     const r = buildWreckerRecord({ cases: [{ case: 'CU4', findings: [f('dead_end', 'S-a very long id with spaces '.repeat(3))] }] });
+    const dup = buildWreckerRecord({ cases: [{ case: 'CU4', coverage: cov, findings: [f('dead_end', 'F-1'), f('dead_end', 'f-1')] }] });
+    const ids = dup.high_markers.map((m) => /\[FINDING-HIGH: ([^\]]+)\]/.exec(m)[1].toUpperCase());
+    expect(new Set(ids).size).toBe(2);
     expect(r.high_markers[0]).toMatch(/^\[FINDING-HIGH: WR-CU4-001\] /);
   });
 });
