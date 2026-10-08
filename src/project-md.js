@@ -86,7 +86,7 @@ const BODY_SECTIONS = [
 // not in BODY_SECTIONS and not in this set lands in the `## Stack` section.
 // TASK-124 — `tier` is a plain optional scalar (LIGERO|MEDIO|COMPLETO), same
 // treatment as project_name/project_type but written only when present.
-const FRONTMATTER_IDS = new Set(['project_name', 'project_type', 'tier']);
+const FRONTMATTER_IDS = new Set(['project_name', 'project_type', 'tier', 'wargame_engine']);
 
 // Keys that receive dedicated lossless encoding in the frontmatter rather than
 // being written into the Stack body section. They are excluded from the Stack
@@ -97,6 +97,14 @@ const FRONTMATTER_IDS = new Set(['project_name', 'project_type', 'tier']);
 // exact same inline-object treatment as agent_models: single frontmatter
 // line, parsed back to an object, never a Stack bullet.
 const SPECIAL_FRONTMATTER_IDS = new Set(['agent_models', 'perfil_proyecto']);
+
+// TASK-240 — valid wargame_engine values (re-exported by src/wargame-engine.js).
+export const WARGAME_ENGINES = Object.freeze(['wrecker', 'hivemind']);
+export function normalizeWargameEngine(value) {
+  if (typeof value !== 'string') return null;
+  const v = value.trim().toLowerCase();
+  return WARGAME_ENGINES.includes(v) ? v : null;
+}
 
 // Valid model aliases and pattern for full model IDs (mirrors PROJECT.schema.json).
 const MODEL_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'fable', 'inherit']);
@@ -176,6 +184,14 @@ export async function writeProjectMd({ repoRoot, answers, now = () => new Date()
   // disk write, naming the offender. null means "wizard question skipped" and
   // is tolerated (no key is written); a string is rejected — callers
   // (bin/init.js) must parse the wizard pair-syntax into an object first.
+  // TASK-240 — wargame_engine: an invalid value is never written (null/''
+  // means "skipped" and writes no key).
+  const we = answers.wargame_engine;
+  if (we !== undefined && we !== null && we !== '' && normalizeWargameEngine(we) !== we) {
+    throw new Error(
+      `writeProjectMd: invalid wargame_engine "${we}" — must be exactly "wrecker" or "hivemind"`,
+    );
+  }
   const am = answers ? answers.agent_models : undefined;
   if (am !== undefined && am !== null) {
     if (typeof am !== 'object' || Array.isArray(am)) {
@@ -288,6 +304,12 @@ function renderProjectMd(answers, createdAt) {
   // plumbing-only and does not validate the value).
   if (answers.tier !== undefined && answers.tier !== null && answers.tier !== '') {
     fmLines.push(`tier: ${answers.tier}`);
+  }
+
+  // TASK-240 — wargame_engine: validated plain scalar (wrecker|hivemind).
+  if (answers.wargame_engine !== undefined && answers.wargame_engine !== null &&
+      answers.wargame_engine !== '') {
+    fmLines.push(`wargame_engine: ${answers.wargame_engine}`);
   }
 
   // TASK-124 — perfil_proyecto: same inline-object treatment as agent_models
@@ -582,6 +604,7 @@ function parseProjectMd(text) {
   // TASK-124 — restore tier (plain scalar) and perfil_proyecto (inline-object
   // map, same absent-stays-absent rule as agent_models).
   if (frontmatter.tier !== undefined) answers.tier = frontmatter.tier;
+  if (frontmatter.wargame_engine !== undefined) answers.wargame_engine = frontmatter.wargame_engine;
   if (frontmatter.perfil_proyecto !== undefined &&
       frontmatter.perfil_proyecto !== null &&
       typeof frontmatter.perfil_proyecto === 'object' &&

@@ -34,6 +34,7 @@ import { readPointer } from '../src/pointer.js';
 import { runQuestionnaire } from '../src/question-engine.js';
 import { buildIntakeQuestions, parseAgentModelsAnswer } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
+import { readWargameEngine, saveWargameEngine, normalizeWargameEngine } from '../src/wargame-engine.js';
 import { collectPackQuestions, applyProjectMdContributions } from '../src/pack-hooks.js';
 import { loadActivePacks } from '../src/pack-loader.js';
 import { BUILTIN_PACK_DESCRIPTORS, BUILTIN_PACK_MODULES } from '../src/builtin-packs.js';
@@ -126,11 +127,13 @@ const KNOWN_FLAGS = new Set([
   '--apply-workflows',
   '--apply-settings',
   '--apply-permissions',
+  '--get-wargame-engine',
+  '--set-wargame-engine',
   '--yes',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
 // token is not treated as an unknown positional by the strict parser).
-const VALUE_FLAGS = new Set(['--answers-file']);
+const VALUE_FLAGS = new Set(['--answers-file', '--set-wargame-engine']);
 const TASK_FILE_RE = /^TASK-\d{3,}\.json$/;
 
 /**
@@ -153,6 +156,8 @@ function parseArgs(argv) {
     applyWorkflows: false,
     applySettings: false,
     applyPermissions: false,
+    getWargameEngine: false,
+    setWargameEngine: null,
     yes: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -169,6 +174,18 @@ function parseArgs(argv) {
     if (tok === '--apply-settings') out.applySettings = true;
     if (tok === '--apply-permissions') out.applyPermissions = true;
     if (tok === '--yes') out.yes = true;
+    if (tok === '--get-wargame-engine') out.getWargameEngine = true;
+    if (tok === '--set-wargame-engine') {
+      const value = argv[i + 1];
+      // An absent value is the "skip" answer: it is passed through so the
+      // save is a reported no-op, not an error (TASK-240 CU1 skip path).
+      if (value === undefined || KNOWN_FLAGS.has(value)) {
+        out.setWargameEngine = '';
+      } else {
+        out.setWargameEngine = value;
+        i += 1;
+      }
+    }
     if (tok === '--answers-file') {
       const value = argv[i + 1];
       if (value === undefined || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -202,6 +219,11 @@ function parseArgs(argv) {
   // loudly before any filesystem write.
   if (out.applyPermissions && (out.force || out.answersFile !== null)) {
     throw new Error('--apply-permissions cannot be combined with --force or --answers-file');
+  }
+  // TASK-240 — the wargame-engine get/set flags are standalone modes too.
+  if ((out.getWargameEngine || out.setWargameEngine !== null) &&
+      (out.force || out.answersFile !== null)) {
+    throw new Error('--get-wargame-engine/--set-wargame-engine cannot be combined with --force or --answers-file');
   }
   return out;
 }
@@ -717,6 +739,22 @@ async function runWizardAndWriteProjectMd({
     if (!confirmed) {
       return { aborted: true };
     }
+    // TASK-240 CU1 (Main A) — ask which wargaming engine to use. Skipped
+    // (empty) or invalid answers save nothing: no silent choice is ever made,
+    // and the orchestrator asks again at the first wargaming step.
+    if (answers.wargame_engine === undefined) {
+      const raw = await prompter({
+        prompt: 'Wargaming engine: Wrecker or default (hivemind)? [wrecker/hivemind, Enter to skip]',
+        type: 'string',
+      });
+      const engine = normalizeWargameEngine(raw);
+      if (engine !== null) {
+        answers = { ...answers, wargame_engine: engine };
+      } else if (typeof raw === 'string' && raw.trim() !== '') {
+        // eslint-disable-next-line no-console
+        console.warn(`wargame_engine: "${raw.trim()}" is not wrecker|hivemind — not saved; you will be asked again at the first wargaming step.`);
+      }
+    }
   } else {
     // TASK-166/TASK-167 AC3 — non-interactive path (answers-mode / --yes /
     // no-TTY): the warn-and-reconfirm gate above never fires here, so each
@@ -963,6 +1001,24 @@ export async function runInit({
     return { state: 'applied_models', projectMdPath, sessionId: null };
   }
 
+  // ---- Branch 0a: --get-wargame-engine / --set-wargame-engine (TASK-240) ----
+  // Standalone modes for the orchestrator (and shipped dist/init.cjs users) to
+  // read/save the per-project wargaming engine. get prints one JSON line with
+  // a distinguishable status (set|unset|invalid|no-project-md); set saves only
+  // a valid value and otherwise leaves PROJECT.md untouched (skip / invalid).
+  if (parsed.getWargameEngine) {
+    const result = await readWargameEngine({ repoRoot });
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(result));
+    return { state: 'wargame_engine_read', projectMdPath, sessionId: null, result };
+  }
+  if (parsed.setWargameEngine !== null) {
+    const result = await saveWargameEngine({ repoRoot, value: parsed.setWargameEngine });
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(result));
+    return { state: 'wargame_engine_set', projectMdPath, sessionId: null, result };
+  }
+
   // ---- Branch 0b: --apply-workflows (short-circuits before all wizard logic) ----
   // Runs ONLY materializeWorkflows against the target project — no wizard, no
   // PROJECT.md read/write, no session bundle, regardless of init state.
@@ -1165,6 +1221,8 @@ const SELF_SUMMARIZING_STATES = new Set([
   'applied_models',
   'applied_settings',
   'applied_permissions',
+  'wargame_engine_read',
+  'wargame_engine_set',
   'no_op',
   'cancelled',
 ]);
@@ -1239,7 +1297,10 @@ if (__isEntryScript) {
       // In --answers-file mode no prompter is ever called, so we do NOT open a
       // readline interface (it would otherwise hold the process open with no
       // TTY). The interactive path keeps the real readline prompter.
-      const prompter = parsed.answersFile ? null : realReadlinePrompter();
+      // TASK-240: the get/set-wargame-engine modes never prompt either, and an
+      // open readline would hold the process (and the orchestrator's Bash call) open.
+      const noPrompt = parsed.answersFile || parsed.getWargameEngine || parsed.setWargameEngine !== null;
+      const prompter = noPrompt ? null : realReadlinePrompter();
       return runInit({
         argv,
         prompter,

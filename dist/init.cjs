@@ -7720,10 +7720,10 @@ __export(init_exports, {
   runInit: () => runInit
 });
 module.exports = __toCommonJS(init_exports);
-var import_node_fs15 = require("node:fs");
-var import_node_path14 = require("node:path");
+var import_node_fs16 = require("node:fs");
+var import_node_path15 = require("node:path");
 var import_node_url2 = require("node:url");
-var import_promises4 = require("node:readline/promises");
+var import_promises5 = require("node:readline/promises");
 var import_node_process = require("node:process");
 
 // src/lifecycle.js
@@ -8785,6 +8785,10 @@ var PROJECT_schema_default = {
       type: "string",
       enum: ["web", "process"]
     },
+    wargame_engine: {
+      type: "string",
+      enum: ["wrecker", "hivemind"]
+    },
     tier: {
       type: "string",
       enum: ["LIGERO", "MEDIO", "COMPLETO"]
@@ -8810,8 +8814,14 @@ var BODY_SECTIONS = [
   { id: "scope_in", heading: "Scope (in)", bullets: true },
   { id: "scope_out", heading: "Scope (out)", bullets: true }
 ];
-var FRONTMATTER_IDS = /* @__PURE__ */ new Set(["project_name", "project_type", "tier"]);
+var FRONTMATTER_IDS = /* @__PURE__ */ new Set(["project_name", "project_type", "tier", "wargame_engine"]);
 var SPECIAL_FRONTMATTER_IDS = /* @__PURE__ */ new Set(["agent_models", "perfil_proyecto"]);
+var WARGAME_ENGINES = Object.freeze(["wrecker", "hivemind"]);
+function normalizeWargameEngine(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  return WARGAME_ENGINES.includes(v) ? v : null;
+}
 var MODEL_ALIASES = /* @__PURE__ */ new Set(["sonnet", "opus", "haiku", "fable", "inherit"]);
 var FULL_MODEL_ID_RE = /^claude-[a-z0-9-]+$/;
 var VALID_AGENT_NAMES = /* @__PURE__ */ new Set(["reviewer", "developer", "researcher"]);
@@ -8831,6 +8841,12 @@ async function writeProjectMd({ repoRoot, answers, now = () => (/* @__PURE__ */ 
         `writeProjectMd: ${id} must not contain newline or carriage-return characters \u2014 they would corrupt the PROJECT.md YAML frontmatter (control-character injection)`
       );
     }
+  }
+  const we = answers.wargame_engine;
+  if (we !== void 0 && we !== null && we !== "" && normalizeWargameEngine(we) !== we) {
+    throw new Error(
+      `writeProjectMd: invalid wargame_engine "${we}" \u2014 must be exactly "wrecker" or "hivemind"`
+    );
   }
   const am = answers ? answers.agent_models : void 0;
   if (am !== void 0 && am !== null) {
@@ -8889,6 +8905,9 @@ function renderProjectMd(answers, createdAt) {
   }
   if (answers.tier !== void 0 && answers.tier !== null && answers.tier !== "") {
     fmLines.push(`tier: ${answers.tier}`);
+  }
+  if (answers.wargame_engine !== void 0 && answers.wargame_engine !== null && answers.wargame_engine !== "") {
+    fmLines.push(`wargame_engine: ${answers.wargame_engine}`);
   }
   if (answers.perfil_proyecto && typeof answers.perfil_proyecto === "object" && Object.keys(answers.perfil_proyecto).length > 0) {
     const profileStr = Object.entries(answers.perfil_proyecto).map(([k, v]) => `${encodeMapEntry(String(k))}: ${encodeMapEntry(String(v))}`).join(", ");
@@ -9064,6 +9083,7 @@ function parseProjectMd(text) {
     answers.agent_models = frontmatter.agent_models;
   }
   if (frontmatter.tier !== void 0) answers.tier = frontmatter.tier;
+  if (frontmatter.wargame_engine !== void 0) answers.wargame_engine = frontmatter.wargame_engine;
   if (frontmatter.perfil_proyecto !== void 0 && frontmatter.perfil_proyecto !== null && typeof frontmatter.perfil_proyecto === "object" && Object.keys(frontmatter.perfil_proyecto).length > 0) {
     answers.perfil_proyecto = frontmatter.perfil_proyecto;
   }
@@ -9194,6 +9214,47 @@ function parseStackValue(raw) {
     return splitInlineArray(inner);
   }
   return raw;
+}
+
+// src/wargame-engine.js
+var import_node_fs8 = require("node:fs");
+var import_promises2 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
+async function readWargameEngine({ repoRoot }) {
+  if (!(0, import_node_fs8.existsSync)((0, import_node_path6.join)(repoRoot, "PROJECT.md"))) return { status: "no-project-md" };
+  const { frontmatter } = await readProjectMd({ repoRoot });
+  const raw = frontmatter.wargame_engine;
+  if (raw === void 0 || raw === null || raw === "") return { status: "unset" };
+  const engine = normalizeWargameEngine(String(raw));
+  if (engine === null || engine !== raw) return { status: "invalid", raw: String(raw) };
+  return { status: "set", engine };
+}
+async function saveWargameEngine({ repoRoot, value }) {
+  if (value === void 0 || value === null || typeof value === "string" && value.trim() === "") {
+    return { saved: false, reason: "skipped" };
+  }
+  const engine = normalizeWargameEngine(value);
+  if (engine === null) return { saved: false, reason: "invalid-value" };
+  const target = (0, import_node_path6.join)(repoRoot, "PROJECT.md");
+  if (!(0, import_node_fs8.existsSync)(target)) return { saved: false, reason: "no-project-md" };
+  const text = await (0, import_promises2.readFile)(target, "utf8");
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split(/\r?\n/);
+  if (lines[0] !== "---") throw new Error('PROJECT.md is missing the opening "---" frontmatter delimiter');
+  const close = lines.indexOf("---", 1);
+  if (close === -1) throw new Error('PROJECT.md frontmatter has no closing "---" delimiter');
+  const newLine = `wargame_engine: ${engine}`;
+  let idx = -1;
+  for (let i = 1; i < close; i++) {
+    if (/^wargame_engine:/.test(lines[i])) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx === -1) lines.splice(close, 0, newLine);
+  else lines[idx] = newLine;
+  await atomicWriteFile(target, lines.join(eol));
+  return { saved: true, engine };
 }
 
 // src/pack-hooks.js
@@ -9826,8 +9887,8 @@ var BUILTIN_PACK_DESCRIPTORS = [DESIGN_POWER_DESCRIPTOR, WATCH_DESCRIPTOR];
 var BUILTIN_PACK_MODULES = { [DESIGN_POWER_DESCRIPTOR.id]: DESIGN_POWER_MODULE };
 
 // src/agent-generator.js
-var import_node_fs8 = require("node:fs");
-var import_node_path6 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path7 = require("node:path");
 var PROJECT_CONTEXT_REL = [".claude", "agents", "project-context.md"];
 var SCHEMA_VERSION2 = 1;
 var FRONTMATTER_IDS2 = /* @__PURE__ */ new Set(["project_name", "project_type"]);
@@ -9892,7 +9953,7 @@ async function generateProjectContext({
 }) {
   let resolvedAnswers = answers;
   if (resolvedAnswers === void 0 || resolvedAnswers === null) {
-    const projectMdPath = (0, import_node_path6.join)(repoRoot, "PROJECT.md");
+    const projectMdPath = (0, import_node_path7.join)(repoRoot, "PROJECT.md");
     try {
       const parsed = await readProjectMd({ repoRoot });
       resolvedAnswers = parsed.answers;
@@ -9903,8 +9964,8 @@ async function generateProjectContext({
     }
   }
   resolvedAnswers = sanitizeInvisibleCharsDeep(resolvedAnswers ?? {});
-  const target = (0, import_node_path6.join)(repoRoot, ...PROJECT_CONTEXT_REL);
-  (0, import_node_fs8.mkdirSync)((0, import_node_path6.dirname)(target), { recursive: true });
+  const target = (0, import_node_path7.join)(repoRoot, ...PROJECT_CONTEXT_REL);
+  (0, import_node_fs9.mkdirSync)((0, import_node_path7.dirname)(target), { recursive: true });
   const body = renderProjectContext(resolvedAnswers, now());
   await atomicWriteFile(target, body);
   return { path: target };
@@ -10006,20 +10067,20 @@ async function applyAgentModels({ repoRoot, agentModels }) {
       );
     }
   }
-  const claudeAgentsDir = (0, import_node_path6.join)(repoRoot, ".claude", "agents");
-  const parityAgentsDir = (0, import_node_path6.join)(repoRoot, "agents");
-  const hasParityDir = (0, import_node_fs8.existsSync)(parityAgentsDir);
+  const claudeAgentsDir = (0, import_node_path7.join)(repoRoot, ".claude", "agents");
+  const parityAgentsDir = (0, import_node_path7.join)(repoRoot, "agents");
+  const hasParityDir = (0, import_node_fs9.existsSync)(parityAgentsDir);
   const changedFiles = [];
   for (const [agentName, modelValue] of Object.entries(agentModels)) {
-    const targets = [(0, import_node_path6.join)(claudeAgentsDir, `${agentName}.md`)];
+    const targets = [(0, import_node_path7.join)(claudeAgentsDir, `${agentName}.md`)];
     if (hasParityDir) {
-      targets.push((0, import_node_path6.join)(parityAgentsDir, `${agentName}.md`));
+      targets.push((0, import_node_path7.join)(parityAgentsDir, `${agentName}.md`));
     }
     for (const targetPath of targets) {
-      if (!(0, import_node_fs8.existsSync)(targetPath)) {
+      if (!(0, import_node_fs9.existsSync)(targetPath)) {
         continue;
       }
-      const raw = (0, import_node_fs8.readFileSync)(targetPath, "utf8");
+      const raw = (0, import_node_fs9.readFileSync)(targetPath, "utf8");
       const patched = patchAgentModelContent(raw, modelValue);
       if (patched === null) {
         console.warn(
@@ -10097,15 +10158,15 @@ function generateDeveloperToolsLine({ devStack } = {}) {
 }
 async function applyDeveloperPermissions({ repoRoot, devStack } = {}) {
   const toolsLine = generateDeveloperToolsLine({ devStack });
-  const claudeAgentsDir = (0, import_node_path6.join)(repoRoot, ".claude", "agents");
-  const parityAgentsDir = (0, import_node_path6.join)(repoRoot, "agents");
-  const hasParityDir = (0, import_node_fs8.existsSync)(parityAgentsDir);
-  const targets = [(0, import_node_path6.join)(claudeAgentsDir, "developer.md")];
-  if (hasParityDir) targets.push((0, import_node_path6.join)(parityAgentsDir, "developer.md"));
+  const claudeAgentsDir = (0, import_node_path7.join)(repoRoot, ".claude", "agents");
+  const parityAgentsDir = (0, import_node_path7.join)(repoRoot, "agents");
+  const hasParityDir = (0, import_node_fs9.existsSync)(parityAgentsDir);
+  const targets = [(0, import_node_path7.join)(claudeAgentsDir, "developer.md")];
+  if (hasParityDir) targets.push((0, import_node_path7.join)(parityAgentsDir, "developer.md"));
   const changedFiles = [];
   for (const targetPath of targets) {
-    if (!(0, import_node_fs8.existsSync)(targetPath)) continue;
-    const raw = (0, import_node_fs8.readFileSync)(targetPath, "utf8");
+    if (!(0, import_node_fs9.existsSync)(targetPath)) continue;
+    const raw = (0, import_node_fs9.readFileSync)(targetPath, "utf8");
     const patched = patchAgentToolsContent(raw, toolsLine);
     if (patched === null) {
       console.warn(
@@ -10151,13 +10212,13 @@ function patchAgentToolsContent(text, toolsLine) {
 }
 
 // src/backlog-seeder.js
-var import_node_fs10 = require("node:fs");
-var import_node_path8 = require("node:path");
+var import_node_fs11 = require("node:fs");
+var import_node_path9 = require("node:path");
 
 // src/task-store.js
-var import_promises2 = require("node:fs/promises");
-var import_node_fs9 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_promises3 = require("node:fs/promises");
+var import_node_fs10 = require("node:fs");
+var import_node_path8 = require("node:path");
 var import_node_crypto5 = require("node:crypto");
 var import__3 = __toESM(require__(), 1);
 var import_ajv_formats3 = __toESM(require_dist(), 1);
@@ -10347,16 +10408,16 @@ function validateTaskOrThrow(task) {
   throw new Error(`task payload failed schema validation: ${msg}`);
 }
 function tasksDir(repoRoot) {
-  return (0, import_node_path7.join)(repoRoot, "tasks");
+  return (0, import_node_path8.join)(repoRoot, "tasks");
 }
 function taskFilePath(repoRoot, key) {
-  return (0, import_node_path7.join)(tasksDir(repoRoot), `${key}.json`);
+  return (0, import_node_path8.join)(tasksDir(repoRoot), `${key}.json`);
 }
 function indexFilePath(repoRoot) {
-  return (0, import_node_path7.join)(tasksDir(repoRoot), "index.json");
+  return (0, import_node_path8.join)(tasksDir(repoRoot), "index.json");
 }
 function tasksLockPath(repoRoot) {
-  return (0, import_node_path7.join)(tasksDir(repoRoot), ".mutate.lock");
+  return (0, import_node_path8.join)(tasksDir(repoRoot), ".mutate.lock");
 }
 var TaskMutationLockError = class extends Error {
   constructor(message) {
@@ -10377,20 +10438,20 @@ function isImplausiblyFuture(mtimeMs) {
 }
 async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS } = {}) {
   const dir = tasksDir(repoRoot);
-  (0, import_node_fs9.mkdirSync)(dir, { recursive: true });
+  (0, import_node_fs10.mkdirSync)(dir, { recursive: true });
   const lockPath = tasksLockPath(repoRoot);
   const deadline = Date.now() + maxWaitMs;
   const token = `${process.pid}-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}`;
   for (; ; ) {
     try {
-      const fd = (0, import_node_fs9.openSync)(lockPath, import_node_fs9.constants.O_CREAT | import_node_fs9.constants.O_EXCL | import_node_fs9.constants.O_WRONLY, 384);
+      const fd = (0, import_node_fs10.openSync)(lockPath, import_node_fs10.constants.O_CREAT | import_node_fs10.constants.O_EXCL | import_node_fs10.constants.O_WRONLY, 384);
       try {
         const payload = Buffer.from(`${token}
 `, "utf8");
-        (0, import_node_fs9.writeSync)(fd, payload, 0, payload.length);
-        (0, import_node_fs9.fsyncSync)(fd);
+        (0, import_node_fs10.writeSync)(fd, payload, 0, payload.length);
+        (0, import_node_fs10.fsyncSync)(fd);
       } finally {
-        (0, import_node_fs9.closeSync)(fd);
+        (0, import_node_fs10.closeSync)(fd);
       }
       return token;
     } catch (err) {
@@ -10398,10 +10459,10 @@ async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS }
       let stat = null;
       let foreignEntry = false;
       try {
-        stat = (0, import_node_fs9.statSync)(lockPath);
+        stat = (0, import_node_fs10.statSync)(lockPath);
       } catch {
         try {
-          foreignEntry = (0, import_node_fs9.lstatSync)(lockPath).isSymbolicLink();
+          foreignEntry = (0, import_node_fs10.lstatSync)(lockPath).isSymbolicLink();
         } catch {
         }
       }
@@ -10409,7 +10470,7 @@ async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS }
         const quarantinePath = `${lockPath}.stale.${token}`;
         let renamed = false;
         try {
-          (0, import_node_fs9.renameSync)(lockPath, quarantinePath);
+          (0, import_node_fs10.renameSync)(lockPath, quarantinePath);
           renamed = true;
         } catch {
         }
@@ -10417,23 +10478,23 @@ async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS }
           let qStat = null;
           let qIsSymlink = false;
           try {
-            qStat = (0, import_node_fs9.lstatSync)(quarantinePath);
+            qStat = (0, import_node_fs10.lstatSync)(quarantinePath);
             qIsSymlink = qStat.isSymbolicLink();
           } catch {
           }
           const genuinelyStale = qIsSymlink || qStat && (Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(qStat.mtimeMs));
           if (genuinelyStale) {
             try {
-              (0, import_node_fs9.unlinkSync)(quarantinePath);
+              (0, import_node_fs10.unlinkSync)(quarantinePath);
             } catch {
               try {
-                (0, import_node_fs9.rmSync)(quarantinePath, { recursive: true, force: true });
+                (0, import_node_fs10.rmSync)(quarantinePath, { recursive: true, force: true });
               } catch {
               }
             }
           } else {
             try {
-              (0, import_node_fs9.renameSync)(quarantinePath, lockPath);
+              (0, import_node_fs10.renameSync)(quarantinePath, lockPath);
             } catch {
             }
           }
@@ -10452,9 +10513,9 @@ async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS }
 function releaseTasksLock(repoRoot, token) {
   const lockPath = tasksLockPath(repoRoot);
   try {
-    const current = (0, import_node_fs9.readFileSync)(lockPath, "utf8").trim();
+    const current = (0, import_node_fs10.readFileSync)(lockPath, "utf8").trim();
     if (current !== token) return;
-    (0, import_node_fs9.unlinkSync)(lockPath);
+    (0, import_node_fs10.unlinkSync)(lockPath);
   } catch {
   }
 }
@@ -10462,10 +10523,10 @@ function startTasksLockHeartbeat(repoRoot, token) {
   const lockPath = tasksLockPath(repoRoot);
   const timer = setInterval(() => {
     try {
-      const current = (0, import_node_fs9.readFileSync)(lockPath, "utf8").trim();
+      const current = (0, import_node_fs10.readFileSync)(lockPath, "utf8").trim();
       if (current !== token) return;
       const now = /* @__PURE__ */ new Date();
-      (0, import_node_fs9.utimesSync)(lockPath, now, now);
+      (0, import_node_fs10.utimesSync)(lockPath, now, now);
     } catch {
     }
   }, TASKS_LOCK_HEARTBEAT_MS);
@@ -10499,7 +10560,7 @@ async function readAllTasks(repoRoot) {
   const dir = tasksDir(repoRoot);
   let entries;
   try {
-    entries = await (0, import_promises2.readdir)(dir);
+    entries = await (0, import_promises3.readdir)(dir);
   } catch (err) {
     if (err && err.code === "ENOENT") return [];
     throw err;
@@ -10507,7 +10568,7 @@ async function readAllTasks(repoRoot) {
   const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
   const out = [];
   for (const name of taskFiles) {
-    const raw = await (0, import_promises2.readFile)((0, import_node_path7.join)(dir, name), "utf8");
+    const raw = await (0, import_promises3.readFile)((0, import_node_path8.join)(dir, name), "utf8");
     if (raw.length === 0) continue;
     out.push(JSON.parse(raw));
   }
@@ -10611,7 +10672,7 @@ async function deriveNextKey(repoRoot) {
   const dir = tasksDir(repoRoot);
   let entries;
   try {
-    entries = await (0, import_promises2.readdir)(dir);
+    entries = await (0, import_promises3.readdir)(dir);
   } catch (err) {
     if (err && err.code === "ENOENT") entries = [];
     else throw err;
@@ -10687,13 +10748,13 @@ async function createTask({
     validateTaskOrThrow(task);
     const existing = await readAllTasks(repoRoot);
     const allTasks = [...existing, task];
-    (0, import_node_fs9.mkdirSync)(tasksDir(repoRoot), { recursive: true });
+    (0, import_node_fs10.mkdirSync)(tasksDir(repoRoot), { recursive: true });
     const taskTarget = taskFilePath(repoRoot, nextKey);
     const taskBytes = JSON.stringify(task, null, 2) + "\n";
     const payload = Buffer.from(taskBytes, "utf8");
     let reserveFd;
     try {
-      reserveFd = (0, import_node_fs9.openSync)(taskTarget, import_node_fs9.constants.O_CREAT | import_node_fs9.constants.O_EXCL | import_node_fs9.constants.O_WRONLY, 384);
+      reserveFd = (0, import_node_fs10.openSync)(taskTarget, import_node_fs10.constants.O_CREAT | import_node_fs10.constants.O_EXCL | import_node_fs10.constants.O_WRONLY, 384);
     } catch (err) {
       if (err && err.code === "EEXIST") {
         throw new KeyCollisionError(
@@ -10705,13 +10766,13 @@ async function createTask({
     try {
       let written = 0;
       while (written < payload.length) {
-        written += (0, import_node_fs9.writeSync)(reserveFd, payload, written, payload.length - written);
+        written += (0, import_node_fs10.writeSync)(reserveFd, payload, written, payload.length - written);
       }
-      (0, import_node_fs9.fsyncSync)(reserveFd);
+      (0, import_node_fs10.fsyncSync)(reserveFd);
     } finally {
-      (0, import_node_fs9.closeSync)(reserveFd);
+      (0, import_node_fs10.closeSync)(reserveFd);
     }
-    const onDisk = (0, import_node_fs9.readFileSync)(taskTarget, "utf8");
+    const onDisk = (0, import_node_fs10.readFileSync)(taskTarget, "utf8");
     if (onDisk !== taskBytes) {
       throw new KeyCollisionError(
         `createTask: verify-after-write detected a competing writer's payload at ${taskTarget} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
@@ -10865,15 +10926,15 @@ var USE_CASE_TEMPLATES = Object.freeze({
   ])
 });
 function readAllTasksSync(repoRoot) {
-  const dir = (0, import_node_path8.join)(repoRoot, "tasks");
-  if (!(0, import_node_fs10.existsSync)(dir)) return [];
-  const names = (0, import_node_fs10.readdirSync)(dir).filter((n) => TASK_FILENAME_RE.test(n));
+  const dir = (0, import_node_path9.join)(repoRoot, "tasks");
+  if (!(0, import_node_fs11.existsSync)(dir)) return [];
+  const names = (0, import_node_fs11.readdirSync)(dir).filter((n) => TASK_FILENAME_RE.test(n));
   const out = [];
   for (const name of names) {
-    const filePath = (0, import_node_path8.join)(dir, name);
+    const filePath = (0, import_node_path9.join)(dir, name);
     let raw;
     try {
-      raw = (0, import_node_fs10.readFileSync)(filePath, "utf8");
+      raw = (0, import_node_fs11.readFileSync)(filePath, "utf8");
     } catch (err) {
       if (err && err.code === "ENOENT") continue;
       throw err;
@@ -11006,9 +11067,9 @@ async function seedBacklog({
 }
 
 // src/use-case-specs.js
-var import_node_fs11 = require("node:fs");
-var import_promises3 = require("node:fs/promises");
-var import_node_path9 = require("node:path");
+var import_node_fs12 = require("node:fs");
+var import_promises4 = require("node:fs/promises");
+var import_node_path10 = require("node:path");
 var STACK_ANSWER_KEYS = [
   "cli_language",
   "backend_framework",
@@ -11106,8 +11167,8 @@ async function generateUseCaseSuite({
   answers,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
-  const useCasesDir = (0, import_node_path9.join)(repoRoot, "tests", "use-cases");
-  await (0, import_promises3.mkdir)(useCasesDir, { recursive: true });
+  const useCasesDir = (0, import_node_path10.join)(repoRoot, "tests", "use-cases");
+  await (0, import_promises4.mkdir)(useCasesDir, { recursive: true });
   const normalizedUseCases = normalizeUseCases2(answers && answers.primary_use_cases);
   let useCases = normalizedUseCases;
   if (normalizedUseCases.length > MAX_PRIMARY_USE_CASES) {
@@ -11120,8 +11181,8 @@ async function generateUseCaseSuite({
   const projectName = (answers && typeof answers.project_name === "string" ? answers.project_name : null) || "unnamed-project";
   const js = isJsStack(answers);
   const generatedAt = now();
-  const manifestPath = (0, import_node_path9.join)(useCasesDir, "USE-CASES.md");
-  if (!(0, import_node_fs11.existsSync)(manifestPath)) {
+  const manifestPath = (0, import_node_path10.join)(useCasesDir, "USE-CASES.md");
+  if (!(0, import_node_fs12.existsSync)(manifestPath)) {
     const content = buildManifest({ projectName, useCases, generatedAt, isJs: js });
     await atomicWriteFile(manifestPath, content);
   }
@@ -11132,8 +11193,8 @@ async function generateUseCaseSuite({
       const slug = slugify(uc);
       if (seen.has(slug)) continue;
       seen.add(slug);
-      const specPath = (0, import_node_path9.join)(useCasesDir, `${slug}.spec.js`);
-      if (!(0, import_node_fs11.existsSync)(specPath)) {
+      const specPath = (0, import_node_path10.join)(useCasesDir, `${slug}.spec.js`);
+      if (!(0, import_node_fs12.existsSync)(specPath)) {
         const content = buildSkeletonSpec(uc);
         await atomicWriteFile(specPath, content);
       }
@@ -11144,27 +11205,27 @@ async function generateUseCaseSuite({
 }
 
 // src/framework-history.js
-var import_node_fs12 = require("node:fs");
-var import_node_path10 = require("node:path");
+var import_node_fs13 = require("node:fs");
+var import_node_path11 = require("node:path");
 var TASK_FILE_RE = /^TASK-\d{3,}\.json$/;
 async function archiveFrameworkHistory({
   repoRoot,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
-  const tasksDir2 = (0, import_node_path10.join)(repoRoot, "tasks");
-  if (!(0, import_node_fs12.existsSync)(tasksDir2)) {
+  const tasksDir2 = (0, import_node_path11.join)(repoRoot, "tasks");
+  if (!(0, import_node_fs13.existsSync)(tasksDir2)) {
     return { archived: [] };
   }
-  const taskFiles = (0, import_node_fs12.readdirSync)(tasksDir2).filter((n) => TASK_FILE_RE.test(n)).sort();
+  const taskFiles = (0, import_node_fs13.readdirSync)(tasksDir2).filter((n) => TASK_FILE_RE.test(n)).sort();
   if (taskFiles.length === 0) {
     return { archived: [] };
   }
   const parsed = [];
   for (const name of taskFiles) {
-    const fullPath = (0, import_node_path10.join)(tasksDir2, name);
+    const fullPath = (0, import_node_path11.join)(tasksDir2, name);
     let ticket;
     try {
-      ticket = JSON.parse((0, import_node_fs12.readFileSync)(fullPath, "utf8"));
+      ticket = JSON.parse((0, import_node_fs13.readFileSync)(fullPath, "utf8"));
     } catch {
       ticket = { labels: [] };
     }
@@ -11173,17 +11234,17 @@ async function archiveFrameworkHistory({
     }
     parsed.push({ name, fullPath, ticket });
   }
-  const archiveDir = (0, import_node_path10.join)(repoRoot, ".framework-history", "tasks");
-  (0, import_node_fs12.mkdirSync)(archiveDir, { recursive: true });
+  const archiveDir = (0, import_node_path11.join)(repoRoot, ".framework-history", "tasks");
+  (0, import_node_fs13.mkdirSync)(archiveDir, { recursive: true });
   const archived = [];
   for (const { name, fullPath, ticket } of parsed) {
-    const dest = (0, import_node_path10.join)(archiveDir, name);
-    (0, import_node_fs12.renameSync)(fullPath, dest);
+    const dest = (0, import_node_path11.join)(archiveDir, name);
+    (0, import_node_fs13.renameSync)(fullPath, dest);
     const key = typeof ticket.key === "string" && ticket.key.length > 0 ? ticket.key : name.replace(/\.json$/, "");
     archived.push(key);
   }
   archived.sort();
-  const indexPath = (0, import_node_path10.join)(tasksDir2, "index.json");
+  const indexPath = (0, import_node_path11.join)(tasksDir2, "index.json");
   const payload = JSON.stringify(
     { generated_at: now(), tasks: [] },
     null,
@@ -11203,8 +11264,8 @@ function resolveRepoRoot(env, cwd) {
 }
 
 // src/claude-md.js
-var import_node_fs13 = require("node:fs");
-var import_node_path11 = require("node:path");
+var import_node_fs14 = require("node:fs");
+var import_node_path12 = require("node:path");
 var BEGIN_MARKER = "<!-- BEGIN hivemind routing -->";
 var END_MARKER = "<!-- END hivemind routing -->";
 function routingBlockContent() {
@@ -11287,14 +11348,14 @@ ${END_MARKER}`;
 `;
 }
 function writeOrchestratorRouting({ repoRoot }) {
-  const path = (0, import_node_path11.join)(repoRoot, "CLAUDE.md");
-  const existing = (0, import_node_fs13.existsSync)(path) ? (0, import_node_fs13.readFileSync)(path, "utf8") : null;
+  const path = (0, import_node_path12.join)(repoRoot, "CLAUDE.md");
+  const existing = (0, import_node_fs14.existsSync)(path) ? (0, import_node_fs14.readFileSync)(path, "utf8") : null;
   const hadBlock = existing !== null && hasRoutingBlock(existing);
   const merged = mergeRoutingBlock(existing, routingBlockContent());
   if (existing !== null && merged === existing) {
     return { path, wrote: false, hadBlock };
   }
-  (0, import_node_fs13.writeFileSync)(path, merged, "utf8");
+  (0, import_node_fs14.writeFileSync)(path, merged, "utf8");
   return { path, wrote: true, hadBlock };
 }
 function hasRoutingBlock(text) {
@@ -11304,28 +11365,28 @@ function hasRoutingBlock(text) {
   return begin !== -1 && end !== -1 && end > begin;
 }
 function readProjectClaudeMd(repoRoot) {
-  const path = (0, import_node_path11.join)(repoRoot, "CLAUDE.md");
-  return (0, import_node_fs13.existsSync)(path) ? (0, import_node_fs13.readFileSync)(path, "utf8") : null;
+  const path = (0, import_node_path12.join)(repoRoot, "CLAUDE.md");
+  return (0, import_node_fs14.existsSync)(path) ? (0, import_node_fs14.readFileSync)(path, "utf8") : null;
 }
 
 // src/claude-settings.js
-var import_node_fs14 = require("node:fs");
-var import_node_path12 = require("node:path");
-var import_node_url = require("node:url");
+var import_node_fs15 = require("node:fs");
 var import_node_path13 = require("node:path");
+var import_node_url = require("node:url");
+var import_node_path14 = require("node:path");
 var import_meta = {};
 function resolvePluginRoot() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
     return process.env.CLAUDE_PLUGIN_ROOT;
   }
-  const here = import_meta.url ? (0, import_node_path13.dirname)((0, import_node_url.fileURLToPath)(import_meta.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
-  return (0, import_node_path12.resolve)(here, "..");
+  const here = import_meta.url ? (0, import_node_path14.dirname)((0, import_node_url.fileURLToPath)(import_meta.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
+  return (0, import_node_path13.resolve)(here, "..");
 }
 function buildContextMonitorEntries(pluginRoot) {
-  const cmDir = (0, import_node_path12.join)(pluginRoot, "context-monitor");
-  const statusLineCmd = `node "${(0, import_node_path12.join)(cmDir, "statusline.mjs")}"`;
-  const stopHookCmd = `node "${(0, import_node_path12.join)(cmDir, "stop-hook.mjs")}"`;
-  const sessionStartCmd = `node "${(0, import_node_path12.join)(cmDir, "session-start.mjs")}"`;
+  const cmDir = (0, import_node_path13.join)(pluginRoot, "context-monitor");
+  const statusLineCmd = `node "${(0, import_node_path13.join)(cmDir, "statusline.mjs")}"`;
+  const stopHookCmd = `node "${(0, import_node_path13.join)(cmDir, "stop-hook.mjs")}"`;
+  const sessionStartCmd = `node "${(0, import_node_path13.join)(cmDir, "session-start.mjs")}"`;
   return {
     statusLine: {
       type: "command",
@@ -11390,12 +11451,12 @@ function mergeContextMonitorSettings(existing, entries) {
 function writeClaudeSettings({ repoRoot, pluginRoot }) {
   const effectivePluginRoot = pluginRoot ?? resolvePluginRoot();
   const entries = buildContextMonitorEntries(effectivePluginRoot);
-  const claudeDir = (0, import_node_path12.join)(repoRoot, ".claude");
-  const settingsPath = (0, import_node_path12.join)(claudeDir, "settings.json");
+  const claudeDir = (0, import_node_path13.join)(repoRoot, ".claude");
+  const settingsPath = (0, import_node_path13.join)(claudeDir, "settings.json");
   let existing = {};
-  if ((0, import_node_fs14.existsSync)(settingsPath)) {
+  if ((0, import_node_fs15.existsSync)(settingsPath)) {
     try {
-      existing = JSON.parse((0, import_node_fs14.readFileSync)(settingsPath, "utf8"));
+      existing = JSON.parse((0, import_node_fs15.readFileSync)(settingsPath, "utf8"));
       if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
         existing = {};
       }
@@ -11405,35 +11466,35 @@ function writeClaudeSettings({ repoRoot, pluginRoot }) {
   }
   const merged = mergeContextMonitorSettings(existing, entries);
   const serialized = JSON.stringify(merged, null, 2) + "\n";
-  if ((0, import_node_fs14.existsSync)(settingsPath)) {
-    const currentRaw = (0, import_node_fs14.readFileSync)(settingsPath, "utf8");
+  if ((0, import_node_fs15.existsSync)(settingsPath)) {
+    const currentRaw = (0, import_node_fs15.readFileSync)(settingsPath, "utf8");
     if (currentRaw === serialized) {
       return { path: settingsPath, wrote: false };
     }
   }
-  (0, import_node_fs14.mkdirSync)(claudeDir, { recursive: true });
-  (0, import_node_fs14.writeFileSync)(settingsPath, serialized, "utf8");
+  (0, import_node_fs15.mkdirSync)(claudeDir, { recursive: true });
+  (0, import_node_fs15.writeFileSync)(settingsPath, serialized, "utf8");
   return { path: settingsPath, wrote: true };
 }
 
 // bin/init.js
 var import_meta2 = {};
-var __initDir = import_meta2.url ? (0, import_node_path14.dirname)((0, import_node_url2.fileURLToPath)(import_meta2.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
-var PLUGIN_WORKFLOWS_SRC = (0, import_node_path14.join)(__initDir, "..", "workflows");
+var __initDir = import_meta2.url ? (0, import_node_path15.dirname)((0, import_node_url2.fileURLToPath)(import_meta2.url)) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
+var PLUGIN_WORKFLOWS_SRC = (0, import_node_path15.join)(__initDir, "..", "workflows");
 function materializeWorkflows(repoRoot) {
   const srcDir = PLUGIN_WORKFLOWS_SRC;
-  if (!(0, import_node_fs15.existsSync)(srcDir)) return { added: [], skipped: [] };
-  const destDir = (0, import_node_path14.join)(repoRoot, ".claude", "workflows");
-  (0, import_node_fs15.mkdirSync)(destDir, { recursive: true });
+  if (!(0, import_node_fs16.existsSync)(srcDir)) return { added: [], skipped: [] };
+  const destDir = (0, import_node_path15.join)(repoRoot, ".claude", "workflows");
+  (0, import_node_fs16.mkdirSync)(destDir, { recursive: true });
   const added = [];
   const skipped = [];
-  const entries = (0, import_node_fs15.readdirSync)(srcDir, { withFileTypes: true });
+  const entries = (0, import_node_fs16.readdirSync)(srcDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    const srcPath = (0, import_node_path14.join)(srcDir, entry.name);
-    const destPath = (0, import_node_path14.join)(destDir, entry.name);
-    if (!(0, import_node_fs15.existsSync)(destPath)) {
-      (0, import_node_fs15.copyFileSync)(srcPath, destPath);
+    const srcPath = (0, import_node_path15.join)(srcDir, entry.name);
+    const destPath = (0, import_node_path15.join)(destDir, entry.name);
+    if (!(0, import_node_fs16.existsSync)(destPath)) {
+      (0, import_node_fs16.copyFileSync)(srcPath, destPath);
       added.push(entry.name);
     } else {
       skipped.push(entry.name);
@@ -11451,9 +11512,11 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--apply-workflows",
   "--apply-settings",
   "--apply-permissions",
+  "--get-wargame-engine",
+  "--set-wargame-engine",
   "--yes"
 ]);
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file", "--set-wargame-engine"]);
 var TASK_FILE_RE2 = /^TASK-\d{3,}\.json$/;
 function parseArgs(argv) {
   const out = {
@@ -11466,6 +11529,8 @@ function parseArgs(argv) {
     applyWorkflows: false,
     applySettings: false,
     applyPermissions: false,
+    getWargameEngine: false,
+    setWargameEngine: null,
     yes: false
   };
   for (let i = 0; i < argv.length; i++) {
@@ -11482,6 +11547,16 @@ function parseArgs(argv) {
     if (tok === "--apply-settings") out.applySettings = true;
     if (tok === "--apply-permissions") out.applyPermissions = true;
     if (tok === "--yes") out.yes = true;
+    if (tok === "--get-wargame-engine") out.getWargameEngine = true;
+    if (tok === "--set-wargame-engine") {
+      const value = argv[i + 1];
+      if (value === void 0 || KNOWN_FLAGS.has(value)) {
+        out.setWargameEngine = "";
+      } else {
+        out.setWargameEngine = value;
+        i += 1;
+      }
+    }
     if (tok === "--answers-file") {
       const value = argv[i + 1];
       if (value === void 0 || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
@@ -11503,17 +11578,20 @@ function parseArgs(argv) {
   if (out.applyPermissions && (out.force || out.answersFile !== null)) {
     throw new Error("--apply-permissions cannot be combined with --force or --answers-file");
   }
+  if ((out.getWargameEngine || out.setWargameEngine !== null) && (out.force || out.answersFile !== null)) {
+    throw new Error("--get-wargame-engine/--set-wargame-engine cannot be combined with --force or --answers-file");
+  }
   return out;
 }
 function countFrameworkHistory(repoRoot) {
-  const tasksDir2 = (0, import_node_path14.join)(repoRoot, "tasks");
-  if (!(0, import_node_fs15.existsSync)(tasksDir2)) return 0;
-  const taskFiles = (0, import_node_fs15.readdirSync)(tasksDir2).filter((n) => TASK_FILE_RE2.test(n));
+  const tasksDir2 = (0, import_node_path15.join)(repoRoot, "tasks");
+  if (!(0, import_node_fs16.existsSync)(tasksDir2)) return 0;
+  const taskFiles = (0, import_node_fs16.readdirSync)(tasksDir2).filter((n) => TASK_FILE_RE2.test(n));
   if (taskFiles.length === 0) return 0;
   for (const name of taskFiles) {
     let t;
     try {
-      t = JSON.parse((0, import_node_fs15.readFileSync)((0, import_node_path14.join)(tasksDir2, name), "utf8"));
+      t = JSON.parse((0, import_node_fs16.readFileSync)((0, import_node_path15.join)(tasksDir2, name), "utf8"));
     } catch (err) {
       throw new Error(
         `bin/init.js: failed to parse task file ${name}: ${err.message}`
@@ -11539,12 +11617,12 @@ async function maybeArchiveFrameworkHistory({ repoRoot, prompter, noArchive, now
   await archiveFrameworkHistory({ repoRoot, now });
 }
 function intakePath(repoRoot, sessionId) {
-  return (0, import_node_path14.join)(repoRoot, "state", "sessions", sessionId, "intake.json");
+  return (0, import_node_path15.join)(repoRoot, "state", "sessions", sessionId, "intake.json");
 }
 function tryReadIntake(path) {
-  if (!(0, import_node_fs15.existsSync)(path)) return null;
+  if (!(0, import_node_fs16.existsSync)(path)) return null;
   try {
-    const raw = JSON.parse((0, import_node_fs15.readFileSync)(path, "utf8"));
+    const raw = JSON.parse((0, import_node_fs16.readFileSync)(path, "utf8"));
     if (raw && typeof raw === "object" && raw.answers && typeof raw.answers === "object") {
       return raw;
     }
@@ -11757,6 +11835,18 @@ async function runWizardAndWriteProjectMd({
     if (!confirmed) {
       return { aborted: true };
     }
+    if (answers.wargame_engine === void 0) {
+      const raw = await prompter({
+        prompt: "Wargaming engine: Wrecker or default (hivemind)? [wrecker/hivemind, Enter to skip]",
+        type: "string"
+      });
+      const engine = normalizeWargameEngine(raw);
+      if (engine !== null) {
+        answers = { ...answers, wargame_engine: engine };
+      } else if (typeof raw === "string" && raw.trim() !== "") {
+        console.warn(`wargame_engine: "${raw.trim()}" is not wrecker|hivemind \u2014 not saved; you will be asked again at the first wargaming step.`);
+      }
+    }
   } else {
     if (isDefinitionUnderspecified(answers)) {
       console.warn(buildUnderspecifiedWarning(answers));
@@ -11804,7 +11894,7 @@ async function runWizardAndWriteProjectMd({
     );
     throw err;
   }
-  return { projectMdPath: (0, import_node_path14.join)(repoRoot, "PROJECT.md") };
+  return { projectMdPath: (0, import_node_path15.join)(repoRoot, "PROJECT.md") };
 }
 async function maybeWriteOrchestratorRouting({ repoRoot, prompter, explicitConsent }) {
   if (explicitConsent) {
@@ -11844,8 +11934,8 @@ async function runInit({
   if (answers) {
     validateSuppliedAnswers(answers);
   }
-  const projectMdPath = (0, import_node_path14.join)(repoRoot, "PROJECT.md");
-  const projectMdExists = (0, import_node_fs15.existsSync)(projectMdPath);
+  const projectMdPath = (0, import_node_path15.join)(repoRoot, "PROJECT.md");
+  const projectMdExists = (0, import_node_fs16.existsSync)(projectMdPath);
   if (parsed.applyModels) {
     if (!projectMdExists) {
       console.log("--apply-models: PROJECT.md not found; nothing to apply.");
@@ -11862,6 +11952,16 @@ async function runInit({
     });
     console.log(`--apply-models: updated ${changed.length} file(s): ${changed.join(", ")}`);
     return { state: "applied_models", projectMdPath, sessionId: null };
+  }
+  if (parsed.getWargameEngine) {
+    const result = await readWargameEngine({ repoRoot });
+    console.log(JSON.stringify(result));
+    return { state: "wargame_engine_read", projectMdPath, sessionId: null, result };
+  }
+  if (parsed.setWargameEngine !== null) {
+    const result = await saveWargameEngine({ repoRoot, value: parsed.setWargameEngine });
+    console.log(JSON.stringify(result));
+    return { state: "wargame_engine_set", projectMdPath, sessionId: null, result };
   }
   if (parsed.applyWorkflows) {
     const { added, skipped } = materializeWorkflows(repoRoot);
@@ -11973,7 +12073,7 @@ async function runInit({
   return { state: "created", projectMdPath, sessionId };
 }
 function realReadlinePrompter() {
-  const rl = (0, import_promises4.createInterface)({ input: import_node_process.stdin, output: import_node_process.stdout });
+  const rl = (0, import_promises5.createInterface)({ input: import_node_process.stdin, output: import_node_process.stdout });
   return async (ctx) => {
     let text = ctx.prompt;
     if (ctx.type === "enum" && Array.isArray(ctx.enum)) {
@@ -11993,6 +12093,8 @@ var SELF_SUMMARIZING_STATES = /* @__PURE__ */ new Set([
   "applied_models",
   "applied_settings",
   "applied_permissions",
+  "wargame_engine_read",
+  "wargame_engine_set",
   "no_op",
   "cancelled"
 ]);
@@ -12011,7 +12113,7 @@ function printFriendlyError(err) {
 function loadAnswersFile(path) {
   let raw;
   try {
-    raw = (0, import_node_fs15.readFileSync)(path, "utf8");
+    raw = (0, import_node_fs16.readFileSync)(path, "utf8");
   } catch (err) {
     throw new Error(`could not read --answers-file ${path}: ${err.message}`);
   }
@@ -12032,7 +12134,8 @@ if (__isEntryScript) {
     const argv = process.argv.slice(2);
     const parsed = parseArgs(argv);
     const answers = parsed.answersFile ? loadAnswersFile(parsed.answersFile) : null;
-    const prompter = parsed.answersFile ? null : realReadlinePrompter();
+    const noPrompt = parsed.answersFile || parsed.getWargameEngine || parsed.setWargameEngine !== null;
+    const prompter = noPrompt ? null : realReadlinePrompter();
     return runInit({
       argv,
       prompter,

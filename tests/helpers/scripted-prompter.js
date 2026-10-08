@@ -45,6 +45,8 @@ const PROMPT_SIGNATURES = {
   package_manager: 'Which package registry',
   // TASK-036 — optional per-agent model overrides
   agent_models: 'Per-agent model overrides',
+  // TASK-240 — optional wargaming-engine question (asked after the confirm gate).
+  wargame_engine: 'Wargaming engine',
   // TASK-129 — design-power is now an ALWAYS-LOADED first-party pack
   // candidate (src/builtin-packs.js): its design_heavy gate question is
   // injected into every interactive init by default. Tests that don't care
@@ -74,6 +76,7 @@ const PROMPT_SIGNATURES = {
 // answer and do not infinite-loop.
 const KNOWN_OPTIONAL_IDS = new Set([
   'agent_models',
+  'wargame_engine',
   // TASK-046 — goals/scope_in/scope_out remain required:false in COMMON_QUESTIONS;
   // tests that don't supply them get '' (skip) from the engine.
   'goals',

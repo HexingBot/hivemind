@@ -75,6 +75,10 @@
       "type": "string",
       "enum": ["web", "process"]
     },
+    "wargame_engine": {
+      "type": "string",
+      "enum": ["wrecker", "hivemind"]
+    },
     "tier": {
       "type": "string",
       "enum": ["LIGERO", "MEDIO", "COMPLETO"]

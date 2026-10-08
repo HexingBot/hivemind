@@ -7855,6 +7855,10 @@ var PROJECT_schema_default = {
       type: "string",
       enum: ["web", "process"]
     },
+    wargame_engine: {
+      type: "string",
+      enum: ["wrecker", "hivemind"]
+    },
     tier: {
       type: "string",
       enum: ["LIGERO", "MEDIO", "COMPLETO"]
@@ -7880,6 +7884,7 @@ var BODY_SECTIONS = [
   { id: "scope_out", heading: "Scope (out)", bullets: true }
 ];
 var SPECIAL_FRONTMATTER_IDS = /* @__PURE__ */ new Set(["agent_models", "perfil_proyecto"]);
+var WARGAME_ENGINES = Object.freeze(["wrecker", "hivemind"]);
 async function readProjectMd({ repoRoot }) {
   const target = (0, import_node_path2.join)(repoRoot, PROJECT_MD);
   if (!(0, import_node_fs2.existsSync)(target)) {
@@ -8003,6 +8008,7 @@ function parseProjectMd(text) {
     answers.agent_models = frontmatter.agent_models;
   }
   if (frontmatter.tier !== void 0) answers.tier = frontmatter.tier;
+  if (frontmatter.wargame_engine !== void 0) answers.wargame_engine = frontmatter.wargame_engine;
   if (frontmatter.perfil_proyecto !== void 0 && frontmatter.perfil_proyecto !== null && typeof frontmatter.perfil_proyecto === "object" && Object.keys(frontmatter.perfil_proyecto).length > 0) {
     answers.perfil_proyecto = frontmatter.perfil_proyecto;
   }

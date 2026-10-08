@@ -339,6 +339,7 @@ registro.
    `hive-adversarial-improve` (framework repo) or `hive-adversarial-improve-current-project`
    (consumer project), scoped to the component the ticket touched; add the `deep-review` workflow's
    four adversarial dimensions for release-sized diffs.
+   - **Engine choice (TASK-240, per project):** before spawning anything, read the setting with `node bin/init.js --get-wargame-engine` (plugin install: `node ${CLAUDE_PLUGIN_ROOT}/dist/init.cjs --get-wargame-engine`; prints one JSON line). `status: set` -> use that engine (`hivemind` = the adversarial skills above; `wrecker` = Wrecker's `/wrecker:wargame`) and do NOT ask. `status: unset` or `invalid` -> ASK the human "Wrecker or default?" (never choose silently), then save a valid answer with `--set-wargame-engine <wrecker|hivemind>`. If the human skips, save nothing (call nothing, or `--set-wargame-engine` with no value, which is a no-op) and ask again at the next wargaming step. An invalid value is never saved.
    - **The approved use-case list is the reference.** Every approved case and every alternative /
      failure path on it is something the adversary tries to break. A case that was approved and
      never attacked is not verified.

@@ -166,6 +166,10 @@ while NOT goalSatisfied(tasks, goal)
      back to the Developer. Record the wargaming outcome (what was
      attacked, what survived, what did not) on the ticket before
      proceeding to step 7.
+     Engine: read `wargame_engine` first (`init.js --get-wargame-engine`);
+     if unset/invalid, ask the human and save (`--set-wargame-engine`) — a
+     skipped answer saves nothing and is asked again next time. See
+     CLAUDE.md's Wargaming step.
   7. [HARD-STOP GATE — see below before proceeding to close]
   8. Checkpoint the session bundle
   9. Renew the session lock (final renew before the next iteration's selection)
