@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-08T17:09:05.105Z",
+  "generated_at": "2026-10-08T23:12:01.976Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1408,6 +1408,12 @@
     {
       "key": "TASK-240",
       "title": "Wargaming engine per project: Wrecker (/wrecker:wargame) or hivemind default",
+      "status": "in_progress",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-241",
+      "title": "subagent-log.jsonl records an empty last_assistant_message when a subagent ends via SubagentHandback",
       "status": "todo",
       "priority": "medium"
     }

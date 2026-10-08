@@ -13,7 +13,7 @@
     "CU8: With default chosen, today's hive-adversarial-improve wargaming runs unchanged.",
     "CU9: Pilot: Wrecker runs on TASK-239's approved use cases (live anchor on the site if reachable) and its results are compared with TASK-239's recorded wargaming report."
   ],
-  "status": "todo",
+  "status": "in_progress",
   "priority": "medium",
   "labels": [
     "wargaming",
@@ -33,10 +33,20 @@
       "author": "orchestrator",
       "at": "2026-10-08T17:09:05.105Z",
       "body": "CASOS DE USO APROBADOS por el humano el 2026-10-08 (\"approve as written\"): CU1-CU9 tal cual figuran en acceptance_criteria. En la misma respuesta el humano pidió sugerirle a Wrecker por el bridge un modo \"short wargame\" para prototipos (enviado, hub msg_0025) y decidió que /wrecker:wargame vive en el plugin de Wrecker."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-08T23:11:50.408Z",
+      "body": "PILOTO CU9 sobre TASK-239 (corrido 2026-10-08; registrado tarde porque el MCP del proyecto fallaba y el del plugin no se probó).\n- Spec: design/wargame/TASK-239/UC-DONATE.md (donate-v2, lint 0). Runner live: design/anchors/UC-DONATE.runner.json (commit 7cd611f).\n- dry_run r1 (spec v1): 1 dead_end + 1 gap reales del spec (confirmar con monto inválido sin salida; ir a PayPal con el 5 inicial) -> corregidos en v2.\n- dry_run r2 y run_session stage B S-UC-DONATE-239-r3 (18090 tokens cheap): cobertura 13/13, sólo 4 gaps de orden, ningún bloqueante; el modelo no agregó nada sobre el dry_run.\n- Live S-UC-DONATE-239-r6 contra docs/ en localhost:8239: 0 contraejemplos, stage D sin nada que verificar; flujo principal undetermined por el popup off-origin a paypal.me (cortado a propósito). Caminos de fallo ok en 4 plays manuales.\n- Comparación con el wargaming registrado en TASK-239: TASK-239 atacó valores/XSS/idioma; Wrecker ataca caminos/orden. Complementarios, no sustitutos.\n- 7 hallazgos del runner enviados a Wrecker (hub msg_0030 y msg_0034), 2 de ellos bugs suyos: página colgada tras cortar el popup y causa off-origin mal atribuida."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-08T23:11:56.324Z",
+      "body": "REVIEWS PARCIALES (transcripción del Orquestador; NO es el veredicto final del ticket, por eso no va con author reviewer). Fuente: SubagentHandback de los transcripts de los reviewers ad5c11df9abaf28d7 y a6daf75f6b0d5a4d1, porque subagent-log.jsonl tiene vacío last_assistant_message.\n1) CU1, commit 133e0f2: APPROVE (alcance CU1). 0 HIGH. MEDIUM-1: checklist del hand-off no verificable desde el log (3 de 5 ítems verificados por el reviewer). LOW-1 (--set sin valor) y LOW-3 (valor entre comillas) se corrigieron en 2f4c121. Quedan LOW-2 (errores sin .code, convención existente), LOW-4 (answers-file con 'Wrecker' aborta init, sin escribir nada), LOW-5 (enum duplicado en schema).\n2) CU2 + CU3, commits 2f4c121 + d44272d: APPROVE. 0 HIGH. Lock de CU3 verificado rojo contra el árbol de 133e0f2; d44272d saca un lock de CU2 que no podía fallar (\"no re-pregunta\" ya es estructural y lo cubren los specs de idempotencia). MEDIUM-1: subagent-log.jsonl vacío -> ticket aparte. LOWs cosméticos (A-D).\nPendiente antes del cierre: CU4-CU8, wargaming, UAT (requires_uat), in_review y review final."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-08T17:09:05.105Z",
+  "updated_at": "2026-10-08T23:11:56.324Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "requires_uat": true

@@ -1,0 +1,27 @@
+{
+  "key": "TASK-241",
+  "title": "subagent-log.jsonl records an empty last_assistant_message when a subagent ends via SubagentHandback",
+  "description": "Found by the TASK-240 reviewer (MEDIUM-1, CU2+CU3 review). In session 20260708T154259Z-29a27eda every TASK-240 developer/reviewer entry in subagent-log.jsonl has an empty last_assistant_message. The real hand-offs exist only as the SubagentHandback tool_use input in the agent transcripts. The durable record TASK-219 promises, and that bin/audit-reviewer-verdict.js corroborates against, is therefore empty whenever an agent ends with SubagentHandback. Also seen: entries whose last_assistant_message is the human's own chat message (e.g. 'si, hazlo', agent_type null), which suggests some events are misattributed. Suspects: hooks/persist-subagent.mjs and src/subagent-log.js.",
+  "acceptance_criteria": [
+    "When a subagent ends via SubagentHandback, its log entry carries the hand-off text (or explicitly marks where it is), never an empty string that reads as 'nothing returned'.",
+    "When a subagent ends with plain text, the entry still carries that text as it does today.",
+    "bin/audit-reviewer-verdict.js tells 'no record' apart from 'record present but empty'.",
+    "Entries that are not a subagent's result (e.g. the human's chat message) are either not logged or clearly labeled."
+  ],
+  "status": "todo",
+  "priority": "medium",
+  "labels": [
+    "hooks",
+    "subagent-log"
+  ],
+  "assignee": null,
+  "depends_on": [],
+  "linked_commits": [],
+  "linked_prs": [],
+  "comments": [],
+  "created_at": "2026-10-08T23:12:01.976Z",
+  "updated_at": "2026-10-08T23:12:01.976Z",
+  "jira_key": null,
+  "verification_tier": "tests-after",
+  "requires_uat": false
+}
