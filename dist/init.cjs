@@ -9258,6 +9258,77 @@ async function saveWargameEngine({ repoRoot, value }) {
   return { saved: true, engine };
 }
 
+// src/wargame-wrecker.js
+var HIGH_KINDS = /* @__PURE__ */ new Set(["counterexample", "contradiction", "dead_end"]);
+var ID_MAX = 40;
+function kindOf(f) {
+  return String(f.type ?? f.kind ?? "").trim();
+}
+function oneLine(s) {
+  return String(s ?? "").replace(/\s+/g, " ").replace(/[\[\]]/g, "").trim();
+}
+function markerId(f, caseId, seq) {
+  const clean = String(f.finding_id ?? "").replace(/[^A-Za-z0-9._/-]/g, "-");
+  if (clean && clean.length <= ID_MAX) return clean;
+  return `WR-${String(caseId).replace(/[^A-Za-z0-9]/g, "")}-${String(seq).padStart(3, "0")}`.slice(0, ID_MAX);
+}
+function buildWreckerRecord({ cases, not_attacked = [] }) {
+  if (!Array.isArray(cases)) throw new Error('buildWreckerRecord: "cases" must be an array');
+  const highMarkers = [];
+  const questions = [];
+  const attacked = [];
+  const notAttacked = not_attacked.map((n) => `${n.case} (${oneLine(n.reason) || "no reason given"})`);
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of cases) {
+    const caseId = c.case;
+    if (!caseId) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
+    const findings = Array.isArray(c.findings) ? c.findings : [];
+    const cov = c.coverage?.steps_reached;
+    const covText = cov && cov.total !== void 0 ? `coverage ${cov.reached}/${cov.total} steps (${cov.pct}%)` : "coverage NOT REPORTED";
+    const never = Array.isArray(c.steps_never_reached) ? c.steps_never_reached : [];
+    const counts = {};
+    let seq = 0;
+    for (const f of findings) {
+      seq += 1;
+      const kind = kindOf(f);
+      counts[kind] = (counts[kind] || 0) + 1;
+      const step = f.step_cited ?? f.step ?? "?";
+      if (HIGH_KINDS.has(kind)) {
+        let id = markerId(f, caseId, seq);
+        if (seen.has(id)) id = `WR-${String(caseId).replace(/[^A-Za-z0-9]/g, "")}-${String(seq).padStart(3, "0")}`.slice(0, ID_MAX);
+        seen.add(id);
+        highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
+      } else if (kind === "gap") {
+        const endStep = /^end/i.test(String(step));
+        questions.push(`${caseId} gap at step ${step}${endStep ? " [END STEP: review by hand, TASK-113]" : ""}: ${oneLine(f.explanation)}`);
+      } else {
+        throw new Error(`buildWreckerRecord: unknown finding kind "${kind}" in ${caseId} (${f.finding_id ?? "no id"}) \u2014 expected counterexample|contradiction|dead_end|gap`);
+      }
+    }
+    const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ") || "0 findings";
+    let line = `${caseId} path ${c.path || "main"}: ${covText}; ${kinds}`;
+    if (c.spec) line += `; spec ${c.spec}`;
+    if (c.session_id) line += `; session ${c.session_id}`;
+    attacked.push(line);
+    if (never.length > 0) {
+      const why = c.dry_run_only ? "dry_run only (run_session not performed)" : "not reached in the session";
+      notAttacked.push(`${caseId} steps ${never.join(", ")} (${why})`);
+      if (never.some((s) => /^end/i.test(String(s)))) {
+        questions.push(`${caseId}: an end step was never reached (${never.filter((s) => /^end/i.test(String(s))).join(", ")}); review by hand (TASK-113)`);
+      }
+    }
+  }
+  const high = highMarkers.length;
+  const body = [
+    "[WARGAMING] engine: wrecker.",
+    `Attacked (case + path): ${attacked.join(" | ") || "none"}.`,
+    `Not attacked: ${notAttacked.join(" | ") || "nothing declared"}.`,
+    `HIGH candidates opened: ${high} (each is a separate marker comment; they block the close until triaged). Non-blocking questions for the spec owner: ${questions.length}.`,
+    "Zero counterexamples proves nothing by itself: read the coverage above."
+  ].join("\n");
+  return { wargaming: body, high_markers: highMarkers, questions, open_high: high };
+}
+
 // src/pack-hooks.js
 function collectPackQuestions(coreQuestions, activePacks) {
   if (!Array.isArray(activePacks) || activePacks.length === 0) {
@@ -11515,9 +11586,10 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--apply-permissions",
   "--get-wargame-engine",
   "--set-wargame-engine",
+  "--wrecker-record",
   "--yes"
 ]);
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file", "--set-wargame-engine"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file", "--set-wargame-engine", "--wrecker-record"]);
 var TASK_FILE_RE2 = /^TASK-\d{3,}\.json$/;
 function parseArgs(argv) {
   const out = {
@@ -11532,6 +11604,7 @@ function parseArgs(argv) {
     applyPermissions: false,
     getWargameEngine: false,
     setWargameEngine: null,
+    wreckerRecord: null,
     yes: false
   };
   for (let i = 0; i < argv.length; i++) {
@@ -11555,6 +11628,14 @@ function parseArgs(argv) {
         throw new Error("--set-wargame-engine requires a value (wrecker|hivemind)");
       }
       out.setWargameEngine = value;
+      i += 1;
+    }
+    if (tok === "--wrecker-record") {
+      const value = argv[i + 1];
+      if (value === void 0 || KNOWN_FLAGS.has(value)) {
+        throw new Error("--wrecker-record requires a JSON file path (Wrecker findings per case)");
+      }
+      out.wreckerRecord = value;
       i += 1;
     }
     if (tok === "--answers-file") {
@@ -11963,6 +12044,11 @@ async function runInit({
     console.log(JSON.stringify(result));
     return { state: "wargame_engine_set", projectMdPath, sessionId: null, result };
   }
+  if (parsed.wreckerRecord !== null) {
+    const result = buildWreckerRecord(JSON.parse((0, import_node_fs16.readFileSync)(parsed.wreckerRecord, "utf8")));
+    console.log(JSON.stringify(result));
+    return { state: "wrecker_record", projectMdPath, sessionId: null, result };
+  }
   if (parsed.applyWorkflows) {
     const { added, skipped } = materializeWorkflows(repoRoot);
     console.log(
@@ -12095,6 +12181,7 @@ var SELF_SUMMARIZING_STATES = /* @__PURE__ */ new Set([
   "applied_permissions",
   "wargame_engine_read",
   "wargame_engine_set",
+  "wrecker_record",
   "no_op",
   "cancelled"
 ]);
@@ -12134,7 +12221,7 @@ if (__isEntryScript) {
     const argv = process.argv.slice(2);
     const parsed = parseArgs(argv);
     const answers = parsed.answersFile ? loadAnswersFile(parsed.answersFile) : null;
-    const noPrompt = parsed.answersFile || parsed.getWargameEngine || parsed.setWargameEngine !== null;
+    const noPrompt = parsed.answersFile || parsed.getWargameEngine || parsed.setWargameEngine !== null || parsed.wreckerRecord !== null;
     const prompter = noPrompt ? null : realReadlinePrompter();
     return runInit({
       argv,

@@ -35,6 +35,7 @@ import { runQuestionnaire } from '../src/question-engine.js';
 import { buildIntakeQuestions, parseAgentModelsAnswer } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
 import { readWargameEngine, saveWargameEngine, normalizeWargameEngine } from '../src/wargame-engine.js';
+import { buildWreckerRecord } from '../src/wargame-wrecker.js';
 import { collectPackQuestions, applyProjectMdContributions } from '../src/pack-hooks.js';
 import { loadActivePacks } from '../src/pack-loader.js';
 import { BUILTIN_PACK_DESCRIPTORS, BUILTIN_PACK_MODULES } from '../src/builtin-packs.js';
@@ -129,11 +130,12 @@ const KNOWN_FLAGS = new Set([
   '--apply-permissions',
   '--get-wargame-engine',
   '--set-wargame-engine',
+  '--wrecker-record',
   '--yes',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
 // token is not treated as an unknown positional by the strict parser).
-const VALUE_FLAGS = new Set(['--answers-file', '--set-wargame-engine']);
+const VALUE_FLAGS = new Set(['--answers-file', '--set-wargame-engine', '--wrecker-record']);
 const TASK_FILE_RE = /^TASK-\d{3,}\.json$/;
 
 /**
@@ -158,6 +160,7 @@ function parseArgs(argv) {
     applyPermissions: false,
     getWargameEngine: false,
     setWargameEngine: null,
+    wreckerRecord: null,
     yes: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -183,6 +186,14 @@ function parseArgs(argv) {
         throw new Error('--set-wargame-engine requires a value (wrecker|hivemind)');
       }
       out.setWargameEngine = value;
+      i += 1;
+    }
+    if (tok === '--wrecker-record') {
+      const value = argv[i + 1];
+      if (value === undefined || KNOWN_FLAGS.has(value)) {
+        throw new Error('--wrecker-record requires a JSON file path (Wrecker findings per case)');
+      }
+      out.wreckerRecord = value;
       i += 1;
     }
     if (tok === '--answers-file') {
@@ -1018,6 +1029,16 @@ export async function runInit({
     return { state: 'wargame_engine_set', projectMdPath, sessionId: null, result };
   }
 
+  // ---- Branch 0a': --wrecker-record <file> (TASK-240 CU4) ----
+  // Pure mapping of Wrecker findings -> FINDING-HIGH markers / questions /
+  // [WARGAMING] body. Prints one JSON object; writes nothing.
+  if (parsed.wreckerRecord !== null) {
+    const result = buildWreckerRecord(JSON.parse(readFileSync(parsed.wreckerRecord, 'utf8')));
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify(result));
+    return { state: 'wrecker_record', projectMdPath, sessionId: null, result };
+  }
+
   // ---- Branch 0b: --apply-workflows (short-circuits before all wizard logic) ----
   // Runs ONLY materializeWorkflows against the target project — no wizard, no
   // PROJECT.md read/write, no session bundle, regardless of init state.
@@ -1222,6 +1243,7 @@ const SELF_SUMMARIZING_STATES = new Set([
   'applied_permissions',
   'wargame_engine_read',
   'wargame_engine_set',
+  'wrecker_record',
   'no_op',
   'cancelled',
 ]);
@@ -1298,7 +1320,7 @@ if (__isEntryScript) {
       // TTY). The interactive path keeps the real readline prompter.
       // TASK-240: the get/set-wargame-engine modes never prompt either, and an
       // open readline would hold the process (and the orchestrator's Bash call) open.
-      const noPrompt = parsed.answersFile || parsed.getWargameEngine || parsed.setWargameEngine !== null;
+      const noPrompt = parsed.answersFile || parsed.getWargameEngine || parsed.setWargameEngine !== null || parsed.wreckerRecord !== null;
       const prompter = noPrompt ? null : realReadlinePrompter();
       return runInit({
         argv,
