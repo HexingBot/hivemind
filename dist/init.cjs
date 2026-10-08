@@ -9262,53 +9262,62 @@ async function saveWargameEngine({ repoRoot, value }) {
 var HIGH_KINDS = /* @__PURE__ */ new Set(["counterexample", "contradiction", "dead_end"]);
 var ID_MAX = 40;
 function kindOf(f) {
-  return String(f.type ?? f.kind ?? "").trim();
+  return String(f.type ?? "").trim();
 }
 function oneLine(s) {
-  return String(s ?? "").replace(/\s+/g, " ").replace(/[\[\]]/g, "").trim();
+  return String(s ?? "").replace(/[\[\]`"'“”]/g, "").replace(/\s+/g, " ").trim();
+}
+function tok(s, fallback = "?") {
+  const t = String(s ?? "").replace(/[^A-Za-z0-9._/-]/g, "-").replace(/^-+|-+$/g, "");
+  return t || fallback;
+}
+function fallbackId(caseId, seq) {
+  return `WR-${tok(caseId, "X").replace(/[^A-Za-z0-9]/g, "")}-${String(seq).padStart(3, "0")}`.slice(0, ID_MAX);
 }
 function markerId(f, caseId, seq) {
   const clean = String(f.finding_id ?? "").replace(/[^A-Za-z0-9._/-]/g, "-");
-  if (clean && clean.length <= ID_MAX) return clean;
-  return `WR-${String(caseId).replace(/[^A-Za-z0-9]/g, "")}-${String(seq).padStart(3, "0")}`.slice(0, ID_MAX);
+  if (/[A-Za-z0-9]/.test(clean) && clean.length <= ID_MAX) return clean;
+  return fallbackId(caseId, seq);
 }
 function buildWreckerRecord({ cases, not_attacked = [] }) {
   if (!Array.isArray(cases)) throw new Error('buildWreckerRecord: "cases" must be an array');
   const highMarkers = [];
   const questions = [];
   const attacked = [];
-  const notAttacked = not_attacked.map((n) => `${n.case} (${oneLine(n.reason) || "no reason given"})`);
+  const notAttacked = not_attacked.map((n) => `${tok(n.case)} (${oneLine(n.reason) || "no reason given"})`);
   const seen = /* @__PURE__ */ new Set();
+  if (cases.length === 0) throw new Error("buildWreckerRecord: no attacked cases \u2014 an empty record would read as a pass; nothing ran");
   for (const c of cases) {
-    const caseId = c.case;
-    if (!caseId) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
-    const findings = Array.isArray(c.findings) ? c.findings : [];
+    if (!c.case) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
+    const caseId = tok(c.case);
+    if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array \u2014 missing findings must not read as a clean run`);
+    const findings = c.findings;
     const cov = c.coverage?.steps_reached;
-    const covText = cov && cov.total !== void 0 ? `coverage ${cov.reached}/${cov.total} steps (${cov.pct}%)` : "coverage NOT REPORTED";
-    const never = Array.isArray(c.steps_never_reached) ? c.steps_never_reached : [];
+    const covText = cov && cov.total !== void 0 ? `coverage ${tok(cov.reached)}/${tok(cov.total)} steps (${tok(cov.pct)}%)` : "coverage NOT REPORTED";
+    const never = (Array.isArray(c.steps_never_reached) ? c.steps_never_reached : []).map((x) => tok(x));
     const counts = {};
     let seq = 0;
     for (const f of findings) {
       seq += 1;
       const kind = kindOf(f);
       counts[kind] = (counts[kind] || 0) + 1;
-      const step = f.step_cited ?? f.step ?? "?";
+      const step = tok(f.step_cited);
       if (HIGH_KINDS.has(kind)) {
         let id = markerId(f, caseId, seq);
-        if (seen.has(id)) id = `WR-${String(caseId).replace(/[^A-Za-z0-9]/g, "")}-${String(seq).padStart(3, "0")}`.slice(0, ID_MAX);
+        if (seen.has(id)) id = fallbackId(caseId, seq);
         seen.add(id);
         highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
       } else if (kind === "gap") {
         const endStep = /^end/i.test(String(step));
-        questions.push(`${caseId} gap at step ${step}${endStep ? " [END STEP: review by hand, TASK-113]" : ""}: ${oneLine(f.explanation)}`);
+        questions.push(`${caseId} gap at step ${step}${endStep ? " (END STEP: review by hand, TASK-113)" : ""}: ${oneLine(f.explanation)}`);
       } else {
-        throw new Error(`buildWreckerRecord: unknown finding kind "${kind}" in ${caseId} (${f.finding_id ?? "no id"}) \u2014 expected counterexample|contradiction|dead_end|gap`);
+        throw new Error(`buildWreckerRecord: unknown finding kind "${oneLine(kind)}" in ${caseId} (${tok(f.finding_id, "no id")}) \u2014 expected counterexample|contradiction|dead_end|gap`);
       }
     }
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ") || "0 findings";
-    let line = `${caseId} path ${c.path || "main"}: ${covText}; ${kinds}`;
-    if (c.spec) line += `; spec ${c.spec}`;
-    if (c.session_id) line += `; session ${c.session_id}`;
+    let line = `${caseId} path ${tok(c.path, "main")}: ${covText}; ${kinds}`;
+    if (c.spec) line += `; spec ${tok(c.spec)}`;
+    if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
     if (never.length > 0) {
       const why = c.dry_run_only ? "dry_run only (run_session not performed)" : "not reached in the session";
@@ -9324,9 +9333,10 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
     `Attacked (case + path): ${attacked.join(" | ") || "none"}.`,
     `Not attacked: ${notAttacked.join(" | ") || "nothing declared"}.`,
     `HIGH candidates opened: ${high} (each is a separate marker comment; they block the close until triaged). Non-blocking questions for the spec owner: ${questions.length}.`,
+    ...questions.map((q) => `Question for the spec owner (does not block): ${q}`),
     "Zero counterexamples proves nothing by itself: read the coverage above."
   ].join("\n");
-  return { wargaming: body, high_markers: highMarkers, questions, open_high: high };
+  return { wargaming: body, high_markers: highMarkers, questions };
 }
 
 // src/pack-hooks.js
@@ -11608,21 +11618,21 @@ function parseArgs(argv) {
     yes: false
   };
   for (let i = 0; i < argv.length; i++) {
-    const tok = argv[i];
-    if (!KNOWN_FLAGS.has(tok)) {
-      throw new Error(`unknown argument: ${tok}`);
+    const tok2 = argv[i];
+    if (!KNOWN_FLAGS.has(tok2)) {
+      throw new Error(`unknown argument: ${tok2}`);
     }
-    if (tok === "--force") out.force = true;
-    if (tok === "--help") out.help = true;
-    if (tok === "--no-archive") out.noArchive = true;
-    if (tok === "--claude-md-consent") out.claudeMdConsent = true;
-    if (tok === "--apply-models") out.applyModels = true;
-    if (tok === "--apply-workflows") out.applyWorkflows = true;
-    if (tok === "--apply-settings") out.applySettings = true;
-    if (tok === "--apply-permissions") out.applyPermissions = true;
-    if (tok === "--yes") out.yes = true;
-    if (tok === "--get-wargame-engine") out.getWargameEngine = true;
-    if (tok === "--set-wargame-engine") {
+    if (tok2 === "--force") out.force = true;
+    if (tok2 === "--help") out.help = true;
+    if (tok2 === "--no-archive") out.noArchive = true;
+    if (tok2 === "--claude-md-consent") out.claudeMdConsent = true;
+    if (tok2 === "--apply-models") out.applyModels = true;
+    if (tok2 === "--apply-workflows") out.applyWorkflows = true;
+    if (tok2 === "--apply-settings") out.applySettings = true;
+    if (tok2 === "--apply-permissions") out.applyPermissions = true;
+    if (tok2 === "--yes") out.yes = true;
+    if (tok2 === "--get-wargame-engine") out.getWargameEngine = true;
+    if (tok2 === "--set-wargame-engine") {
       const value = argv[i + 1];
       if (value === void 0 || KNOWN_FLAGS.has(value)) {
         throw new Error("--set-wargame-engine requires a value (wrecker|hivemind)");
@@ -11630,7 +11640,7 @@ function parseArgs(argv) {
       out.setWargameEngine = value;
       i += 1;
     }
-    if (tok === "--wrecker-record") {
+    if (tok2 === "--wrecker-record") {
       const value = argv[i + 1];
       if (value === void 0 || KNOWN_FLAGS.has(value)) {
         throw new Error("--wrecker-record requires a JSON file path (Wrecker findings per case)");
@@ -11638,7 +11648,7 @@ function parseArgs(argv) {
       out.wreckerRecord = value;
       i += 1;
     }
-    if (tok === "--answers-file") {
+    if (tok2 === "--answers-file") {
       const value = argv[i + 1];
       if (value === void 0 || VALUE_FLAGS.has(value) || KNOWN_FLAGS.has(value)) {
         throw new Error("--answers-file requires a file path argument");

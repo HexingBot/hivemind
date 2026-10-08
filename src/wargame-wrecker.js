@@ -25,18 +25,30 @@ const HIGH_KINDS = new Set(['counterexample', 'contradiction', 'dead_end']);
 const ID_MAX = 40; // mirrors task-store.js FINDING_ID_MAX_LEN
 
 function kindOf(f) {
-  return String(f.type ?? f.kind ?? '').trim();
+  return String(f.type ?? '').trim();
 }
 
+// Free text going into a ticket comment: one line, and none of the characters
+// the close guard treats as marker syntax or as "this is only a mention"
+// (brackets, backticks, quotes), so it can neither forge nor neutralize a marker.
 function oneLine(s) {
-  // Keep marker text on one line and free of bracket syntax the close guard scans.
-  return String(s ?? '').replace(/\s+/g, ' ').replace(/[\[\]]/g, '').trim();
+  return String(s ?? '').replace(/[\[\]`"'“”]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Identifier-like values (case, step, path, spec, session): strict token.
+function tok(s, fallback = '?') {
+  const t = String(s ?? '').replace(/[^A-Za-z0-9._/-]/g, '-').replace(/^-+|-+$/g, '');
+  return t || fallback;
+}
+
+function fallbackId(caseId, seq) {
+  return `WR-${tok(caseId, 'X').replace(/[^A-Za-z0-9]/g, '')}-${String(seq).padStart(3, '0')}`.slice(0, ID_MAX);
 }
 
 function markerId(f, caseId, seq) {
   const clean = String(f.finding_id ?? '').replace(/[^A-Za-z0-9._/-]/g, '-');
-  if (clean && clean.length <= ID_MAX) return clean;
-  return `WR-${String(caseId).replace(/[^A-Za-z0-9]/g, '')}-${String(seq).padStart(3, '0')}`.slice(0, ID_MAX);
+  if (/[A-Za-z0-9]/.test(clean) && clean.length <= ID_MAX) return clean;
+  return fallbackId(caseId, seq);
 }
 
 export function buildWreckerRecord({ cases, not_attacked = [] }) {
@@ -44,18 +56,20 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
   const highMarkers = [];
   const questions = [];
   const attacked = [];
-  const notAttacked = not_attacked.map((n) => `${n.case} (${oneLine(n.reason) || 'no reason given'})`);
+  const notAttacked = not_attacked.map((n) => `${tok(n.case)} (${oneLine(n.reason) || 'no reason given'})`);
   const seen = new Set();
+  if (cases.length === 0) throw new Error('buildWreckerRecord: no attacked cases — an empty record would read as a pass; nothing ran');
 
   for (const c of cases) {
-    const caseId = c.case;
-    if (!caseId) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
-    const findings = Array.isArray(c.findings) ? c.findings : [];
+    if (!c.case) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
+    const caseId = tok(c.case);
+    if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array — missing findings must not read as a clean run`);
+    const findings = c.findings;
     const cov = c.coverage?.steps_reached;
     const covText = cov && cov.total !== undefined
-      ? `coverage ${cov.reached}/${cov.total} steps (${cov.pct}%)`
+      ? `coverage ${tok(cov.reached)}/${tok(cov.total)} steps (${tok(cov.pct)}%)`
       : 'coverage NOT REPORTED';
-    const never = Array.isArray(c.steps_never_reached) ? c.steps_never_reached : [];
+    const never = (Array.isArray(c.steps_never_reached) ? c.steps_never_reached : []).map((x) => tok(x));
     const counts = {};
     let seq = 0;
 
@@ -63,24 +77,24 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
       seq += 1;
       const kind = kindOf(f);
       counts[kind] = (counts[kind] || 0) + 1;
-      const step = f.step_cited ?? f.step ?? '?';
+      const step = tok(f.step_cited);
       if (HIGH_KINDS.has(kind)) {
         let id = markerId(f, caseId, seq);
-        if (seen.has(id)) id = `WR-${String(caseId).replace(/[^A-Za-z0-9]/g, '')}-${String(seq).padStart(3, '0')}`.slice(0, ID_MAX);
+        if (seen.has(id)) id = fallbackId(caseId, seq);
         seen.add(id);
         highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
       } else if (kind === 'gap') {
         const endStep = /^end/i.test(String(step));
-        questions.push(`${caseId} gap at step ${step}${endStep ? ' [END STEP: review by hand, TASK-113]' : ''}: ${oneLine(f.explanation)}`);
+        questions.push(`${caseId} gap at step ${step}${endStep ? ' (END STEP: review by hand, TASK-113)' : ''}: ${oneLine(f.explanation)}`);
       } else {
-        throw new Error(`buildWreckerRecord: unknown finding kind "${kind}" in ${caseId} (${f.finding_id ?? 'no id'}) — expected counterexample|contradiction|dead_end|gap`);
+        throw new Error(`buildWreckerRecord: unknown finding kind "${oneLine(kind)}" in ${caseId} (${tok(f.finding_id, 'no id')}) — expected counterexample|contradiction|dead_end|gap`);
       }
     }
 
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || '0 findings';
-    let line = `${caseId} path ${c.path || 'main'}: ${covText}; ${kinds}`;
-    if (c.spec) line += `; spec ${c.spec}`;
-    if (c.session_id) line += `; session ${c.session_id}`;
+    let line = `${caseId} path ${tok(c.path, 'main')}: ${covText}; ${kinds}`;
+    if (c.spec) line += `; spec ${tok(c.spec)}`;
+    if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
 
     if (never.length > 0) {
@@ -100,8 +114,9 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
     `Attacked (case + path): ${attacked.join(' | ') || 'none'}.`,
     `Not attacked: ${notAttacked.join(' | ') || 'nothing declared'}.`,
     `HIGH candidates opened: ${high} (each is a separate marker comment; they block the close until triaged). Non-blocking questions for the spec owner: ${questions.length}.`,
+    ...questions.map((q) => `Question for the spec owner (does not block): ${q}`),
     'Zero counterexamples proves nothing by itself: read the coverage above.',
   ].join('\n');
 
-  return { wargaming: body, high_markers: highMarkers, questions, open_high: high };
+  return { wargaming: body, high_markers: highMarkers, questions };
 }

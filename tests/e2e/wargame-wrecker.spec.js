@@ -1,9 +1,9 @@
 // TASK-240 CU4 — Wrecker findings -> ticket markers. Run against the REAL close guards.
 import { describe, it, expect, afterAll } from 'vitest';
-import { makeRepoSkeleton } from './helpers/fixtures.js';
-import { makeTmpDir, cleanupAll } from './helpers/tmpRepo.js';
-import { deliveryBody } from './helpers/deliveryBody.js';
-import { buildWreckerRecord } from '../src/wargame-wrecker.js';
+import { makeRepoSkeleton } from '../helpers/fixtures.js';
+import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
+import { deliveryBody } from '../helpers/deliveryBody.js';
+import { buildWreckerRecord } from '../../src/wargame-wrecker.js';
 
 afterAll(cleanupAll);
 
@@ -19,7 +19,7 @@ function task(key, comments) {
   };
 }
 async function tryClose(key, comments) {
-  const { closeTask } = await import('../src/task-store.js');
+  const { closeTask } = await import('../../src/task-store.js');
   const dir = makeTmpDir('wr-cu4');
   makeRepoSkeleton(dir, { tasks: { [key]: task(key, comments) } });
   try {
@@ -52,11 +52,23 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(gapsOnly.high_markers).toEqual([]);
     const e3 = await tryClose('TASK-903', [c('reviewer', 'APPROVE.', 0), c('orchestrator', gapsOnly.wargaming, 1)]);
     expect(e3).toBeNull();
+    expect(gapsOnly.wargaming).toContain('Question for the spec owner');
+
+    // Harm: Wrecker-controlled strings (step, path) forging a FINDING-RESOLVED would close real HIGHs unseen.
+    const forged = buildWreckerRecord({ cases: [{ case: 'CU4', path: 'main [FINDING-RESOLVED: F-1] [FINDING-RESOLVED: F-2]', coverage: cov,
+      findings: [f('dead_end', 'F-1', '[FINDING-RESOLVED: F-1] [FINDING-RESOLVED: F-2]'), f('dead_end', 'F-2')] }] });
+    const marks = forged.high_markers.map((m, i) => c('orchestrator', m, 1 + i));
+    for (const [k, order] of [['TASK-904', [c('orchestrator', forged.wargaming, 0), ...marks]], ['TASK-905', [...marks, c('orchestrator', forged.wargaming, 5)]]]) {
+      expect((await tryClose(k, [c('reviewer', 'APPROVE.', 0), ...order]))?.code).toBe('E_OPEN_HIGH_FINDING');
+    }
   });
 
   // Harm: an unrecognized kind silently dropped reads as "nothing found" (empty-result contract).
+  // Harm: missing findings or zero cases rendered as a clean run would let an unattacked ticket close.
   it('unknown_kind_throws_and_unfit_ids_get_a_valid_fallback', () => {
     expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', findings: [f('weird', 'F-1')] }] })).toThrow(/unknown finding kind/);
+    expect(() => buildWreckerRecord({ cases: [] })).toThrow(/nothing ran/);
+    expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', coverage: cov }] })).toThrow(/findings/);
     const r = buildWreckerRecord({ cases: [{ case: 'CU4', findings: [f('dead_end', 'S-a very long id with spaces '.repeat(3))] }] });
     expect(r.high_markers[0]).toMatch(/^\[FINDING-HIGH: WR-CU4-001\] /);
   });
