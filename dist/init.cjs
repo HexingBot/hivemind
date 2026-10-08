@@ -9225,8 +9225,9 @@ async function readWargameEngine({ repoRoot }) {
   const { frontmatter } = await readProjectMd({ repoRoot });
   const raw = frontmatter.wargame_engine;
   if (raw === void 0 || raw === null || raw === "") return { status: "unset" };
-  const engine = normalizeWargameEngine(String(raw));
-  if (engine === null || engine !== raw) return { status: "invalid", raw: String(raw) };
+  const unquoted = String(raw).trim().replace(/^(["'])(.*)\1$/, "$2");
+  const engine = normalizeWargameEngine(unquoted);
+  if (engine === null) return { status: "invalid", raw: String(raw) };
   return { status: "set", engine };
 }
 async function saveWargameEngine({ repoRoot, value }) {
@@ -11551,11 +11552,10 @@ function parseArgs(argv) {
     if (tok === "--set-wargame-engine") {
       const value = argv[i + 1];
       if (value === void 0 || KNOWN_FLAGS.has(value)) {
-        out.setWargameEngine = "";
-      } else {
-        out.setWargameEngine = value;
-        i += 1;
+        throw new Error("--set-wargame-engine requires a value (wrecker|hivemind)");
       }
+      out.setWargameEngine = value;
+      i += 1;
     }
     if (tok === "--answers-file") {
       const value = argv[i + 1];

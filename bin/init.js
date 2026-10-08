@@ -177,14 +177,13 @@ function parseArgs(argv) {
     if (tok === '--get-wargame-engine') out.getWargameEngine = true;
     if (tok === '--set-wargame-engine') {
       const value = argv[i + 1];
-      // An absent value is the "skip" answer: it is passed through so the
-      // save is a reported no-op, not an error (TASK-240 CU1 skip path).
+      // A missing value is a parse error (skipping = call nothing); this also
+      // removes the `--set-wargame-engine --yes` ambiguity (TASK-240 LOW-1).
       if (value === undefined || KNOWN_FLAGS.has(value)) {
-        out.setWargameEngine = '';
-      } else {
-        out.setWargameEngine = value;
-        i += 1;
+        throw new Error('--set-wargame-engine requires a value (wrecker|hivemind)');
       }
+      out.setWargameEngine = value;
+      i += 1;
     }
     if (tok === '--answers-file') {
       const value = argv[i + 1];

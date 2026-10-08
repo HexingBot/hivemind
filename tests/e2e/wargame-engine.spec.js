@@ -62,4 +62,45 @@ describe('TASK-240 CU1 — wargame_engine', () => {
     expect(await run('')).toEqual({ status: 'unset' });
     expect(await run('nope')).toEqual({ status: 'unset' });
   });
+
+  // Harm: a natural hand edit (quoted/capitalised) read as invalid makes the orchestrator re-ask a setting the human already chose;
+  // a bad value read as set would silently pick an engine. Also: --set with no value must fail, not silently no-op.
+  it('CU3_hand_edit_is_normalized_on_read_and_set_without_value_is_a_parse_error', async () => {
+    const { readWargameEngine, saveWargameEngine } = await mod();
+    const { runInit } = await import(PROD.init);
+    const dir = makeTmpDir('wge-cu3');
+    const p = join(dir, 'PROJECT.md');
+    const NL = String.fromCharCode(10);
+    const withLine = (v) => FM.replace(`schema_version: 1${NL}`, `schema_version: 1${NL}wargame_engine: ${v}${NL}`);
+    for (const [v, want] of [['"wrecker"', 'wrecker'], ["'Hivemind'", 'hivemind'], ['Wrecker', 'wrecker']]) {
+      writeFileSync(p, withLine(v));
+      expect(await readWargameEngine({ repoRoot: dir })).toEqual({ status: 'set', engine: want });
+    }
+    for (const v of ['banana', `"wrecker'`, '""']) {
+      writeFileSync(p, withLine(v));
+      expect((await readWargameEngine({ repoRoot: dir })).status).toBe('invalid');
+    }
+    writeFileSync(p, withLine('"wrecker"'));
+    await saveWargameEngine({ repoRoot: dir, value: 'hivemind' });
+    expect(readFileSync(p, 'utf8')).toBe(withLine('hivemind'));
+    for (const argv of [['--set-wargame-engine'], ['--set-wargame-engine', '--yes']]) {
+      await expect(runInit({ argv, repoRoot: dir, prompter: () => { throw new Error('asked'); } }))
+        .rejects.toThrow(/--set-wargame-engine requires a value/);
+    }
+    expect(readFileSync(p, 'utf8')).toBe(withLine('hivemind'));
+  });
+
+  // Harm: re-asking the engine question when it is already saved (init re-run, or --answers-file carrying it) defeats "set once per project".
+  it('CU2_saved_engine_is_never_asked_again', async () => {
+    const { runInit } = await import(PROD.init);
+    const { readWargameEngine } = await mod();
+    const asked = [];
+    const prompter = async (ctx) => { asked.push(ctx.prompt); return ''; };
+    const fresh = makeTmpDir('wge-cu2-fresh');
+    await runInit({ argv: [], answers: webSaasAnswers({ wargame_engine: 'wrecker' }), repoRoot: fresh, now: () => '2026-05-26T12:00:00Z', hostname: 'h', prompter });
+    expect(await readWargameEngine({ repoRoot: fresh })).toEqual({ status: 'set', engine: 'wrecker' });
+    await runInit({ argv: [], repoRoot: fresh, now: () => '2026-05-26T12:00:00Z', hostname: 'h', prompter });
+    expect(await readWargameEngine({ repoRoot: fresh })).toEqual({ status: 'set', engine: 'wrecker' });
+    expect(asked.filter((s) => /Wargaming engine/i.test(s))).toEqual([]);
+  });
 });

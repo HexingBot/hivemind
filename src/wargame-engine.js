@@ -30,9 +30,11 @@ export async function readWargameEngine({ repoRoot }) {
   const { frontmatter } = await readProjectMd({ repoRoot });
   const raw = frontmatter.wargame_engine;
   if (raw === undefined || raw === null || raw === '') return { status: 'unset' };
-  const engine = normalizeWargameEngine(String(raw));
-  // Strict: only the exact canonical spelling counts as set on read.
-  if (engine === null || engine !== raw) return { status: 'invalid', raw: String(raw) };
+  // Hand edits in natural YAML form work: strip matching surrounding quotes and
+  // lowercase before validating (TASK-240 LOW-3). Genuinely bad values stay invalid.
+  const unquoted = String(raw).trim().replace(/^(["'])(.*)\1$/, '$2');
+  const engine = normalizeWargameEngine(unquoted);
+  if (engine === null) return { status: 'invalid', raw: String(raw) };
   return { status: 'set', engine };
 }
 
