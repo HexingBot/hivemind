@@ -43,10 +43,25 @@
       "author": "orchestrator",
       "at": "2026-10-08T23:11:56.324Z",
       "body": "REVIEWS PARCIALES (transcripción del Orquestador; NO es el veredicto final del ticket, por eso no va con author reviewer). Fuente: SubagentHandback de los transcripts de los reviewers ad5c11df9abaf28d7 y a6daf75f6b0d5a4d1, porque subagent-log.jsonl tiene vacío last_assistant_message.\n1) CU1, commit 133e0f2: APPROVE (alcance CU1). 0 HIGH. MEDIUM-1: checklist del hand-off no verificable desde el log (3 de 5 ítems verificados por el reviewer). LOW-1 (--set sin valor) y LOW-3 (valor entre comillas) se corrigieron en 2f4c121. Quedan LOW-2 (errores sin .code, convención existente), LOW-4 (answers-file con 'Wrecker' aborta init, sin escribir nada), LOW-5 (enum duplicado en schema).\n2) CU2 + CU3, commits 2f4c121 + d44272d: APPROVE. 0 HIGH. Lock de CU3 verificado rojo contra el árbol de 133e0f2; d44272d saca un lock de CU2 que no podía fallar (\"no re-pregunta\" ya es estructural y lo cubren los specs de idempotencia). MEDIUM-1: subagent-log.jsonl vacío -> ticket aparte. LOWs cosméticos (A-D).\nPendiente antes del cierre: CU4-CU8, wargaming, UAT (requires_uat), in_review y review final."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-08T23:37:57.195Z",
+      "body": "REVIEW CU4 (5a39914): BLOCK. Transcripción del Orquestador del hand-back del reviewer.\n[FINDING-HIGH: CU4-R-1] src/wargame-wrecker.js sanea sólo explanation y reason; step_cited, case, path, spec, session_id y not_attacked[].case entran crudos al texto que se postea. Reproducido contra el closeTask real: un step_cited o un path con marcadores RESOLVED cierra HIGH abiertos y el ticket cierra con un contraejemplo sin triage.\n[FINDING-HIGH: CU4-R-2] src/wargame-wrecker.js:53: un caso sin clave findings se registra como \"0 findings\", igual que una corrida limpia; el ticket cierra. Viola el contrato de resultado vacío.\nMEDIUM: las preguntas de los gaps no se registran en ningún lado (CU4 queda parcial); cases vacío pasa como wargaming; tests/wargame-wrecker.spec.js usa makeTmpDir y debe ir en tests/e2e/. LOWs: alias kind/step especulativos, open_high redundante, errores sin .code, id sólo de puntuación, aserción floja en spec:49.\nFlake de wargame-engine.spec.js: no atribuible a este diff según el reviewer."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-08T23:54:25.869Z",
+      "body": "RE-REVIEW CU4 (fix 1b5afe0): PASS. Transcripción del Orquestador. Ambos HIGH reproducidos contra el closeTask real y ya no cierran el ticket (incluye corchetes fullwidth, em-dash, CR/LF, comillas, prefijo [WARGAMING] falso).\n[FINDING-RESOLVED: CU4-R-1]\n[FINDING-RESOLVED: CU4-R-2]\nMEDIUM pendiente: la deduplicación de ids distingue mayúsculas y el guard no, así que F-1 y f-1 dan dos marcadores que se cierran con un solo RESOLVED. LOWs: fallback de id sin re-chequear colisión, comentario del header sobre `kind` falso, errores sin .code, aserción floja en el spec."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-08T23:57:55.317Z",
+      "body": "CU4 follow-up 056babd: cierra el MEDIUM de la re-review (dedup de ids con la normalización a mayúsculas del guard; fallback en loop hasta que sea único) y tres LOWs (comentario de header, aserción toBeNull). Lock extendido en el spec existente, plantado rojo-verde por el Developer. Re-corrido por el Orquestador: wargame-wrecker + dist-parity 4/4 verde. Commits de CU4: 5a39914, 1b5afe0, 056babd (sin push). Pendiente de CU4: el wargaming al final del ticket. Sigue CU5."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-08T23:11:56.324Z",
+  "updated_at": "2026-10-08T23:57:55.317Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "requires_uat": true
