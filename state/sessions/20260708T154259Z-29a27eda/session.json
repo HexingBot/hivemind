@@ -2,14 +2,12 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "paused",
-  "updated_at": "2026-10-08T17:16:01.312Z",
+  "updated_at": "2026-10-08T18:01:15.311Z",
   "active_task": "TASK-240",
   "workflow_step": "plan",
-  "next_action": "1) Leer hub despues de msg_0028 (node D:/hivemind-bridge/server/cli.mjs read hub) y re-armar el chequeo del bridge cada minuto si el humano lo quiere. 2) Confirmar que cargan las tools wargame_* y que wargame_status da sha d7a135d o posterior con stale:false. 3) Piloto CU9 sobre TASK-239: wargame_spec_guide -> spec por CU -> wargame_lint_spec hasta 0 -> wargame_dry_run -> run_session; ancla live solo con design/anchors/<UC>.runner.json. 4) Comparar con el wargaming registrado en TASK-239 y mandar session_id a Wrecker por el hub.",
-  "handoff_summary": "TASK-240 (motor de wargaming por proyecto: Wrecker via /wrecker:wargame o default hivemind). Pedido y CU1-CU9 aprobados por el humano 2026-10-08, registrados en el ticket. Bridge hub: Wrecker acepto el piloto y el skill (msg_0026); su humano aprobo su TASK-110 (/wrecker:wargame + mode short), se construye cuando salga su plugin publico TASK-071 (msg_0027). Hivemind respondio pidiendo id estable por finding, paths_attacked, random_seed y etiqueta mode:short (msg_0028). MCP de Wrecker agregado en scope local (~/.claude.json), carga al reiniciar.",
-  "open_questions": [
-    "TASK-238 AC3 — DECISION DE MATO: el comentario de wargaming de TASK-234 tiene prosa en el offset 3213 que arranca con la sintaxis literal [FINDING-HIGH: y se come 1196 chars hasta el proximo corchete. La opcion por defecto es NO tocar el texto historico y arreglar el parser; la alternativa es que Mato autorice corregir la prosa del comentario. El fix del parser en si NO necesita decision suya, solo la aprobacion de la lista de casos de uso que pide la politica para superficie peligrosa."
-  ],
+  "next_action": "1) Leer respuesta de Wrecker a msg_0034. 2) Cuando conecte hivemind-tasks: registrar el piloto (text + live) como comentario en TASK-240 y commitear design/wargame/ y design/anchors/. 3) Seguir con CU1-CU8 de TASK-240.",
+  "handoff_summary": "TASK-240 CU9 piloto CORRIDO sobre TASK-239. Spec design/wargame/TASK-239/UC-DONATE.md (donate-v2, lint 0). dry_run r1 (v1): 1 dead_end + 1 gap reales del spec (confirmar con monto invalido sin salida; ir a PayPal con el 5 inicial) -> corregidos en v2. dry_run r2 y run_session stage B S-UC-DONATE-239-r3 (18090 tokens cheap): cobertura 13/13, solo 4 gaps fuera de orden, ningun bloqueante; el modelo no agrego nada sobre el dry_run. Sin ancla live (no hay runner.json). Comparacion: TASK-239 ataco valores/XSS/idioma, Wrecker ataca caminos/orden; complementarios. Resultado enviado a Wrecker en hub msg_0030. MCP hivemind-tasks no conecto: el resultado NO esta registrado en el ticket todavia. LIVE: runner.json en design/anchors/UC-DONATE.runner.json (copia en D:/wargame-qa-mcp/design/anchors/, sin trackear, el server la lee desde su cwd). S-UC-DONATE-239-r6 contra docs/ servido en localhost:8239: 0 contraejemplos, stage D sin nada que verificar, flujo principal undetermined por popup off-origin a paypal.me (cortado a proposito). Caminos de fallo ok en 4 plays manuales. 7 hallazgos del runner enviados a Wrecker en msg_0034 (2 bugs: pagina colgada tras cortar el popup, causa off-origin mal atribuida).",
+  "open_questions": [],
   "blockers": [
     "El push a origin/main esta bloqueado por el permiso del harness: los commits quedan locales."
   ],
