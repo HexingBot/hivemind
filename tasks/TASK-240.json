@@ -88,10 +88,25 @@
       "author": "orchestrator",
       "at": "2026-10-09T04:10:38.272Z",
       "body": "RE-REVIEW CU8 (3acd181): PASS. Transcripción del Orquestador. El reviewer reprodujo contra el closeTask real: con bloque 3 neutro, el ticket cierra sólo con el comentario [WARGAMING] del default, y sin él se rechaza con E_DELIVERY_BODY. Re-plantó él mismo: si el guard exige un campo de Wrecker, el lock se pone rojo por la razón correcta. Plays-cut plantado. Formato de where alineado con Wrecker 0.2.0.\n[FINDING-RESOLVED: CU8-R-1]\nLOW: el negativo pareado debería exigir E_DELIVERY_BODY en vez de cualquier código.\nDECISIÓN DEL HUMANO (2026-10-08): integrar /wrecker:wargame (Wrecker 0.2.0) dentro de TASK-240, antes del wargaming del ticket. Su JSON (specs[] + mapping) no trae lint ni estado de sesión, así que el registro tiene que aceptarlo sin perder esas protecciones. Pregunta a Wrecker por los cortes de 120 s en hub msg_0050."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T04:20:21.436Z",
+      "body": "REVIEW integración /wrecker:wargame (656caa5): BLOCK. Transcripción del Orquestador. Confirmado en el dist de Wrecker 0.2.0 que un corte de sesión siempre deja la línea \"the rest of the session: <limit> cut it ...\" en not_running (detección confiable del lado de Wrecker; del lado del skill depende de que copie not_running tal cual). Rechazos de WRECKER_NOT_CONNECTED, error de nivel superior, specs vacío, todo LINT_FAILED, findings ausente y corte: todos tiran. Saneo intacto en los campos nuevos.\n[FINDING-HIGH: CU4-W-1] src/wargame-wrecker.js:171-182: con un UC id de 26+ caracteres, los stable ids pasan de 40 y caen al fallback WR-CUn-00k; dentro de una entrada plegada todos los ids colapsan al mismo fallback y se descartan como duplicados, así que un contraejemplo queda sin [FINDING-HIGH] y no bloquea el cierre. Además el fallback pierde la correlación con el stable id.\nMEDIUM: mapping.blocking/questions se ignora (un id sólo en mapping se pierde en silencio); docs: case_map como paso normal, \"el skill no reanuda\" como lectura del texto 0.2.0 con la pregunta abierta, y la salvedad de transcripción para not_running. LOWs: error no-string, not_running omitido cuando ningún path fue atacado, mostrar el uc original junto al CU."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T04:30:28.778Z",
+      "body": "RE-REVIEW CU4 /wrecker:wargame (f023b54): PASS. Transcripción del Orquestador. Reproducido contra el closeTask real: UC id de 38 caracteres + contraejemplo plegado [A,B] + dead_end -> 3 marcadores W-CU3-<12hex>, el cierre queda bloqueado hasta triar los tres; colisiones residuales se numeran -x<n> y nunca se descartan; el body muestra original -> marcador; saneo intacto. Lock re-plantado por el reviewer: rojo por la razón correcta.\n[FINDING-RESOLVED: CU4-W-1]\nMEDIUM pendiente (antes del wargaming del ticket): el cruce con mapping sólo mira casos atacados, pero el skill pone en mapping los ids de TODOS los specs; un spec cortado con findings hace fallar el registro aunque el JSON venga tal cual. LOWs: gemelo sólo por mayúsculas descartado sin aviso (inalcanzable con hex en minúsculas), slice muerto, mapping null/{} tratado como desacuerdo."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T04:31:55.746Z",
+      "body": "CU4 follow-up 3e63dc9: cierra el MEDIUM M-1 de la re-review (el cruce con mapping toma los ids de todos los specs del output del skill, atacados o no; un spec cortado con findings ya no rompe el registro y sigue en not_attacked) y tres LOWs (gemelo por mayúsculas anotado en el body, slice muerto quitado, mapping null = ausente). Lock extendido y plantado rojo-verde por el Developer. Re-corrido por el Orquestador: wargame-wrecker + dist-parity 4/4 verde, SKILL.md en paridad. Con esto termina la implementación de CU1-CU8; sigue in_review, review final del ticket completo, wargaming, UAT."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-09T04:10:38.272Z",
+  "updated_at": "2026-10-09T04:31:55.746Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "requires_uat": true
