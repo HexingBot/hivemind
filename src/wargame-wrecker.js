@@ -16,6 +16,9 @@
 //        (empty-result contract — absence of a mapping is not "nothing found").
 //
 // Input per attacked case: { case, path, spec?, session_id?, findings,
+//   lint: the FINAL wargame_lint_spec result ({findings:[], ...}) — REQUIRED and must be clean:
+//     Wrecker's MCP sessions run with accept_lint, so it does not refuse a spec that fails lint
+//     (CU6); the lint has no warning tier, so ANY finding or parse problem blocks,
 //   coverage?: { steps_reached: { reached, total, pct } },
 //   steps_never_reached?: string[], dry_run_only?: boolean }
 // plus top-level not_attacked: [{ case, reason }] for approved cases that got no spec.
@@ -62,6 +65,11 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
   for (const c of cases) {
     if (!c.case) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
     const caseId = tok(c.case);
+    const lint = c.lint;
+    if (!lint || typeof lint !== 'object' || !Array.isArray(lint.findings) || lint.findings.length > 0
+        || lint.valid === false || (Array.isArray(lint.problems) && lint.problems.length > 0)) {
+      throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) — a run on a spec that failed lint cannot become a record`);
+    }
     if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array — missing findings must not read as a clean run`);
     const findings = c.findings;
     const cov = c.coverage?.steps_reached;
@@ -92,7 +100,7 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
     }
 
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || '0 findings';
-    let line = `${caseId} path ${tok(c.path, 'main')}: ${covText}; ${kinds}`;
+    let line = `${caseId} path ${tok(c.path, 'main')}: lint 0 findings; ${covText}; ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
