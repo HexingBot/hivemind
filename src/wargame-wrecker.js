@@ -56,13 +56,76 @@ function fallbackId(caseId, seq) {
   return `WR-${tok(caseId, 'X').replace(/[^A-Za-z0-9]/g, '')}-${String(seq).padStart(3, '0')}`.slice(0, ID_MAX);
 }
 
+// Stable ids (Wrecker's `stable_id` in the tools, `id` in /wrecker:wargame output) survive a re-run of
+// the same spec, so a FINDING-HIGH keeps matching its RESOLVED/DEGRADED; `finding_id` is the
+// per-session id and only a fallback.
+function stableOf(f) {
+  const v = f.stable_id ?? f.id;
+  return typeof v === 'string' && /[A-Za-z0-9]/.test(v) ? v : null;
+}
+
 function markerId(f, caseId, seq) {
-  const clean = String(f.finding_id ?? '').replace(/[^A-Za-z0-9._/-]/g, '-');
+  const clean = String(stableOf(f) ?? f.finding_id ?? '').replace(/[^A-Za-z0-9._/-]/g, '-');
   if (/[A-Za-z0-9]/.test(clean) && clean.length <= ID_MAX) return clean;
   return fallbackId(caseId, seq);
 }
 
-export function buildWreckerRecord({ cases, not_attacked = [] }) {
+// /wrecker:wargame (Wrecker >= 0.2.0) output -> the same inputs as the direct-tools shape.
+// The skill refuses to attack a spec that does not lint to 0, so "no error key" means lint-clean;
+// LINT_FAILED / TOOL_FAILED specs were NOT attacked and become not_attacked. The skill output has
+// no guard/continue_with, but a session cut leaves a "... cut it ..." line in not_running: such a
+// spec is NOT recorded as attacked. Use cases must be named CU<n> (the close guard's case syntax):
+// pass them so to the skill, or add a top-level case_map {"UC-1":"CU1"}; nothing is guessed.
+function fromSkill(out) {
+  if (out.error === 'WRECKER_NOT_CONNECTED') {
+    throw new Error('Wrecker is chosen but not connected (WRECKER_NOT_CONNECTED): nothing was attacked - follow the CU5 procedure (fix the connection and retry, or use the default engine THIS ONCE)');
+  }
+  if (out.error) throw new Error(`/wrecker:wargame returned error ${tok(out.error)}: nothing was attacked`);
+  if (!Array.isArray(out.specs)) throw new Error('buildWreckerRecord: /wrecker:wargame output has no "specs" array');
+  const map = out.case_map && typeof out.case_map === 'object' ? out.case_map : {};
+  const cases = [];
+  const notAttacked = [];
+  for (const sp of out.specs) {
+    const label = String(map[sp.uc] ?? sp.uc ?? '');
+    if (!/^CU\d+$/.test(label)) {
+      throw new Error(`buildWreckerRecord: use case "${tok(sp.uc)}" is not named CU<n> - name the approved cases CU<n> when calling /wrecker:wargame or add case_map (e.g. {"UC-1":"CU1"})`);
+    }
+    if (sp.error) {
+      const why = sp.error === 'LINT_FAILED'
+        ? `LINT_FAILED: ${oneLine((sp.problems ?? []).map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('; '))}`
+        : `${tok(sp.error)}: ${oneLine(sp.message)}`;
+      notAttacked.push({ case: label, reason: `spec not attacked, ${why}` });
+      continue;
+    }
+    const nr = Array.isArray(sp.not_running) ? sp.not_running.map(String) : [];
+    if (nr.some((l) => /\bcut it\b/.test(l))) {
+      notAttacked.push({ case: label, reason: 'session cut by a Wrecker limit (not_running shows a cut): not a finished run, the skill does not resume it' });
+      continue;
+    }
+    if (!Array.isArray(sp.paths_attacked)) throw new Error(`buildWreckerRecord: ${tok(label)} has no paths_attacked array`);
+    const hit = sp.paths_attacked.filter((x) => x && x.attacked);
+    for (const x of sp.paths_attacked) if (x && !x.attacked) notAttacked.push({ case: label, reason: `path ${tok(x.flow)} not attacked` });
+    if (hit.length === 0) {
+      notAttacked.push({ case: label, reason: 'no path was attacked' });
+      continue;
+    }
+    for (const l of nr) notAttacked.push({ case: label, reason: `not run: ${l}` });
+    cases.push({
+      case: label, skill: true,
+      path: hit.map((x) => `${tok(x.flow)}${x.reached ? '' : '(partial)'}`).join('/'),
+      spec: sp.spec_path, spec_version: sp.spec_version, spec_sha256: sp.spec_sha256, session_id: sp.session_id,
+      coverage: sp.coverage, findings: sp.findings,
+    });
+  }
+  if (cases.length === 0) {
+    throw new Error(`buildWreckerRecord: nothing was attacked (${notAttacked.map((n) => `${tok(n.case)}: ${n.reason}`).join(' | ') || 'no specs'}) - record these cases as NOT attacked, not as a Wrecker pass`);
+  }
+  return { cases, not_attacked: notAttacked, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
+}
+
+export function buildWreckerRecord(input) {
+  if (input && (input.engine === 'wrecker' || input.error || Array.isArray(input.specs))) input = fromSkill(input);
+  const { cases, not_attacked = [], header = null } = input ?? {};
   if (!Array.isArray(cases)) throw new Error('buildWreckerRecord: "cases" must be an array');
   const highMarkers = [];
   const questions = [];
@@ -75,13 +138,13 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
     if (!c.case) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
     const caseId = tok(c.case);
     const lint = c.lint;
-    if (!lint || typeof lint !== 'object' || !Array.isArray(lint.findings) || lint.findings.length > 0
+    if (!c.skill && (!lint || typeof lint !== 'object' || !Array.isArray(lint.findings) || lint.findings.length > 0
         || typeof lint.usecase !== 'string' || !lint.usecase.trim() || typeof lint.spec_version !== 'string' || !lint.spec_version.trim()
-        || lint.valid === false || (Array.isArray(lint.problems) && lint.problems.length > 0)) {
+        || lint.valid === false || (Array.isArray(lint.problems) && lint.problems.length > 0))) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) — a run on a spec that failed lint cannot become a record`);
     }
     if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array — missing findings must not read as a clean run`);
-    const st = c.status;
+    const st = c.skill ? {} : c.status;
     if (!st || typeof st !== 'object') {
       throw new Error(`buildWreckerRecord: ${caseId} carries no final session "status" — a run whose finish is not shown cannot become a record (CU7)`);
     }
@@ -104,21 +167,30 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
       counts[kind] = (counts[kind] || 0) + 1;
       const step = tok(f.step_cited);
       if (HIGH_KINDS.has(kind)) {
-        let id = markerId(f, caseId, seq);
-        // Dedup on the close guard's normalization (it upper-cases ids), so F-1 and f-1 cannot
-        // become two markers that one RESOLVED closes together.
-        for (let n = 0; seen.has(id.toUpperCase()); n++) id = `${fallbackId(caseId, seq).slice(0, ID_MAX - 3)}${n ? `-${n}` : ''}`;
-        seen.add(id.toUpperCase());
-        highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
+        // A folded entry covers several stable ids: one marker per id, so each can be RESOLVED/DEGRADED.
+        const folded = [f.folded_ids, f.stable_ids].find((a) => Array.isArray(a) && a.length > 0);
+        const ids = folded ? folded.map((x) => markerId({ stable_id: String(x) }, caseId, seq)) : [markerId(f, caseId, seq)];
+        for (let id of ids) {
+          // Dedup on the close guard's normalization (it upper-cases ids), so F-1 and f-1 cannot
+          // become two markers that one RESOLVED closes together. A repeated STABLE id is the same
+          // candidate: one marker is enough.
+          const isStable = Boolean(folded || stableOf(f));
+          if (isStable && seen.has(id.toUpperCase())) continue;
+          for (let n = 0; seen.has(id.toUpperCase()); n++) id = `${fallbackId(caseId, seq).slice(0, ID_MAX - 3)}${n ? `-${n}` : ''}`;
+          seen.add(id.toUpperCase());
+          highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
+        }
       } else if (kind === 'gap') {
-        questions.push(`${caseId} gap at step ${step}: ${oneLine(f.explanation)}`);
+        const fids = [f.folded_ids, f.stable_ids].find((a) => Array.isArray(a) && a.length > 0);
+        const idNote = fids ? ` (folded ${fids.length}: ${fids.map((x) => tok(x)).join(', ')})` : (stableOf(f) ? ` (${tok(stableOf(f))})` : '');
+        questions.push(`${caseId} gap at step ${step}${idNote}: ${oneLine(f.explanation)}`);
       } else {
         throw new Error(`buildWreckerRecord: unknown finding kind "${oneLine(kind)}" in ${caseId} (${tok(f.finding_id, 'no id')}) — expected counterexample|contradiction|dead_end|gap`);
       }
     }
 
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || '0 findings';
-    let line = `${caseId} path ${tok(c.path, 'main')}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; session finished (stop: ${tok(st.stop_reason, 'not recorded')})${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.limits?.max_play_steps ?? st.guard.hits.find((h) => h && h.limit === 'max_play_steps')?.where)}` : ''}; ${kinds}`;
+    let line = `${caseId} path ${tok(c.path, 'main')}: ${c.skill ? `lint clean (guaranteed by /wrecker:wargame, spec_version ${tok(c.spec_version)}, sha256 ${tok(c.spec_sha256)})` : `lint clean (spec_version ${tok(lint.spec_version)})`}; ${covText}; ${c.skill ? 'no session cut shown in not_running' : `session finished (stop: ${tok(st.stop_reason, 'not recorded')})`}${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.limits?.max_play_steps ?? st.guard.hits.find((h) => h && h.limit === 'max_play_steps')?.where)}` : ''}; ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
@@ -133,7 +205,7 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
 
   const high = highMarkers.length;
   const body = [
-    '[WARGAMING] engine: wrecker.',
+    `[WARGAMING] engine: wrecker${header ? ` (${header})` : ''}.`,
     `Attacked (case + path): ${attacked.join(' | ') || 'none'}.`,
     `Not attacked: ${notAttacked.join(' | ') || 'nothing declared'}.`,
     `HIGH candidates opened: ${high} (each is a separate marker comment; they block the close until triaged). Non-blocking questions for the spec owner: ${questions.length}.`,
