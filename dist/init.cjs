@@ -9291,7 +9291,7 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
     if (!c.case) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
     const caseId = tok(c.case);
     const lint = c.lint;
-    if (!lint || typeof lint !== "object" || !Array.isArray(lint.findings) || lint.findings.length > 0 || lint.valid === false || Array.isArray(lint.problems) && lint.problems.length > 0) {
+    if (!lint || typeof lint !== "object" || !Array.isArray(lint.findings) || lint.findings.length > 0 || typeof lint.usecase !== "string" || !lint.usecase.trim() || typeof lint.spec_version !== "string" || !lint.spec_version.trim() || lint.valid === false || Array.isArray(lint.problems) && lint.problems.length > 0) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) \u2014 a run on a spec that failed lint cannot become a record`);
     }
     if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array \u2014 missing findings must not read as a clean run`);
@@ -9318,7 +9318,7 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
       }
     }
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ") || "0 findings";
-    let line = `${caseId} path ${tok(c.path, "main")}: lint 0 findings; ${covText}; ${kinds}`;
+    let line = `${caseId} path ${tok(c.path, "main")}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);

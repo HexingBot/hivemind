@@ -8,7 +8,7 @@ import { buildWreckerRecord } from '../../src/wargame-wrecker.js';
 afterAll(cleanupAll);
 
 const f = (type, id, step = '4') => ({ finding_id: id, type, step_cited: step, explanation: `x ${type} [y]` });
-const ok = { findings: [] };
+const ok = { findings: [], usecase: 'UC-X', spec_version: 'v1' };
 const cov = { steps_reached: { reached: 5, total: 5, pct: 100 } };
 
 function task(key, comments) {
@@ -70,7 +70,7 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, findings: [f('weird', 'F-1')] }] })).toThrow(/unknown finding kind/);
     expect(() => buildWreckerRecord({ cases: [] })).toThrow(/nothing ran/);
     // CU6: a case without a clean final lint (missing, findings, parse problems, valid:false) cannot become a record.
-    for (const lint of [undefined, { findings: [{ type: 'dead_end' }] }, { valid: false, findings: [], problems: ['x'] }, { valid: false, findings: [] }]) {
+    for (const lint of [undefined, { findings: [{ type: 'dead_end' }] }, { valid: false, findings: [], problems: ['x'] }, { valid: false, findings: [] }, { findings: [] }, { findings: [], usecase: 'UC-X', spec_version: ' ' }]) {
       expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', lint, coverage: cov, findings: [] }] })).toThrow(/lint/);
     }
     expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, coverage: cov }] })).toThrow(/findings/);

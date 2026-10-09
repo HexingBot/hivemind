@@ -18,7 +18,10 @@
 // Input per attacked case: { case, path, spec?, session_id?, findings,
 //   lint: the FINAL wargame_lint_spec result ({findings:[], ...}) — REQUIRED and must be clean:
 //     Wrecker's MCP sessions run with accept_lint, so it does not refuse a spec that fails lint
-//     (CU6); the lint has no warning tier, so ANY finding or parse problem blocks,
+//     (CU6); the lint has no warning tier, so ANY finding or parse problem blocks. HONEST LIMIT:
+//     this object is transcribed by the orchestrator, so the check is transcription discipline,
+//     not proof — paste the real wargame_lint_spec output (it always carries usecase and
+//     spec_version, which are required here),
 //   coverage?: { steps_reached: { reached, total, pct } },
 //   steps_never_reached?: string[], dry_run_only?: boolean }
 // plus top-level not_attacked: [{ case, reason }] for approved cases that got no spec.
@@ -67,6 +70,7 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
     const caseId = tok(c.case);
     const lint = c.lint;
     if (!lint || typeof lint !== 'object' || !Array.isArray(lint.findings) || lint.findings.length > 0
+        || typeof lint.usecase !== 'string' || !lint.usecase.trim() || typeof lint.spec_version !== 'string' || !lint.spec_version.trim()
         || lint.valid === false || (Array.isArray(lint.problems) && lint.problems.length > 0)) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) — a run on a spec that failed lint cannot become a record`);
     }
@@ -100,7 +104,7 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
     }
 
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || '0 findings';
-    let line = `${caseId} path ${tok(c.path, 'main')}: lint 0 findings; ${covText}; ${kinds}`;
+    let line = `${caseId} path ${tok(c.path, 'main')}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
