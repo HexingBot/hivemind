@@ -432,6 +432,11 @@ describe('DOC — runtime facts that motivate bundling over NODE_PATH', () => {
     // commit-existence.js — the fixture's closure has to mirror the module's
     // real one or the test stops measuring what it exists to measure.
     copyFileSync(join(REPO_ROOT, 'src', 'commit-existence.js'), join(srcDir, 'commit-existence.js'));
+    // TASK-240 — task-store.js now imports finding-markers.js directly (the finding-marker parser shared with the
+    // wargame record builder). It has zero imports, so no further transitive copy is needed. Omitting it made
+    // this block fail with ERR_MODULE_NOT_FOUND on finding-markers.js, and made the NODE_PATH test pass for the
+    // wrong reason (a missing LOCAL file, not NODE_PATH being ignored).
+    copyFileSync(join(REPO_ROOT, 'src', 'finding-markers.js'), join(srcDir, 'finding-markers.js'));
     copyFileSync(join(REPO_ROOT, 'tasks', 'schema.json'), join(tasksDir, 'schema.json'));
     return { root, srcDir };
   }

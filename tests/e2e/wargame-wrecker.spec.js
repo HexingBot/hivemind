@@ -244,11 +244,11 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     const okRun = await cliRun('TASK-951', ['CU1: a', 'CU2: b'], cliOut);
     expect(okRun.result.wargaming).toContain('CU2 (approved case with no result in this run)');
     await expect(cliRun('TASK-952', ['plain one', 'plain two'], cliOut)).rejects.toThrow(/no acceptance_criteria item starts/);
-    for (const near of ['CU2 \u2014 b', 'CU 4: d', '**CU5**: e', '1. CU6: f', 'cu3: c']) {
+    for (const near of ['CU2 \u2014 b', 'CU 4: d', '**CU5**: e', '1. CU6: f', 'cu3: c', '`CU2`: x', '[CU2]: x', 'CU-1: x', 'Caso CU2: x', '  CU2: x']) {
       await expect(cliRun('TASK-953', ['CU1: a', near], cliOut)).rejects.toThrow(/looks like an approved case/);
     }
     // leading zeros: CU07 on the ticket is the case CU7
-    expect(approvedFromAcceptanceCriteria(['CU07: g', 'CU7: dup'])).toEqual(['CU7']);
+    expect(approvedFromAcceptanceCriteria(['CU07: g', 'CU7: dup', 'CUDA is fast', 'Customer sees X', 'then CU5 happens mid-sentence'])).toEqual(['CU7']);
     expect(buildWreckerRecord({ cases: [{ case: 'CU7', lint: ok, spec_version: 'v1', status: fin, coverage: cov, findings: [] }] }, { ticketApproved: ['CU07'] }).wargaming)
       .not.toContain('approved case with no result');
     const direct = buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, spec_version: 'v1', status: fin, coverage: cov,

@@ -9509,8 +9509,8 @@ function approvedFromAcceptanceCriteria(acs) {
       out.push(normCu(`CU${exact[1]}`));
       continue;
     }
-    if (/^[\s*_#>\-\d.)(]*CU\s*\d+/i.test(item)) {
-      throw new Error(`acceptance_criteria item "${oneLine(item).slice(0, 60)}" looks like an approved case but is not exactly "CU<n>: <case>" - fix the ticket so no approved case is silently dropped`);
+    if (/^[\s*_#>\-\d.)(\[`]*(?:caso|case)?[\s*_`\[(]*CU[\s-]*\d+/i.test(item)) {
+      throw new Error(`acceptance_criteria item ${JSON.stringify(item.slice(0, 60))} looks like an approved case but is not exactly "CU<n>: <case>" - fix the ticket so no approved case is silently dropped`);
     }
   }
   return [...new Set(out)];

@@ -211,7 +211,7 @@ function ticketHistory(comments) {
 }
 
 // CU ids compare with leading zeros normalized (CU07 == CU7), everywhere.
-export function normCu(x) {
+function normCu(x) {
   return tok(x).toUpperCase().replace(/^CU0+(\d)/, 'CU$1');
 }
 
@@ -224,8 +224,9 @@ export function approvedFromAcceptanceCriteria(acs) {
     const item = String(raw);
     const exact = /^CU(\d+):/.exec(item);
     if (exact) { out.push(normCu(`CU${exact[1]}`)); continue; }
-    if (/^[\s*_#>\-\d.)(]*CU\s*\d+/i.test(item)) {
-      throw new Error(`acceptance_criteria item "${oneLine(item).slice(0, 60)}" looks like an approved case but is not exactly "CU<n>: <case>" - fix the ticket so no approved case is silently dropped`);
+    // near-miss: leading punctuation/numbering/markdown/brackets/backticks, an optional "Caso"/"Case", then CU[-/space]n
+    if (/^[\s*_#>\-\d.)(\[`]*(?:caso|case)?[\s*_`\[(]*CU[\s-]*\d+/i.test(item)) {
+      throw new Error(`acceptance_criteria item ${JSON.stringify(item.slice(0, 60))} looks like an approved case but is not exactly "CU<n>: <case>" - fix the ticket so no approved case is silently dropped`);
     }
   }
   return [...new Set(out)];
