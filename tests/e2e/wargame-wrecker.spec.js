@@ -74,7 +74,7 @@ describe('TASK-240 CU4 — Wrecker record', () => {
 
   // Harm: an unrecognized kind silently dropped reads as "nothing found" (empty-result contract).
   // Harm: a session cut at the 120 s limit recorded as finished (partial coverage / 0 findings so far read as clean); missing findings, zero cases, or a run on a spec that failed lint (Wrecker's MCP runs sessions with accept_lint, so it will not refuse) rendered as a clean run would let an unattacked ticket close.
-  it('unknown_kind_throws_and_unfit_ids_get_a_valid_fallback', () => {
+  it('refusals_and_id_handling_direct_shape_skill_shape_cut_resume_and_forgery', () => {
     expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, status: fin, findings: [f('weird', 'F-1')] }] })).toThrow(/unknown finding kind/);
     expect(() => buildWreckerRecord({ cases: [] })).toThrow(/nothing ran/);
     // CU6: a case without a clean final lint (missing, findings, parse problems, valid:false) cannot become a record.
@@ -141,6 +141,24 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(withCut.wargaming).toMatch(/CU8 \(not run:|CU8 \(session cut/);
     expect(withCut.high_markers).toEqual([]);
     expect(buildWreckerRecord({ ...out([sk({})]), mapping: null }).wargaming).toContain('CU9');
+    // CU7 on the skill path: a cut spec resumed to the end REPLACES the cut one (validated like a direct case);
+    // Harm: counting the cut run's partial findings/coverage as final, or letting a hand-written case claim lint-guaranteed.
+    const cutLine = ['the rest of the session: max_session_ms cut it at x; continue it with wargame_dry_run({"resume_session_id": "S-1"})'];
+    const cutSpec = sk({ uc: 'UC-8', not_running: cutLine, findings: [{ id: 'W-UC-8-eeeeeeeeeeee', type: 'dead_end', step_cited: '1', explanation: 'partial' }] });
+    const fin2 = { stop_reason: 'max_iterations', guard: { hits: [] } };
+    const resumedOk = { status: fin2, coverage: cov, session_id: 'S-1-r1', findings: [{ id: 'W-UC-8-eeeeeeeeeeee', type: 'dead_end', step_cited: '1', explanation: 'final' }, { id: 'W-UC-8-111111111111', type: 'gap', step_cited: '2', explanation: 'q' }] };
+    const base = { ...out([sk({}), cutSpec]), mapping: { blocking: ['W-UC-8-eeeeeeeeeeee'], questions: [] } };
+    const rr = buildWreckerRecord({ ...base, resumed: { 'UC-8': resumedOk } });
+    expect(rr.high_markers).toHaveLength(1);
+    expect(rr.wargaming).toMatch(/CU8 \(uc UC-8\) path main: lint clean \(guaranteed: the spec passed \/wrecker:wargame's lint before the session cut/);
+    expect(rr.wargaming).toContain('resumed to the end: session finished');
+    expect(rr.questions[0]).toContain('W-UC-8-111111111111');
+    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': { ...resumedOk, status: { continue_with: 'x' } } } })).toThrow(/CU7/);
+    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': { ...resumedOk, findings: undefined } } })).toThrow(/findings/);
+    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': resumedOk, 'UC-9': resumedOk } })).toThrow(/was not cut/);
+    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-7': resumedOk } })).toThrow(/matches no cut spec|lost silently/);
+    expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', skill: true, status: fin, coverage: cov, findings: [] }] })).toThrow(/may not carry/);
+    expect(() => buildWreckerRecord(out([sk({ spec_sha256: '' })]))).toThrow(/spec_version\/spec_sha256/);
     const direct = buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, status: fin, coverage: cov,
       findings: [{ ...f('dead_end', 'F-unstable'), stable_id: 'W-UC-4-111111111111' }] }] });
     expect(direct.high_markers[0]).toMatch(/^\[FINDING-HIGH: W-UC-4-111111111111\]/);

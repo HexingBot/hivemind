@@ -235,6 +235,9 @@ function parseArgs(argv) {
       (out.force || out.answersFile !== null)) {
     throw new Error('--get-wargame-engine/--set-wargame-engine cannot be combined with --force or --answers-file');
   }
+  if (out.wreckerRecord !== null && (out.force || out.answersFile !== null)) {
+    throw new Error('--wrecker-record cannot be combined with --force or --answers-file');
+  }
   return out;
 }
 

@@ -9283,6 +9283,7 @@ function markerId(f, caseId, seq) {
   if (/[A-Za-z0-9]/.test(clean) && clean.length <= ID_MAX) return clean;
   return fallbackId(caseId, seq);
 }
+var FROM_SKILL = /* @__PURE__ */ new WeakMap();
 function fromSkill(out) {
   if (out.error === "WRECKER_NOT_CONNECTED") {
     throw new Error("Wrecker is chosen but not connected (WRECKER_NOT_CONNECTED): nothing was attacked - follow the CU5 procedure (fix the connection and retry, or use the default engine THIS ONCE)");
@@ -9292,6 +9293,8 @@ function fromSkill(out) {
   const map = out.case_map && typeof out.case_map === "object" ? out.case_map : {};
   const cases = [];
   const notAttacked = [];
+  const resumed = out.resumed && typeof out.resumed === "object" ? out.resumed : {};
+  const usedResumed = /* @__PURE__ */ new Set();
   for (const sp of out.specs) {
     const label = String(map[sp.uc] ?? sp.uc ?? "");
     if (!/^CU\d+$/.test(label)) {
@@ -9303,8 +9306,29 @@ function fromSkill(out) {
       continue;
     }
     const nr = Array.isArray(sp.not_running) ? sp.not_running.map(String) : [];
-    if (nr.some((l) => /\bcut it\b/.test(l))) {
-      notAttacked.push({ case: label, reason: "session cut by a Wrecker limit (not_running shows a cut): not a finished run, the skill does not resume it" });
+    const isCut = nr.some((l) => /\bcut it\b/.test(l));
+    const rkey = [sp.uc, label].find((k) => k !== void 0 && Object.prototype.hasOwnProperty.call(resumed, k));
+    if (rkey !== void 0 && !isCut) {
+      throw new Error(`buildWreckerRecord: "resumed" has an entry for ${tok(label)} but its spec was not cut - a finished run is never replaced`);
+    }
+    if (isCut && rkey === void 0) {
+      const canResume = nr.some((l) => /continue it with/.test(l));
+      notAttacked.push({ case: label, reason: `session cut by a Wrecker limit and not resumed to the end (${canResume ? "resume cap reached or the resume failed" : "no checkpoint to resume from"}): not a finished run` });
+      continue;
+    }
+    if (typeof sp.spec_version !== "string" || !sp.spec_version.trim() || typeof sp.spec_sha256 !== "string" || !sp.spec_sha256.trim()) {
+      throw new Error(`buildWreckerRecord: ${tok(label)} has no spec_version/spec_sha256 - the record must tie the run to the attacked spec`);
+    }
+    if (isCut) {
+      usedResumed.add(rkey);
+      const r = resumed[rkey];
+      if (!r || typeof r !== "object") throw new Error(`buildWreckerRecord: resumed entry for ${tok(label)} is not an object`);
+      for (const l of nr) if (!/\bcut it\b/.test(l)) notAttacked.push({ case: label, reason: `not run: ${l}` });
+      const rc = { ...r, case: label, uc: sp.uc, spec: sp.spec_path, spec_version: sp.spec_version, spec_sha256: sp.spec_sha256 };
+      delete rc.skill;
+      delete rc.lint;
+      FROM_SKILL.set(rc, "resumed");
+      cases.push(rc);
       continue;
     }
     if (!Array.isArray(sp.paths_attacked)) throw new Error(`buildWreckerRecord: ${tok(label)} has no paths_attacked array`);
@@ -9315,10 +9339,9 @@ function fromSkill(out) {
       notAttacked.push({ case: label, reason: "no path was attacked" });
       continue;
     }
-    cases.push({
+    const sc = {
       case: label,
       uc: sp.uc,
-      skill: true,
       path: hit.map((x) => `${tok(x.flow)}${x.reached ? "" : "(partial)"}`).join("/"),
       spec: sp.spec_path,
       spec_version: sp.spec_version,
@@ -9326,7 +9349,12 @@ function fromSkill(out) {
       session_id: sp.session_id,
       coverage: sp.coverage,
       findings: sp.findings
-    });
+    };
+    FROM_SKILL.set(sc, "skill");
+    cases.push(sc);
+  }
+  for (const k of Object.keys(resumed)) {
+    if (!usedResumed.has(k)) throw new Error(`buildWreckerRecord: "resumed" entry ${tok(k)} matches no cut spec - it would be lost silently`);
   }
   if (cases.length === 0) {
     throw new Error(`buildWreckerRecord: nothing was attacked (${notAttacked.map((n) => `${tok(n.case)}: ${n.reason}`).join(" | ") || "no specs"}) - record these cases as NOT attacked, not as a Wrecker pass`);
@@ -9334,12 +9362,17 @@ function fromSkill(out) {
   if (out.mapping != null) {
     const idsOf = (f) => (Array.isArray(f.folded_ids) && f.folded_ids.length > 0 ? f.folded_ids : Array.isArray(f.stable_ids) && f.stable_ids.length > 0 ? f.stable_ids : [stableOf(f)]).filter(Boolean).map(String);
     const want = { blocking: /* @__PURE__ */ new Set(), questions: /* @__PURE__ */ new Set() };
-    for (const sp of out.specs) for (const f of Array.isArray(sp.findings) ? sp.findings : []) {
+    const stale = /* @__PURE__ */ new Set();
+    for (const sp of out.specs) {
+      if (!usedResumed.has([sp.uc, map[sp.uc]].find((k) => k !== void 0 && usedResumed.has(k)))) continue;
+      for (const f of Array.isArray(sp.findings) ? sp.findings : []) for (const i of idsOf(f)) stale.add(i);
+    }
+    for (const sp of out.specs) if (![sp.uc, map[sp.uc]].some((k) => k !== void 0 && usedResumed.has(k))) for (const f of Array.isArray(sp.findings) ? sp.findings : []) {
       const bucket = HIGH_KINDS.has(kindOf(f)) ? want.blocking : kindOf(f) === "gap" ? want.questions : null;
       if (bucket) for (const i of idsOf(f)) bucket.add(i);
     }
     for (const k of ["blocking", "questions"]) {
-      const got = new Set(Array.isArray(out.mapping?.[k]) ? out.mapping[k].map(String) : []);
+      const got = new Set((Array.isArray(out.mapping?.[k]) ? out.mapping[k].map(String) : []).filter((i) => !stale.has(i)));
       const diff = [...got].filter((i) => !want[k].has(i)).concat([...want[k]].filter((i) => !got.has(i)));
       if (diff.length > 0) {
         throw new Error(`buildWreckerRecord: mapping.${k} disagrees with the findings (${diff.map((i) => tok(i)).join(", ")}) - an id only in one of them would be lost silently`);
@@ -9351,6 +9384,13 @@ function fromSkill(out) {
 function buildWreckerRecord(input2) {
   if (input2 && (input2.engine === "wrecker" || input2.error || Array.isArray(input2.specs))) input2 = fromSkill(input2);
   const { cases, not_attacked = [], header = null } = input2 ?? {};
+  if (Array.isArray(cases)) {
+    for (const c of cases) {
+      if (!FROM_SKILL.has(c) && c && typeof c === "object" && "skill" in c) {
+        throw new Error('buildWreckerRecord: a hand-written case may not carry "skill": lint-guaranteed cases come only from /wrecker:wargame output');
+      }
+    }
+  }
   if (!Array.isArray(cases)) throw new Error('buildWreckerRecord: "cases" must be an array');
   const highMarkers = [];
   const questions = [];
@@ -9365,11 +9405,12 @@ function buildWreckerRecord(input2) {
     if (!c.case) throw new Error('buildWreckerRecord: every case needs a "case" id (e.g. CU1)');
     const caseId = tok(c.case);
     const lint = c.lint;
-    if (!c.skill && (!lint || typeof lint !== "object" || !Array.isArray(lint.findings) || lint.findings.length > 0 || typeof lint.usecase !== "string" || !lint.usecase.trim() || typeof lint.spec_version !== "string" || !lint.spec_version.trim() || lint.valid === false || Array.isArray(lint.problems) && lint.problems.length > 0)) {
+    const src = FROM_SKILL.get(c);
+    if (!src && (!lint || typeof lint !== "object" || !Array.isArray(lint.findings) || lint.findings.length > 0 || typeof lint.usecase !== "string" || !lint.usecase.trim() || typeof lint.spec_version !== "string" || !lint.spec_version.trim() || lint.valid === false || Array.isArray(lint.problems) && lint.problems.length > 0)) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) \u2014 a run on a spec that failed lint cannot become a record`);
     }
     if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array \u2014 missing findings must not read as a clean run`);
-    const st = c.skill ? {} : c.status;
+    const st = src === "skill" ? {} : c.status;
     if (!st || typeof st !== "object") {
       throw new Error(`buildWreckerRecord: ${caseId} carries no final session "status" \u2014 a run whose finish is not shown cannot become a record (CU7)`);
     }
@@ -9416,7 +9457,7 @@ function buildWreckerRecord(input2) {
       }
     }
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ") || "0 findings";
-    let line = `${caseId}${c.uc && c.uc !== c.case ? ` (uc ${tok(c.uc)})` : ""} path ${tok(c.path, "main")}: ${c.skill ? `lint clean (guaranteed by /wrecker:wargame, spec_version ${tok(c.spec_version)}, sha256 ${tok(c.spec_sha256)})` : `lint clean (spec_version ${tok(lint.spec_version)})`}; ${covText}; ${c.skill ? "no session cut shown in not_running" : `session finished (stop: ${tok(st.stop_reason, "not recorded")})`}${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.limits?.max_play_steps ?? st.guard.hits.find((h) => h && h.limit === "max_play_steps")?.where)}` : ""}; ${kinds}`;
+    let line = `${caseId}${c.uc && c.uc !== c.case ? ` (uc ${tok(c.uc)})` : ""} path ${tok(c.path, "main")}: ${src ? `lint clean (guaranteed: the spec passed /wrecker:wargame's lint${src === "resumed" ? " before the session cut" : ""}, spec_version ${tok(c.spec_version)}, sha256 ${tok(c.spec_sha256)})` : `lint clean (spec_version ${tok(lint.spec_version)})`}; ${covText}; ${src === "skill" ? "no session cut shown in not_running" : `${src === "resumed" ? "resumed to the end: " : ""}session finished (stop: ${tok(st.stop_reason, "not recorded")})`}${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.limits?.max_play_steps ?? st.guard.hits.find((h) => h && h.limit === "max_play_steps")?.where)}` : ""}; ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
@@ -11771,6 +11812,9 @@ function parseArgs(argv) {
   }
   if ((out.getWargameEngine || out.setWargameEngine !== null) && (out.force || out.answersFile !== null)) {
     throw new Error("--get-wargame-engine/--set-wargame-engine cannot be combined with --force or --answers-file");
+  }
+  if (out.wreckerRecord !== null && (out.force || out.answersFile !== null)) {
+    throw new Error("--wrecker-record cannot be combined with --force or --answers-file");
   }
   return out;
 }
