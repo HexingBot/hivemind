@@ -2,11 +2,11 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "paused",
-  "updated_at": "2026-10-09T03:36:04.895Z",
+  "updated_at": "2026-10-09T03:52:12.453Z",
   "active_task": "TASK-240",
   "workflow_step": "impl",
-  "next_action": "CU7 (sesion cortada a los 120 s se reanuda con resume_session_id, no cuenta como terminada). Luego CU8, wargaming del ticket, UAT, in_review, review final. Leer respuesta de Wrecker a msg_0046.",
-  "handoff_summary": "TASK-240 in_progress. CU1-CU6 aprobados y pusheados. CU6: db8b862 + a886add (registro exige lint final limpio con usecase/spec_version; Wrecker 0.1.0 no rechaza specs con lint sucio, avisado en hub msg_0046). Piloto CU9 registrado. TASK-241 creado.",
+  "next_action": "CU8 (default elegido: hive-adversarial-improve corre sin cambios) + LOWs de CU7 en la misma ronda. Luego wargaming del ticket, UAT, in_review, review final. Leer respuesta de Wrecker a msg_0046.",
+  "handoff_summary": "TASK-240 in_progress. CU1-CU7 aprobados y pusheados. CU7: ca6378b (registro rechaza sesiones cortadas/sin terminar; reanudar hasta 5 veces, si no not_attacked). Piloto CU9 registrado. TASK-241 creado.",
   "open_questions": [
     "Quitar la entrada del MCP wrecker local (server del piloto) ahora que el plugin esta instalado?"
   ],

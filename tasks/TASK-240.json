@@ -73,10 +73,15 @@
       "author": "orchestrator",
       "at": "2026-10-09T02:11:39.582Z",
       "body": "CU6 follow-up a886add: cierra el MEDIUM y el LOW de la review de CU6. El lint de cada caso ahora exige usecase y spec_version no vacíos (un {findings: []} tipeado a mano se rechaza); la doc y el header dicen que es disciplina de transcripción, no prueba; el registro dice \"lint clean (spec_version X)\". Lock extendido, plantado rojo-verde por el Developer. Re-corrido por el Orquestador: wargame-wrecker + dist-parity 4/4 verde, SKILL.md en paridad. Commits de CU6: db8b862, a886add. Wrecker avisado de que su dry_run acepta specs con lint sucio (hub msg_0046)."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T03:51:13.966Z",
+      "body": "REVIEW CU7 (ca6378b): PASS, 0 HIGH, 0 MEDIUM. Transcripción del Orquestador. Verificado contra el dist de Wrecker 0.1.0: un corte de sesión sólo se señala por status.guard.hits (max_session_ms 120 s / max_rss_mb 6144) con stop_reason 'limit'; max_play_steps corta jugadas, no la sesión, y excluirlo es correcto; continue_with es la llamada exacta y sólo existe si hubo checkpoint; reanudar no hereda los hits de cortes previos, así que el camino principal de CU7 funciona. El registro rechaza un caso sin status final, con continue_with o con un corte de sesión. Procedimiento: reanudar con la misma tool hasta terminar, máximo 5 veces, si no -> avisar al humano y not_attacked. Lock rojo por la razón correcta. LOWs para la ronda de CU8: el ejemplo de \"servidor reiniciado\" es inexacto (el checkpoint está en disco); un corte sin checkpoint no trae continue_with -> directo a not_attacked; mostrar jugadas cortadas por max_play_steps en el registro; rechazar también stop_reason 'limit'; anotar el session_id del último segmento."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-09T02:11:39.582Z",
+  "updated_at": "2026-10-09T03:51:13.966Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "requires_uat": true
