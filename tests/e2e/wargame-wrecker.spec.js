@@ -153,7 +153,10 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(rr.wargaming).toMatch(/CU8 \(uc UC-8\) path main: lint clean \(guaranteed: the spec passed \/wrecker:wargame's lint before the session cut/);
     expect(rr.wargaming).toContain('resumed to the end: session finished');
     expect(rr.questions[0]).toContain('W-UC-8-111111111111');
-    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': { ...resumedOk, status: { continue_with: 'x' } } } })).toThrow(/CU7/);
+    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': { ...resumedOk, status: { stop_reason: 'limit_x', continue_with: 'x' } } } })).toThrow(/CU7/);
+    // Harm: a blocking candidate found before the cut vanishing from the final result would let a counterexample go unrecorded.
+    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': { ...resumedOk, findings: [] } } })).toThrow(/missing from the resumed result.*W-UC-8-eeeeeeeeeeee/);
+    expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': { ...resumedOk, status: { guard: { hits: [] } } } } })).toThrow(/stop_reason/);
     expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': { ...resumedOk, findings: undefined } } })).toThrow(/findings/);
     expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-8': resumedOk, 'UC-9': resumedOk } })).toThrow(/was not cut/);
     expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-7': resumedOk } })).toThrow(/matches no cut spec|lost silently/);

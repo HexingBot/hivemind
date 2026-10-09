@@ -72,6 +72,11 @@ function markerId(f, caseId, seq) {
 
 // Cases built by fromSkill (and only those) are lint-guaranteed: the marker is module-private, so a
 // hand-written direct-tools case cannot claim it (a caller-supplied `skill` flag is refused).
+function idsOfFinding(f) {
+  const a = [f.folded_ids, f.stable_ids].find((x) => Array.isArray(x) && x.length > 0);
+  return (a ?? [stableOf(f)]).filter(Boolean).map(String);
+}
+
 const FROM_SKILL = new WeakMap(); // case object -> 'skill' | 'resumed'
 
 // /wrecker:wargame (Wrecker >= 0.2.0) output -> the same inputs as the direct-tools shape.
@@ -128,6 +133,17 @@ function fromSkill(out) {
       usedResumed.add(rkey);
       const r = resumed[rkey];
       if (!r || typeof r !== 'object') throw new Error(`buildWreckerRecord: resumed entry for ${tok(label)} is not an object`);
+      if (!r.status || typeof r.status.stop_reason !== 'string' || !r.status.stop_reason.trim()) {
+        throw new Error(`buildWreckerRecord: resumed entry for ${tok(label)} has no status.stop_reason - a resumed run must show how it finished`);
+      }
+      // Wrecker restores the ledger on resume, so an honest final result still contains every blocking
+      // candidate found before the cut; one that vanished must not be dropped silently.
+      const rIds = new Set((Array.isArray(r.findings) ? r.findings : []).flatMap((f) => [...idsOfFinding(f)]).map((i) => i.toUpperCase()));
+      const lost = (Array.isArray(sp.findings) ? sp.findings : []).filter((f) => HIGH_KINDS.has(kindOf(f)))
+        .flatMap((f) => idsOfFinding(f)).filter((i) => !rIds.has(i.toUpperCase()));
+      if (lost.length > 0) {
+        throw new Error(`buildWreckerRecord: blocking ids found before the cut are missing from the resumed result (${lost.map((i) => tok(i)).join(', ')}) - an honest final wargame_findings still contains them`);
+      }
       for (const l of nr) if (!/\bcut it\b/.test(l)) notAttacked.push({ case: label, reason: `not run: ${l}` });
       const rc = { ...r, case: label, uc: sp.uc, spec: sp.spec_path, spec_version: sp.spec_version, spec_sha256: sp.spec_sha256 };
       delete rc.skill; delete rc.lint;
