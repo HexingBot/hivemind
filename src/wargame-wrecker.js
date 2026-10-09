@@ -93,7 +93,7 @@ function fromSkill(out) {
     if (sp.error) {
       const why = sp.error === 'LINT_FAILED'
         ? `LINT_FAILED: ${oneLine((sp.problems ?? []).map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('; '))}`
-        : `${tok(sp.error)}: ${oneLine(sp.message)}`;
+        : `${tok(typeof sp.error === 'string' ? sp.error : JSON.stringify(sp.error))}: ${oneLine(sp.message)}`;
       notAttacked.push({ case: label, reason: `spec not attacked, ${why}` });
       continue;
     }
@@ -103,15 +103,15 @@ function fromSkill(out) {
       continue;
     }
     if (!Array.isArray(sp.paths_attacked)) throw new Error(`buildWreckerRecord: ${tok(label)} has no paths_attacked array`);
+    for (const l of nr) notAttacked.push({ case: label, reason: `not run: ${l}` });
     const hit = sp.paths_attacked.filter((x) => x && x.attacked);
     for (const x of sp.paths_attacked) if (x && !x.attacked) notAttacked.push({ case: label, reason: `path ${tok(x.flow)} not attacked` });
     if (hit.length === 0) {
       notAttacked.push({ case: label, reason: 'no path was attacked' });
       continue;
     }
-    for (const l of nr) notAttacked.push({ case: label, reason: `not run: ${l}` });
     cases.push({
-      case: label, skill: true,
+      case: label, uc: sp.uc, skill: true,
       path: hit.map((x) => `${tok(x.flow)}${x.reached ? '' : '(partial)'}`).join('/'),
       spec: sp.spec_path, spec_version: sp.spec_version, spec_sha256: sp.spec_sha256, session_id: sp.session_id,
       coverage: sp.coverage, findings: sp.findings,
@@ -119,6 +119,21 @@ function fromSkill(out) {
   }
   if (cases.length === 0) {
     throw new Error(`buildWreckerRecord: nothing was attacked (${notAttacked.map((n) => `${tok(n.case)}: ${n.reason}`).join(' | ') || 'no specs'}) - record these cases as NOT attacked, not as a Wrecker pass`);
+  }
+  if (out.mapping !== undefined) {
+    const idsOf = (f) => (Array.isArray(f.folded_ids) && f.folded_ids.length > 0 ? f.folded_ids : Array.isArray(f.stable_ids) && f.stable_ids.length > 0 ? f.stable_ids : [stableOf(f)]).filter(Boolean).map(String);
+    const want = { blocking: new Set(), questions: new Set() };
+    for (const c of cases) for (const f of c.findings ?? []) {
+      const bucket = HIGH_KINDS.has(kindOf(f)) ? want.blocking : kindOf(f) === 'gap' ? want.questions : null;
+      if (bucket) for (const i of idsOf(f)) bucket.add(i);
+    }
+    for (const k of ['blocking', 'questions']) {
+      const got = new Set(Array.isArray(out.mapping?.[k]) ? out.mapping[k].map(String) : []);
+      const diff = [...got].filter((i) => !want[k].has(i)).concat([...want[k]].filter((i) => !got.has(i)));
+      if (diff.length > 0) {
+        throw new Error(`buildWreckerRecord: mapping.${k} disagrees with the findings (${diff.map((i) => tok(i)).join(', ')}) - an id only in one of them would be lost silently`);
+      }
+    }
   }
   return { cases, not_attacked: notAttacked, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
 }
@@ -132,6 +147,8 @@ export function buildWreckerRecord(input) {
   const attacked = [];
   const notAttacked = not_attacked.map((n) => `${tok(n.case)} (${oneLine(n.reason) || 'no reason given'})`);
   const seen = new Set();
+  const seenOrig = new Set();
+  const derived = [];
   if (cases.length === 0) throw new Error('buildWreckerRecord: no attacked cases — an empty record would read as a pass; nothing ran');
 
   for (const c of cases) {
@@ -169,15 +186,22 @@ export function buildWreckerRecord(input) {
       if (HIGH_KINDS.has(kind)) {
         // A folded entry covers several stable ids: one marker per id, so each can be RESOLVED/DEGRADED.
         const folded = [f.folded_ids, f.stable_ids].find((a) => Array.isArray(a) && a.length > 0);
-        const ids = folded ? folded.map((x) => markerId({ stable_id: String(x) }, caseId, seq)) : [markerId(f, caseId, seq)];
-        for (let id of ids) {
+        const origs = folded ? folded.map((x) => String(x)) : [stableOf(f) ?? String(f.finding_id ?? '')];
+        const isStable = Boolean(folded || stableOf(f));
+        for (const orig of origs) {
+          // A repeated STABLE id is the same candidate: one marker is enough (judged on the ORIGINAL id,
+          // never on a derived one, so two different originals can never be merged).
+          if (isStable && seenOrig.has(orig.toUpperCase())) continue;
+          seenOrig.add(orig.toUpperCase());
+          let id = markerId({ stable_id: orig, finding_id: orig }, caseId, seq);
+          // An id over the guard's length cap keeps its 12-hex digest: W-<CUn>-<12hex>.
+          const hex = /([0-9a-f]{12})$/i.exec(orig);
+          if (isStable && hex && orig.replace(/[^A-Za-z0-9._/-]/g, '-').length > ID_MAX) id = `W-${tok(caseId, 'X').replace(/[^A-Za-z0-9]/g, '')}-${hex[1]}`.slice(0, ID_MAX);
           // Dedup on the close guard's normalization (it upper-cases ids), so F-1 and f-1 cannot
-          // become two markers that one RESOLVED closes together. A repeated STABLE id is the same
-          // candidate: one marker is enough.
-          const isStable = Boolean(folded || stableOf(f));
-          if (isStable && seen.has(id.toUpperCase())) continue;
-          for (let n = 0; seen.has(id.toUpperCase()); n++) id = `${fallbackId(caseId, seq).slice(0, ID_MAX - 3)}${n ? `-${n}` : ''}`;
+          // become two markers that one RESOLVED closes together: collisions are made unique, never dropped.
+          for (let n = 1; seen.has(id.toUpperCase()); n++) id = `${id.replace(/-x\d+$/, '').slice(0, ID_MAX - 5)}-x${n}`;
           seen.add(id.toUpperCase());
+          if (isStable && id !== orig) derived.push(`${tok(orig)} -> ${id}`);
           highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
         }
       } else if (kind === 'gap') {
@@ -190,7 +214,7 @@ export function buildWreckerRecord(input) {
     }
 
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || '0 findings';
-    let line = `${caseId} path ${tok(c.path, 'main')}: ${c.skill ? `lint clean (guaranteed by /wrecker:wargame, spec_version ${tok(c.spec_version)}, sha256 ${tok(c.spec_sha256)})` : `lint clean (spec_version ${tok(lint.spec_version)})`}; ${covText}; ${c.skill ? 'no session cut shown in not_running' : `session finished (stop: ${tok(st.stop_reason, 'not recorded')})`}${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.limits?.max_play_steps ?? st.guard.hits.find((h) => h && h.limit === 'max_play_steps')?.where)}` : ''}; ${kinds}`;
+    let line = `${caseId}${c.uc && c.uc !== c.case ? ` (uc ${tok(c.uc)})` : ''} path ${tok(c.path, 'main')}: ${c.skill ? `lint clean (guaranteed by /wrecker:wargame, spec_version ${tok(c.spec_version)}, sha256 ${tok(c.spec_sha256)})` : `lint clean (spec_version ${tok(lint.spec_version)})`}; ${covText}; ${c.skill ? 'no session cut shown in not_running' : `session finished (stop: ${tok(st.stop_reason, 'not recorded')})`}${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.limits?.max_play_steps ?? st.guard.hits.find((h) => h && h.limit === 'max_play_steps')?.where)}` : ''}; ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
@@ -208,6 +232,7 @@ export function buildWreckerRecord(input) {
     `[WARGAMING] engine: wrecker${header ? ` (${header})` : ''}.`,
     `Attacked (case + path): ${attacked.join(' | ') || 'none'}.`,
     `Not attacked: ${notAttacked.join(' | ') || 'nothing declared'}.`,
+    ...(derived.length > 0 ? [`Marker ids derived (original -> marker, match a later RESOLVED/DEGRADED by the marker id): ${derived.join('; ')}.`] : []),
     `HIGH candidates opened: ${high} (each is a separate marker comment; they block the close until triaged). Non-blocking questions for the spec owner: ${questions.length}.`,
     ...questions.map((q) => `Question for the spec owner (does not block): ${q}`),
     'Zero counterexamples proves nothing by itself: read the coverage above.',

@@ -119,6 +119,20 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(() => buildWreckerRecord(out([sk({ uc: 'UC-8', error: 'TOOL_FAILED', message: 'boom' })]))).toThrow(/TOOL_FAILED/);
     expect(() => buildWreckerRecord({ engine: 'wrecker', error: 'WRECKER_NOT_CONNECTED' })).toThrow(/CU5/);
     expect(() => buildWreckerRecord({ ...out([sk({})]), case_map: {} })).toThrow(/CU<n>/);
+    // Long UC ids push stable ids over the guard's 40-char cap: every folded id must still get its OWN marker.
+    // Harm: folded ids collapsing into one marker leaves a counterexample with no FINDING-HIGH to block the close.
+    const LONG = 'UC-checkout-guest-payment-failure-path';
+    const long = buildWreckerRecord({ engine: 'wrecker', version: '0.2.0', mode: 'full', random_seed: 7, case_map: { [LONG]: 'CU3' },
+      mapping: { blocking: [`W-${LONG}-aaaaaaaaaaaa`, `W-${LONG}-bbbbbbbbbbbb`, `W-${LONG}-cccccccccccc`], questions: [] },
+      specs: [sk({ uc: LONG, findings: [
+        { id: `W-${LONG}-aaaaaaaaaaaa`, folded_ids: [`W-${LONG}-aaaaaaaaaaaa`, `W-${LONG}-bbbbbbbbbbbb`], type: 'counterexample', step_cited: '2', explanation: 'f' },
+        { id: `W-${LONG}-cccccccccccc`, type: 'dead_end', step_cited: '4', explanation: 'e' }] })] });
+    const lids = long.high_markers.map((m) => /FINDING-HIGH: ([^\]]+)\]/.exec(m)[1]);
+    expect(lids).toEqual(['W-CU3-aaaaaaaaaaaa', 'W-CU3-bbbbbbbbbbbb', 'W-CU3-cccccccccccc']);
+    expect(long.wargaming).toContain(`${'W-' + LONG}-bbbbbbbbbbbb -> W-CU3-bbbbbbbbbbbb`);
+    expect(long.wargaming).toContain(`(uc ${LONG})`);
+    // mapping that disagrees with the findings fails loud (an id only in mapping would be lost silently)
+    expect(() => buildWreckerRecord({ ...out([sk({})]), mapping: { blocking: ['W-UC-9-ffffffffffff'], questions: [] } })).toThrow(/mapping\.blocking/);
     const direct = buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, status: fin, coverage: cov,
       findings: [{ ...f('dead_end', 'F-unstable'), stable_id: 'W-UC-4-111111111111' }] }] });
     expect(direct.high_markers[0]).toMatch(/^\[FINDING-HIGH: W-UC-4-111111111111\]/);
