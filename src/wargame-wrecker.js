@@ -118,7 +118,7 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
     }
 
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || '0 findings';
-    let line = `${caseId} path ${tok(c.path, 'main')}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; session finished (stop: ${tok(st.stop_reason, 'not recorded')})${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.hits.find((h) => h && h.limit === 'max_play_steps')?.where ?? st.guard.limits?.max_play_steps)}` : ''}; ${kinds}`;
+    let line = `${caseId} path ${tok(c.path, 'main')}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; session finished (stop: ${tok(st.stop_reason, 'not recorded')})${Number(st.guard?.incomplete_plays) > 0 ? `; ${tok(st.guard.incomplete_plays)} plays cut at step ${tok(st.guard.limits?.max_play_steps ?? st.guard.hits.find((h) => h && h.limit === 'max_play_steps')?.where)}` : ''}; ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
