@@ -78,10 +78,20 @@
       "author": "orchestrator",
       "at": "2026-10-09T03:51:13.966Z",
       "body": "REVIEW CU7 (ca6378b): PASS, 0 HIGH, 0 MEDIUM. Transcripción del Orquestador. Verificado contra el dist de Wrecker 0.1.0: un corte de sesión sólo se señala por status.guard.hits (max_session_ms 120 s / max_rss_mb 6144) con stop_reason 'limit'; max_play_steps corta jugadas, no la sesión, y excluirlo es correcto; continue_with es la llamada exacta y sólo existe si hubo checkpoint; reanudar no hereda los hits de cortes previos, así que el camino principal de CU7 funciona. El registro rechaza un caso sin status final, con continue_with o con un corte de sesión. Procedimiento: reanudar con la misma tool hasta terminar, máximo 5 veces, si no -> avisar al humano y not_attacked. Lock rojo por la razón correcta. LOWs para la ronda de CU8: el ejemplo de \"servidor reiniciado\" es inexacto (el checkpoint está en disco); un corte sin checkpoint no trae continue_with -> directo a not_attacked; mostrar jugadas cortadas por max_play_steps en el registro; rechazar también stop_reason 'limit'; anotar el session_id del último segmento."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T04:03:27.246Z",
+      "body": "REVIEW CU8 + LOWs de CU7 (9c093af): BLOCK. Transcripción del Orquestador. Confirmado por diff 2c6770f..9c093af que el camino default no cambió (skills adversariales, agentes, close guard y task-store intactos; docs sólo suman bullets condicionados a engine=wrecker; loop.md no agrega una parada nueva). LOWs de CU7 verificados contra el dist de Wrecker.\n[FINDING-HIGH: CU8-R-1] El lock de CU8 no falla por la razón correcta: el cuerpo de entrega del fixture ya nombra caso y camino, así que el ticket cierra aunque no exista ningún comentario [WARGAMING]. Si el guard empezara a exigir campos de Wrecker, el lock seguiría verde. Arreglo: bloque 3 neutro en el fixture para que el comentario sea lo que hace pasar el cierre, y re-plantar rojo-verde.\nMEDIUM: la aserción \"N plays cut at step K\" no se plantó rojo-verde. LOW: Wrecker real emite where = \"plays are cut at step N\", el registro queda redundante; usar guard.limits.max_play_steps y alinear el fixture."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T04:10:38.272Z",
+      "body": "RE-REVIEW CU8 (3acd181): PASS. Transcripción del Orquestador. El reviewer reprodujo contra el closeTask real: con bloque 3 neutro, el ticket cierra sólo con el comentario [WARGAMING] del default, y sin él se rechaza con E_DELIVERY_BODY. Re-plantó él mismo: si el guard exige un campo de Wrecker, el lock se pone rojo por la razón correcta. Plays-cut plantado. Formato de where alineado con Wrecker 0.2.0.\n[FINDING-RESOLVED: CU8-R-1]\nLOW: el negativo pareado debería exigir E_DELIVERY_BODY en vez de cualquier código.\nDECISIÓN DEL HUMANO (2026-10-08): integrar /wrecker:wargame (Wrecker 0.2.0) dentro de TASK-240, antes del wargaming del ticket. Su JSON (specs[] + mapping) no trae lint ni estado de sesión, así que el registro tiene que aceptarlo sin perder esas protecciones. Pregunta a Wrecker por los cortes de 120 s en hub msg_0050."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-09T03:51:13.966Z",
+  "updated_at": "2026-10-09T04:10:38.272Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "requires_uat": true
