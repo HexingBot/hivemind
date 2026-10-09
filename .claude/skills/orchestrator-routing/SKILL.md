@@ -284,7 +284,7 @@ registro.
 
    **Then STOP and get the human's approval of the list** (hard stop, see the
    policy block at the top of this Workflow). Present the numbered list, wait
-   for an explicit approval, and record it as a ticket comment. The Developer's
+   for an explicit approval, and record it as a ticket comment. When the human approves the list, ALSO record each approved case as an `acceptance_criteria` item `CU<n>: <case>` on the ticket (in addition to that comment): the Wrecker record (`--wrecker-record --ticket`) derives the approved list from those items, and an item that looks like a CU id but is not exactly that shape makes it throw. The Developer's
    briefing must carry both the list and the fact that the human approved it;
    `agents/developer.md` instructs the Developer to refuse to implement without
    it. The wargaming step at the end verifies the finished change against this

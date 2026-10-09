@@ -32,7 +32,7 @@
 //   steps_never_reached?: string[], dry_run_only?: boolean }
 // plus top-level not_attacked: [{ case, reason }] for approved cases that got no spec.
 
-import { collectFindingMarkerState } from './task-store.js';
+import { collectFindingMarkerState } from './finding-markers.js';
 
 const HIGH_KINDS = new Set(['counterexample', 'contradiction', 'dead_end']);
 const ID_MAX = 40; // mirrors task-store.js FINDING_ID_MAX_LEN
@@ -210,16 +210,37 @@ function ticketHistory(comments) {
   return { opened: st.opened, resolved: st.resolved, degraded: st.degraded, all: new Set([...st.opened, ...st.closed]) };
 }
 
+// CU ids compare with leading zeros normalized (CU07 == CU7), everywhere.
+export function normCu(x) {
+  return tok(x).toUpperCase().replace(/^CU0+(\d)/, 'CU$1');
+}
+
+// The approved cases live on the ticket as acceptance_criteria items "CU<n>: <case>". Anything that LOOKS like a
+// CU id but is not exactly that shape ("CU2 \u2014 b", "CU 4:", "**CU5**:", "1. CU6:", "cu3:") is not silently
+// dropped: it throws, naming the item, so an approved case can never vanish from the list.
+export function approvedFromAcceptanceCriteria(acs) {
+  const out = [];
+  for (const raw of Array.isArray(acs) ? acs : []) {
+    const item = String(raw);
+    const exact = /^CU(\d+):/.exec(item);
+    if (exact) { out.push(normCu(`CU${exact[1]}`)); continue; }
+    if (/^[\s*_#>\-\d.)(]*CU\s*\d+/i.test(item)) {
+      throw new Error(`acceptance_criteria item "${oneLine(item).slice(0, 60)}" looks like an approved case but is not exactly "CU<n>: <case>" - fix the ticket so no approved case is silently dropped`);
+    }
+  }
+  return [...new Set(out)];
+}
+
 export function buildWreckerRecord(input, { comments, ticketApproved } = {}) {
   if (input && (input.engine === 'wrecker' || input.error || Array.isArray(input.specs))) input = fromSkill(input);
   const { cases, not_attacked = [], header = null, approved } = input ?? {};
   const hist = ticketHistory(comments);
-  let approvedList = Array.isArray(approved) ? [...new Set(approved.map((x) => tok(x).toUpperCase()))] : null;
+  let approvedList = Array.isArray(approved) ? [...new Set(approved.map((x) => normCu(x)))] : null;
   if (Array.isArray(ticketApproved)) {
-    if (approvedList && approvedList.length > 0 && (approvedList.length !== ticketApproved.length || approvedList.some((x) => !ticketApproved.includes(x)))) {
+    if (approvedList && approvedList.length > 0 && (approvedList.length !== ticketApproved.length || approvedList.some((x) => !ticketApproved.map((y) => normCu(y)).includes(x)))) {
       throw new Error(`buildWreckerRecord: the "approved" list (${approvedList.join(',')}) differs from the ticket's own approved cases (${ticketApproved.join(',')})`);
     }
-    approvedList = [...ticketApproved];
+    approvedList = ticketApproved.map((x) => normCu(x));
   }
   const cameBack = [];
   const stillOpen = [];
@@ -365,12 +386,12 @@ export function buildWreckerRecord(input, { comments, ticketApproved } = {}) {
   }
 
   const high = highMarkers.length;
-  const attackedIds = new Set(cases.map((x) => tok(x.case).toUpperCase()));
+  const attackedIds = new Set(cases.map((x) => normCu(x.case)));
   let approvedNote;
   if (approvedList && approvedList.length > 0) {
-    const have = new Set(notAttacked.map((n) => String(n).split(/[ (]/)[0].toUpperCase()));
+    const have = new Set(notAttacked.map((n) => normCu(String(n).split(/[ (]/)[0])));
     for (const a of approvedList) {
-      if (!attackedIds.has(a.toUpperCase()) && !have.has(a.toUpperCase())) notAttacked.push(`${a} (approved case with no result in this run)`);
+      if (!attackedIds.has(a) && !have.has(a)) notAttacked.push(`${a} (approved case with no result in this run)`);
     }
     const extra = [...attackedIds].filter((x) => !approvedList.includes(x));
     approvedNote = extra.length > 0 ? ` Attacked but not in the approved list: ${extra.join(', ')}.` : '';

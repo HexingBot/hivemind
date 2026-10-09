@@ -35,7 +35,7 @@ import { runQuestionnaire } from '../src/question-engine.js';
 import { buildIntakeQuestions, parseAgentModelsAnswer } from '../src/question-library.js';
 import { writeProjectMd, readProjectMd } from '../src/project-md.js';
 import { readWargameEngine, saveWargameEngine, normalizeWargameEngine } from '../src/wargame-engine.js';
-import { buildWreckerRecord } from '../src/wargame-wrecker.js';
+import { buildWreckerRecord, approvedFromAcceptanceCriteria } from '../src/wargame-wrecker.js';
 import { collectPackQuestions, applyProjectMdContributions } from '../src/pack-hooks.js';
 import { loadActivePacks } from '../src/pack-loader.js';
 import { BUILTIN_PACK_DESCRIPTORS, BUILTIN_PACK_MODULES } from '../src/builtin-packs.js';
@@ -1062,8 +1062,8 @@ export async function runInit({
       throw new Error(`--ticket ${parsed.ticket}: tasks/${parsed.ticket}.json was not found under ${repoRoot} (run from the project root, or set CLAUDE_PROJECT_DIR)`);
     }
     const tk = JSON.parse(readFileSync(ticketPath, 'utf8'));
-    const ticketApproved = [...new Set((Array.isArray(tk.acceptance_criteria) ? tk.acceptance_criteria : [])
-      .map((x) => /^\s*(CU\d+)\s*:/i.exec(String(x))?.[1]?.toUpperCase()).filter(Boolean))];
+    let ticketApproved;
+    try { ticketApproved = approvedFromAcceptanceCriteria(tk.acceptance_criteria); } catch (e) { throw new Error(`--ticket ${parsed.ticket}: ${e.message}`); }
     if (ticketApproved.length === 0) {
       throw new Error(`--ticket ${parsed.ticket}: no acceptance_criteria item starts with "CU<n>:" - the approved cases must be on the ticket`);
     }

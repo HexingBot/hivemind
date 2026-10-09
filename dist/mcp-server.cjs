@@ -25425,6 +25425,98 @@ var StdioServerTransport = class {
   }
 };
 
+// src/finding-markers.js
+var KNOWN_BLANK_GLYPHS = "\u2800";
+var IGNORABLE_OR_BLANK_RE = new RegExp(
+  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,
+  "gu"
+);
+var FINDING_ID_MAX_LEN = 40;
+var FINDING_MARKER_SCAN_CAP = 200;
+var FINDING_DEGRADED_SCAN_CAP = 500;
+function isValidFindingId(raw) {
+  const id = String(raw).trim();
+  return id.length > 0 && id.length <= FINDING_ID_MAX_LEN && !/\s/.test(id);
+}
+var FINDING_HIGH_RE = new RegExp(`\\[FINDING-HIGH:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_RESOLVED_RE = new RegExp(`\\[FINDING-RESOLVED:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_DEGRADED_RE = new RegExp(`\\[FINDING-DEGRADED:\\s*([^\\]]{0,${FINDING_DEGRADED_SCAN_CAP}})\\]`, "gi");
+var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
+var ID_SHAPE_WITH_SEPARATOR_RE = /^[A-Za-z0-9]+(?:[-._/][A-Za-z0-9]+)+$/;
+function isLikelyMarkerAttempt(token) {
+  return ID_SHAPE_WITH_SEPARATOR_RE.test(token) || token.length > FINDING_ID_MAX_LEN;
+}
+var LONGFORM_ATTEMPT_RE = new RegExp("\\[FINDING-(HIGH|RESOLVED|DEGRADED):\\s*([^\\s\\]]+)", "gi");
+var DASH_LOOKALIKE_RE = /‑/g;
+function normalizeFindingId(raw) {
+  return String(raw).trim().normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").toUpperCase();
+}
+function hasVisibleJustification(text) {
+  return String(text).normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").replace(/[-—\s]+/g, "").length > 0;
+}
+function truncatePreview(raw) {
+  const trimmed = String(raw).trim();
+  const sliced = trimmed.slice(0, FINDING_ID_MAX_LEN);
+  return sliced + (trimmed.length > FINDING_ID_MAX_LEN ? "..." : "");
+}
+var FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g;
+var BACKTICK_SPAN_RE = /`[^`\n]*`/g;
+var DOUBLE_QUOTED_SPAN_RE = /"[^"\n]*"/g;
+function blankQuotedAndFencedSpans(text) {
+  return text.replace(FENCED_CODE_BLOCK_RE, (m) => " ".repeat(m.length)).replace(BACKTICK_SPAN_RE, (m) => " ".repeat(m.length)).replace(DOUBLE_QUOTED_SPAN_RE, (m) => " ".repeat(m.length));
+}
+function collectFindingMarkerState(comments) {
+  const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || "")).replace(DASH_LOOKALIKE_RE, "-")).join("\n");
+  const opened = /* @__PURE__ */ new Set();
+  const closed = /* @__PURE__ */ new Set();
+  const resolved = /* @__PURE__ */ new Set();
+  const degraded = /* @__PURE__ */ new Set();
+  const malformed = [];
+  for (const m of allText.matchAll(FINDING_HIGH_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      opened.add(normalizeFindingId(raw));
+    } else {
+      malformed.push(`FINDING-HIGH: "${truncatePreview(raw)}"`);
+    }
+  }
+  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      closed.add(normalizeFindingId(raw));
+      resolved.add(normalizeFindingId(raw));
+    } else {
+      malformed.push(`FINDING-RESOLVED: "${truncatePreview(raw)}"`);
+    }
+  }
+  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
+    const inner = m[1] || "";
+    const sep = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep === -1) continue;
+    const rawId = inner.slice(0, sep);
+    if (!isValidFindingId(rawId)) {
+      malformed.push(`FINDING-DEGRADED: "${truncatePreview(rawId)}"`);
+      continue;
+    }
+    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
+    if (rawId.trim() !== "" && hasVisibleJustification(justification)) {
+      closed.add(normalizeFindingId(rawId));
+      degraded.add(normalizeFindingId(rawId));
+    }
+  }
+  const wellFormedStarts = /* @__PURE__ */ new Set();
+  for (const re of [FINDING_HIGH_RE, FINDING_RESOLVED_RE, FINDING_DEGRADED_RE]) {
+    for (const m of allText.matchAll(re)) wellFormedStarts.add(m.index);
+  }
+  for (const m of allText.matchAll(LONGFORM_ATTEMPT_RE)) {
+    if (wellFormedStarts.has(m.index)) continue;
+    const token = m[2];
+    if (!isLikelyMarkerAttempt(token)) continue;
+    malformed.push(`FINDING-${m[1].toUpperCase()}: "${truncatePreview(token)}" (no se encontro "]" de cierre dentro del scan cap, o sin el separador documentado, pero el primer token tiene forma de id)`);
+  }
+  return { opened, closed, resolved, degraded, malformed };
+}
+
 // src/task-store.js
 var import_promises = require("node:fs/promises");
 var import_node_fs5 = require("node:fs");
@@ -26648,40 +26740,6 @@ function checkWargamingRecord(task, resolvedException) {
     );
   }
 }
-var FINDING_ID_MAX_LEN = 40;
-var FINDING_MARKER_SCAN_CAP = 200;
-var FINDING_DEGRADED_SCAN_CAP = 500;
-function isValidFindingId(raw) {
-  const id = String(raw).trim();
-  return id.length > 0 && id.length <= FINDING_ID_MAX_LEN && !/\s/.test(id);
-}
-var FINDING_HIGH_RE = new RegExp(`\\[FINDING-HIGH:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
-var FINDING_RESOLVED_RE = new RegExp(`\\[FINDING-RESOLVED:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
-var FINDING_DEGRADED_RE = new RegExp(`\\[FINDING-DEGRADED:\\s*([^\\]]{0,${FINDING_DEGRADED_SCAN_CAP}})\\]`, "gi");
-var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
-var ID_SHAPE_WITH_SEPARATOR_RE = /^[A-Za-z0-9]+(?:[-._/][A-Za-z0-9]+)+$/;
-function isLikelyMarkerAttempt(token) {
-  return ID_SHAPE_WITH_SEPARATOR_RE.test(token) || token.length > FINDING_ID_MAX_LEN;
-}
-var LONGFORM_ATTEMPT_RE = new RegExp("\\[FINDING-(HIGH|RESOLVED|DEGRADED):\\s*([^\\s\\]]+)", "gi");
-var DASH_LOOKALIKE_RE = /‑/g;
-function normalizeFindingId(raw) {
-  return String(raw).trim().normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").toUpperCase();
-}
-function hasVisibleJustification(text) {
-  return String(text).normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").replace(/[-—\s]+/g, "").length > 0;
-}
-function truncatePreview(raw) {
-  const trimmed = String(raw).trim();
-  const sliced = trimmed.slice(0, FINDING_ID_MAX_LEN);
-  return sliced + (trimmed.length > FINDING_ID_MAX_LEN ? "..." : "");
-}
-var FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g;
-var BACKTICK_SPAN_RE = /`[^`\n]*`/g;
-var DOUBLE_QUOTED_SPAN_RE = /"[^"\n]*"/g;
-function blankQuotedAndFencedSpans(text) {
-  return text.replace(FENCED_CODE_BLOCK_RE, (m) => " ".repeat(m.length)).replace(BACKTICK_SPAN_RE, (m) => " ".repeat(m.length)).replace(DOUBLE_QUOTED_SPAN_RE, (m) => " ".repeat(m.length));
-}
 var MalformedFindingMarkerError = class extends Error {
   constructor(message) {
     super(message);
@@ -26689,57 +26747,6 @@ var MalformedFindingMarkerError = class extends Error {
     this.code = "E_MALFORMED_FINDING_MARKER";
   }
 };
-function collectFindingMarkerState(comments) {
-  const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || "")).replace(DASH_LOOKALIKE_RE, "-")).join("\n");
-  const opened = /* @__PURE__ */ new Set();
-  const closed = /* @__PURE__ */ new Set();
-  const resolved = /* @__PURE__ */ new Set();
-  const degraded = /* @__PURE__ */ new Set();
-  const malformed = [];
-  for (const m of allText.matchAll(FINDING_HIGH_RE)) {
-    const raw = m[1];
-    if (isValidFindingId(raw)) {
-      opened.add(normalizeFindingId(raw));
-    } else {
-      malformed.push(`FINDING-HIGH: "${truncatePreview(raw)}"`);
-    }
-  }
-  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) {
-    const raw = m[1];
-    if (isValidFindingId(raw)) {
-      closed.add(normalizeFindingId(raw));
-      resolved.add(normalizeFindingId(raw));
-    } else {
-      malformed.push(`FINDING-RESOLVED: "${truncatePreview(raw)}"`);
-    }
-  }
-  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
-    const inner = m[1] || "";
-    const sep = inner.search(DEGRADED_SEPARATOR_RE);
-    if (sep === -1) continue;
-    const rawId = inner.slice(0, sep);
-    if (!isValidFindingId(rawId)) {
-      malformed.push(`FINDING-DEGRADED: "${truncatePreview(rawId)}"`);
-      continue;
-    }
-    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
-    if (rawId.trim() !== "" && hasVisibleJustification(justification)) {
-      closed.add(normalizeFindingId(rawId));
-      degraded.add(normalizeFindingId(rawId));
-    }
-  }
-  const wellFormedStarts = /* @__PURE__ */ new Set();
-  for (const re of [FINDING_HIGH_RE, FINDING_RESOLVED_RE, FINDING_DEGRADED_RE]) {
-    for (const m of allText.matchAll(re)) wellFormedStarts.add(m.index);
-  }
-  for (const m of allText.matchAll(LONGFORM_ATTEMPT_RE)) {
-    if (wellFormedStarts.has(m.index)) continue;
-    const token = m[2];
-    if (!isLikelyMarkerAttempt(token)) continue;
-    malformed.push(`FINDING-${m[1].toUpperCase()}: "${truncatePreview(token)}" (no se encontro "]" de cierre dentro del scan cap, o sin el separador documentado, pero el primer token tiene forma de id)`);
-  }
-  return { opened, closed, resolved, degraded, malformed };
-}
 function checkNoOpenHighFindings(task, resolvedException) {
   if (resolvedException) return;
   if (task.status === "done") return;
@@ -26779,11 +26786,6 @@ var DELIVERY_BLOCKS = [
 ];
 var DELIVERY_HEADING_RE = /^[\s>*_-]*(?:#{1,6}\s*)?[*_\s]*([1-9])\s*[.):-]\s*(.+?)\s*$/;
 var DELIVERY_FILLER_RE = /^(?:ok|okay|n\/?a|na|nada|tbd|todo|pendiente|x|s\/?d|\.+|…|-+|_+|\?+)$/;
-var KNOWN_BLANK_GLYPHS = "\u2800";
-var IGNORABLE_OR_BLANK_RE = new RegExp(
-  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,
-  "gu"
-);
 function normalizeDeliveryText(s) {
   return String(s).normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").replace(/[*_`#]/g, "").trim().toLowerCase();
 }

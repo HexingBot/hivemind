@@ -1,9 +1,11 @@
 // TASK-240 CU4 — Wrecker findings -> ticket markers. Run against the REAL close guards.
 import { describe, it, expect, afterAll } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { makeRepoSkeleton, PROD } from '../helpers/fixtures.js';
 import { makeTmpDir, cleanupAll } from '../helpers/tmpRepo.js';
 import { deliveryBody } from '../helpers/deliveryBody.js';
-import { buildWreckerRecord } from '../../src/wargame-wrecker.js';
+import { buildWreckerRecord, approvedFromAcceptanceCriteria } from '../../src/wargame-wrecker.js';
 
 afterAll(cleanupAll);
 
@@ -229,6 +231,26 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     const noPrompt = () => { throw new Error('asked'); };
     await expect(runInit({ argv: ['--wrecker-record', 'x.json'], repoRoot: dir2, prompter: noPrompt })).rejects.toThrow(/requires --ticket/);
     await expect(runInit({ argv: ['--wrecker-record', 'x.json', '--ticket', 'TASK-999'], repoRoot: dir2, prompter: noPrompt })).rejects.toThrow(/tasks\/TASK-999\.json was not found/);
+    // End to end through the real CLI entry: approved cases come from the ticket's `CU<n>:` acceptance criteria.
+    // Harm: an approved case silently missing from the list (near-miss format) or from the record lets a partial run read as complete.
+    const cliRun = async (key, acs, specs) => {
+      const d = makeTmpDir('wr-cli-e2e');
+      mkdirSync(join(d, 'tasks'), { recursive: true });
+      writeFileSync(join(d, 'tasks', `${key}.json`), JSON.stringify({ ...task(key, []), acceptance_criteria: acs }));
+      writeFileSync(join(d, 'rec.json'), JSON.stringify(specs));
+      return runInit({ argv: ['--wrecker-record', join(d, 'rec.json'), '--ticket', key], repoRoot: d, prompter: noPrompt });
+    };
+    const cliOut = { ...out([sk({ uc: 'UC-1' })]), case_map: { 'UC-1': 'CU1' } };
+    const okRun = await cliRun('TASK-951', ['CU1: a', 'CU2: b'], cliOut);
+    expect(okRun.result.wargaming).toContain('CU2 (approved case with no result in this run)');
+    await expect(cliRun('TASK-952', ['plain one', 'plain two'], cliOut)).rejects.toThrow(/no acceptance_criteria item starts/);
+    for (const near of ['CU2 \u2014 b', 'CU 4: d', '**CU5**: e', '1. CU6: f', 'cu3: c']) {
+      await expect(cliRun('TASK-953', ['CU1: a', near], cliOut)).rejects.toThrow(/looks like an approved case/);
+    }
+    // leading zeros: CU07 on the ticket is the case CU7
+    expect(approvedFromAcceptanceCriteria(['CU07: g', 'CU7: dup'])).toEqual(['CU7']);
+    expect(buildWreckerRecord({ cases: [{ case: 'CU7', lint: ok, spec_version: 'v1', status: fin, coverage: cov, findings: [] }] }, { ticketApproved: ['CU07'] }).wargaming)
+      .not.toContain('approved case with no result');
     const direct = buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, spec_version: 'v1', status: fin, coverage: cov,
       findings: [{ ...f('dead_end', 'F-unstable'), stable_id: 'W-UC-4-111111111111' }] }] });
     expect(direct.high_markers[0]).toMatch(/^\[FINDING-HIGH: W-UC-4-111111111111\]/);
