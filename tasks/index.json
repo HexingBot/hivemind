@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T04:31:55.746Z",
+  "generated_at": "2026-10-09T14:52:10.034Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1408,7 +1408,7 @@
     {
       "key": "TASK-240",
       "title": "Wargaming engine per project: Wrecker (/wrecker:wargame) or hivemind default",
-      "status": "in_progress",
+      "status": "in_review",
       "priority": "medium"
     },
     {

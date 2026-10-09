@@ -13,7 +13,7 @@
     "CU8: With default chosen, today's hive-adversarial-improve wargaming runs unchanged.",
     "CU9: Pilot: Wrecker runs on TASK-239's approved use cases (live anchor on the site if reachable) and its results are compared with TASK-239's recorded wargaming report."
   ],
-  "status": "in_progress",
+  "status": "in_review",
   "priority": "medium",
   "labels": [
     "wargaming",
@@ -103,10 +103,30 @@
       "author": "orchestrator",
       "at": "2026-10-09T04:31:55.746Z",
       "body": "CU4 follow-up 3e63dc9: cierra el MEDIUM M-1 de la re-review (el cruce con mapping toma los ids de todos los specs del output del skill, atacados o no; un spec cortado con findings ya no rompe el registro y sigue en not_attacked) y tres LOWs (gemelo por mayúsculas anotado en el body, slice muerto quitado, mapping null = ausente). Lock extendido y plantado rojo-verde por el Developer. Re-corrido por el Orquestador: wargame-wrecker + dist-parity 4/4 verde, SKILL.md en paridad. Con esto termina la implementación de CU1-CU8; sigue in_review, review final del ticket completo, wargaming, UAT."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T14:40:03.522Z",
+      "body": "REVIEW FINAL del ticket (2c6770f..HEAD): BLOCK. Transcripción del Orquestador. dist fresco (8/8), SKILL.md en paridad, docs coherentes, CU9 cumplido (piloto con comparación registrada), saneo de JSON de Wrecker revisado sitio por sitio.\n[FINDING-HIGH: FINAL-R-1] CU7 se cumple sólo por el camino de respaldo (tools directas). Por el camino principal (/wrecker:wargame 0.2.0, que no tiene paso de reanudación) un spec cortado va a not_attacked en vez de reanudarse. Es un angostamiento del caso aprobado que no se le escaló al humano. Decide el humano: aceptarlo (DEGRADED con su justificación) o implementar la reanudación.\nMEDIUM M-1: un caso directo con skill:true escrito a mano saltea los rechazos de CU6 y CU7 e imprime \"lint clean (guaranteed by /wrecker:wargame)\" sin evidencia. M-2: en el camino principal la doc no dice qué hacer tras LINT_FAILED (corregir el spec y re-correr; si cambia el sentido del caso, preguntar al humano). M-3: checklist de hand-off no legible en el log (TASK-241); verificado a mano por el reviewer.\nE2E para el wargaming: wargame-wrecker, wargame-engine, dist-parity, task-234-close-verification, init, init-command, claude-md-init, agent-models-config, y tests/project-definition-schema.spec.js."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T14:40:20.232Z",
+      "body": "DECISIÓN DEL HUMANO (2026-10-09) sobre FINAL-R-1: implementar la reanudación. Si /wrecker:wargame devuelve un spec cortado, el orquestador lo reanuda con la tool directa (resume_session_id, checkpoint en disco) hasta terminar, y el registro acepta ese caso. CU7 se cumple tal como fue aprobado; no se angosta."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T14:50:05.817Z",
+      "body": "RE-REVIEW FINAL (10377c6): PASS. Transcripción del Orquestador. Verificado en el dist de Wrecker 0.2.0: el aviso de corte nombra la tool exacta para reanudar; al reanudar, Wrecker restaura el ledger de hallazgos y la cobertura desde el checkpoint, así que el resultado final de una sesión reanudada es el de la sesión entera. El reemplazo \"resumed\" cumple CU7 por el camino de /wrecker:wargame. El atajo skill:true está cerrado; el skill exige spec_version y spec_sha256; la doc de LINT_FAILED quedó. Locks re-plantados por el reviewer: rojos por la razón correcta.\n[FINDING-RESOLVED: FINAL-R-1]\nMEDIUM a cerrar antes del wargaming: un id bloqueante encontrado antes del corte que falte en el resultado reanudado se descarta sin error; como Wrecker acumula hallazgos, su ausencia es un error de transcripción detectable -> exigir que esté. LOWs: la sesión reanudada conserva el mismo session_id (la doc dice otro); exigir stop_reason en el reemplazo; coma suelta en la doc."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T14:52:10.034Z",
+      "body": "Follow-up 7110ac4: cierra el MEDIUM de la re-review final (el resultado reanudado debe conservar los ids bloqueantes encontrados antes del corte, si no el registro falla nombrándolos) y tres LOWs (stop_reason obligatorio en el reemplazo; la doc dice que en 0.2.0 la sesión reanudada conserva el mismo session_id, verificado por el Orquestador en el dist: runId = resume.sessionId; coma suelta). Locks plantados rojo-verde por el Developer. Re-corrido por el Orquestador: wargame-wrecker + dist-parity 4/4 verde, SKILL.md en paridad. Review final del ticket: PASS. Motor de wargaming de este repo elegido por el humano: hivemind (default), guardado en PROJECT.md. Sigue el wargaming."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-09T04:31:55.746Z",
+  "updated_at": "2026-10-09T14:52:10.034Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "requires_uat": true
