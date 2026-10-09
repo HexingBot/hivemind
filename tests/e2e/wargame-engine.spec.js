@@ -96,12 +96,14 @@ describe('TASK-240 CU1 — wargame_engine', () => {
     await runInit({ argv: ['--set-wargame-engine', 'hivemind'], repoRoot: dir, prompter: () => { throw new Error('asked'); } });
     expect(readFileSync(p, 'utf8')).toBe(withLine('hivemind'));
     expect(await readWargameEngine({ repoRoot: dir })).toEqual({ status: 'set', engine: 'hivemind' });
-    // mixed EOL: only the touched line's EOL changes, body EOLs stay byte-identical
+    // mixed EOL: only the touched line's EOL changes, body EOLs stay byte-identical.
+    // Harm: rewriting every EOL on a one-line setting change dirties the whole PROJECT.md diff.
     const CR = String.fromCharCode(13);
     const mixed = `${withLine('wrecker')}${CR}${NL}tail${CR}${NL}`;
     writeFileSync(p, mixed);
     await saveWargameEngine({ repoRoot: dir, value: 'hivemind' });
     expect(readFileSync(p, 'utf8')).toBe(mixed.replace('wargame_engine: wrecker', 'wargame_engine: hivemind'));
+    // Harm: get+set together would silently pick one and report it as the other (the engine the human asked for is not the one saved).
     await expect(runInit({ argv: ['--get-wargame-engine', '--set-wargame-engine', 'hivemind'], repoRoot: dir, prompter: () => { throw new Error('asked'); } }))
       .rejects.toThrow(/cannot be combined/);
   });

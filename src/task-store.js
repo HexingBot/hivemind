@@ -1980,6 +1980,88 @@ export class MalformedFindingMarkerError extends Error {
 }
 
 /**
+ * TASK-240 (WG-3) — the ONE parser of finding-marker state. checkNoOpenHighFindings (below) and
+ * src/wargame-wrecker.js's ticket-history lookup both read markers through this function, so a
+ * marker the close guard counts (live prose, U+2011-normalized keyword, invisible-glyph-normalized
+ * id, DEGRADED only with a visible justification) is counted identically by the record builder,
+ * and a quoted/fenced mention counts for neither. Ids are normalized (normalizeFindingId).
+ * Returns { opened, closed, resolved, degraded, malformed }: `closed` = resolved OR degraded.
+ */
+export function collectFindingMarkerState(comments) {
+  const allText = comments
+    .map((c) => blankQuotedAndFencedSpans(String((c && c.body) || '')).replace(DASH_LOOKALIKE_RE, '-'))
+    .join('\n');
+
+  const opened = new Set();
+  const closed = new Set();
+  const resolved = new Set(); // closed by a live RESOLVED marker
+  const degraded = new Set(); // closed by a live DEGRADED marker with a visible justification
+  // TASK-238 — every attempt whose id fails isValidFindingId lands here
+  // instead of being silently folded into `opened`/`closed`; a preview
+  // (truncatePreview — R-3: only ellipsized when actually truncated) is
+  // kept so the thrown message names what could not be parsed, not just
+  // that something couldn't.
+  const malformed = [];
+
+  for (const m of allText.matchAll(FINDING_HIGH_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      opened.add(normalizeFindingId(raw));
+    } else {
+      malformed.push(`FINDING-HIGH: "${truncatePreview(raw)}"`);
+    }
+  }
+  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      closed.add(normalizeFindingId(raw));
+      resolved.add(normalizeFindingId(raw));
+    } else {
+      malformed.push(`FINDING-RESOLVED: "${truncatePreview(raw)}"`);
+    }
+  }
+  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
+    const inner = m[1] || '';
+    const sep = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep === -1) continue; // no separator at all: no justification recorded (unchanged pre-TASK-238 behavior)
+    const rawId = inner.slice(0, sep);
+    if (!isValidFindingId(rawId)) {
+      malformed.push(`FINDING-DEGRADED: "${truncatePreview(rawId)}"`);
+      continue;
+    }
+    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, '').trim();
+    // WG5-238-002 — a justification made of nothing but invisible glyphs or
+    // nothing but the separator's own dash vocabulary does not count as
+    // "recorded" (see hasVisibleJustification's doc comment above).
+    if (rawId.trim() !== '' && hasVisibleJustification(justification)) {
+      closed.add(normalizeFindingId(rawId));
+      degraded.add(normalizeFindingId(rawId));
+    }
+  }
+
+  // WG5-238-001 / TASK-238 closing round — an id-shaped (or over-length)
+  // attempt whose closing `]` never falls within the well-formed regexes'
+  // scan cap, and does not depend on a documented separator ever appearing
+  // (LONGFORM_ATTEMPT_RE's doc comment above has the full rationale and the
+  // real-corpus measurement). Only counted when the well-formed regexes
+  // above did NOT already match at the same starting index, so a marker
+  // already opened/closed/malformed through the fast path is never
+  // double-reported.
+  const wellFormedStarts = new Set();
+  for (const re of [FINDING_HIGH_RE, FINDING_RESOLVED_RE, FINDING_DEGRADED_RE]) {
+    for (const m of allText.matchAll(re)) wellFormedStarts.add(m.index);
+  }
+  for (const m of allText.matchAll(LONGFORM_ATTEMPT_RE)) {
+    if (wellFormedStarts.has(m.index)) continue;
+    const token = m[2];
+    if (!isLikelyMarkerAttempt(token)) continue; // ordinary prose (CU2) — stays silent, by design
+    malformed.push(`FINDING-${m[1].toUpperCase()}: "${truncatePreview(token)}" (no se encontro "]" de cierre dentro del scan cap, o sin el separador documentado, pero el primer token tiene forma de id)`);
+  }
+
+  return { opened, closed, resolved, degraded, malformed };
+}
+
+/**
  * TASK-234 (WG-H-004/WG-H-005) — throws OpenHighFindingError when any
  * `[FINDING-HIGH: <id>]` marker recorded on the task has no matching
  * `[FINDING-RESOLVED: <id>]` or non-empty-justification `[FINDING-DEGRADED:
@@ -2022,71 +2104,7 @@ function checkNoOpenHighFindings(task, resolvedException) {
   // "FINDING-HIGH" every regex below hard-codes. Same length, 1-char-for-
   // 1-char, so no match index shifts for the fenced/quoted blanking already
   // applied above.
-  const allText = comments
-    .map((c) => blankQuotedAndFencedSpans(String((c && c.body) || '')).replace(DASH_LOOKALIKE_RE, '-'))
-    .join('\n');
-
-  const opened = new Set();
-  const closed = new Set();
-  // TASK-238 — every attempt whose id fails isValidFindingId lands here
-  // instead of being silently folded into `opened`/`closed`; a preview
-  // (truncatePreview — R-3: only ellipsized when actually truncated) is
-  // kept so the thrown message names what could not be parsed, not just
-  // that something couldn't.
-  const malformed = [];
-
-  for (const m of allText.matchAll(FINDING_HIGH_RE)) {
-    const raw = m[1];
-    if (isValidFindingId(raw)) {
-      opened.add(normalizeFindingId(raw));
-    } else {
-      malformed.push(`FINDING-HIGH: "${truncatePreview(raw)}"`);
-    }
-  }
-  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) {
-    const raw = m[1];
-    if (isValidFindingId(raw)) {
-      closed.add(normalizeFindingId(raw));
-    } else {
-      malformed.push(`FINDING-RESOLVED: "${truncatePreview(raw)}"`);
-    }
-  }
-  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
-    const inner = m[1] || '';
-    const sep = inner.search(DEGRADED_SEPARATOR_RE);
-    if (sep === -1) continue; // no separator at all: no justification recorded (unchanged pre-TASK-238 behavior)
-    const rawId = inner.slice(0, sep);
-    if (!isValidFindingId(rawId)) {
-      malformed.push(`FINDING-DEGRADED: "${truncatePreview(rawId)}"`);
-      continue;
-    }
-    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, '').trim();
-    // WG5-238-002 — a justification made of nothing but invisible glyphs or
-    // nothing but the separator's own dash vocabulary does not count as
-    // "recorded" (see hasVisibleJustification's doc comment above).
-    if (rawId.trim() !== '' && hasVisibleJustification(justification)) {
-      closed.add(normalizeFindingId(rawId));
-    }
-  }
-
-  // WG5-238-001 / TASK-238 closing round — an id-shaped (or over-length)
-  // attempt whose closing `]` never falls within the well-formed regexes'
-  // scan cap, and does not depend on a documented separator ever appearing
-  // (LONGFORM_ATTEMPT_RE's doc comment above has the full rationale and the
-  // real-corpus measurement). Only counted when the well-formed regexes
-  // above did NOT already match at the same starting index, so a marker
-  // already opened/closed/malformed through the fast path is never
-  // double-reported.
-  const wellFormedStarts = new Set();
-  for (const re of [FINDING_HIGH_RE, FINDING_RESOLVED_RE, FINDING_DEGRADED_RE]) {
-    for (const m of allText.matchAll(re)) wellFormedStarts.add(m.index);
-  }
-  for (const m of allText.matchAll(LONGFORM_ATTEMPT_RE)) {
-    if (wellFormedStarts.has(m.index)) continue;
-    const token = m[2];
-    if (!isLikelyMarkerAttempt(token)) continue; // ordinary prose (CU2) — stays silent, by design
-    malformed.push(`FINDING-${m[1].toUpperCase()}: "${truncatePreview(token)}" (no se encontro "]" de cierre dentro del scan cap, o sin el separador documentado, pero el primer token tiene forma de id)`);
-  }
+  const { opened, closed, malformed } = collectFindingMarkerState(comments);
 
   if (malformed.length > 0) {
     throw new MalformedFindingMarkerError(

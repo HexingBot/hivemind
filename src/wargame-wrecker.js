@@ -32,6 +32,8 @@
 //   steps_never_reached?: string[], dry_run_only?: boolean }
 // plus top-level not_attacked: [{ case, reason }] for approved cases that got no spec.
 
+import { collectFindingMarkerState } from './task-store.js';
+
 const HIGH_KINDS = new Set(['counterexample', 'contradiction', 'dead_end']);
 const ID_MAX = 40; // mirrors task-store.js FINDING_ID_MAX_LEN
 
@@ -195,7 +197,7 @@ function fromSkill(out) {
       }
     }
   }
-  return { cases, not_attacked: notAttacked, approved: out.approved, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
+  return { cases, not_attacked: notAttacked, approved: Array.isArray(out.approved) ? out.approved.map((a) => String(map[a] ?? a)) : out.approved, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
 }
 
 // Ticket history (WG-1): a candidate that comes back after its marker was RESOLVED is a regression, so it
@@ -203,23 +205,24 @@ function fromSkill(out) {
 // A DEGRADED id (known false positive) carries over on purpose and is only listed.
 function ticketHistory(comments) {
   if (!Array.isArray(comments)) return null;
-  const h = { resolved: new Set(), degraded: new Set(), all: new Set() };
-  for (const cm of comments) {
-    for (const m of String(cm?.body ?? '').matchAll(/\[FINDING-(HIGH|RESOLVED|DEGRADED):\s*([^\]\s]+)/gi)) {
-      const id = m[2].toUpperCase();
-      h.all.add(id);
-      if (m[1].toUpperCase() === 'RESOLVED') h.resolved.add(id);
-      if (m[1].toUpperCase() === 'DEGRADED') h.degraded.add(id);
-    }
-  }
-  return h;
+  // The ONE marker parser (task-store.js): exactly what the close guard counts, nothing else.
+  const st = collectFindingMarkerState(comments);
+  return { opened: st.opened, resolved: st.resolved, degraded: st.degraded, all: new Set([...st.opened, ...st.closed]) };
 }
 
-export function buildWreckerRecord(input, { comments } = {}) {
+export function buildWreckerRecord(input, { comments, ticketApproved } = {}) {
   if (input && (input.engine === 'wrecker' || input.error || Array.isArray(input.specs))) input = fromSkill(input);
   const { cases, not_attacked = [], header = null, approved } = input ?? {};
   const hist = ticketHistory(comments);
+  let approvedList = Array.isArray(approved) ? [...new Set(approved.map((x) => tok(x).toUpperCase()))] : null;
+  if (Array.isArray(ticketApproved)) {
+    if (approvedList && approvedList.length > 0 && (approvedList.length !== ticketApproved.length || approvedList.some((x) => !ticketApproved.includes(x)))) {
+      throw new Error(`buildWreckerRecord: the "approved" list (${approvedList.join(',')}) differs from the ticket's own approved cases (${ticketApproved.join(',')})`);
+    }
+    approvedList = [...ticketApproved];
+  }
   const cameBack = [];
+  const stillOpen = [];
   const prevDegraded = [];
   if (Array.isArray(cases)) {
     for (const c of cases) {
@@ -248,6 +251,9 @@ export function buildWreckerRecord(input, { comments } = {}) {
         || typeof lint.usecase !== 'string' || !lint.usecase.trim() || typeof lint.spec_version !== 'string' || !lint.spec_version.trim()
         || lint.valid === false || (Array.isArray(lint.problems) && lint.problems.length > 0))) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) — a run on a spec that failed lint cannot become a record`);
+    }
+    if (!src && (typeof c.spec_version !== 'string' || !c.spec_version.trim())) {
+      throw new Error(`buildWreckerRecord: ${caseId} must carry its own spec_version (the one the lint and the session ran on)`);
     }
     if (!src && ((c.spec_version != null && String(c.spec_version) !== lint.spec_version) || (c.usecase != null && String(c.usecase) !== lint.usecase))) {
       throw new Error(`buildWreckerRecord: ${caseId}'s lint belongs to another spec (lint ${tok(lint.usecase)}/${tok(lint.spec_version)} vs case ${tok(c.usecase ?? '-')}/${tok(c.spec_version ?? '-')}) - lint the attacked spec itself`);
@@ -303,12 +309,34 @@ export function buildWreckerRecord(input, { comments } = {}) {
           // become two markers that one RESOLVED closes together: collisions are made unique, never dropped.
           for (let n = 1; seen.has(id.toUpperCase()); n++) id = `${id.replace(/-x\d+$/, '').slice(0, ID_MAX - 5)}-x${n}`;
           let back = '';
-          if (hist && hist.resolved.has(id.toUpperCase())) {
-            const old = id;
-            for (let n = 2; hist.all.has(id.toUpperCase()) || seen.has(id.toUpperCase()) || id === old; n++) id = `${old.slice(0, ID_MAX - 2 - String(n).length)}-r${n}`;
-            cameBack.push(`${old} -> ${id}`);
-            back = ' (came back after RESOLVED)';
-          } else if (hist && hist.degraded.has(id.toUpperCase())) prevDegraded.push(id);
+          if (hist) {
+            // Lineage: X, X-r2, X-r3 ... consult the LATEST member. RESOLVED -> a regression, next -r(n+1);
+            // DEGRADED -> carries over (reuse that member); still open -> already blocking, add nothing.
+            const base = id.toUpperCase();
+            let n = 0;
+            for (const m of hist.all) {
+              if (m === base) n = Math.max(n, 1);
+              else if (m.startsWith(`${base}-R`) && /^\d+$/.test(m.slice(base.length + 2))) n = Math.max(n, Number(m.slice(base.length + 2)));
+            }
+            if (n > 0) {
+              const latest = n === 1 ? base : `${base}-R${n}`;
+              const latestId = n === 1 ? id : `${id}-r${n}`;
+              if (hist.resolved.has(latest)) {
+                const old = id;
+                id = `${old.slice(0, ID_MAX - 2 - String(n + 1).length)}-r${n + 1}`;
+                for (let k = n + 2; seen.has(id.toUpperCase()) || hist.all.has(id.toUpperCase()); k++) id = `${old.slice(0, ID_MAX - 2 - String(k).length)}-r${k}`;
+                cameBack.push(`${tok(orig)}${tok(orig) !== old ? ` (marker ${old})` : ''} -> ${id}`);
+                back = ' (came back after RESOLVED)';
+              } else if (hist.degraded.has(latest)) {
+                id = latestId;
+                prevDegraded.push(id);
+              } else {
+                stillOpen.push(latestId);
+                seen.add(latestId.toUpperCase());
+                continue;
+              }
+            }
+          }
           seen.add(id.toUpperCase());
           if (isStable && id !== orig && !back) derived.push(`${tok(orig)} -> ${id}`);
           highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step}${back} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
@@ -339,12 +367,12 @@ export function buildWreckerRecord(input, { comments } = {}) {
   const high = highMarkers.length;
   const attackedIds = new Set(cases.map((x) => tok(x.case).toUpperCase()));
   let approvedNote;
-  if (Array.isArray(approved) && approved.length > 0) {
+  if (approvedList && approvedList.length > 0) {
     const have = new Set(notAttacked.map((n) => String(n).split(/[ (]/)[0].toUpperCase()));
-    for (const a of approved.map((x) => tok(x))) {
+    for (const a of approvedList) {
       if (!attackedIds.has(a.toUpperCase()) && !have.has(a.toUpperCase())) notAttacked.push(`${a} (approved case with no result in this run)`);
     }
-    const extra = [...attackedIds].filter((x) => !approved.map((y) => tok(y).toUpperCase()).includes(x));
+    const extra = [...attackedIds].filter((x) => !approvedList.includes(x));
     approvedNote = extra.length > 0 ? ` Attacked but not in the approved list: ${extra.join(', ')}.` : '';
   } else {
     approvedNote = ' Approved list NOT PROVIDED: a run over a subset of the approved cases cannot be detected.';
@@ -352,9 +380,10 @@ export function buildWreckerRecord(input, { comments } = {}) {
   const body = [
     `[WARGAMING] engine: wrecker${header ? ` (${header})` : ''}.`,
     `Attacked (case + path): ${attacked.join(' | ') || 'none'}.`,
-    `Not attacked: ${notAttacked.join(' | ') || (Array.isArray(approved) && approved.length > 0 ? 'none (every approved case was attacked)' : 'none declared')}.${approvedNote}`,
+    `Not attacked: ${notAttacked.join(' | ') || (approvedList && approvedList.length > 0 ? 'none (every approved case was attacked)' : 'none declared')}.${approvedNote}`,
     hist ? null : 'Ticket history NOT PROVIDED: a candidate that came back after RESOLVED cannot be detected (pass the ticket).',
     ...(cameBack.length > 0 ? [`Came back after RESOLVED, fresh marker ids (old -> new): ${cameBack.join('; ')}.`] : []),
+    ...(stillOpen.length > 0 ? [`Still open from an earlier run (existing marker, none added): ${stillOpen.join(', ')}.`] : []),
     ...(prevDegraded.length > 0 ? [`Previously degraded (carries over): ${prevDegraded.join(', ')}.`] : []),
     ...(derived.length > 0 ? [`Marker ids derived (original -> marker, match a later RESOLVED/DEGRADED by the marker id): ${derived.join('; ')}.`] : []),
     ...(dropped.length > 0 ? [`Stable ids folded into an earlier marker (one marker covers both): ${dropped.join('; ')}.`] : []),

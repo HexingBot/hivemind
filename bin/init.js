@@ -251,6 +251,9 @@ function parseArgs(argv) {
   if (out.ticket !== null && out.wreckerRecord === null) {
     throw new Error('--ticket is only meaningful with --wrecker-record');
   }
+  if (out.wreckerRecord !== null && out.ticket === null) {
+    throw new Error('--wrecker-record requires --ticket <KEY> (the ticket supplies the approved cases and the finding history)');
+  }
   if (out.wreckerRecord !== null && (out.force || out.answersFile !== null)) {
     throw new Error('--wrecker-record cannot be combined with --force or --answers-file');
   }
@@ -1052,11 +1055,19 @@ export async function runInit({
   // Pure mapping of Wrecker findings -> FINDING-HIGH markers / questions /
   // [WARGAMING] body. Prints one JSON object; writes nothing.
   if (parsed.wreckerRecord !== null) {
-    // --ticket reads tasks/<KEY>.json READ-ONLY, only for its comments (re-opened candidates, WG-1).
-    const comments = parsed.ticket
-      ? JSON.parse(readFileSync(join(repoRoot, 'tasks', `${parsed.ticket}.json`), 'utf8')).comments ?? []
-      : undefined;
-    const result = buildWreckerRecord(JSON.parse(readFileSync(parsed.wreckerRecord, 'utf8')), { comments });
+    // --ticket (required) reads tasks/<KEY>.json READ-ONLY: its comments (re-opened candidates, WG-1) and its
+    // approved cases (acceptance_criteria items starting `CU<n>:`) - never a caller-supplied list.
+    const ticketPath = join(repoRoot, 'tasks', `${parsed.ticket}.json`);
+    if (!existsSync(ticketPath)) {
+      throw new Error(`--ticket ${parsed.ticket}: tasks/${parsed.ticket}.json was not found under ${repoRoot} (run from the project root, or set CLAUDE_PROJECT_DIR)`);
+    }
+    const tk = JSON.parse(readFileSync(ticketPath, 'utf8'));
+    const ticketApproved = [...new Set((Array.isArray(tk.acceptance_criteria) ? tk.acceptance_criteria : [])
+      .map((x) => /^\s*(CU\d+)\s*:/i.exec(String(x))?.[1]?.toUpperCase()).filter(Boolean))];
+    if (ticketApproved.length === 0) {
+      throw new Error(`--ticket ${parsed.ticket}: no acceptance_criteria item starts with "CU<n>:" - the approved cases must be on the ticket`);
+    }
+    const result = buildWreckerRecord(JSON.parse(readFileSync(parsed.wreckerRecord, 'utf8')), { comments: Array.isArray(tk.comments) ? tk.comments : [], ticketApproved });
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(result));
     return { state: 'wrecker_record', projectMdPath, sessionId: null, result };

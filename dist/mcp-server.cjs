@@ -26689,13 +26689,12 @@ var MalformedFindingMarkerError = class extends Error {
     this.code = "E_MALFORMED_FINDING_MARKER";
   }
 };
-function checkNoOpenHighFindings(task, resolvedException) {
-  if (resolvedException) return;
-  if (task.status === "done") return;
-  const comments = Array.isArray(task.comments) ? task.comments : [];
+function collectFindingMarkerState(comments) {
   const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || "")).replace(DASH_LOOKALIKE_RE, "-")).join("\n");
   const opened = /* @__PURE__ */ new Set();
   const closed = /* @__PURE__ */ new Set();
+  const resolved = /* @__PURE__ */ new Set();
+  const degraded = /* @__PURE__ */ new Set();
   const malformed = [];
   for (const m of allText.matchAll(FINDING_HIGH_RE)) {
     const raw = m[1];
@@ -26709,6 +26708,7 @@ function checkNoOpenHighFindings(task, resolvedException) {
     const raw = m[1];
     if (isValidFindingId(raw)) {
       closed.add(normalizeFindingId(raw));
+      resolved.add(normalizeFindingId(raw));
     } else {
       malformed.push(`FINDING-RESOLVED: "${truncatePreview(raw)}"`);
     }
@@ -26725,6 +26725,7 @@ function checkNoOpenHighFindings(task, resolvedException) {
     const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
     if (rawId.trim() !== "" && hasVisibleJustification(justification)) {
       closed.add(normalizeFindingId(rawId));
+      degraded.add(normalizeFindingId(rawId));
     }
   }
   const wellFormedStarts = /* @__PURE__ */ new Set();
@@ -26737,6 +26738,13 @@ function checkNoOpenHighFindings(task, resolvedException) {
     if (!isLikelyMarkerAttempt(token)) continue;
     malformed.push(`FINDING-${m[1].toUpperCase()}: "${truncatePreview(token)}" (no se encontro "]" de cierre dentro del scan cap, o sin el separador documentado, pero el primer token tiene forma de id)`);
   }
+  return { opened, closed, resolved, degraded, malformed };
+}
+function checkNoOpenHighFindings(task, resolvedException) {
+  if (resolvedException) return;
+  if (task.status === "done") return;
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const { opened, closed, malformed } = collectFindingMarkerState(comments);
   if (malformed.length > 0) {
     throw new MalformedFindingMarkerError(
       `task ${task.key} has ${malformed.length} finding marker(s) that could not be parsed as a valid id (no spaces/newlines, at most ${FINDING_ID_MAX_LEN} chars): ${malformed.join("; ")} \u2014 this is distinct from "no open findings" (TASK-238/AC4): fix the marker's id (or rewrite the surrounding prose so it does not open with the literal marker syntax) before closing, so it is never silently dropped nor silently counted as an opened/resolved finding.`

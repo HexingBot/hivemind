@@ -9265,6 +9265,657 @@ async function saveWargameEngine({ repoRoot, value }) {
   return { saved: true, engine };
 }
 
+// src/task-store.js
+var import_promises3 = require("node:fs/promises");
+var import_node_fs9 = require("node:fs");
+var import_node_path7 = require("node:path");
+var import_node_crypto5 = require("node:crypto");
+var import__2 = __toESM(require__(), 1);
+var import_ajv_formats2 = __toESM(require_dist(), 1);
+
+// tasks/schema.json
+var schema_default = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://hivemind.local/tasks/schema.json",
+  title: "Task",
+  description: "A single unit of work for the agentic team. Field names mirror Jira issue fields so the same task can later be created in Jira without lossy translation.",
+  type: "object",
+  required: ["key", "title", "description", "acceptance_criteria", "status", "priority", "created_at", "updated_at"],
+  additionalProperties: false,
+  properties: {
+    key: {
+      type: "string",
+      pattern: "^TASK-[0-9]{3,}$",
+      description: "Stable human-readable identifier. Maps to Jira issue key on migration."
+    },
+    title: {
+      type: "string",
+      minLength: 1,
+      maxLength: 200,
+      description: "One-line summary. Maps to Jira `summary`."
+    },
+    description: {
+      type: "string",
+      description: "Markdown-formatted full description of the work. Maps to Jira `description`."
+    },
+    acceptance_criteria: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "string",
+        pattern: "\\S",
+        description: "TASK-189 \u2014 must contain at least one non-whitespace character. Rejects empty strings and whitespace-only strings (mechanically detectable vacuity). Deliberately does NOT attempt to detect unfalsifiable-but-well-formed prose (e.g. 'It works correctly.') \u2014 see TASK-189's hand-off for why that judgement is left to review, not the schema."
+      },
+      description: "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: regression locks for tests-after, recorded UAT for uat-only."
+    },
+    verification_tier: {
+      type: "string",
+      enum: ["tdd", "tests-after", "uat-only"],
+      description: `Governs how the ticket is verified. Absent means tests-after (backward-compatible default). tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT. "tdd" (tests-first, single-commit discipline) is WRITE-FROZEN: TASK-212 (2026-08-13 human decision) retired it and it can no longer be ASSIGNED to a ticket \u2014 that policy is enforced one layer up, by the two write surfaces (src/task-store.js's VERIFICATION_TIERS, src/mcp-server.js's zod VERIFICATION_TIER), not by this storage schema. This schema keeps accepting "tdd" only so the ~101 tickets (100 done + any still in-flight) that legitimately carry it as a historical record of how they were verified stay writable at all \u2014 appending a comment or transitioning status on one of them re-validates the WHOLE stored object against this enum, and a schema that rejected "tdd" would make that historical record permanently un-rewritable, which is not what 'kept as a historical record' (CLAUDE.md's Testing section) means. Never assign "tdd" to a new ticket \u2014 createTask and the MCP create_task tool reject it independently of this schema.`
+    },
+    requires_uat: {
+      type: "boolean",
+      description: "TASK-221 \u2014 answers a question distinct from verification_tier: do this ticket's acceptance criteria describe something a person can observe (as opposed to how much test rigor the ticket needs). Assigned at Workflow step 1, same moment as verification_tier. true = the acceptance criteria describe human-observable behavior and a UAT script must be run before close; false = they do not. DEFAULT WHEN ABSENT: false \u2014 an explicit human decision (2026-09-09, TASK-221), not an inference: the ~206 tickets already closed before this field existed carry no requires_uat at all, and a true default would retroactively brand all of them non-compliant, which is precisely the mass-retrofit TASK-223 freezes as a baseline instead of migrating. Read this default from exactly one place: src/task-store.js's requiresUat(task) helper \u2014 TASK-220 (reviewer sensor gating) and TASK-222 (close-guard enforcement) both call it rather than re-deriving `=== true` independently.",
+      default: false
+    },
+    marker: {
+      type: "string",
+      enum: ["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"],
+      description: "Epistemic calibration of the ticket's load-bearing claims (Spine). Optional; ACs may also carry inline markers, which the reviewer validates. Must respect source_tier's ceiling (T3/T4 cannot be [EXPLICIT])."
+    },
+    source_tier: {
+      type: "string",
+      enum: ["T1", "T2", "T3", "T4", "TX"],
+      description: "Authority of the evidence behind the ticket's claims. Caps how strong marker may be: [EXPLICIT] requires T1/T2; T4 is orientation-only; TX is rejected. See .knowledge/meta/SOURCE_TIERS.md."
+    },
+    confidence: {
+      type: "object",
+      additionalProperties: false,
+      description: "Decomposed confidence (components, NOT a scalar), populated from the brain's confidence model. Each component is in [0,1].",
+      properties: {
+        source_credibility: { type: "number", minimum: 0, maximum: 1 },
+        assertion_strength: { type: "number", minimum: 0, maximum: 1 },
+        corroboration: { type: "number", minimum: 0, maximum: 1 },
+        verification_status: { type: "number", minimum: 0, maximum: 1 }
+      }
+    },
+    status: {
+      type: "string",
+      enum: ["todo", "in_progress", "in_review", "blocked", "done"],
+      description: "Lifecycle state. Maps to Jira workflow status."
+    },
+    priority: {
+      type: "string",
+      enum: ["low", "medium", "high", "critical"]
+    },
+    labels: {
+      type: "array",
+      items: { type: "string" },
+      default: []
+    },
+    assignee: {
+      type: ["string", "null"],
+      description: "Subagent name or human identifier. Null = unassigned.",
+      default: null
+    },
+    depends_on: {
+      type: "array",
+      items: { type: "string", pattern: "^TASK-[0-9]{3,}$" },
+      default: [],
+      description: "Other task keys that must reach `done` before this one can start."
+    },
+    linked_commits: {
+      type: "array",
+      items: { type: "string" },
+      default: [],
+      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE (/^[0-9a-f]{7,40}$/i, TASK-082) AND, since TASK-234 (WG-H-011, wargaming 2026-09-16), its EXISTENCE: closeTask resolves every final sha through an injectable verifier (src/commit-existence.js, `git cat-file -e <sha>^{commit}`) and REJECTS the close with LinkedCommitNotFoundError when git ran and said no such commit. This supersedes TASK-188 AC6's 'closeTask is a pure state-store function with no git dependency' decision \u2014 WG-H-011 measured what that cost (an invented-but-well-formed sha satisfied the close evidence a reader takes as proof the work landed); the dependency is now admitted behind the `commitVerifier` seam, so a caller without git still closes. A sha git could NOT check (no git binary, repoRoot not a work tree, git error) is recorded as 'unverifiable' and never blocks the close \u2014 see linked_commits_verification, where every outcome is persisted per-sha. src/mcp-server.js's close_task tool additionally reports its own advisory linked_commits_verification in the tool RESPONSE (a separate, response-only object \u2014 not this stored field)."
+    },
+    linked_commits_verification: {
+      type: "object",
+      additionalProperties: false,
+      required: ["at", "commits"],
+      description: "TASK-234 (WG-H-011/WG-H-020) \u2014 the per-sha outcome of closeTask's existence check over the FINAL linked_commits, recorded at close time so a verified close is mechanically distinguishable from an unverified one afterwards (bin/audit-close-verification.js reads exactly this). Written ONLY by closeTask, and only on a real close (never on the no-op re-close path). Its ABSENCE on a done ticket means the ticket closed before this field existed (or was hand-edited) \u2014 the audit reports that as 'unverifiable', never as verified and never as a failure: TASK-234 AC7 forbids retroactively re-judging the ~208 historical done tickets.",
+      properties: {
+        at: { type: "string", format: "date-time", description: "When the check ran (same stamp as the close itself)." },
+        checked: { type: "boolean", description: "false = git could not be consulted at all; `reason` names why and every entry in `commits` is 'unverifiable'." },
+        reason: { type: ["string", "null"], description: "Why nothing could be checked: 'none-linked' (no shas to check, not an error), 'git-unavailable' (no git binary), 'not-a-git-repo'. Null when checked is true." },
+        commits: {
+          type: "array",
+          description: "One entry per sha in the ticket's final linked_commits. THREE states, never two (CLAUDE.md's Empty-result contract, TASK-192): 'cannot know' is its own recorded outcome and is never collapsed into 'verified' or 'not-found'.",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["sha", "state"],
+            properties: {
+              sha: { type: "string" },
+              state: { type: "string", enum: ["verified", "not-found", "unverifiable"] },
+              reason: { type: ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    linked_prs: {
+      type: "array",
+      items: { type: "string" },
+      default: []
+    },
+    comments: {
+      type: "array",
+      default: [],
+      items: {
+        type: "object",
+        required: ["author", "at", "body"],
+        additionalProperties: false,
+        properties: {
+          author: {
+            type: "string",
+            enum: ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"],
+            description: "TASK-188 \u2014 constrained to the roles the system actually writes today (derived from the live tasks/ corpus plus src/backlog-seeder.js). This is a known-set check only, NOT proof of identity: every write flows through the same MCP surface regardless of author, so the primitive cannot verify WHO is calling. src/task-store.js additionally rejects 'reviewer' as close_task's own directly-supplied closing-comment author (see closeTask's ClosingCommentAuthorError) \u2014 a review's legitimacy is defined by being recorded as a separate, pre-existing comment, not fabricated as the terminal closing remark."
+          },
+          at: { type: "string", format: "date-time" },
+          body: { type: "string" }
+        }
+      }
+    },
+    created_at: { type: "string", format: "date-time" },
+    updated_at: { type: "string", format: "date-time" },
+    jira_key: {
+      type: ["string", "null"],
+      default: null,
+      description: "Populated when the task has been mirrored to Jira. Until then, null."
+    }
+  },
+  allOf: [
+    {
+      $comment: "TASK-189 AC2 \u2014 calibration-laundering guard, expressed as a real cross-field rule rather than prose: marker '[EXPLICIT]' requires source_tier 'T1' or 'T2' (mirrors .knowledge/meta/SOURCE_TIERS.md's marker-ceiling table). Only fires when BOTH fields are present \u2014 a ticket carrying marker:'[EXPLICIT]' with no source_tier at all is unaffected (backward-compatible; source_tier stays optional). Deliberately narrower than the full T1-T4 ceiling table (e.g. does not enforce [INFERRED:strong] requiring T2+, or T4's 'orientation only' constraint on weaker markers) \u2014 see TASK-189's hand-off for the scoping rationale.",
+      if: {
+        required: ["marker", "source_tier"],
+        properties: { marker: { const: "[EXPLICIT]" } }
+      },
+      then: {
+        properties: { source_tier: { enum: ["T1", "T2"] } }
+      }
+    }
+  ]
+};
+
+// src/task-store.js
+var PRIORITIES = ["low", "medium", "high", "critical"];
+var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
+function sanitizeCommentBody(body) {
+  return typeof body === "string" ? stripInvisibleChars(body) : body;
+}
+var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
+var __ajv = new import__2.default({ allErrors: true, strict: false });
+(0, import_ajv_formats2.default)(__ajv);
+var __validateTask = __ajv.compile(schema_default);
+function validateTaskOrThrow(task) {
+  const ok = __validateTask(task);
+  if (ok) return;
+  const errs = __validateTask.errors || [];
+  const msg = errs.map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ");
+  throw new Error(`task payload failed schema validation: ${msg}`);
+}
+function tasksDir(repoRoot) {
+  return (0, import_node_path7.join)(repoRoot, "tasks");
+}
+function taskFilePath(repoRoot, key) {
+  return (0, import_node_path7.join)(tasksDir(repoRoot), `${key}.json`);
+}
+function indexFilePath(repoRoot) {
+  return (0, import_node_path7.join)(tasksDir(repoRoot), "index.json");
+}
+function tasksLockPath(repoRoot) {
+  return (0, import_node_path7.join)(tasksDir(repoRoot), ".mutate.lock");
+}
+var TaskMutationLockError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TaskMutationLockError";
+    this.code = "E_TASK_MUTATION_LOCK_TIMEOUT";
+  }
+};
+var TASKS_LOCK_STALE_MS = 3e3;
+var TASKS_LOCK_POLL_MS = 20;
+var TASKS_LOCK_MAX_WAIT_MS = 6e3;
+var TASKS_LOCK_HEARTBEAT_MS = 750;
+function sleepMs(ms) {
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
+}
+function isImplausiblyFuture(mtimeMs) {
+  return mtimeMs - Date.now() > TASKS_LOCK_STALE_MS;
+}
+async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS } = {}) {
+  const dir = tasksDir(repoRoot);
+  (0, import_node_fs9.mkdirSync)(dir, { recursive: true });
+  const lockPath = tasksLockPath(repoRoot);
+  const deadline = Date.now() + maxWaitMs;
+  const token = `${process.pid}-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}`;
+  for (; ; ) {
+    try {
+      const fd = (0, import_node_fs9.openSync)(lockPath, import_node_fs9.constants.O_CREAT | import_node_fs9.constants.O_EXCL | import_node_fs9.constants.O_WRONLY, 384);
+      try {
+        const payload = Buffer.from(`${token}
+`, "utf8");
+        (0, import_node_fs9.writeSync)(fd, payload, 0, payload.length);
+        (0, import_node_fs9.fsyncSync)(fd);
+      } finally {
+        (0, import_node_fs9.closeSync)(fd);
+      }
+      return token;
+    } catch (err) {
+      if (!err || err.code !== "EEXIST") throw err;
+      let stat = null;
+      let foreignEntry = false;
+      try {
+        stat = (0, import_node_fs9.statSync)(lockPath);
+      } catch {
+        try {
+          foreignEntry = (0, import_node_fs9.lstatSync)(lockPath).isSymbolicLink();
+        } catch {
+        }
+      }
+      if (foreignEntry || stat && (Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(stat.mtimeMs))) {
+        const quarantinePath = `${lockPath}.stale.${token}`;
+        let renamed = false;
+        try {
+          (0, import_node_fs9.renameSync)(lockPath, quarantinePath);
+          renamed = true;
+        } catch {
+        }
+        if (renamed) {
+          let qStat = null;
+          let qIsSymlink = false;
+          try {
+            qStat = (0, import_node_fs9.lstatSync)(quarantinePath);
+            qIsSymlink = qStat.isSymbolicLink();
+          } catch {
+          }
+          const genuinelyStale = qIsSymlink || qStat && (Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(qStat.mtimeMs));
+          if (genuinelyStale) {
+            try {
+              (0, import_node_fs9.unlinkSync)(quarantinePath);
+            } catch {
+              try {
+                (0, import_node_fs9.rmSync)(quarantinePath, { recursive: true, force: true });
+              } catch {
+              }
+            }
+          } else {
+            try {
+              (0, import_node_fs9.renameSync)(quarantinePath, lockPath);
+            } catch {
+            }
+          }
+        }
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new TaskMutationLockError(
+          `timed out after ${maxWaitMs}ms waiting for the tasks mutation lock at ${lockPath} \u2014 another writer (this process, bin/task-board.js, or another orchestrator process) is holding it. The caller's mutation was NOT applied \u2014 nothing was accepted-and-lost; retry the call.`
+        );
+      }
+      await sleepMs(TASKS_LOCK_POLL_MS);
+    }
+  }
+}
+function releaseTasksLock(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
+  try {
+    const current = (0, import_node_fs9.readFileSync)(lockPath, "utf8").trim();
+    if (current !== token) return;
+    (0, import_node_fs9.unlinkSync)(lockPath);
+  } catch {
+  }
+}
+function startTasksLockHeartbeat(repoRoot, token) {
+  const lockPath = tasksLockPath(repoRoot);
+  const timer = setInterval(() => {
+    try {
+      const current = (0, import_node_fs9.readFileSync)(lockPath, "utf8").trim();
+      if (current !== token) return;
+      const now = /* @__PURE__ */ new Date();
+      (0, import_node_fs9.utimesSync)(lockPath, now, now);
+    } catch {
+    }
+  }, TASKS_LOCK_HEARTBEAT_MS);
+  if (typeof timer.unref === "function") timer.unref();
+  return timer;
+}
+async function withTasksLock(repoRoot, fn, { maxWaitMs } = {}) {
+  const token = await acquireTasksLock(repoRoot, { maxWaitMs });
+  const heartbeat = startTasksLockHeartbeat(repoRoot, token);
+  try {
+    return await fn();
+  } finally {
+    clearInterval(heartbeat);
+    releaseTasksLock(repoRoot, token);
+  }
+}
+function numericKeyOrder(a, b) {
+  const ka = typeof a === "string" ? a : a.key;
+  const kb = typeof b === "string" ? b : b.key;
+  const ma = /-(\d+)$/.exec(ka);
+  const mb = /-(\d+)$/.exec(kb);
+  if (ma && mb) {
+    const na = parseInt(ma[1], 10);
+    const nb = parseInt(mb[1], 10);
+    if (na !== nb) return na - nb;
+    return 0;
+  }
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
+async function readAllTasks(repoRoot) {
+  const dir = tasksDir(repoRoot);
+  let entries;
+  try {
+    entries = await (0, import_promises3.readdir)(dir);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return [];
+    throw err;
+  }
+  const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
+  const out = [];
+  for (const name of taskFiles) {
+    const raw = await (0, import_promises3.readFile)((0, import_node_path7.join)(dir, name), "utf8");
+    if (raw.length === 0) continue;
+    out.push(JSON.parse(raw));
+  }
+  return out;
+}
+function buildIndexBytes(tasks, generatedAt) {
+  const summary = tasks.map((t) => ({
+    key: t.key,
+    title: t.title,
+    status: t.status,
+    priority: t.priority
+  })).sort(numericKeyOrder);
+  return JSON.stringify({ generated_at: generatedAt, tasks: summary }, null, 2) + "\n";
+}
+var KeyCollisionError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "KeyCollisionError";
+    this.code = "E_KEY_COLLISION";
+  }
+};
+var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
+var FINDING_ID_MAX_LEN = 40;
+var FINDING_MARKER_SCAN_CAP = 200;
+var FINDING_DEGRADED_SCAN_CAP = 500;
+function isValidFindingId(raw) {
+  const id = String(raw).trim();
+  return id.length > 0 && id.length <= FINDING_ID_MAX_LEN && !/\s/.test(id);
+}
+var FINDING_HIGH_RE = new RegExp(`\\[FINDING-HIGH:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_RESOLVED_RE = new RegExp(`\\[FINDING-RESOLVED:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
+var FINDING_DEGRADED_RE = new RegExp(`\\[FINDING-DEGRADED:\\s*([^\\]]{0,${FINDING_DEGRADED_SCAN_CAP}})\\]`, "gi");
+var DEGRADED_SEPARATOR_RE = /—|\s-\s/;
+var ID_SHAPE_WITH_SEPARATOR_RE = /^[A-Za-z0-9]+(?:[-._/][A-Za-z0-9]+)+$/;
+function isLikelyMarkerAttempt(token) {
+  return ID_SHAPE_WITH_SEPARATOR_RE.test(token) || token.length > FINDING_ID_MAX_LEN;
+}
+var LONGFORM_ATTEMPT_RE = new RegExp("\\[FINDING-(HIGH|RESOLVED|DEGRADED):\\s*([^\\s\\]]+)", "gi");
+var DASH_LOOKALIKE_RE = /‑/g;
+function normalizeFindingId(raw) {
+  return String(raw).trim().normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").toUpperCase();
+}
+function hasVisibleJustification(text) {
+  return String(text).normalize("NFD").replace(IGNORABLE_OR_BLANK_RE, "").replace(/[-—\s]+/g, "").length > 0;
+}
+function truncatePreview(raw) {
+  const trimmed = String(raw).trim();
+  const sliced = trimmed.slice(0, FINDING_ID_MAX_LEN);
+  return sliced + (trimmed.length > FINDING_ID_MAX_LEN ? "..." : "");
+}
+var FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g;
+var BACKTICK_SPAN_RE = /`[^`\n]*`/g;
+var DOUBLE_QUOTED_SPAN_RE = /"[^"\n]*"/g;
+function blankQuotedAndFencedSpans(text) {
+  return text.replace(FENCED_CODE_BLOCK_RE, (m) => " ".repeat(m.length)).replace(BACKTICK_SPAN_RE, (m) => " ".repeat(m.length)).replace(DOUBLE_QUOTED_SPAN_RE, (m) => " ".repeat(m.length));
+}
+function collectFindingMarkerState(comments) {
+  const allText = comments.map((c) => blankQuotedAndFencedSpans(String(c && c.body || "")).replace(DASH_LOOKALIKE_RE, "-")).join("\n");
+  const opened = /* @__PURE__ */ new Set();
+  const closed = /* @__PURE__ */ new Set();
+  const resolved = /* @__PURE__ */ new Set();
+  const degraded = /* @__PURE__ */ new Set();
+  const malformed = [];
+  for (const m of allText.matchAll(FINDING_HIGH_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      opened.add(normalizeFindingId(raw));
+    } else {
+      malformed.push(`FINDING-HIGH: "${truncatePreview(raw)}"`);
+    }
+  }
+  for (const m of allText.matchAll(FINDING_RESOLVED_RE)) {
+    const raw = m[1];
+    if (isValidFindingId(raw)) {
+      closed.add(normalizeFindingId(raw));
+      resolved.add(normalizeFindingId(raw));
+    } else {
+      malformed.push(`FINDING-RESOLVED: "${truncatePreview(raw)}"`);
+    }
+  }
+  for (const m of allText.matchAll(FINDING_DEGRADED_RE)) {
+    const inner = m[1] || "";
+    const sep = inner.search(DEGRADED_SEPARATOR_RE);
+    if (sep === -1) continue;
+    const rawId = inner.slice(0, sep);
+    if (!isValidFindingId(rawId)) {
+      malformed.push(`FINDING-DEGRADED: "${truncatePreview(rawId)}"`);
+      continue;
+    }
+    const justification = inner.slice(sep).replace(DEGRADED_SEPARATOR_RE, "").trim();
+    if (rawId.trim() !== "" && hasVisibleJustification(justification)) {
+      closed.add(normalizeFindingId(rawId));
+      degraded.add(normalizeFindingId(rawId));
+    }
+  }
+  const wellFormedStarts = /* @__PURE__ */ new Set();
+  for (const re of [FINDING_HIGH_RE, FINDING_RESOLVED_RE, FINDING_DEGRADED_RE]) {
+    for (const m of allText.matchAll(re)) wellFormedStarts.add(m.index);
+  }
+  for (const m of allText.matchAll(LONGFORM_ATTEMPT_RE)) {
+    if (wellFormedStarts.has(m.index)) continue;
+    const token = m[2];
+    if (!isLikelyMarkerAttempt(token)) continue;
+    malformed.push(`FINDING-${m[1].toUpperCase()}: "${truncatePreview(token)}" (no se encontro "]" de cierre dentro del scan cap, o sin el separador documentado, pero el primer token tiene forma de id)`);
+  }
+  return { opened, closed, resolved, degraded, malformed };
+}
+var KNOWN_BLANK_GLYPHS = "\u2800";
+var IGNORABLE_OR_BLANK_RE = new RegExp(
+  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,
+  "gu"
+);
+var AcceptanceCriteriaError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "AcceptanceCriteriaError";
+    this.code = "E_INVALID_ACCEPTANCE_CRITERIA";
+  }
+};
+var AC_BRIEFING_CAP_CHARS = 4e3;
+function validateAcceptanceCriteria(acceptance_criteria) {
+  if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
+    throw new AcceptanceCriteriaError(
+      "acceptance_criteria must be a non-empty array (schema minItems: 1)"
+    );
+  }
+  let totalLength = 0;
+  for (let i = 0; i < acceptance_criteria.length; i++) {
+    const item = acceptance_criteria[i];
+    if (typeof item !== "string" || item.trim().length === 0) {
+      throw new AcceptanceCriteriaError(
+        `acceptance_criteria[${i}] is empty or whitespace-only \u2014 every criterion must contain at least one non-whitespace character (it gives the reviewer's AC-compliance step no falsifiable target otherwise)`
+      );
+    }
+    totalLength += item.length;
+  }
+  if (totalLength > AC_BRIEFING_CAP_CHARS) {
+    throw new AcceptanceCriteriaError(
+      `acceptance_criteria total length (${totalLength} chars across ${acceptance_criteria.length} criteria) exceeds the ${AC_BRIEFING_CAP_CHARS}-char briefing cap documented in .claude/skills/orchestrator-routing/SKILL.md \u2014 a criterion beyond that cap is silently truncated in the briefing an agent actually reads, so it would be binding on the ticket while invisible to whoever verifies it. Split the ticket or shorten the criteria.`
+    );
+  }
+}
+var SCHEMA_CHANGE_RE = /\bschema\.json\b|\bstate[- ]schema\b|\bschema\s+(?:change|changes|migration|mutation)\b/i;
+function checkDangerousSurfaceMention({ title, description }) {
+  const text = `${title || ""}
+${description || ""}`;
+  if (!SCHEMA_CHANGE_RE.test(text)) return [];
+  return [
+    `This ticket's title/description mentions a schema change \u2014 dangerous surface (see CLAUDE.md's "Dangerous surface" section). Make sure the acceptance criteria name the concrete harm this change could cause: an observable consequence on data, state, or a user, not a restatement of a test assertion \u2014 the Reviewer's Dangerous-surface gate audits for exactly that at review time. This is advisory only (never a block): re-check the acceptance criteria, or ignore if the match is a false positive (e.g. negated, or describing data that merely conforms to an existing schema rather than changing one).`
+  ];
+}
+async function appendComment({
+  repoRoot,
+  key,
+  author,
+  body,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  if (!COMMENT_AUTHORS.includes(author)) {
+    throw new Error(
+      `invalid comment author ${JSON.stringify(author)} \u2014 must be one of ${COMMENT_AUTHORS.join(", ")}`
+    );
+  }
+  await withTasksLock(repoRoot, async () => {
+    const allTasks = await readAllTasks(repoRoot);
+    const task = allTasks.find((t) => t.key === key);
+    if (!task) throw new Error(`unknown task key: ${key}`);
+    const stamp = now();
+    const comment = { author, at: stamp, body: sanitizeCommentBody(body) };
+    task.comments = Array.isArray(task.comments) ? [...task.comments, comment] : [comment];
+    task.updated_at = stamp;
+    validateTaskOrThrow(task);
+    await atomicWriteFiles([
+      { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+    ]);
+  });
+}
+async function deriveNextKey(repoRoot) {
+  const dir = tasksDir(repoRoot);
+  let entries;
+  try {
+    entries = await (0, import_promises3.readdir)(dir);
+  } catch (err) {
+    if (err && err.code === "ENOENT") entries = [];
+    else throw err;
+  }
+  let maxN = 0;
+  for (const name of entries) {
+    const m = TASK_FILENAME_RE.exec(name);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (n > maxN) maxN = n;
+  }
+  const next = maxN + 1;
+  const width = Math.max(3, String(next).length);
+  return `TASK-${String(next).padStart(width, "0")}`;
+}
+var VERIFICATION_TIERS = ["tests-after", "uat-only"];
+async function createTask({
+  repoRoot,
+  title,
+  description,
+  acceptance_criteria,
+  priority,
+  labels = [],
+  depends_on = [],
+  verification_tier,
+  requires_uat,
+  marker,
+  source_tier,
+  confidence,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  validateAcceptanceCriteria(acceptance_criteria);
+  if (!PRIORITIES.includes(priority)) {
+    throw new Error(
+      `invalid priority "${priority}" \u2014 must be one of ${PRIORITIES.join(", ")}`
+    );
+  }
+  if (verification_tier !== void 0 && !VERIFICATION_TIERS.includes(verification_tier)) {
+    throw new Error(
+      `invalid verification_tier "${verification_tier}" \u2014 must be one of ${VERIFICATION_TIERS.join(", ")}`
+    );
+  }
+  if (requires_uat !== void 0 && typeof requires_uat !== "boolean") {
+    throw new Error(`invalid requires_uat "${requires_uat}" \u2014 must be a boolean`);
+  }
+  const stamp = now();
+  const { key, target, warnings } = await withTasksLock(repoRoot, async () => {
+    const nextKey = await deriveNextKey(repoRoot);
+    const task = {
+      key: nextKey,
+      title,
+      description,
+      acceptance_criteria,
+      status: "todo",
+      priority,
+      labels,
+      assignee: null,
+      depends_on,
+      linked_commits: [],
+      linked_prs: [],
+      comments: [],
+      created_at: stamp,
+      updated_at: stamp,
+      jira_key: null,
+      ...verification_tier !== void 0 ? { verification_tier } : {},
+      ...requires_uat !== void 0 ? { requires_uat } : {},
+      // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
+      // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
+      ...marker !== void 0 ? { marker } : {},
+      ...source_tier !== void 0 ? { source_tier } : {},
+      ...confidence !== void 0 ? { confidence } : {}
+    };
+    validateTaskOrThrow(task);
+    const existing = await readAllTasks(repoRoot);
+    const allTasks = [...existing, task];
+    (0, import_node_fs9.mkdirSync)(tasksDir(repoRoot), { recursive: true });
+    const taskTarget = taskFilePath(repoRoot, nextKey);
+    const taskBytes = JSON.stringify(task, null, 2) + "\n";
+    const payload = Buffer.from(taskBytes, "utf8");
+    let reserveFd;
+    try {
+      reserveFd = (0, import_node_fs9.openSync)(taskTarget, import_node_fs9.constants.O_CREAT | import_node_fs9.constants.O_EXCL | import_node_fs9.constants.O_WRONLY, 384);
+    } catch (err) {
+      if (err && err.code === "EEXIST") {
+        throw new KeyCollisionError(
+          `createTask: key collision \u2014 ${taskTarget} already exists (a concurrent writer won the race for ${nextKey})`
+        );
+      }
+      throw err;
+    }
+    try {
+      let written = 0;
+      while (written < payload.length) {
+        written += (0, import_node_fs9.writeSync)(reserveFd, payload, written, payload.length - written);
+      }
+      (0, import_node_fs9.fsyncSync)(reserveFd);
+    } finally {
+      (0, import_node_fs9.closeSync)(reserveFd);
+    }
+    const onDisk = (0, import_node_fs9.readFileSync)(taskTarget, "utf8");
+    if (onDisk !== taskBytes) {
+      throw new KeyCollisionError(
+        `createTask: verify-after-write detected a competing writer's payload at ${taskTarget} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
+      );
+    }
+    await atomicWriteFiles([
+      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
+    ]);
+    const taskWarnings = checkDangerousSurfaceMention({ title, description });
+    return { key: nextKey, target: taskTarget, warnings: taskWarnings };
+  });
+  return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
+}
+
 // src/wargame-wrecker.js
 var HIGH_KINDS = /* @__PURE__ */ new Set(["counterexample", "contradiction", "dead_end"]);
 var ID_MAX = 40;
@@ -9398,26 +10049,26 @@ function fromSkill(out) {
       }
     }
   }
-  return { cases, not_attacked: notAttacked, approved: out.approved, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
+  return { cases, not_attacked: notAttacked, approved: Array.isArray(out.approved) ? out.approved.map((a) => String(map[a] ?? a)) : out.approved, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
 }
 function ticketHistory(comments) {
   if (!Array.isArray(comments)) return null;
-  const h = { resolved: /* @__PURE__ */ new Set(), degraded: /* @__PURE__ */ new Set(), all: /* @__PURE__ */ new Set() };
-  for (const cm of comments) {
-    for (const m of String(cm?.body ?? "").matchAll(/\[FINDING-(HIGH|RESOLVED|DEGRADED):\s*([^\]\s]+)/gi)) {
-      const id = m[2].toUpperCase();
-      h.all.add(id);
-      if (m[1].toUpperCase() === "RESOLVED") h.resolved.add(id);
-      if (m[1].toUpperCase() === "DEGRADED") h.degraded.add(id);
-    }
-  }
-  return h;
+  const st = collectFindingMarkerState(comments);
+  return { opened: st.opened, resolved: st.resolved, degraded: st.degraded, all: /* @__PURE__ */ new Set([...st.opened, ...st.closed]) };
 }
-function buildWreckerRecord(input2, { comments } = {}) {
+function buildWreckerRecord(input2, { comments, ticketApproved } = {}) {
   if (input2 && (input2.engine === "wrecker" || input2.error || Array.isArray(input2.specs))) input2 = fromSkill(input2);
   const { cases, not_attacked = [], header = null, approved } = input2 ?? {};
   const hist = ticketHistory(comments);
+  let approvedList = Array.isArray(approved) ? [...new Set(approved.map((x) => tok(x).toUpperCase()))] : null;
+  if (Array.isArray(ticketApproved)) {
+    if (approvedList && approvedList.length > 0 && (approvedList.length !== ticketApproved.length || approvedList.some((x) => !ticketApproved.includes(x)))) {
+      throw new Error(`buildWreckerRecord: the "approved" list (${approvedList.join(",")}) differs from the ticket's own approved cases (${ticketApproved.join(",")})`);
+    }
+    approvedList = [...ticketApproved];
+  }
   const cameBack = [];
+  const stillOpen = [];
   const prevDegraded = [];
   if (Array.isArray(cases)) {
     for (const c of cases) {
@@ -9443,6 +10094,9 @@ function buildWreckerRecord(input2, { comments } = {}) {
     const src = FROM_SKILL.get(c);
     if (!src && (!lint || typeof lint !== "object" || !Array.isArray(lint.findings) || lint.findings.length > 0 || typeof lint.usecase !== "string" || !lint.usecase.trim() || typeof lint.spec_version !== "string" || !lint.spec_version.trim() || lint.valid === false || Array.isArray(lint.problems) && lint.problems.length > 0)) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) \u2014 a run on a spec that failed lint cannot become a record`);
+    }
+    if (!src && (typeof c.spec_version !== "string" || !c.spec_version.trim())) {
+      throw new Error(`buildWreckerRecord: ${caseId} must carry its own spec_version (the one the lint and the session ran on)`);
     }
     if (!src && (c.spec_version != null && String(c.spec_version) !== lint.spec_version || c.usecase != null && String(c.usecase) !== lint.usecase)) {
       throw new Error(`buildWreckerRecord: ${caseId}'s lint belongs to another spec (lint ${tok(lint.usecase)}/${tok(lint.spec_version)} vs case ${tok(c.usecase ?? "-")}/${tok(c.spec_version ?? "-")}) - lint the attacked spec itself`);
@@ -9489,12 +10143,32 @@ function buildWreckerRecord(input2, { comments } = {}) {
           if (isStable && hex && orig.replace(/[^A-Za-z0-9._/-]/g, "-").length > ID_MAX) id = `W-${tok(caseId, "X").replace(/[^A-Za-z0-9]/g, "")}-${hex[1]}`;
           for (let n = 1; seen.has(id.toUpperCase()); n++) id = `${id.replace(/-x\d+$/, "").slice(0, ID_MAX - 5)}-x${n}`;
           let back = "";
-          if (hist && hist.resolved.has(id.toUpperCase())) {
-            const old = id;
-            for (let n = 2; hist.all.has(id.toUpperCase()) || seen.has(id.toUpperCase()) || id === old; n++) id = `${old.slice(0, ID_MAX - 2 - String(n).length)}-r${n}`;
-            cameBack.push(`${old} -> ${id}`);
-            back = " (came back after RESOLVED)";
-          } else if (hist && hist.degraded.has(id.toUpperCase())) prevDegraded.push(id);
+          if (hist) {
+            const base = id.toUpperCase();
+            let n = 0;
+            for (const m of hist.all) {
+              if (m === base) n = Math.max(n, 1);
+              else if (m.startsWith(`${base}-R`) && /^\d+$/.test(m.slice(base.length + 2))) n = Math.max(n, Number(m.slice(base.length + 2)));
+            }
+            if (n > 0) {
+              const latest = n === 1 ? base : `${base}-R${n}`;
+              const latestId = n === 1 ? id : `${id}-r${n}`;
+              if (hist.resolved.has(latest)) {
+                const old = id;
+                id = `${old.slice(0, ID_MAX - 2 - String(n + 1).length)}-r${n + 1}`;
+                for (let k = n + 2; seen.has(id.toUpperCase()) || hist.all.has(id.toUpperCase()); k++) id = `${old.slice(0, ID_MAX - 2 - String(k).length)}-r${k}`;
+                cameBack.push(`${tok(orig)}${tok(orig) !== old ? ` (marker ${old})` : ""} -> ${id}`);
+                back = " (came back after RESOLVED)";
+              } else if (hist.degraded.has(latest)) {
+                id = latestId;
+                prevDegraded.push(id);
+              } else {
+                stillOpen.push(latestId);
+                seen.add(latestId.toUpperCase());
+                continue;
+              }
+            }
+          }
           seen.add(id.toUpperCase());
           if (isStable && id !== orig && !back) derived.push(`${tok(orig)} -> ${id}`);
           highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step}${back} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
@@ -9520,12 +10194,12 @@ function buildWreckerRecord(input2, { comments } = {}) {
   const high = highMarkers.length;
   const attackedIds = new Set(cases.map((x) => tok(x.case).toUpperCase()));
   let approvedNote;
-  if (Array.isArray(approved) && approved.length > 0) {
+  if (approvedList && approvedList.length > 0) {
     const have = new Set(notAttacked.map((n) => String(n).split(/[ (]/)[0].toUpperCase()));
-    for (const a of approved.map((x) => tok(x))) {
+    for (const a of approvedList) {
       if (!attackedIds.has(a.toUpperCase()) && !have.has(a.toUpperCase())) notAttacked.push(`${a} (approved case with no result in this run)`);
     }
-    const extra = [...attackedIds].filter((x) => !approved.map((y) => tok(y).toUpperCase()).includes(x));
+    const extra = [...attackedIds].filter((x) => !approvedList.includes(x));
     approvedNote = extra.length > 0 ? ` Attacked but not in the approved list: ${extra.join(", ")}.` : "";
   } else {
     approvedNote = " Approved list NOT PROVIDED: a run over a subset of the approved cases cannot be detected.";
@@ -9533,9 +10207,10 @@ function buildWreckerRecord(input2, { comments } = {}) {
   const body = [
     `[WARGAMING] engine: wrecker${header ? ` (${header})` : ""}.`,
     `Attacked (case + path): ${attacked.join(" | ") || "none"}.`,
-    `Not attacked: ${notAttacked.join(" | ") || (Array.isArray(approved) && approved.length > 0 ? "none (every approved case was attacked)" : "none declared")}.${approvedNote}`,
+    `Not attacked: ${notAttacked.join(" | ") || (approvedList && approvedList.length > 0 ? "none (every approved case was attacked)" : "none declared")}.${approvedNote}`,
     hist ? null : "Ticket history NOT PROVIDED: a candidate that came back after RESOLVED cannot be detected (pass the ticket).",
     ...cameBack.length > 0 ? [`Came back after RESOLVED, fresh marker ids (old -> new): ${cameBack.join("; ")}.`] : [],
+    ...stillOpen.length > 0 ? [`Still open from an earlier run (existing marker, none added): ${stillOpen.join(", ")}.`] : [],
     ...prevDegraded.length > 0 ? [`Previously degraded (carries over): ${prevDegraded.join(", ")}.`] : [],
     ...derived.length > 0 ? [`Marker ids derived (original -> marker, match a later RESOLVED/DEGRADED by the marker id): ${derived.join("; ")}.`] : [],
     ...dropped.length > 0 ? [`Stable ids folded into an earlier marker (one marker covers both): ${dropped.join("; ")}.`] : [],
@@ -9594,8 +10269,8 @@ function applyProjectMdContributions(activePacks, answers) {
 }
 
 // src/pack-descriptor.js
-var import__2 = __toESM(require__(), 1);
-var import_ajv_formats2 = __toESM(require_dist(), 1);
+var import__3 = __toESM(require__(), 1);
+var import_ajv_formats3 = __toESM(require_dist(), 1);
 
 // state/pack-descriptor.schema.json
 var pack_descriptor_schema_default = {
@@ -9718,9 +10393,9 @@ var pack_descriptor_schema_default = {
 };
 
 // src/pack-descriptor.js
-var __ajv = new import__2.default({ allErrors: true, strict: false });
-(0, import_ajv_formats2.default)(__ajv);
-var __validate = __ajv.compile(pack_descriptor_schema_default);
+var __ajv2 = new import__3.default({ allErrors: true, strict: false });
+(0, import_ajv_formats3.default)(__ajv2);
+var __validate = __ajv2.compile(pack_descriptor_schema_default);
 function validatePackDescriptor(obj) {
   const ok = __validate(obj);
   const errors = ok ? [] : [...__validate.errors];
@@ -10176,8 +10851,8 @@ var BUILTIN_PACK_DESCRIPTORS = [DESIGN_POWER_DESCRIPTOR, WATCH_DESCRIPTOR];
 var BUILTIN_PACK_MODULES = { [DESIGN_POWER_DESCRIPTOR.id]: DESIGN_POWER_MODULE };
 
 // src/agent-generator.js
-var import_node_fs9 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_fs10 = require("node:fs");
+var import_node_path8 = require("node:path");
 var PROJECT_CONTEXT_REL = [".claude", "agents", "project-context.md"];
 var SCHEMA_VERSION2 = 1;
 var FRONTMATTER_IDS2 = /* @__PURE__ */ new Set(["project_name", "project_type"]);
@@ -10242,7 +10917,7 @@ async function generateProjectContext({
 }) {
   let resolvedAnswers = answers;
   if (resolvedAnswers === void 0 || resolvedAnswers === null) {
-    const projectMdPath = (0, import_node_path7.join)(repoRoot, "PROJECT.md");
+    const projectMdPath = (0, import_node_path8.join)(repoRoot, "PROJECT.md");
     try {
       const parsed = await readProjectMd({ repoRoot });
       resolvedAnswers = parsed.answers;
@@ -10253,8 +10928,8 @@ async function generateProjectContext({
     }
   }
   resolvedAnswers = sanitizeInvisibleCharsDeep(resolvedAnswers ?? {});
-  const target = (0, import_node_path7.join)(repoRoot, ...PROJECT_CONTEXT_REL);
-  (0, import_node_fs9.mkdirSync)((0, import_node_path7.dirname)(target), { recursive: true });
+  const target = (0, import_node_path8.join)(repoRoot, ...PROJECT_CONTEXT_REL);
+  (0, import_node_fs10.mkdirSync)((0, import_node_path8.dirname)(target), { recursive: true });
   const body = renderProjectContext(resolvedAnswers, now());
   await atomicWriteFile(target, body);
   return { path: target };
@@ -10356,20 +11031,20 @@ async function applyAgentModels({ repoRoot, agentModels }) {
       );
     }
   }
-  const claudeAgentsDir = (0, import_node_path7.join)(repoRoot, ".claude", "agents");
-  const parityAgentsDir = (0, import_node_path7.join)(repoRoot, "agents");
-  const hasParityDir = (0, import_node_fs9.existsSync)(parityAgentsDir);
+  const claudeAgentsDir = (0, import_node_path8.join)(repoRoot, ".claude", "agents");
+  const parityAgentsDir = (0, import_node_path8.join)(repoRoot, "agents");
+  const hasParityDir = (0, import_node_fs10.existsSync)(parityAgentsDir);
   const changedFiles = [];
   for (const [agentName, modelValue] of Object.entries(agentModels)) {
-    const targets = [(0, import_node_path7.join)(claudeAgentsDir, `${agentName}.md`)];
+    const targets = [(0, import_node_path8.join)(claudeAgentsDir, `${agentName}.md`)];
     if (hasParityDir) {
-      targets.push((0, import_node_path7.join)(parityAgentsDir, `${agentName}.md`));
+      targets.push((0, import_node_path8.join)(parityAgentsDir, `${agentName}.md`));
     }
     for (const targetPath of targets) {
-      if (!(0, import_node_fs9.existsSync)(targetPath)) {
+      if (!(0, import_node_fs10.existsSync)(targetPath)) {
         continue;
       }
-      const raw = (0, import_node_fs9.readFileSync)(targetPath, "utf8");
+      const raw = (0, import_node_fs10.readFileSync)(targetPath, "utf8");
       const patched = patchAgentModelContent(raw, modelValue);
       if (patched === null) {
         console.warn(
@@ -10447,15 +11122,15 @@ function generateDeveloperToolsLine({ devStack } = {}) {
 }
 async function applyDeveloperPermissions({ repoRoot, devStack } = {}) {
   const toolsLine = generateDeveloperToolsLine({ devStack });
-  const claudeAgentsDir = (0, import_node_path7.join)(repoRoot, ".claude", "agents");
-  const parityAgentsDir = (0, import_node_path7.join)(repoRoot, "agents");
-  const hasParityDir = (0, import_node_fs9.existsSync)(parityAgentsDir);
-  const targets = [(0, import_node_path7.join)(claudeAgentsDir, "developer.md")];
-  if (hasParityDir) targets.push((0, import_node_path7.join)(parityAgentsDir, "developer.md"));
+  const claudeAgentsDir = (0, import_node_path8.join)(repoRoot, ".claude", "agents");
+  const parityAgentsDir = (0, import_node_path8.join)(repoRoot, "agents");
+  const hasParityDir = (0, import_node_fs10.existsSync)(parityAgentsDir);
+  const targets = [(0, import_node_path8.join)(claudeAgentsDir, "developer.md")];
+  if (hasParityDir) targets.push((0, import_node_path8.join)(parityAgentsDir, "developer.md"));
   const changedFiles = [];
   for (const targetPath of targets) {
-    if (!(0, import_node_fs9.existsSync)(targetPath)) continue;
-    const raw = (0, import_node_fs9.readFileSync)(targetPath, "utf8");
+    if (!(0, import_node_fs10.existsSync)(targetPath)) continue;
+    const raw = (0, import_node_fs10.readFileSync)(targetPath, "utf8");
     const patched = patchAgentToolsContent(raw, toolsLine);
     if (patched === null) {
       console.warn(
@@ -10503,580 +11178,6 @@ function patchAgentToolsContent(text, toolsLine) {
 // src/backlog-seeder.js
 var import_node_fs11 = require("node:fs");
 var import_node_path9 = require("node:path");
-
-// src/task-store.js
-var import_promises3 = require("node:fs/promises");
-var import_node_fs10 = require("node:fs");
-var import_node_path8 = require("node:path");
-var import_node_crypto5 = require("node:crypto");
-var import__3 = __toESM(require__(), 1);
-var import_ajv_formats3 = __toESM(require_dist(), 1);
-
-// tasks/schema.json
-var schema_default = {
-  $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "https://hivemind.local/tasks/schema.json",
-  title: "Task",
-  description: "A single unit of work for the agentic team. Field names mirror Jira issue fields so the same task can later be created in Jira without lossy translation.",
-  type: "object",
-  required: ["key", "title", "description", "acceptance_criteria", "status", "priority", "created_at", "updated_at"],
-  additionalProperties: false,
-  properties: {
-    key: {
-      type: "string",
-      pattern: "^TASK-[0-9]{3,}$",
-      description: "Stable human-readable identifier. Maps to Jira issue key on migration."
-    },
-    title: {
-      type: "string",
-      minLength: 1,
-      maxLength: 200,
-      description: "One-line summary. Maps to Jira `summary`."
-    },
-    description: {
-      type: "string",
-      description: "Markdown-formatted full description of the work. Maps to Jira `description`."
-    },
-    acceptance_criteria: {
-      type: "array",
-      minItems: 1,
-      items: {
-        type: "string",
-        pattern: "\\S",
-        description: "TASK-189 \u2014 must contain at least one non-whitespace character. Rejects empty strings and whitespace-only strings (mechanically detectable vacuity). Deliberately does NOT attempt to detect unfalsifiable-but-well-formed prose (e.g. 'It works correctly.') \u2014 see TASK-189's hand-off for why that judgement is left to review, not the schema."
-      },
-      description: "Falsifiable criteria for 'done'. Criteria are verified according to the ticket's verification_tier: regression locks for tests-after, recorded UAT for uat-only."
-    },
-    verification_tier: {
-      type: "string",
-      enum: ["tdd", "tests-after", "uat-only"],
-      description: `Governs how the ticket is verified. Absent means tests-after (backward-compatible default). tests-after = implement then add minimal regression locks; uat-only = no new specs, verified via conversational UAT. "tdd" (tests-first, single-commit discipline) is WRITE-FROZEN: TASK-212 (2026-08-13 human decision) retired it and it can no longer be ASSIGNED to a ticket \u2014 that policy is enforced one layer up, by the two write surfaces (src/task-store.js's VERIFICATION_TIERS, src/mcp-server.js's zod VERIFICATION_TIER), not by this storage schema. This schema keeps accepting "tdd" only so the ~101 tickets (100 done + any still in-flight) that legitimately carry it as a historical record of how they were verified stay writable at all \u2014 appending a comment or transitioning status on one of them re-validates the WHOLE stored object against this enum, and a schema that rejected "tdd" would make that historical record permanently un-rewritable, which is not what 'kept as a historical record' (CLAUDE.md's Testing section) means. Never assign "tdd" to a new ticket \u2014 createTask and the MCP create_task tool reject it independently of this schema.`
-    },
-    requires_uat: {
-      type: "boolean",
-      description: "TASK-221 \u2014 answers a question distinct from verification_tier: do this ticket's acceptance criteria describe something a person can observe (as opposed to how much test rigor the ticket needs). Assigned at Workflow step 1, same moment as verification_tier. true = the acceptance criteria describe human-observable behavior and a UAT script must be run before close; false = they do not. DEFAULT WHEN ABSENT: false \u2014 an explicit human decision (2026-09-09, TASK-221), not an inference: the ~206 tickets already closed before this field existed carry no requires_uat at all, and a true default would retroactively brand all of them non-compliant, which is precisely the mass-retrofit TASK-223 freezes as a baseline instead of migrating. Read this default from exactly one place: src/task-store.js's requiresUat(task) helper \u2014 TASK-220 (reviewer sensor gating) and TASK-222 (close-guard enforcement) both call it rather than re-deriving `=== true` independently.",
-      default: false
-    },
-    marker: {
-      type: "string",
-      enum: ["[EXPLICIT]", "[INFERRED:strong]", "[INFERRED:weak]", "[INFERRED]", "[ASSUMED]", "[MISSING_INFO]"],
-      description: "Epistemic calibration of the ticket's load-bearing claims (Spine). Optional; ACs may also carry inline markers, which the reviewer validates. Must respect source_tier's ceiling (T3/T4 cannot be [EXPLICIT])."
-    },
-    source_tier: {
-      type: "string",
-      enum: ["T1", "T2", "T3", "T4", "TX"],
-      description: "Authority of the evidence behind the ticket's claims. Caps how strong marker may be: [EXPLICIT] requires T1/T2; T4 is orientation-only; TX is rejected. See .knowledge/meta/SOURCE_TIERS.md."
-    },
-    confidence: {
-      type: "object",
-      additionalProperties: false,
-      description: "Decomposed confidence (components, NOT a scalar), populated from the brain's confidence model. Each component is in [0,1].",
-      properties: {
-        source_credibility: { type: "number", minimum: 0, maximum: 1 },
-        assertion_strength: { type: "number", minimum: 0, maximum: 1 },
-        corroboration: { type: "number", minimum: 0, maximum: 1 },
-        verification_status: { type: "number", minimum: 0, maximum: 1 }
-      }
-    },
-    status: {
-      type: "string",
-      enum: ["todo", "in_progress", "in_review", "blocked", "done"],
-      description: "Lifecycle state. Maps to Jira workflow status."
-    },
-    priority: {
-      type: "string",
-      enum: ["low", "medium", "high", "critical"]
-    },
-    labels: {
-      type: "array",
-      items: { type: "string" },
-      default: []
-    },
-    assignee: {
-      type: ["string", "null"],
-      description: "Subagent name or human identifier. Null = unassigned.",
-      default: null
-    },
-    depends_on: {
-      type: "array",
-      items: { type: "string", pattern: "^TASK-[0-9]{3,}$" },
-      default: [],
-      description: "Other task keys that must reach `done` before this one can start."
-    },
-    linked_commits: {
-      type: "array",
-      items: { type: "string" },
-      default: [],
-      description: "Commit SHAs the Developer/orchestrator attributes to this ticket. src/task-store.js validates each entry's SHAPE (/^[0-9a-f]{7,40}$/i, TASK-082) AND, since TASK-234 (WG-H-011, wargaming 2026-09-16), its EXISTENCE: closeTask resolves every final sha through an injectable verifier (src/commit-existence.js, `git cat-file -e <sha>^{commit}`) and REJECTS the close with LinkedCommitNotFoundError when git ran and said no such commit. This supersedes TASK-188 AC6's 'closeTask is a pure state-store function with no git dependency' decision \u2014 WG-H-011 measured what that cost (an invented-but-well-formed sha satisfied the close evidence a reader takes as proof the work landed); the dependency is now admitted behind the `commitVerifier` seam, so a caller without git still closes. A sha git could NOT check (no git binary, repoRoot not a work tree, git error) is recorded as 'unverifiable' and never blocks the close \u2014 see linked_commits_verification, where every outcome is persisted per-sha. src/mcp-server.js's close_task tool additionally reports its own advisory linked_commits_verification in the tool RESPONSE (a separate, response-only object \u2014 not this stored field)."
-    },
-    linked_commits_verification: {
-      type: "object",
-      additionalProperties: false,
-      required: ["at", "commits"],
-      description: "TASK-234 (WG-H-011/WG-H-020) \u2014 the per-sha outcome of closeTask's existence check over the FINAL linked_commits, recorded at close time so a verified close is mechanically distinguishable from an unverified one afterwards (bin/audit-close-verification.js reads exactly this). Written ONLY by closeTask, and only on a real close (never on the no-op re-close path). Its ABSENCE on a done ticket means the ticket closed before this field existed (or was hand-edited) \u2014 the audit reports that as 'unverifiable', never as verified and never as a failure: TASK-234 AC7 forbids retroactively re-judging the ~208 historical done tickets.",
-      properties: {
-        at: { type: "string", format: "date-time", description: "When the check ran (same stamp as the close itself)." },
-        checked: { type: "boolean", description: "false = git could not be consulted at all; `reason` names why and every entry in `commits` is 'unverifiable'." },
-        reason: { type: ["string", "null"], description: "Why nothing could be checked: 'none-linked' (no shas to check, not an error), 'git-unavailable' (no git binary), 'not-a-git-repo'. Null when checked is true." },
-        commits: {
-          type: "array",
-          description: "One entry per sha in the ticket's final linked_commits. THREE states, never two (CLAUDE.md's Empty-result contract, TASK-192): 'cannot know' is its own recorded outcome and is never collapsed into 'verified' or 'not-found'.",
-          items: {
-            type: "object",
-            additionalProperties: false,
-            required: ["sha", "state"],
-            properties: {
-              sha: { type: "string" },
-              state: { type: "string", enum: ["verified", "not-found", "unverifiable"] },
-              reason: { type: ["string", "null"] }
-            }
-          }
-        }
-      }
-    },
-    linked_prs: {
-      type: "array",
-      items: { type: "string" },
-      default: []
-    },
-    comments: {
-      type: "array",
-      default: [],
-      items: {
-        type: "object",
-        required: ["author", "at", "body"],
-        additionalProperties: false,
-        properties: {
-          author: {
-            type: "string",
-            enum: ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"],
-            description: "TASK-188 \u2014 constrained to the roles the system actually writes today (derived from the live tasks/ corpus plus src/backlog-seeder.js). This is a known-set check only, NOT proof of identity: every write flows through the same MCP surface regardless of author, so the primitive cannot verify WHO is calling. src/task-store.js additionally rejects 'reviewer' as close_task's own directly-supplied closing-comment author (see closeTask's ClosingCommentAuthorError) \u2014 a review's legitimacy is defined by being recorded as a separate, pre-existing comment, not fabricated as the terminal closing remark."
-          },
-          at: { type: "string", format: "date-time" },
-          body: { type: "string" }
-        }
-      }
-    },
-    created_at: { type: "string", format: "date-time" },
-    updated_at: { type: "string", format: "date-time" },
-    jira_key: {
-      type: ["string", "null"],
-      default: null,
-      description: "Populated when the task has been mirrored to Jira. Until then, null."
-    }
-  },
-  allOf: [
-    {
-      $comment: "TASK-189 AC2 \u2014 calibration-laundering guard, expressed as a real cross-field rule rather than prose: marker '[EXPLICIT]' requires source_tier 'T1' or 'T2' (mirrors .knowledge/meta/SOURCE_TIERS.md's marker-ceiling table). Only fires when BOTH fields are present \u2014 a ticket carrying marker:'[EXPLICIT]' with no source_tier at all is unaffected (backward-compatible; source_tier stays optional). Deliberately narrower than the full T1-T4 ceiling table (e.g. does not enforce [INFERRED:strong] requiring T2+, or T4's 'orientation only' constraint on weaker markers) \u2014 see TASK-189's hand-off for the scoping rationale.",
-      if: {
-        required: ["marker", "source_tier"],
-        properties: { marker: { const: "[EXPLICIT]" } }
-      },
-      then: {
-        properties: { source_tier: { enum: ["T1", "T2"] } }
-      }
-    }
-  ]
-};
-
-// src/task-store.js
-var PRIORITIES = ["low", "medium", "high", "critical"];
-var COMMENT_AUTHORS = ["orchestrator", "developer", "reviewer", "researcher", "uat", "backlog-seeder"];
-function sanitizeCommentBody(body) {
-  return typeof body === "string" ? stripInvisibleChars(body) : body;
-}
-var TASK_FILENAME_RE = /^TASK-(\d{3,})\.json$/;
-var __ajv2 = new import__3.default({ allErrors: true, strict: false });
-(0, import_ajv_formats3.default)(__ajv2);
-var __validateTask = __ajv2.compile(schema_default);
-function validateTaskOrThrow(task) {
-  const ok = __validateTask(task);
-  if (ok) return;
-  const errs = __validateTask.errors || [];
-  const msg = errs.map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ");
-  throw new Error(`task payload failed schema validation: ${msg}`);
-}
-function tasksDir(repoRoot) {
-  return (0, import_node_path8.join)(repoRoot, "tasks");
-}
-function taskFilePath(repoRoot, key) {
-  return (0, import_node_path8.join)(tasksDir(repoRoot), `${key}.json`);
-}
-function indexFilePath(repoRoot) {
-  return (0, import_node_path8.join)(tasksDir(repoRoot), "index.json");
-}
-function tasksLockPath(repoRoot) {
-  return (0, import_node_path8.join)(tasksDir(repoRoot), ".mutate.lock");
-}
-var TaskMutationLockError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "TaskMutationLockError";
-    this.code = "E_TASK_MUTATION_LOCK_TIMEOUT";
-  }
-};
-var TASKS_LOCK_STALE_MS = 3e3;
-var TASKS_LOCK_POLL_MS = 20;
-var TASKS_LOCK_MAX_WAIT_MS = 6e3;
-var TASKS_LOCK_HEARTBEAT_MS = 750;
-function sleepMs(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
-}
-function isImplausiblyFuture(mtimeMs) {
-  return mtimeMs - Date.now() > TASKS_LOCK_STALE_MS;
-}
-async function acquireTasksLock(repoRoot, { maxWaitMs = TASKS_LOCK_MAX_WAIT_MS } = {}) {
-  const dir = tasksDir(repoRoot);
-  (0, import_node_fs10.mkdirSync)(dir, { recursive: true });
-  const lockPath = tasksLockPath(repoRoot);
-  const deadline = Date.now() + maxWaitMs;
-  const token = `${process.pid}-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}`;
-  for (; ; ) {
-    try {
-      const fd = (0, import_node_fs10.openSync)(lockPath, import_node_fs10.constants.O_CREAT | import_node_fs10.constants.O_EXCL | import_node_fs10.constants.O_WRONLY, 384);
-      try {
-        const payload = Buffer.from(`${token}
-`, "utf8");
-        (0, import_node_fs10.writeSync)(fd, payload, 0, payload.length);
-        (0, import_node_fs10.fsyncSync)(fd);
-      } finally {
-        (0, import_node_fs10.closeSync)(fd);
-      }
-      return token;
-    } catch (err) {
-      if (!err || err.code !== "EEXIST") throw err;
-      let stat = null;
-      let foreignEntry = false;
-      try {
-        stat = (0, import_node_fs10.statSync)(lockPath);
-      } catch {
-        try {
-          foreignEntry = (0, import_node_fs10.lstatSync)(lockPath).isSymbolicLink();
-        } catch {
-        }
-      }
-      if (foreignEntry || stat && (Date.now() - stat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(stat.mtimeMs))) {
-        const quarantinePath = `${lockPath}.stale.${token}`;
-        let renamed = false;
-        try {
-          (0, import_node_fs10.renameSync)(lockPath, quarantinePath);
-          renamed = true;
-        } catch {
-        }
-        if (renamed) {
-          let qStat = null;
-          let qIsSymlink = false;
-          try {
-            qStat = (0, import_node_fs10.lstatSync)(quarantinePath);
-            qIsSymlink = qStat.isSymbolicLink();
-          } catch {
-          }
-          const genuinelyStale = qIsSymlink || qStat && (Date.now() - qStat.mtimeMs > TASKS_LOCK_STALE_MS || isImplausiblyFuture(qStat.mtimeMs));
-          if (genuinelyStale) {
-            try {
-              (0, import_node_fs10.unlinkSync)(quarantinePath);
-            } catch {
-              try {
-                (0, import_node_fs10.rmSync)(quarantinePath, { recursive: true, force: true });
-              } catch {
-              }
-            }
-          } else {
-            try {
-              (0, import_node_fs10.renameSync)(quarantinePath, lockPath);
-            } catch {
-            }
-          }
-        }
-        continue;
-      }
-      if (Date.now() >= deadline) {
-        throw new TaskMutationLockError(
-          `timed out after ${maxWaitMs}ms waiting for the tasks mutation lock at ${lockPath} \u2014 another writer (this process, bin/task-board.js, or another orchestrator process) is holding it. The caller's mutation was NOT applied \u2014 nothing was accepted-and-lost; retry the call.`
-        );
-      }
-      await sleepMs(TASKS_LOCK_POLL_MS);
-    }
-  }
-}
-function releaseTasksLock(repoRoot, token) {
-  const lockPath = tasksLockPath(repoRoot);
-  try {
-    const current = (0, import_node_fs10.readFileSync)(lockPath, "utf8").trim();
-    if (current !== token) return;
-    (0, import_node_fs10.unlinkSync)(lockPath);
-  } catch {
-  }
-}
-function startTasksLockHeartbeat(repoRoot, token) {
-  const lockPath = tasksLockPath(repoRoot);
-  const timer = setInterval(() => {
-    try {
-      const current = (0, import_node_fs10.readFileSync)(lockPath, "utf8").trim();
-      if (current !== token) return;
-      const now = /* @__PURE__ */ new Date();
-      (0, import_node_fs10.utimesSync)(lockPath, now, now);
-    } catch {
-    }
-  }, TASKS_LOCK_HEARTBEAT_MS);
-  if (typeof timer.unref === "function") timer.unref();
-  return timer;
-}
-async function withTasksLock(repoRoot, fn, { maxWaitMs } = {}) {
-  const token = await acquireTasksLock(repoRoot, { maxWaitMs });
-  const heartbeat = startTasksLockHeartbeat(repoRoot, token);
-  try {
-    return await fn();
-  } finally {
-    clearInterval(heartbeat);
-    releaseTasksLock(repoRoot, token);
-  }
-}
-function numericKeyOrder(a, b) {
-  const ka = typeof a === "string" ? a : a.key;
-  const kb = typeof b === "string" ? b : b.key;
-  const ma = /-(\d+)$/.exec(ka);
-  const mb = /-(\d+)$/.exec(kb);
-  if (ma && mb) {
-    const na = parseInt(ma[1], 10);
-    const nb = parseInt(mb[1], 10);
-    if (na !== nb) return na - nb;
-    return 0;
-  }
-  return ka < kb ? -1 : ka > kb ? 1 : 0;
-}
-async function readAllTasks(repoRoot) {
-  const dir = tasksDir(repoRoot);
-  let entries;
-  try {
-    entries = await (0, import_promises3.readdir)(dir);
-  } catch (err) {
-    if (err && err.code === "ENOENT") return [];
-    throw err;
-  }
-  const taskFiles = entries.filter((name) => TASK_FILENAME_RE.test(name));
-  const out = [];
-  for (const name of taskFiles) {
-    const raw = await (0, import_promises3.readFile)((0, import_node_path8.join)(dir, name), "utf8");
-    if (raw.length === 0) continue;
-    out.push(JSON.parse(raw));
-  }
-  return out;
-}
-function buildIndexBytes(tasks, generatedAt) {
-  const summary = tasks.map((t) => ({
-    key: t.key,
-    title: t.title,
-    status: t.status,
-    priority: t.priority
-  })).sort(numericKeyOrder);
-  return JSON.stringify({ generated_at: generatedAt, tasks: summary }, null, 2) + "\n";
-}
-var KeyCollisionError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "KeyCollisionError";
-    this.code = "E_KEY_COLLISION";
-  }
-};
-var EXCEPTION_AUTHORS = COMMENT_AUTHORS.filter((a) => a !== "reviewer" && a !== "uat");
-var FINDING_MARKER_SCAN_CAP = 200;
-var FINDING_DEGRADED_SCAN_CAP = 500;
-var FINDING_HIGH_RE = new RegExp(`\\[FINDING-HIGH:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
-var FINDING_RESOLVED_RE = new RegExp(`\\[FINDING-RESOLVED:\\s*([^\\]]{1,${FINDING_MARKER_SCAN_CAP}})\\]`, "gi");
-var FINDING_DEGRADED_RE = new RegExp(`\\[FINDING-DEGRADED:\\s*([^\\]]{0,${FINDING_DEGRADED_SCAN_CAP}})\\]`, "gi");
-var LONGFORM_ATTEMPT_RE = new RegExp("\\[FINDING-(HIGH|RESOLVED|DEGRADED):\\s*([^\\s\\]]+)", "gi");
-var KNOWN_BLANK_GLYPHS = "\u2800";
-var IGNORABLE_OR_BLANK_RE = new RegExp(
-  `[\\p{Cf}\\p{Default_Ignorable_Code_Point}\\p{M}${KNOWN_BLANK_GLYPHS}]`,
-  "gu"
-);
-var AcceptanceCriteriaError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "AcceptanceCriteriaError";
-    this.code = "E_INVALID_ACCEPTANCE_CRITERIA";
-  }
-};
-var AC_BRIEFING_CAP_CHARS = 4e3;
-function validateAcceptanceCriteria(acceptance_criteria) {
-  if (!Array.isArray(acceptance_criteria) || acceptance_criteria.length === 0) {
-    throw new AcceptanceCriteriaError(
-      "acceptance_criteria must be a non-empty array (schema minItems: 1)"
-    );
-  }
-  let totalLength = 0;
-  for (let i = 0; i < acceptance_criteria.length; i++) {
-    const item = acceptance_criteria[i];
-    if (typeof item !== "string" || item.trim().length === 0) {
-      throw new AcceptanceCriteriaError(
-        `acceptance_criteria[${i}] is empty or whitespace-only \u2014 every criterion must contain at least one non-whitespace character (it gives the reviewer's AC-compliance step no falsifiable target otherwise)`
-      );
-    }
-    totalLength += item.length;
-  }
-  if (totalLength > AC_BRIEFING_CAP_CHARS) {
-    throw new AcceptanceCriteriaError(
-      `acceptance_criteria total length (${totalLength} chars across ${acceptance_criteria.length} criteria) exceeds the ${AC_BRIEFING_CAP_CHARS}-char briefing cap documented in .claude/skills/orchestrator-routing/SKILL.md \u2014 a criterion beyond that cap is silently truncated in the briefing an agent actually reads, so it would be binding on the ticket while invisible to whoever verifies it. Split the ticket or shorten the criteria.`
-    );
-  }
-}
-var SCHEMA_CHANGE_RE = /\bschema\.json\b|\bstate[- ]schema\b|\bschema\s+(?:change|changes|migration|mutation)\b/i;
-function checkDangerousSurfaceMention({ title, description }) {
-  const text = `${title || ""}
-${description || ""}`;
-  if (!SCHEMA_CHANGE_RE.test(text)) return [];
-  return [
-    `This ticket's title/description mentions a schema change \u2014 dangerous surface (see CLAUDE.md's "Dangerous surface" section). Make sure the acceptance criteria name the concrete harm this change could cause: an observable consequence on data, state, or a user, not a restatement of a test assertion \u2014 the Reviewer's Dangerous-surface gate audits for exactly that at review time. This is advisory only (never a block): re-check the acceptance criteria, or ignore if the match is a false positive (e.g. negated, or describing data that merely conforms to an existing schema rather than changing one).`
-  ];
-}
-async function appendComment({
-  repoRoot,
-  key,
-  author,
-  body,
-  now = () => (/* @__PURE__ */ new Date()).toISOString()
-}) {
-  if (!COMMENT_AUTHORS.includes(author)) {
-    throw new Error(
-      `invalid comment author ${JSON.stringify(author)} \u2014 must be one of ${COMMENT_AUTHORS.join(", ")}`
-    );
-  }
-  await withTasksLock(repoRoot, async () => {
-    const allTasks = await readAllTasks(repoRoot);
-    const task = allTasks.find((t) => t.key === key);
-    if (!task) throw new Error(`unknown task key: ${key}`);
-    const stamp = now();
-    const comment = { author, at: stamp, body: sanitizeCommentBody(body) };
-    task.comments = Array.isArray(task.comments) ? [...task.comments, comment] : [comment];
-    task.updated_at = stamp;
-    validateTaskOrThrow(task);
-    await atomicWriteFiles([
-      { target: taskFilePath(repoRoot, key), bytes: JSON.stringify(task, null, 2) + "\n" },
-      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
-    ]);
-  });
-}
-async function deriveNextKey(repoRoot) {
-  const dir = tasksDir(repoRoot);
-  let entries;
-  try {
-    entries = await (0, import_promises3.readdir)(dir);
-  } catch (err) {
-    if (err && err.code === "ENOENT") entries = [];
-    else throw err;
-  }
-  let maxN = 0;
-  for (const name of entries) {
-    const m = TASK_FILENAME_RE.exec(name);
-    if (!m) continue;
-    const n = parseInt(m[1], 10);
-    if (n > maxN) maxN = n;
-  }
-  const next = maxN + 1;
-  const width = Math.max(3, String(next).length);
-  return `TASK-${String(next).padStart(width, "0")}`;
-}
-var VERIFICATION_TIERS = ["tests-after", "uat-only"];
-async function createTask({
-  repoRoot,
-  title,
-  description,
-  acceptance_criteria,
-  priority,
-  labels = [],
-  depends_on = [],
-  verification_tier,
-  requires_uat,
-  marker,
-  source_tier,
-  confidence,
-  now = () => (/* @__PURE__ */ new Date()).toISOString()
-}) {
-  validateAcceptanceCriteria(acceptance_criteria);
-  if (!PRIORITIES.includes(priority)) {
-    throw new Error(
-      `invalid priority "${priority}" \u2014 must be one of ${PRIORITIES.join(", ")}`
-    );
-  }
-  if (verification_tier !== void 0 && !VERIFICATION_TIERS.includes(verification_tier)) {
-    throw new Error(
-      `invalid verification_tier "${verification_tier}" \u2014 must be one of ${VERIFICATION_TIERS.join(", ")}`
-    );
-  }
-  if (requires_uat !== void 0 && typeof requires_uat !== "boolean") {
-    throw new Error(`invalid requires_uat "${requires_uat}" \u2014 must be a boolean`);
-  }
-  const stamp = now();
-  const { key, target, warnings } = await withTasksLock(repoRoot, async () => {
-    const nextKey = await deriveNextKey(repoRoot);
-    const task = {
-      key: nextKey,
-      title,
-      description,
-      acceptance_criteria,
-      status: "todo",
-      priority,
-      labels,
-      assignee: null,
-      depends_on,
-      linked_commits: [],
-      linked_prs: [],
-      comments: [],
-      created_at: stamp,
-      updated_at: stamp,
-      jira_key: null,
-      ...verification_tier !== void 0 ? { verification_tier } : {},
-      ...requires_uat !== void 0 ? { requires_uat } : {},
-      // Spine calibration (Phase 2) — optional; schema-validated below. Enums/ceilings are enforced
-      // by validateTaskOrThrow before any disk I/O, and the reviewer runs the calibration validators.
-      ...marker !== void 0 ? { marker } : {},
-      ...source_tier !== void 0 ? { source_tier } : {},
-      ...confidence !== void 0 ? { confidence } : {}
-    };
-    validateTaskOrThrow(task);
-    const existing = await readAllTasks(repoRoot);
-    const allTasks = [...existing, task];
-    (0, import_node_fs10.mkdirSync)(tasksDir(repoRoot), { recursive: true });
-    const taskTarget = taskFilePath(repoRoot, nextKey);
-    const taskBytes = JSON.stringify(task, null, 2) + "\n";
-    const payload = Buffer.from(taskBytes, "utf8");
-    let reserveFd;
-    try {
-      reserveFd = (0, import_node_fs10.openSync)(taskTarget, import_node_fs10.constants.O_CREAT | import_node_fs10.constants.O_EXCL | import_node_fs10.constants.O_WRONLY, 384);
-    } catch (err) {
-      if (err && err.code === "EEXIST") {
-        throw new KeyCollisionError(
-          `createTask: key collision \u2014 ${taskTarget} already exists (a concurrent writer won the race for ${nextKey})`
-        );
-      }
-      throw err;
-    }
-    try {
-      let written = 0;
-      while (written < payload.length) {
-        written += (0, import_node_fs10.writeSync)(reserveFd, payload, written, payload.length - written);
-      }
-      (0, import_node_fs10.fsyncSync)(reserveFd);
-    } finally {
-      (0, import_node_fs10.closeSync)(reserveFd);
-    }
-    const onDisk = (0, import_node_fs10.readFileSync)(taskTarget, "utf8");
-    if (onDisk !== taskBytes) {
-      throw new KeyCollisionError(
-        `createTask: verify-after-write detected a competing writer's payload at ${taskTarget} (derived-key collision) \u2014 our write was overwritten immediately after landing.`
-      );
-    }
-    await atomicWriteFiles([
-      { target: indexFilePath(repoRoot), bytes: buildIndexBytes(allTasks, stamp) }
-    ]);
-    const taskWarnings = checkDangerousSurfaceMention({ title, description });
-    return { key: nextKey, target: taskTarget, warnings: taskWarnings };
-  });
-  return warnings.length > 0 ? { key, path: target, warnings } : { key, path: target };
-}
-
-// src/backlog-seeder.js
 var COMMON_TEMPLATES = Object.freeze([
   Object.freeze({
     title: "Set up project CI",
@@ -11895,6 +11996,9 @@ function parseArgs(argv) {
   if (out.ticket !== null && out.wreckerRecord === null) {
     throw new Error("--ticket is only meaningful with --wrecker-record");
   }
+  if (out.wreckerRecord !== null && out.ticket === null) {
+    throw new Error("--wrecker-record requires --ticket <KEY> (the ticket supplies the approved cases and the finding history)");
+  }
   if (out.wreckerRecord !== null && (out.force || out.answersFile !== null)) {
     throw new Error("--wrecker-record cannot be combined with --force or --answers-file");
   }
@@ -12281,8 +12385,16 @@ async function runInit({
     return { state: "wargame_engine_set", projectMdPath, sessionId: null, result };
   }
   if (parsed.wreckerRecord !== null) {
-    const comments = parsed.ticket ? JSON.parse((0, import_node_fs16.readFileSync)((0, import_node_path15.join)(repoRoot, "tasks", `${parsed.ticket}.json`), "utf8")).comments ?? [] : void 0;
-    const result = buildWreckerRecord(JSON.parse((0, import_node_fs16.readFileSync)(parsed.wreckerRecord, "utf8")), { comments });
+    const ticketPath = (0, import_node_path15.join)(repoRoot, "tasks", `${parsed.ticket}.json`);
+    if (!(0, import_node_fs16.existsSync)(ticketPath)) {
+      throw new Error(`--ticket ${parsed.ticket}: tasks/${parsed.ticket}.json was not found under ${repoRoot} (run from the project root, or set CLAUDE_PROJECT_DIR)`);
+    }
+    const tk = JSON.parse((0, import_node_fs16.readFileSync)(ticketPath, "utf8"));
+    const ticketApproved = [...new Set((Array.isArray(tk.acceptance_criteria) ? tk.acceptance_criteria : []).map((x) => /^\s*(CU\d+)\s*:/i.exec(String(x))?.[1]?.toUpperCase()).filter(Boolean))];
+    if (ticketApproved.length === 0) {
+      throw new Error(`--ticket ${parsed.ticket}: no acceptance_criteria item starts with "CU<n>:" - the approved cases must be on the ticket`);
+    }
+    const result = buildWreckerRecord(JSON.parse((0, import_node_fs16.readFileSync)(parsed.wreckerRecord, "utf8")), { comments: Array.isArray(tk.comments) ? tk.comments : [], ticketApproved });
     console.log(JSON.stringify(result));
     return { state: "wrecker_record", projectMdPath, sessionId: null, result };
   }
