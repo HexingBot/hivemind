@@ -15,6 +15,12 @@
 //   any other kind -> throws: an unknown kind must not be silently dropped
 //        (empty-result contract — absence of a mapping is not "nothing found").
 //
+// CU7 — a session cut by Wrecker's 120 s / RSS limit is NOT a finished run. Wrecker reports a cut
+// as status.guard.hits[] (limit != max_play_steps, which only cuts individual plays) and, when it
+// left a checkpoint, status.continue_with = the resume call. Each case must carry the FINAL
+// session `status` (the one returned by the last dry_run/run_session call, after resuming) and a
+// case whose status shows a cut or a pending continue_with is refused, so partial coverage or
+// "0 findings so far" can never become a record. Same transcription limit as `lint` below.
 // Input per attacked case: { case, path, spec?, session_id?, findings,
 //   lint: the FINAL wargame_lint_spec result ({findings:[], ...}) — REQUIRED and must be clean:
 //     Wrecker's MCP sessions run with accept_lint, so it does not refuse a spec that fails lint
@@ -75,6 +81,14 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) — a run on a spec that failed lint cannot become a record`);
     }
     if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array — missing findings must not read as a clean run`);
+    const st = c.status;
+    if (!st || typeof st !== 'object') {
+      throw new Error(`buildWreckerRecord: ${caseId} carries no final session "status" — a run whose finish is not shown cannot become a record (CU7)`);
+    }
+    const cutHit = Array.isArray(st.guard?.hits) ? st.guard.hits.find((h) => h && h.limit !== 'max_play_steps') : undefined;
+    if (cutHit || (st.continue_with !== undefined && st.continue_with !== null)) {
+      throw new Error(`buildWreckerRecord: ${caseId}'s session was cut (${tok(cutHit?.limit, 'continue_with pending')}) and is not finished — resume it with resume_session_id until it finishes, or record the case as NOT attacked (CU7)`);
+    }
     const findings = c.findings;
     const cov = c.coverage?.steps_reached;
     const covText = cov && cov.total !== undefined
@@ -104,7 +118,7 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
     }
 
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(', ') || '0 findings';
-    let line = `${caseId} path ${tok(c.path, 'main')}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; ${kinds}`;
+    let line = `${caseId} path ${tok(c.path, 'main')}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; session finished (stop: ${tok(st.stop_reason, 'not recorded')}); ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);

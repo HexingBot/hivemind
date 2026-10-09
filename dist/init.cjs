@@ -9295,6 +9295,14 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) \u2014 a run on a spec that failed lint cannot become a record`);
     }
     if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array \u2014 missing findings must not read as a clean run`);
+    const st = c.status;
+    if (!st || typeof st !== "object") {
+      throw new Error(`buildWreckerRecord: ${caseId} carries no final session "status" \u2014 a run whose finish is not shown cannot become a record (CU7)`);
+    }
+    const cutHit = Array.isArray(st.guard?.hits) ? st.guard.hits.find((h) => h && h.limit !== "max_play_steps") : void 0;
+    if (cutHit || st.continue_with !== void 0 && st.continue_with !== null) {
+      throw new Error(`buildWreckerRecord: ${caseId}'s session was cut (${tok(cutHit?.limit, "continue_with pending")}) and is not finished \u2014 resume it with resume_session_id until it finishes, or record the case as NOT attacked (CU7)`);
+    }
     const findings = c.findings;
     const cov = c.coverage?.steps_reached;
     const covText = cov && cov.total !== void 0 ? `coverage ${tok(cov.reached)}/${tok(cov.total)} steps (${tok(cov.pct)}%)` : "coverage NOT REPORTED";
@@ -9318,7 +9326,7 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
       }
     }
     const kinds = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ") || "0 findings";
-    let line = `${caseId} path ${tok(c.path, "main")}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; ${kinds}`;
+    let line = `${caseId} path ${tok(c.path, "main")}: lint clean (spec_version ${tok(lint.spec_version)}); ${covText}; session finished (stop: ${tok(st.stop_reason, "not recorded")}); ${kinds}`;
     if (c.spec) line += `; spec ${tok(c.spec)}`;
     if (c.session_id) line += `; session ${tok(c.session_id)}`;
     attacked.push(line);
