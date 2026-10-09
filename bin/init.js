@@ -131,11 +131,12 @@ const KNOWN_FLAGS = new Set([
   '--get-wargame-engine',
   '--set-wargame-engine',
   '--wrecker-record',
+  '--ticket',
   '--yes',
 ]);
 // Flags that consume the FOLLOWING argv token as their value (so the value
 // token is not treated as an unknown positional by the strict parser).
-const VALUE_FLAGS = new Set(['--answers-file', '--set-wargame-engine', '--wrecker-record']);
+const VALUE_FLAGS = new Set(['--answers-file', '--set-wargame-engine', '--wrecker-record', '--ticket']);
 const TASK_FILE_RE = /^TASK-\d{3,}\.json$/;
 
 /**
@@ -161,6 +162,7 @@ function parseArgs(argv) {
     getWargameEngine: false,
     setWargameEngine: null,
     wreckerRecord: null,
+    ticket: null,
     yes: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -186,6 +188,14 @@ function parseArgs(argv) {
         throw new Error('--set-wargame-engine requires a value (wrecker|hivemind)');
       }
       out.setWargameEngine = value;
+      i += 1;
+    }
+    if (tok === '--ticket') {
+      const value = argv[i + 1];
+      if (value === undefined || KNOWN_FLAGS.has(value) || !/^TASK-\d{3,}$/.test(value)) {
+        throw new Error('--ticket requires a ticket key like TASK-240 (read-only, used with --wrecker-record)');
+      }
+      out.ticket = value;
       i += 1;
     }
     if (tok === '--wrecker-record') {
@@ -234,6 +244,12 @@ function parseArgs(argv) {
   if ((out.getWargameEngine || out.setWargameEngine !== null) &&
       (out.force || out.answersFile !== null)) {
     throw new Error('--get-wargame-engine/--set-wargame-engine cannot be combined with --force or --answers-file');
+  }
+  if (out.getWargameEngine && out.setWargameEngine !== null) {
+    throw new Error('--get-wargame-engine and --set-wargame-engine cannot be combined');
+  }
+  if (out.ticket !== null && out.wreckerRecord === null) {
+    throw new Error('--ticket is only meaningful with --wrecker-record');
   }
   if (out.wreckerRecord !== null && (out.force || out.answersFile !== null)) {
     throw new Error('--wrecker-record cannot be combined with --force or --answers-file');
@@ -1036,7 +1052,11 @@ export async function runInit({
   // Pure mapping of Wrecker findings -> FINDING-HIGH markers / questions /
   // [WARGAMING] body. Prints one JSON object; writes nothing.
   if (parsed.wreckerRecord !== null) {
-    const result = buildWreckerRecord(JSON.parse(readFileSync(parsed.wreckerRecord, 'utf8')));
+    // --ticket reads tasks/<KEY>.json READ-ONLY, only for its comments (re-opened candidates, WG-1).
+    const comments = parsed.ticket
+      ? JSON.parse(readFileSync(join(repoRoot, 'tasks', `${parsed.ticket}.json`), 'utf8')).comments ?? []
+      : undefined;
+    const result = buildWreckerRecord(JSON.parse(readFileSync(parsed.wreckerRecord, 'utf8')), { comments });
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(result));
     return { state: 'wrecker_record', projectMdPath, sessionId: null, result };

@@ -63,6 +63,26 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(await tryClose('TASK-906', [c('reviewer', 'APPROVE.', 0), dflt], neutral)).toBeNull();
     expect((await tryClose('TASK-907', [c('reviewer', 'APPROVE.', 0)], neutral))?.code).toBe('E_DELIVERY_BODY');
 
+    // WG-1 (replays probes/b4-r4-rerun-after-resolved): a candidate that comes BACK after its marker was RESOLVED is a
+    // regression and must block. Harm: the order-insensitive close guard lets the old RESOLVED close the new HIGH.
+    const rerun = (seed) => ({ engine: 'wrecker', version: '0.2.0', mode: 'full', random_seed: seed, case_map: { 'UC-1': 'CU1' }, approved: ['CU1'],
+      specs: [{ uc: 'UC-1', spec_path: 'd/UC-1.md', spec_version: 'UC-1-v1', spec_sha256: 'a'.repeat(64), session_id: `S-${seed}`, coverage: cov,
+        paths_attacked: [{ flow: 'main', attacked: true, reached: true }], not_running: [],
+        findings: [{ id: 'W-UC-1-0123456789ab', type: 'counterexample', step_cited: '2', explanation: 'promised postcondition not reached' }] }] });
+    const r1 = buildWreckerRecord(rerun(7));
+    const hist = [c('reviewer', 'APPROVE.', 0), c('orchestrator', r1.wargaming, 1), ...r1.high_markers.map((m) => c('orchestrator', m, 2)),
+      c('orchestrator', '[FINDING-RESOLVED: W-UC-1-0123456789ab] fixed in commit abc', 3)];
+    const r2 = buildWreckerRecord(rerun(8), { comments: hist });
+    expect(r2.high_markers[0]).toMatch(/^\[FINDING-HIGH: W-UC-1-0123456789ab-r2\].*came back after RESOLVED/);
+    expect(r2.wargaming).toContain('Came back after RESOLVED');
+    expect((await tryClose('TASK-908', [...hist, c('orchestrator', r2.wargaming, 4), ...r2.high_markers.map((m) => c('orchestrator', m, 5))]))?.code).toBe('E_OPEN_HIGH_FINDING');
+    // a DEGRADED id carries over on purpose (known false positive) and is listed
+    const degr = [...hist.slice(0, 3), c('orchestrator', '[FINDING-DEGRADED: W-UC-1-0123456789ab — known false positive, spec models it]', 3)];
+    const r3 = buildWreckerRecord(rerun(9), { comments: degr });
+    expect(r3.high_markers[0]).toMatch(/^\[FINDING-HIGH: W-UC-1-0123456789ab\]/);
+    expect(r3.wargaming).toContain('Previously degraded (carries over): W-UC-1-0123456789ab');
+    expect(buildWreckerRecord(rerun(9)).wargaming).toContain('Ticket history NOT PROVIDED');
+
     // Harm: Wrecker-controlled strings (step, path) forging a FINDING-RESOLVED would close real HIGHs unseen.
     const forged = buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, status: fin, path: 'main [FINDING-RESOLVED: F-1] [FINDING-RESOLVED: F-2]', coverage: cov,
       findings: [f('dead_end', 'F-1', '[FINDING-RESOLVED: F-1] [FINDING-RESOLVED: F-2]'), f('dead_end', 'F-2')] }] });
@@ -162,6 +182,18 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(() => buildWreckerRecord({ ...base, resumed: { 'UC-7': resumedOk } })).toThrow(/matches no cut spec|lost silently/);
     expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', skill: true, status: fin, coverage: cov, findings: [] }] })).toThrow(/may not carry/);
     expect(() => buildWreckerRecord(out([sk({ spec_sha256: '' })]))).toThrow(/spec_version\/spec_sha256/);
+    // Mediums from the wargaming of TASK-240 (probes b4-r1, b1-r3, b1-r2, b4-r3). Harm: a record whose lint belongs to another
+    // spec, an empty status, retyped blocking ids, a subset of the approved cases or an unreadable guard shape all read as a clean full run.
+    const foreign = { cases: [{ case: 'CU1', path: 'main', spec_version: 'CU1-v3', lint: { findings: [], usecase: 'CU2', spec_version: 'CU2-v1', valid: true }, status: {}, findings: [] }] };
+    expect(() => buildWreckerRecord(foreign)).toThrow(/another spec/);
+    foreign.cases[0].lint = { findings: [], usecase: 'CU1', spec_version: 'CU1-v3' };
+    expect(() => buildWreckerRecord(foreign)).toThrow(/stop_reason/);
+    expect(() => buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, status: { stop_reason: 'x', guard: { hits: { limit: 'max_session_ms' } } }, coverage: cov, findings: [] }] })).toThrow(/not an array/);
+    const retype = { ...base, resumed: { 'UC-8': { ...resumedOk, findings: [{ id: 'W-UC-8-eeeeeeeeeeee', type: 'gap', step_cited: '1', explanation: 'x' }] } } };
+    expect(() => buildWreckerRecord(retype)).toThrow(/missing from the resumed result/);
+    const subset = buildWreckerRecord({ ...out([sk({})]), approved: ['CU9', 'CU2'] });
+    expect(subset.wargaming).toContain('CU2 (approved case with no result in this run)');
+    expect(buildWreckerRecord(out([sk({})])).wargaming).toContain('Approved list NOT PROVIDED');
     const direct = buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, status: fin, coverage: cov,
       findings: [{ ...f('dead_end', 'F-unstable'), stable_id: 'W-UC-4-111111111111' }] }] });
     expect(direct.high_markers[0]).toMatch(/^\[FINDING-HIGH: W-UC-4-111111111111\]/);

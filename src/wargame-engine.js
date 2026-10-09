@@ -27,6 +27,16 @@ export { WARGAME_ENGINES, normalizeWargameEngine };
 
 export async function readWargameEngine({ repoRoot }) {
   if (!existsSync(join(repoRoot, 'PROJECT.md'))) return { status: 'no-project-md' };
+  // Duplicate `wargame_engine:` lines: the writer replaces the first, the frontmatter parser reads the
+  // last, so disagreeing duplicates would make set and get contradict each other. Never report `set` then.
+  const lines = (await readFile(join(repoRoot, 'PROJECT.md'), 'utf8')).split(/\r?\n/);
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
+  const vals = [];
+  for (let i = 1; close > 0 && i < close; i++) {
+    const m = /^wargame_engine:\s*(.*)$/.exec(lines[i]);
+    if (m) vals.push(normalizeWargameEngine(m[1].trim().replace(/^(["'])(.*)\1$/, '$2')) ?? `?${m[1]}`);
+  }
+  if (vals.length > 1 && new Set(vals).size > 1) return { status: 'invalid', raw: 'duplicate wargame_engine lines disagree' };
   const { frontmatter } = await readProjectMd({ repoRoot });
   const raw = frontmatter.wargame_engine;
   if (raw === undefined || raw === null || raw === '') return { status: 'unset' };
@@ -53,19 +63,22 @@ export async function saveWargameEngine({ repoRoot, value }) {
   if (!existsSync(target)) return { saved: false, reason: 'no-project-md' };
 
   const text = await readFile(target, 'utf8');
-  const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const lines = text.split(/\r?\n/);
-  if (lines[0] !== '---') throw new Error('PROJECT.md is missing the opening "---" frontmatter delimiter');
-  const close = lines.indexOf('---', 1);
+  // Keep every line's own EOL (mixed-EOL files stay byte-identical outside the one line we touch).
+  const parts = text.split(/(\r?\n)/);
+  const rows = [];
+  for (let i = 0; i < parts.length; i += 2) rows.push({ line: parts[i], eol: parts[i + 1] ?? '' });
+  if (rows[0].line !== '---') throw new Error('PROJECT.md is missing the opening "---" frontmatter delimiter');
+  const close = rows.findIndex((r, i) => i > 0 && r.line === '---');
   if (close === -1) throw new Error('PROJECT.md frontmatter has no closing "---" delimiter');
 
   const newLine = `wargame_engine: ${engine}`;
-  let idx = -1;
-  for (let i = 1; i < close; i++) {
-    if (/^wargame_engine:/.test(lines[i])) { idx = i; break; }
+  const hits = [];
+  for (let i = 1; i < close; i++) if (/^wargame_engine:/.test(rows[i].line)) hits.push(i);
+  if (hits.length === 0) rows.splice(close, 0, { line: newLine, eol: rows[close - 1].eol || '\n' });
+  else {
+    rows[hits[0]].line = newLine; // replace the first ...
+    for (const i of hits.slice(1).reverse()) rows.splice(i, 1); // ... and leave exactly one line
   }
-  if (idx === -1) lines.splice(close, 0, newLine);
-  else lines[idx] = newLine;
-  await atomicWriteFile(target, lines.join(eol));
+  await atomicWriteFile(target, rows.map((r) => r.line + r.eol).join(''));
   return { saved: true, engine };
 }

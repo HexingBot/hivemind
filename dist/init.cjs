@@ -9222,6 +9222,14 @@ var import_promises2 = require("node:fs/promises");
 var import_node_path6 = require("node:path");
 async function readWargameEngine({ repoRoot }) {
   if (!(0, import_node_fs8.existsSync)((0, import_node_path6.join)(repoRoot, "PROJECT.md"))) return { status: "no-project-md" };
+  const lines = (await (0, import_promises2.readFile)((0, import_node_path6.join)(repoRoot, "PROJECT.md"), "utf8")).split(/\r?\n/);
+  const close = lines[0] === "---" ? lines.indexOf("---", 1) : -1;
+  const vals = [];
+  for (let i = 1; close > 0 && i < close; i++) {
+    const m = /^wargame_engine:\s*(.*)$/.exec(lines[i]);
+    if (m) vals.push(normalizeWargameEngine(m[1].trim().replace(/^(["'])(.*)\1$/, "$2")) ?? `?${m[1]}`);
+  }
+  if (vals.length > 1 && new Set(vals).size > 1) return { status: "invalid", raw: "duplicate wargame_engine lines disagree" };
   const { frontmatter } = await readProjectMd({ repoRoot });
   const raw = frontmatter.wargame_engine;
   if (raw === void 0 || raw === null || raw === "") return { status: "unset" };
@@ -9239,22 +9247,21 @@ async function saveWargameEngine({ repoRoot, value }) {
   const target = (0, import_node_path6.join)(repoRoot, "PROJECT.md");
   if (!(0, import_node_fs8.existsSync)(target)) return { saved: false, reason: "no-project-md" };
   const text = await (0, import_promises2.readFile)(target, "utf8");
-  const eol = text.includes("\r\n") ? "\r\n" : "\n";
-  const lines = text.split(/\r?\n/);
-  if (lines[0] !== "---") throw new Error('PROJECT.md is missing the opening "---" frontmatter delimiter');
-  const close = lines.indexOf("---", 1);
+  const parts = text.split(/(\r?\n)/);
+  const rows = [];
+  for (let i = 0; i < parts.length; i += 2) rows.push({ line: parts[i], eol: parts[i + 1] ?? "" });
+  if (rows[0].line !== "---") throw new Error('PROJECT.md is missing the opening "---" frontmatter delimiter');
+  const close = rows.findIndex((r, i) => i > 0 && r.line === "---");
   if (close === -1) throw new Error('PROJECT.md frontmatter has no closing "---" delimiter');
   const newLine = `wargame_engine: ${engine}`;
-  let idx = -1;
-  for (let i = 1; i < close; i++) {
-    if (/^wargame_engine:/.test(lines[i])) {
-      idx = i;
-      break;
-    }
+  const hits = [];
+  for (let i = 1; i < close; i++) if (/^wargame_engine:/.test(rows[i].line)) hits.push(i);
+  if (hits.length === 0) rows.splice(close, 0, { line: newLine, eol: rows[close - 1].eol || "\n" });
+  else {
+    rows[hits[0]].line = newLine;
+    for (const i of hits.slice(1).reverse()) rows.splice(i, 1);
   }
-  if (idx === -1) lines.splice(close, 0, newLine);
-  else lines[idx] = newLine;
-  await atomicWriteFile(target, lines.join(eol));
+  await atomicWriteFile(target, rows.map((r) => r.line + r.eol).join(""));
   return { saved: true, engine };
 }
 
@@ -9330,7 +9337,7 @@ function fromSkill(out) {
       if (!r.status || typeof r.status.stop_reason !== "string" || !r.status.stop_reason.trim()) {
         throw new Error(`buildWreckerRecord: resumed entry for ${tok(label)} has no status.stop_reason - a resumed run must show how it finished`);
       }
-      const rIds = new Set((Array.isArray(r.findings) ? r.findings : []).flatMap((f) => [...idsOfFinding(f)]).map((i) => i.toUpperCase()));
+      const rIds = new Set((Array.isArray(r.findings) ? r.findings : []).filter((f) => HIGH_KINDS.has(kindOf(f))).flatMap((f) => [...idsOfFinding(f)]).map((i) => i.toUpperCase()));
       const lost = (Array.isArray(sp.findings) ? sp.findings : []).filter((f) => HIGH_KINDS.has(kindOf(f))).flatMap((f) => idsOfFinding(f)).filter((i) => !rIds.has(i.toUpperCase()));
       if (lost.length > 0) {
         throw new Error(`buildWreckerRecord: blocking ids found before the cut are missing from the resumed result (${lost.map((i) => tok(i)).join(", ")}) - an honest final wargame_findings still contains them`);
@@ -9391,11 +9398,27 @@ function fromSkill(out) {
       }
     }
   }
-  return { cases, not_attacked: notAttacked, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
+  return { cases, not_attacked: notAttacked, approved: out.approved, header: `mode ${tok(out.mode)}, seed ${tok(out.random_seed)}, version ${tok(out.version)}` };
 }
-function buildWreckerRecord(input2) {
+function ticketHistory(comments) {
+  if (!Array.isArray(comments)) return null;
+  const h = { resolved: /* @__PURE__ */ new Set(), degraded: /* @__PURE__ */ new Set(), all: /* @__PURE__ */ new Set() };
+  for (const cm of comments) {
+    for (const m of String(cm?.body ?? "").matchAll(/\[FINDING-(HIGH|RESOLVED|DEGRADED):\s*([^\]\s]+)/gi)) {
+      const id = m[2].toUpperCase();
+      h.all.add(id);
+      if (m[1].toUpperCase() === "RESOLVED") h.resolved.add(id);
+      if (m[1].toUpperCase() === "DEGRADED") h.degraded.add(id);
+    }
+  }
+  return h;
+}
+function buildWreckerRecord(input2, { comments } = {}) {
   if (input2 && (input2.engine === "wrecker" || input2.error || Array.isArray(input2.specs))) input2 = fromSkill(input2);
-  const { cases, not_attacked = [], header = null } = input2 ?? {};
+  const { cases, not_attacked = [], header = null, approved } = input2 ?? {};
+  const hist = ticketHistory(comments);
+  const cameBack = [];
+  const prevDegraded = [];
   if (Array.isArray(cases)) {
     for (const c of cases) {
       if (!FROM_SKILL.has(c) && c && typeof c === "object" && "skill" in c) {
@@ -9421,14 +9444,23 @@ function buildWreckerRecord(input2) {
     if (!src && (!lint || typeof lint !== "object" || !Array.isArray(lint.findings) || lint.findings.length > 0 || typeof lint.usecase !== "string" || !lint.usecase.trim() || typeof lint.spec_version !== "string" || !lint.spec_version.trim() || lint.valid === false || Array.isArray(lint.problems) && lint.problems.length > 0)) {
       throw new Error(`buildWreckerRecord: ${caseId} has no clean final lint (wargame_lint_spec must return 0 findings and no problems) \u2014 a run on a spec that failed lint cannot become a record`);
     }
+    if (!src && (c.spec_version != null && String(c.spec_version) !== lint.spec_version || c.usecase != null && String(c.usecase) !== lint.usecase)) {
+      throw new Error(`buildWreckerRecord: ${caseId}'s lint belongs to another spec (lint ${tok(lint.usecase)}/${tok(lint.spec_version)} vs case ${tok(c.usecase ?? "-")}/${tok(c.spec_version ?? "-")}) - lint the attacked spec itself`);
+    }
     if (!Array.isArray(c.findings)) throw new Error(`buildWreckerRecord: ${caseId} has no "findings" array \u2014 missing findings must not read as a clean run`);
     const st = src === "skill" ? {} : c.status;
     if (!st || typeof st !== "object") {
       throw new Error(`buildWreckerRecord: ${caseId} carries no final session "status" \u2014 a run whose finish is not shown cannot become a record (CU7)`);
     }
+    if (st.guard != null && st.guard.hits !== void 0 && !Array.isArray(st.guard.hits)) {
+      throw new Error(`buildWreckerRecord: ${caseId}'s status.guard.hits is not an array - a cut cannot be ruled out (CU7)`);
+    }
     const cutHit = Array.isArray(st.guard?.hits) ? st.guard.hits.find((h) => h && h.limit !== "max_play_steps") : void 0;
     if (cutHit || st.stop_reason === "limit" || st.continue_with !== void 0 && st.continue_with !== null) {
       throw new Error(`buildWreckerRecord: ${caseId}'s session was cut (${tok(cutHit?.limit ?? st.stop_reason, "continue_with pending")}) and is not finished \u2014 resume it with resume_session_id until it finishes, or record the case as NOT attacked (CU7)`);
+    }
+    if (src !== "skill" && (typeof st.stop_reason !== "string" || !st.stop_reason.trim())) {
+      throw new Error(`buildWreckerRecord: ${caseId}'s status has no stop_reason - a run must show how it finished (CU7)`);
     }
     const findings = c.findings;
     const cov = c.coverage?.steps_reached;
@@ -9456,9 +9488,16 @@ function buildWreckerRecord(input2) {
           const hex = /([0-9a-f]{12})$/i.exec(orig);
           if (isStable && hex && orig.replace(/[^A-Za-z0-9._/-]/g, "-").length > ID_MAX) id = `W-${tok(caseId, "X").replace(/[^A-Za-z0-9]/g, "")}-${hex[1]}`;
           for (let n = 1; seen.has(id.toUpperCase()); n++) id = `${id.replace(/-x\d+$/, "").slice(0, ID_MAX - 5)}-x${n}`;
+          let back = "";
+          if (hist && hist.resolved.has(id.toUpperCase())) {
+            const old = id;
+            for (let n = 2; hist.all.has(id.toUpperCase()) || seen.has(id.toUpperCase()) || id === old; n++) id = `${old.slice(0, ID_MAX - 2 - String(n).length)}-r${n}`;
+            cameBack.push(`${old} -> ${id}`);
+            back = " (came back after RESOLVED)";
+          } else if (hist && hist.degraded.has(id.toUpperCase())) prevDegraded.push(id);
           seen.add(id.toUpperCase());
-          if (isStable && id !== orig) derived.push(`${tok(orig)} -> ${id}`);
-          highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
+          if (isStable && id !== orig && !back) derived.push(`${tok(orig)} -> ${id}`);
+          highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step}${back} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
         }
       } else if (kind === "gap") {
         const fids = [f.folded_ids, f.stable_ids].find((a) => Array.isArray(a) && a.length > 0);
@@ -9479,16 +9518,31 @@ function buildWreckerRecord(input2) {
     }
   }
   const high = highMarkers.length;
+  const attackedIds = new Set(cases.map((x) => tok(x.case).toUpperCase()));
+  let approvedNote;
+  if (Array.isArray(approved) && approved.length > 0) {
+    const have = new Set(notAttacked.map((n) => String(n).split(/[ (]/)[0].toUpperCase()));
+    for (const a of approved.map((x) => tok(x))) {
+      if (!attackedIds.has(a.toUpperCase()) && !have.has(a.toUpperCase())) notAttacked.push(`${a} (approved case with no result in this run)`);
+    }
+    const extra = [...attackedIds].filter((x) => !approved.map((y) => tok(y).toUpperCase()).includes(x));
+    approvedNote = extra.length > 0 ? ` Attacked but not in the approved list: ${extra.join(", ")}.` : "";
+  } else {
+    approvedNote = " Approved list NOT PROVIDED: a run over a subset of the approved cases cannot be detected.";
+  }
   const body = [
     `[WARGAMING] engine: wrecker${header ? ` (${header})` : ""}.`,
     `Attacked (case + path): ${attacked.join(" | ") || "none"}.`,
-    `Not attacked: ${notAttacked.join(" | ") || "nothing declared"}.`,
+    `Not attacked: ${notAttacked.join(" | ") || (Array.isArray(approved) && approved.length > 0 ? "none (every approved case was attacked)" : "none declared")}.${approvedNote}`,
+    hist ? null : "Ticket history NOT PROVIDED: a candidate that came back after RESOLVED cannot be detected (pass the ticket).",
+    ...cameBack.length > 0 ? [`Came back after RESOLVED, fresh marker ids (old -> new): ${cameBack.join("; ")}.`] : [],
+    ...prevDegraded.length > 0 ? [`Previously degraded (carries over): ${prevDegraded.join(", ")}.`] : [],
     ...derived.length > 0 ? [`Marker ids derived (original -> marker, match a later RESOLVED/DEGRADED by the marker id): ${derived.join("; ")}.`] : [],
     ...dropped.length > 0 ? [`Stable ids folded into an earlier marker (one marker covers both): ${dropped.join("; ")}.`] : [],
     `HIGH candidates opened: ${high} (each is a separate marker comment; they block the close until triaged). Non-blocking questions for the spec owner: ${questions.length}.`,
     ...questions.map((q) => `Question for the spec owner (does not block): ${q}`),
     "Zero counterexamples proves nothing by itself: read the coverage above."
-  ].join("\n");
+  ].filter((l) => l !== null).join("\n");
   return { wargaming: body, high_markers: highMarkers, questions };
 }
 
@@ -11750,9 +11804,10 @@ var KNOWN_FLAGS = /* @__PURE__ */ new Set([
   "--get-wargame-engine",
   "--set-wargame-engine",
   "--wrecker-record",
+  "--ticket",
   "--yes"
 ]);
-var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file", "--set-wargame-engine", "--wrecker-record"]);
+var VALUE_FLAGS = /* @__PURE__ */ new Set(["--answers-file", "--set-wargame-engine", "--wrecker-record", "--ticket"]);
 var TASK_FILE_RE2 = /^TASK-\d{3,}\.json$/;
 function parseArgs(argv) {
   const out = {
@@ -11768,6 +11823,7 @@ function parseArgs(argv) {
     getWargameEngine: false,
     setWargameEngine: null,
     wreckerRecord: null,
+    ticket: null,
     yes: false
   };
   for (let i = 0; i < argv.length; i++) {
@@ -11791,6 +11847,14 @@ function parseArgs(argv) {
         throw new Error("--set-wargame-engine requires a value (wrecker|hivemind)");
       }
       out.setWargameEngine = value;
+      i += 1;
+    }
+    if (tok2 === "--ticket") {
+      const value = argv[i + 1];
+      if (value === void 0 || KNOWN_FLAGS.has(value) || !/^TASK-\d{3,}$/.test(value)) {
+        throw new Error("--ticket requires a ticket key like TASK-240 (read-only, used with --wrecker-record)");
+      }
+      out.ticket = value;
       i += 1;
     }
     if (tok2 === "--wrecker-record") {
@@ -11824,6 +11888,12 @@ function parseArgs(argv) {
   }
   if ((out.getWargameEngine || out.setWargameEngine !== null) && (out.force || out.answersFile !== null)) {
     throw new Error("--get-wargame-engine/--set-wargame-engine cannot be combined with --force or --answers-file");
+  }
+  if (out.getWargameEngine && out.setWargameEngine !== null) {
+    throw new Error("--get-wargame-engine and --set-wargame-engine cannot be combined");
+  }
+  if (out.ticket !== null && out.wreckerRecord === null) {
+    throw new Error("--ticket is only meaningful with --wrecker-record");
   }
   if (out.wreckerRecord !== null && (out.force || out.answersFile !== null)) {
     throw new Error("--wrecker-record cannot be combined with --force or --answers-file");
@@ -12211,7 +12281,8 @@ async function runInit({
     return { state: "wargame_engine_set", projectMdPath, sessionId: null, result };
   }
   if (parsed.wreckerRecord !== null) {
-    const result = buildWreckerRecord(JSON.parse((0, import_node_fs16.readFileSync)(parsed.wreckerRecord, "utf8")));
+    const comments = parsed.ticket ? JSON.parse((0, import_node_fs16.readFileSync)((0, import_node_path15.join)(repoRoot, "tasks", `${parsed.ticket}.json`), "utf8")).comments ?? [] : void 0;
+    const result = buildWreckerRecord(JSON.parse((0, import_node_fs16.readFileSync)(parsed.wreckerRecord, "utf8")), { comments });
     console.log(JSON.stringify(result));
     return { state: "wrecker_record", projectMdPath, sessionId: null, result };
   }

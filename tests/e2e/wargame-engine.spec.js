@@ -88,5 +88,21 @@ describe('TASK-240 CU1 — wargame_engine', () => {
         .rejects.toThrow(/--set-wargame-engine requires a value/);
     }
     expect(readFileSync(p, 'utf8')).toBe(withLine('hivemind'));
+    // WG-2 (replays probes/projmd/dup): two disagreeing wargame_engine lines must never read as `set`, and saving leaves exactly one.
+    // Harm: set saying "hivemind" while get says "wrecker" runs the wrong engine with no warning.
+    const dup = FM.replace(`schema_version: 1${NL}`, `schema_version: 1${NL}wargame_engine: hivemind${NL}wargame_engine: wrecker${NL}`);
+    writeFileSync(p, dup);
+    expect((await readWargameEngine({ repoRoot: dir })).status).toBe('invalid');
+    await runInit({ argv: ['--set-wargame-engine', 'hivemind'], repoRoot: dir, prompter: () => { throw new Error('asked'); } });
+    expect(readFileSync(p, 'utf8')).toBe(withLine('hivemind'));
+    expect(await readWargameEngine({ repoRoot: dir })).toEqual({ status: 'set', engine: 'hivemind' });
+    // mixed EOL: only the touched line's EOL changes, body EOLs stay byte-identical
+    const CR = String.fromCharCode(13);
+    const mixed = `${withLine('wrecker')}${CR}${NL}tail${CR}${NL}`;
+    writeFileSync(p, mixed);
+    await saveWargameEngine({ repoRoot: dir, value: 'hivemind' });
+    expect(readFileSync(p, 'utf8')).toBe(mixed.replace('wargame_engine: wrecker', 'wargame_engine: hivemind'));
+    await expect(runInit({ argv: ['--get-wargame-engine', '--set-wargame-engine', 'hivemind'], repoRoot: dir, prompter: () => { throw new Error('asked'); } }))
+      .rejects.toThrow(/cannot be combined/);
   });
 });
