@@ -1728,6 +1728,12 @@
       "type": "task",
       "ref": "tasks/TASK-239.json",
       "label": "Botón de donación del sitio: popup con monto editable (receta de Wrecker, PayPal.me)"
+    },
+    {
+      "id": "task-240",
+      "type": "task",
+      "ref": "tasks/TASK-240.json",
+      "label": "Wargaming engine per project: Wrecker (/wrecker:wargame) or hivemind default"
     }
   ],
   "edges": [

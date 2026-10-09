@@ -2,11 +2,11 @@
   "schema_version": 2,
   "session_id": "20260708T154259Z-29a27eda",
   "lifecycle_state": "paused",
-  "updated_at": "2026-10-09T14:54:51.406Z",
-  "active_task": "TASK-240",
-  "workflow_step": "review",
-  "next_action": "Wargaming con hive-adversarial-improve sobre TASK-240 contra CU1-CU9 aprobados; correr e2e: wargame-wrecker, wargame-engine, dist-parity, task-234-close-verification, init, init-command, claude-md-init, agent-models-config, tests/project-definition-schema.spec.js. Registrar [WARGAMING]. Luego UAT con el humano y cierre con PLANTILLA-ENTREGA.",
-  "handoff_summary": "TASK-240 in_review. Implementacion CU1-CU8 completa; review final PASS tras FINAL-R-1 (reanudacion en /wrecker:wargame, decision del humano) y follow-ups 10377c6, 7110ac4. wargame_engine de este repo = hivemind (humano, 2026-10-09). Piloto CU9 registrado. TASK-241 abierto.",
+  "updated_at": "2026-10-09T16:33:21.545Z",
+  "active_task": null,
+  "workflow_step": "idle",
+  "next_action": "Elegir siguiente ticket. Abiertos relacionados: TASK-241 (subagent-log vacio con SubagentHandback), TASK-242 (close guard acepta registro que dice que no se ataco nada). Pendiente de Wrecker: respuesta a hub msg_0050.",
+  "handoff_summary": "TASK-240 CERRADO (done) el 2026-10-09: motor de wargaming por proyecto (wrecker|hivemind), integracion con /wrecker:wargame 0.2.0, reanudacion de cortes, re-apertura tras RESOLVED, parser de marcadores compartido (src/finding-markers.js). 9 HIGH abiertos y resueltos; wargaming con motor hivemind en 3 pasadas; UAT 9/9 PASS. Borrador de conocimiento en knowledge/proposed/second-parser-of-a-guarded-format-diverges-from-the-guard.md.",
   "open_questions": [
     "Quitar la entrada del MCP wrecker local (server del piloto) ahora que el plugin esta instalado?"
   ],

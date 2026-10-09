@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T14:52:10.034Z",
+  "generated_at": "2026-10-09T16:30:52.686Z",
   "tasks": [
     {
       "key": "TASK-001",
@@ -1408,12 +1408,18 @@
     {
       "key": "TASK-240",
       "title": "Wargaming engine per project: Wrecker (/wrecker:wargame) or hivemind default",
-      "status": "in_review",
+      "status": "done",
       "priority": "medium"
     },
     {
       "key": "TASK-241",
       "title": "subagent-log.jsonl records an empty last_assistant_message when a subagent ends via SubagentHandback",
+      "status": "todo",
+      "priority": "medium"
+    },
+    {
+      "key": "TASK-242",
+      "title": "Close guard accepts a [WARGAMING] record that says nothing was attacked, or one written by hand",
       "status": "todo",
       "priority": "medium"
     }

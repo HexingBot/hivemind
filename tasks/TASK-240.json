@@ -13,7 +13,7 @@
     "CU8: With default chosen, today's hive-adversarial-improve wargaming runs unchanged.",
     "CU9: Pilot: Wrecker runs on TASK-239's approved use cases (live anchor on the site if reachable) and its results are compared with TASK-239's recorded wargaming report."
   ],
-  "status": "in_review",
+  "status": "done",
   "priority": "medium",
   "labels": [
     "wargaming",
@@ -21,7 +21,30 @@
   ],
   "assignee": null,
   "depends_on": [],
-  "linked_commits": [],
+  "linked_commits": [
+    "133e0f2",
+    "2f4c121",
+    "d44272d",
+    "5a39914",
+    "1b5afe0",
+    "056babd",
+    "6cbb13b",
+    "db8b862",
+    "a886add",
+    "ca6378b",
+    "9c093af",
+    "3acd181",
+    "656caa5",
+    "f023b54",
+    "3e63dc9",
+    "10377c6",
+    "7110ac4",
+    "3a46c66",
+    "5b18378",
+    "f083910",
+    "9fbfc09",
+    "7cd611f"
+  ],
   "linked_prs": [],
   "comments": [
     {
@@ -123,11 +146,161 @@
       "author": "orchestrator",
       "at": "2026-10-09T14:52:10.034Z",
       "body": "Follow-up 7110ac4: cierra el MEDIUM de la re-review final (el resultado reanudado debe conservar los ids bloqueantes encontrados antes del corte, si no el registro falla nombrándolos) y tres LOWs (stop_reason obligatorio en el reemplazo; la doc dice que en 0.2.0 la sesión reanudada conserva el mismo session_id, verificado por el Orquestador en el dist: runId = resume.sessionId; coma suelta). Locks plantados rojo-verde por el Developer. Re-corrido por el Orquestador: wargame-wrecker + dist-parity 4/4 verde, SKILL.md en paridad. Review final del ticket: PASS. Motor de wargaming de este repo elegido por el humano: hivemind (default), guardado en PROJECT.md. Sigue el wargaming."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T15:02:42.190Z",
+      "body": "[WARGAMING] engine: hivemind (default, elegido por el humano 2026-10-09). hive-adversarial-improve, 18 rondas contra el código real (buildWreckerRecord, closeTask real sobre repos temporales, CLI bin/init.js y dist/init.cjs), sondas sembradas del failure-mode-catalog. Fixtures en el scratchpad de la sesión (wargame-240/probes).\nAtacado: CU1 path unset/inválido/omitido/lookalikes/BOM/sin frontmatter; CU2 path ya configurado (comillas, duplicados); CU3 path edición a mano sin caché y path cambio por --set tras duplicado; CU4 path mapeo de tipos, falsificación de marcadores, corrida parcial, re-corrida tras RESOLVED; CU5 path cierre con Wrecker caído o registro falso; CU6 path lint ajeno; CU7 path línea de corte borrada, reanudado re-tipado, guard.hits malformado, status vacío; CU8 path default con engine wrecker/hivemind.\nSobrevivió: falsificación de marcadores (ASCII, fullwidth, comillas curvas, U+2028, fences); tipo desconocido; lectura sin caché; BOM y sin frontmatter fallan fuerte; --set=valor rechazado; CU8 intacto (el guard no lee el motor ni pide artefactos de Wrecker).\nNo sobrevivió: ver FINDING-HIGH abajo; MEDIUM: lint de otro spec aceptado y status {} aceptado en el camino directo; un id bloqueante pre-corte vuelve re-tipado como gap y pasa; una corrida de un subconjunto de casos se lee como completa (\"Not attacked: nothing declared\"); CU5 sólo procedimental (un registro escrito a mano o que dice \"nada atacado\" cierra: hueco de negación ya conocido en task-store.js ~1636). LOW: línea de corte borrada (residual documentado), guard.hits no-array, CRLF mixto reescrito, --get y --set juntos ignora el set, lookalikes Kelvin/[wrecker] leen wrecker.\nNo atacado: el prompt interactivo de init (requiere TTY; lo cubre init e2e); la conversación del orquestador (CU1/CU5/CU8 se atacaron por su efecto en el guard); sesiones MCP reales de Wrecker (fixtures con la forma de 0.2.0); CU9 es piloto registrado, sólo verificable leyendo su comparación.\nE2E corridos aquí: wargame-wrecker, wargame-engine, dist-parity, task-234-close-verification, init, init-command, claude-md-init, agent-models-config (8 archivos, 75 pasan, 1 skip) y project-definition-schema (16/16).\n[FINDING-HIGH: WG-1] Re-corrida tras RESOLVED: un contraejemplo marcado RESOLVED que una corrida posterior del mismo spec vuelve a reportar (mismo stable id) queda cerrado por el RESOLVED viejo; el ticket cierra aunque el registro diga \"HIGH candidates opened: 1\". Rompe CU4.\n[FINDING-HIGH: WG-2] Con dos líneas wargame_engine en PROJECT.md (edición a mano), --set-wargame-engine reemplaza la primera y la lectura toma la última: set responde saved hivemind y get devuelve set wrecker. El cambio pedido por el humano se ignora en silencio. Rompe CU3 y CU2."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T15:12:01.989Z",
+      "body": "WARGAMING — pasada de regresión sobre 3a46c66 (mismas 18 sondas + rondas adaptativas). Arreglados 9 de 18, ninguna regresión. WG-1 con historia del ticket: atrapado (-r2, cierre rechazado; también por el CLI en bin y dist). WG-2: atrapado. E2E: los 8 specs (75 pasan, 1 skip) + project-definition-schema 16/16.\n[FINDING-HIGH: WG-3] La lectura de historia que agregó el arreglo de WG-1 usa su propia regex: un RESOLVED escrito con guion U+2011, o con un ZWSP o guion blando dentro del id, cierra el marcador viejo en el close guard pero la historia no lo ve, así que el contraejemplo que vuelve no se renombra y el ticket cierra. Rompe CU4. Arreglo: reusar el parser del propio guard.\nMEDIUM: sin --ticket el registro sólo avisa y la re-corrida tras RESOLVED sigue cerrando; lint de otro spec aceptado en la forma directa documentada (el caso no lleva spec_version); la lista aprobada la pasa el llamador (corta o duplicada se lee completa) aunque esté --ticket. Sin cambios: CU5 sólo procedimental (TASK-242), línea de corte borrada, lookalikes."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T15:16:01.179Z",
+      "body": "REVIEW del arreglo de wargaming (3a46c66): BLOCK por el mismo hueco que WG-3. Transcripción del Orquestador. WG-1 tal como se reportó y WG-2 quedan arreglados (reproducido contra el closeTask real y la CLI; locks rojos por la razón correcta re-plantados por el reviewer; sin CR en bin/src/dist; .gitattributes ya fuerza LF).\n[FINDING-RESOLVED: WG-1]\n[FINDING-RESOLVED: WG-2]\nEl reviewer confirma WG-3 por su lado (ZWSP en el id y U+2011 en la palabra clave: el guard cierra, la historia no lo ve, el ticket cierra con la regresión abierta) y agrega: una mención entre comillas cuenta como RESOLVED en la historia pero no en el guard (falso \"volvió\" y dos marcadores para un candidato); el linaje no se consulta (X-r2 DEGRADED igual abre X-r3; X-r2 abierto abre X-r3 duplicado); el párrafo del camino directo en la doc no pide --ticket ni approved -> conviene hacer --ticket obligatorio. LOWs: approved duplicado listado dos veces y sin case_map; id largo que vuelve pierde la correlación; ENOENT sin código."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T15:24:27.920Z",
+      "body": "WARGAMING — segunda pasada de regresión sobre 5b18378 (18 sondas originales + v2 + rondas adaptativas). Sin HIGH, sin regresiones. Los bypass de WG-3 (U+2011, ZWSP, guion blando) quedan atrapados: -r2 y cierre rechazado. Confirmado que es un solo parser (checkNoOpenHighFindings y ticketHistory llaman a collectFindingMarkerState; una definición por bundle) y que el close guard no cambió de comportamiento (rondas 1 y 15-18 igual que en la primera pasada). Lint ajeno en la forma directa: arreglado. Subconjunto de casos: con --ticket obligatorio, los aprobados sin resultado se listan y una lista del llamador más corta se rechaza. E2E: 8 specs (75 pasan, 1 skip) + project-definition-schema 16/16.\nQueda abierto: MEDIUM — la lista aprobada derivada del ticket descarta en silencio criterios con formato distinto de \"CU<n>:\" (p. ej. \"CU2 — b\", \"CU 4:\", \"**CU5**:\") y trata CU07 distinto de CU7. MEDIUM — CU5 sigue siendo procedimental (TASK-242). LOW — buildWreckerRecord llamado sin opciones sólo avisa (la CLI sí exige --ticket); linaje con ids escritos a mano que terminan en -r<n> o un DEGRADED preventivo; línea de corte borrada; lookalikes."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T15:30:39.202Z",
+      "body": "REVIEW del arreglo WG-3 (5b18378): PASS, 0 HIGH. Transcripción del Orquestador. test:all: 2526 pasan; los 13 que fallan son los 5 conocidos + 8 EPERM de symlinks de TASK-236 en Windows, ninguno en el área tocada. El close guard quedó igual en efecto (el parser se movió tal cual a collectFindingMarkerState; mismas salidas, errores y orden). Reproducido contra el closeTask real: RESOLVED plano, con ZWSP, con U+2011 o con guion blando -> -r2 y cierre rechazado; mención entre comillas o backticks -> sin marcador nuevo; linaje P3/P4/P5 correcto. Lock re-plantado por el reviewer: rojo por la razón correcta.\n[FINDING-RESOLVED: WG-3]\nMEDIUM: (M-1) la derivación de la lista aprobada desde el ticket no tiene lock por la CLI; (M-2) sólo 1 de 237 tickets (TASK-240) tiene sus casos como criterios \"CU<n>:\" — en los demás la aprobación está en un comentario, así que el camino de Wrecker se niega en todos los otros tickets. Decisión del humano pendiente. LOWs: +110 ms por invocación de init.cjs al empaquetar task-store (mover el parser a un módulo chico), errores sin .code, linaje cerca del tope de 40, marcadores repetidos en carry-over."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T15:46:40.740Z",
+      "body": "DECISIÓN DEL HUMANO (2026-10-09) sobre M-2: convención \"CU<n>:\". Desde ahora, al aprobar los casos de uso, el Orquestador los guarda también como acceptance_criteria del ticket con el prefijo \"CU<n>: ...\". Se documenta en el Workflow step 2. Una sola fuente para el registro de Wrecker."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T16:04:09.520Z",
+      "body": "REVIEW f083910: BLOCK. Transcripción del Orquestador. El movimiento del parser a src/finding-markers.js es fiel línea por línea (sin estado compartido de regex: sólo se usan con replace); el close guard reproduce igual contra el closeTask real; dist fresco; docs idénticas y LF; TASK-240 deriva CU1..CU9 por la CLI real, sin escribir; el lock de near-miss es rojo por la razón correcta.\n[FINDING-HIGH: CU-R-1] tests/e2e/plugin-deps.spec.js (isolatedTaskStoreCopy) copia a mano las dependencias de task-store.js y no incluye finding-markers.js: only_an_adjacent_up_tree_node_modules_resolves_ESM ahora falla con ERR_MODULE_NOT_FOUND, y ESM_import_IGNORES_NODE_PATH pasa por la razón equivocada. Ni test:since ni npm test lo seleccionan (lectura por fs).\nMEDIUM: near-misses que todavía se descartan en silencio: `CU2`: entre backticks, [CU2]:, CU-1:, \"Caso CU2:\". LOW: el mensaje de near-miss recorta espacios iniciales; normCu exportado sin uso."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T16:09:16.440Z",
+      "body": "Fix 9fbfc09: plugin-deps copia finding-markers.js en su fixture; el test de NODE_PATH vuelve a fallar por la razón correcta (Cannot find package 'ajv', verificado por el Developer con una réplica manual del fixture). Detector de near-miss ampliado (`CU2`:, [CU2]:, CU-1:, \"Caso CU2:\", espacios iniciales) sin tocar texto común (CUDA, Customer, CU5 a mitad de frase); plantado rojo-verde. test:all del Developer: 2526 pasan, 13 fallas todas conocidas (5 de siempre + 8 EPERM de symlinks de TASK-236). Re-corrido por el Orquestador: plugin-deps + wargame-wrecker + dist-parity 30/30.\n[FINDING-RESOLVED: CU-R-1]"
+    },
+    {
+      "author": "uat",
+      "at": "2026-10-09T16:29:09.363Z",
+      "body": "1. CU1: sin motor configurado, hivemind pregunta \"¿Wrecker o default?\" y guarda la respuesta; si se omite, no guarda y vuelve a preguntar. Verdict: PASS\n2. CU2: con el motor guardado, no pregunta y usa el guardado. Verdict: PASS\n3. CU3: cambiar el motor (editando PROJECT.md o pidiéndolo al orquestador) hace que el próximo wargaming use el nuevo. Verdict: PASS\n4. CU4: con Wrecker, /wrecker:wargame corre y el ticket recibe el registro con lo no atacado; counterexample/contradiction/dead_end quedan como FINDING-HIGH y gap como pregunta. Verdict: PASS\n5. CU5: con Wrecker elegido pero desconectado, se avisa claro y se ofrece arreglar la conexión o usar el default esta vez, sin caer al default en silencio. Verdict: PASS\n6. CU6: un spec que falla lint se corrige y re-lintea; Wrecker nunca corre sobre un spec inválido. Verdict: PASS\n7. CU7: una sesión cortada a los 120 s se reanuda con resume_session_id y no cuenta como terminada. Verdict: PASS\n8. CU8: con el default, el wargaming de hivemind corre sin cambios. Verdict: PASS\n9. CU9: el piloto de Wrecker sobre TASK-239 corrió y su comparación con el wargaming de TASK-239 quedó registrada. Verdict: PASS\nOverall result: PASS"
+    },
+    {
+      "author": "reviewer",
+      "at": "2026-10-09T16:30:08.863Z",
+      "body": "REVIEW 9fbfc09: PASS, 0 HIGH, 0 MEDIUM. Reproducido el fixture de plugin-deps a mano: con NODE_PATH falla por `Cannot find package 'ajv'` (la razón correcta), sin finding-markers.js fallaba por el archivo local, con junction importa OK; ningún otro fixture copia a mano el cierre de task-store.js. El detector de near-miss ampliado atrapa los 5 formatos nuevos (rojo bajo la regex anterior) y no toca prosa común; TASK-240 deriva CU1..CU9 por bin e dist, sin escribir el ticket. test:since 28/28, npm test con sólo los 5 fallos conocidos, plugin-deps + wargame-wrecker + dist-parity 30/30. Veredicto final del ticket TASK-240: los 9 marcadores HIGH abiertos a lo largo del ticket (CU4-R-1, CU4-R-2, CU8-R-1, CU4-W-1, FINAL-R-1, WG-1, WG-2, WG-3, CU-R-1) tienen cada uno su [FINDING-RESOLVED] — verificado con el parser real (`collectFindingMarkerState`: opened 9, resolved 9, degraded 0, malformed 0), así que `checkNoOpenHighFindings` no bloquea; CU1-CU9 aprobados por el humano el 2026-10-08 y cumplidos tal como se aprobaron (CU7 por decisión humana del 2026-10-09, reanudación implementada; CU9 piloto registrado); wargaming registrado en tres pasadas (engine hivemind, última sobre 5b18378). LOW: \"Case: CU2\" con dos puntos tras la palabra todavía se descarta; comentario sugerido en el guard de prosa del spec."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T16:30:52.686Z",
+      "body": "ENTREGA — TASK-240 (motor de wargaming por proyecto)\n\n1. CASOS DE USO APROBADOS (aprobados por el humano el 2026-10-08)\n   1. CU1 sin ajuste: pregunta y guarda; si se omite, no guarda y vuelve a preguntar -> cumplido\n   2. CU2 con ajuste: no pregunta, usa el guardado -> cumplido\n   3. CU3 cambio de ajuste (a mano o pedido) vale para el próximo wargaming -> cumplido\n   4. CU4 Wrecker elegido: /wrecker:wargame, registro con lo no atacado, counterexample/contradiction/dead_end -> FINDING-HIGH, gap -> pregunta -> cumplido\n   5. CU5 Wrecker sin conexión: se avisa, sin caída silenciosa, se ofrece arreglar o default esta vez -> cumplido (por procedimiento; el hueco del close guard queda en TASK-242)\n   6. CU6 lint: se corrige y re-lintea; nunca corre sobre spec inválido -> cumplido\n   7. CU7 corte a 120 s: se reanuda con resume_session_id -> cumplido (en el camino de /wrecker:wargame por decisión del humano del 2026-10-09)\n   8. CU8 default sin cambios -> cumplido\n   9. CU9 piloto sobre TASK-239 con comparación registrada -> cumplido\n\n2. RESULTADO\n   - El actor ahora puede: elegir por proyecto el motor de wargaming (wargame_engine: wrecker | hivemind en PROJECT.md, --get/--set-wargame-engine), y con Wrecker convertir la salida de /wrecker:wargame (o de las tools directas) en el registro del ticket con node bin/init.js --wrecker-record <json> --ticket <KEY>: [WARGAMING] con atacado/no atacado/cobertura, un [FINDING-HIGH] por candidato bloqueante con id estable, preguntas por gap, reanudación de sesiones cortadas, re-apertura de candidatos que vuelven tras RESOLVED.\n   - Donde quedó: src/wargame-engine.js, src/wargame-wrecker.js, src/finding-markers.js (parser de marcadores compartido con el close guard), bin/init.js, docs del paso de wargaming y del paso 2 (casos aprobados también como criterios CU<n>:) en CLAUDE.md y orchestrator-routing.\n   - Commits: 133e0f2, 2f4c121, d44272d, 5a39914, 1b5afe0, 056babd, 6cbb13b, db8b862, a886add, ca6378b, 9c093af, 3acd181, 656caa5, f023b54, 3e63dc9, 10377c6, 7110ac4, 3a46c66, 5b18378, f083910, 9fbfc09 (piloto CU9: 7cd611f).\n   - Fuera de alcance a propósito: que Wrecker lea código; el modo short lo construye Wrecker; el hueco de negación/procedencia del close guard (TASK-242).\n\n3. WARGAMING\n   - Atacado: CU1-CU8 con hive-adversarial-improve (motor hivemind, elegido por el humano), 18 rondas sobre el código real (buildWreckerRecord, closeTask real en repos temporales, CLI bin y dist) más dos pasadas de regresión con rondas adaptativas; CU1 path unset/inválido/omitido, CU2 path ya configurado, CU3 path edición y --set, CU4 path mapeo/falsificación/subconjunto/re-corrida, CU5 path Wrecker caído, CU6 path lint ajeno, CU7 path corte/reanudado, CU8 path default.\n   - Sobrevivió: falsificación de marcadores (ASCII, fullwidth, comillas curvas, U+2028, fences), tipos desconocidos, lectura sin caché, BOM y sin frontmatter fallan fuerte, CU8 intacto, close guard sin cambios de comportamiento.\n   - No sobrevivió (y se arregló): WG-1 re-corrida tras RESOLVED (HIGH), WG-2 líneas wargame_engine duplicadas (HIGH), WG-3 parser de historia distinto del guard (HIGH), lint ajeno, re-tipado de ids, subconjunto leído como completo (MEDIUM). Quedan: CU5 sólo procedimental (MEDIUM, TASK-242); línea de corte borrada a mano y lookalikes Kelvin/[wrecker] (LOW, residuales documentados).\n   - E2E corridos acá: wargame-wrecker, wargame-engine, dist-parity, task-234-close-verification, init, init-command, claude-md-init, agent-models-config (75 pasan, 1 skip) y project-definition-schema 16/16; tras el último fix plugin-deps + wargame-wrecker + dist-parity 30/30. El commit 9fbfc09 (posterior a la última pasada) sólo ajusta un fixture y el detector de near-miss; no se re-wargameó, lo revisó el reviewer.\n   - Veredicto: sin HIGH abiertos (9 abiertos, 9 resueltos).\n\n4. UAT\n   - Solicitado: sí (requires_uat). Guion = lista CU1-CU9 aprobada; el humano dio PASS a los 9 el 2026-10-09 (comentario uat).\n\n5. ESTADO Y DEUDAS\n   - TASK-241 (subagent-log vacío con SubagentHandback) y TASK-242 (close guard acepta un registro que dice que no se atacó nada) abiertos.\n   - Pregunta a Wrecker sin responder (hub msg_0050) sobre reanudación dentro de su skill; ya no bloquea.\n   - LOWs: \"Case: CU2\" con dos puntos tras la palabra se descarta; errores sin .code."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-09T14:52:10.034Z",
+  "updated_at": "2026-10-09T16:30:52.686Z",
   "jira_key": null,
   "verification_tier": "tests-after",
-  "requires_uat": true
+  "requires_uat": true,
+  "linked_commits_verification": {
+    "at": "2026-10-09T16:30:52.686Z",
+    "checked": true,
+    "reason": null,
+    "commits": [
+      {
+        "sha": "133e0f2",
+        "state": "verified"
+      },
+      {
+        "sha": "2f4c121",
+        "state": "verified"
+      },
+      {
+        "sha": "d44272d",
+        "state": "verified"
+      },
+      {
+        "sha": "5a39914",
+        "state": "verified"
+      },
+      {
+        "sha": "1b5afe0",
+        "state": "verified"
+      },
+      {
+        "sha": "056babd",
+        "state": "verified"
+      },
+      {
+        "sha": "6cbb13b",
+        "state": "verified"
+      },
+      {
+        "sha": "db8b862",
+        "state": "verified"
+      },
+      {
+        "sha": "a886add",
+        "state": "verified"
+      },
+      {
+        "sha": "ca6378b",
+        "state": "verified"
+      },
+      {
+        "sha": "9c093af",
+        "state": "verified"
+      },
+      {
+        "sha": "3acd181",
+        "state": "verified"
+      },
+      {
+        "sha": "656caa5",
+        "state": "verified"
+      },
+      {
+        "sha": "f023b54",
+        "state": "verified"
+      },
+      {
+        "sha": "3e63dc9",
+        "state": "verified"
+      },
+      {
+        "sha": "10377c6",
+        "state": "verified"
+      },
+      {
+        "sha": "7110ac4",
+        "state": "verified"
+      },
+      {
+        "sha": "3a46c66",
+        "state": "verified"
+      },
+      {
+        "sha": "5b18378",
+        "state": "verified"
+      },
+      {
+        "sha": "f083910",
+        "state": "verified"
+      },
+      {
+        "sha": "9fbfc09",
+        "state": "verified"
+      },
+      {
+        "sha": "7cd611f",
+        "state": "verified"
+      }
+    ]
+  }
 }
