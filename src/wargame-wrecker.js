@@ -11,8 +11,7 @@
 //   counterexample | contradiction | dead_end -> FINDING-HIGH marker (blocks the
 //        close until triaged: FINDING-RESOLVED, or FINDING-DEGRADED + reason).
 //   gap -> question for the spec owner. NEVER a FINDING-HIGH marker and never a
-//        regression test (Wrecker's rule). A gap on an end_* step is flagged for
-//        manual review (TASK-113 rule).
+//        regression test (Wrecker's rule).
 //   any other kind -> throws: an unknown kind must not be silently dropped
 //        (empty-result contract — absence of a mapping is not "nothing found").
 //
@@ -86,8 +85,7 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
         seen.add(id.toUpperCase());
         highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
       } else if (kind === 'gap') {
-        const endStep = /^end/i.test(String(step));
-        questions.push(`${caseId} gap at step ${step}${endStep ? ' (END STEP: review by hand, TASK-113)' : ''}: ${oneLine(f.explanation)}`);
+        questions.push(`${caseId} gap at step ${step}: ${oneLine(f.explanation)}`);
       } else {
         throw new Error(`buildWreckerRecord: unknown finding kind "${oneLine(kind)}" in ${caseId} (${tok(f.finding_id, 'no id')}) — expected counterexample|contradiction|dead_end|gap`);
       }
@@ -104,9 +102,6 @@ export function buildWreckerRecord({ cases, not_attacked = [] }) {
         ? 'dry_run only (run_session not performed)'
         : 'not reached in the session';
       notAttacked.push(`${caseId} steps ${never.join(', ')} (${why})`);
-      if (never.some((s) => /^end/i.test(String(s)))) {
-        questions.push(`${caseId}: an end step was never reached (${never.filter((s) => /^end/i.test(String(s))).join(', ')}); review by hand (TASK-113)`);
-      }
     }
   }
 

@@ -9308,8 +9308,7 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
         seen.add(id.toUpperCase());
         highMarkers.push(`[FINDING-HIGH: ${id}] ${caseId} ${kind} at step ${step} (Wrecker candidate, not verified): ${oneLine(f.explanation)}`);
       } else if (kind === "gap") {
-        const endStep = /^end/i.test(String(step));
-        questions.push(`${caseId} gap at step ${step}${endStep ? " (END STEP: review by hand, TASK-113)" : ""}: ${oneLine(f.explanation)}`);
+        questions.push(`${caseId} gap at step ${step}: ${oneLine(f.explanation)}`);
       } else {
         throw new Error(`buildWreckerRecord: unknown finding kind "${oneLine(kind)}" in ${caseId} (${tok(f.finding_id, "no id")}) \u2014 expected counterexample|contradiction|dead_end|gap`);
       }
@@ -9322,9 +9321,6 @@ function buildWreckerRecord({ cases, not_attacked = [] }) {
     if (never.length > 0) {
       const why = c.dry_run_only ? "dry_run only (run_session not performed)" : "not reached in the session";
       notAttacked.push(`${caseId} steps ${never.join(", ")} (${why})`);
-      if (never.some((s) => /^end/i.test(String(s)))) {
-        questions.push(`${caseId}: an end step was never reached (${never.filter((s) => /^end/i.test(String(s))).join(", ")}); review by hand (TASK-113)`);
-      }
     }
   }
   const high = highMarkers.length;

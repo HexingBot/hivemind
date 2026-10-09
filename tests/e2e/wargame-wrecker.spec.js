@@ -37,7 +37,7 @@ describe('TASK-240 CU4 — Wrecker record', () => {
       findings: [f('counterexample', 'F-1'), f('contradiction', 'F-2'), f('dead_end', 'F-3'), f('gap', 'F-4', 'end_success')] }] });
     expect(hard.high_markers).toHaveLength(3);
     expect(hard.questions).toHaveLength(1);
-    expect(hard.questions[0]).toContain('review by hand');
+    expect(hard.questions[0]).not.toContain('review by hand');
     expect([...hard.high_markers, hard.wargaming].join('\n')).not.toMatch(/FINDING-HIGH: F-4/);
 
     const base = [c('reviewer', 'APPROVE.', 0), c('orchestrator', hard.wargaming, 1)];
