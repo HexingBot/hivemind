@@ -63,10 +63,20 @@
       "author": "orchestrator",
       "at": "2026-10-09T01:57:43.224Z",
       "body": "REVIEW CU5 + limpieza end_* (6cbb13b): PASS, 0 HIGH, 0 MEDIUM. Transcripción del Orquestador. CU5 es procedimiento (CLAUDE.md + ambos SKILL.md): Wrecker elegido y no conectado -> decirlo y ofrecer (a) arreglar y reintentar, sin registro ni cierre, o (b) default esta vez, sin --set-wargame-engine y con el registro diciendo por qué. El reviewer confirmó que en (a) el cierre lo bloquea checkWargamingRecord y que --wrecker-record no puede fabricar un pase de Wrecker sin corrida. Sin código nuevo, a propósito: node no puede ver la conexión MCP. La marca de gaps en end_* se quitó de código, docs y dist (Wrecker retiró la regla, hub msg_0043). LOWs para la próxima ronda: '; Zero' -> '. Zero' en las tres copias del doc; el spec debería fijar el formato exacto de la pregunta de gap en end_*; no hay doc-lock de los bullets de TASK-240. Al wargaming: CU5 sólo se puede atacar recorriendo el procedimiento."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T02:08:55.168Z",
+      "body": "REVIEW CU6 + LOWs de CU5 (db8b862): PASS, 0 HIGH. Transcripción del Orquestador. Confirmado en el dist de Wrecker 0.1.0: dry_run y run_session usan accept_lint:true, así que Wrecker NO se niega a correr un spec que falla lint; hivemind lo impone del lado del registro (--wrecker-record rechaza un caso sin lint final limpio) y del procedimiento (no arrancar sesión sobre un spec con lint sucio; si arreglarlo cambia el caso aprobado, preguntar al humano). Que todo hallazgo de lint bloquee es correcto: las 10 reglas de lint son defectos estructurales que se arreglan completando el spec. El lock falla por la razón correcta (verificado contra el módulo previo). MEDIUM: el campo lint lo transcribe el Orquestador, así que se puede tipear a mano; falta decirlo en la doc y conviene exigir usecase y spec_version del output real. Se arregla antes de CU7."
+    },
+    {
+      "author": "orchestrator",
+      "at": "2026-10-09T02:11:39.582Z",
+      "body": "CU6 follow-up a886add: cierra el MEDIUM y el LOW de la review de CU6. El lint de cada caso ahora exige usecase y spec_version no vacíos (un {findings: []} tipeado a mano se rechaza); la doc y el header dicen que es disciplina de transcripción, no prueba; el registro dice \"lint clean (spec_version X)\". Lock extendido, plantado rojo-verde por el Developer. Re-corrido por el Orquestador: wargame-wrecker + dist-parity 4/4 verde, SKILL.md en paridad. Commits de CU6: db8b862, a886add. Wrecker avisado de que su dry_run acepta specs con lint sucio (hub msg_0046)."
     }
   ],
   "created_at": "2026-10-08T17:08:52.240Z",
-  "updated_at": "2026-10-09T01:57:43.224Z",
+  "updated_at": "2026-10-09T02:11:39.582Z",
   "jira_key": null,
   "verification_tier": "tests-after",
   "requires_uat": true
