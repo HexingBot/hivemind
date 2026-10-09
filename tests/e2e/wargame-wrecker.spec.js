@@ -133,6 +133,14 @@ describe('TASK-240 CU4 — Wrecker record', () => {
     expect(long.wargaming).toContain(`(uc ${LONG})`);
     // mapping that disagrees with the findings fails loud (an id only in mapping would be lost silently)
     expect(() => buildWreckerRecord({ ...out([sk({})]), mapping: { blocking: ['W-UC-9-ffffffffffff'], questions: [] } })).toThrow(/mapping\.blocking/);
+    // The skill's mapping covers EVERY spec: a cut (not attacked) spec that carries a finding must not make the record throw.
+    // Harm: a record refusing the skill's own output as-is would push the orchestrator to hand-edit the JSON.
+    const cutWith = { ...sk({ uc: 'UC-8', not_running: ['the rest of the session: max_session_ms cut it at x'],
+      findings: [{ id: 'W-UC-8-eeeeeeeeeeee', type: 'dead_end', step_cited: '1', explanation: 'z' }] }) };
+    const withCut = buildWreckerRecord({ ...out([sk({}), cutWith]), mapping: { blocking: ['W-UC-8-eeeeeeeeeeee'], questions: [] } });
+    expect(withCut.wargaming).toMatch(/CU8 \(not run:|CU8 \(session cut/);
+    expect(withCut.high_markers).toEqual([]);
+    expect(buildWreckerRecord({ ...out([sk({})]), mapping: null }).wargaming).toContain('CU9');
     const direct = buildWreckerRecord({ cases: [{ case: 'CU4', lint: ok, status: fin, coverage: cov,
       findings: [{ ...f('dead_end', 'F-unstable'), stable_id: 'W-UC-4-111111111111' }] }] });
     expect(direct.high_markers[0]).toMatch(/^\[FINDING-HIGH: W-UC-4-111111111111\]/);

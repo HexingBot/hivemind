@@ -120,10 +120,10 @@ function fromSkill(out) {
   if (cases.length === 0) {
     throw new Error(`buildWreckerRecord: nothing was attacked (${notAttacked.map((n) => `${tok(n.case)}: ${n.reason}`).join(' | ') || 'no specs'}) - record these cases as NOT attacked, not as a Wrecker pass`);
   }
-  if (out.mapping !== undefined) {
+  if (out.mapping != null) { // null = absent; {} is checked (and loud if findings exist). Built over ALL specs, like the skill's mapping.
     const idsOf = (f) => (Array.isArray(f.folded_ids) && f.folded_ids.length > 0 ? f.folded_ids : Array.isArray(f.stable_ids) && f.stable_ids.length > 0 ? f.stable_ids : [stableOf(f)]).filter(Boolean).map(String);
     const want = { blocking: new Set(), questions: new Set() };
-    for (const c of cases) for (const f of c.findings ?? []) {
+    for (const sp of out.specs) for (const f of Array.isArray(sp.findings) ? sp.findings : []) {
       const bucket = HIGH_KINDS.has(kindOf(f)) ? want.blocking : kindOf(f) === 'gap' ? want.questions : null;
       if (bucket) for (const i of idsOf(f)) bucket.add(i);
     }
@@ -147,7 +147,8 @@ export function buildWreckerRecord(input) {
   const attacked = [];
   const notAttacked = not_attacked.map((n) => `${tok(n.case)} (${oneLine(n.reason) || 'no reason given'})`);
   const seen = new Set();
-  const seenOrig = new Set();
+  const seenOrig = new Map();
+  const dropped = [];
   const derived = [];
   if (cases.length === 0) throw new Error('buildWreckerRecord: no attacked cases — an empty record would read as a pass; nothing ran');
 
@@ -191,12 +192,16 @@ export function buildWreckerRecord(input) {
         for (const orig of origs) {
           // A repeated STABLE id is the same candidate: one marker is enough (judged on the ORIGINAL id,
           // never on a derived one, so two different originals can never be merged).
-          if (isStable && seenOrig.has(orig.toUpperCase())) continue;
-          seenOrig.add(orig.toUpperCase());
+          if (isStable && seenOrig.has(orig.toUpperCase())) {
+            const first = seenOrig.get(orig.toUpperCase());
+            if (first !== orig) dropped.push(`${tok(orig)} (same as ${tok(first)} apart from case)`);
+            continue;
+          }
+          seenOrig.set(orig.toUpperCase(), orig);
           let id = markerId({ stable_id: orig, finding_id: orig }, caseId, seq);
           // An id over the guard's length cap keeps its 12-hex digest: W-<CUn>-<12hex>.
           const hex = /([0-9a-f]{12})$/i.exec(orig);
-          if (isStable && hex && orig.replace(/[^A-Za-z0-9._/-]/g, '-').length > ID_MAX) id = `W-${tok(caseId, 'X').replace(/[^A-Za-z0-9]/g, '')}-${hex[1]}`.slice(0, ID_MAX);
+          if (isStable && hex && orig.replace(/[^A-Za-z0-9._/-]/g, '-').length > ID_MAX) id = `W-${tok(caseId, 'X').replace(/[^A-Za-z0-9]/g, '')}-${hex[1]}`;
           // Dedup on the close guard's normalization (it upper-cases ids), so F-1 and f-1 cannot
           // become two markers that one RESOLVED closes together: collisions are made unique, never dropped.
           for (let n = 1; seen.has(id.toUpperCase()); n++) id = `${id.replace(/-x\d+$/, '').slice(0, ID_MAX - 5)}-x${n}`;
@@ -233,6 +238,7 @@ export function buildWreckerRecord(input) {
     `Attacked (case + path): ${attacked.join(' | ') || 'none'}.`,
     `Not attacked: ${notAttacked.join(' | ') || 'nothing declared'}.`,
     ...(derived.length > 0 ? [`Marker ids derived (original -> marker, match a later RESOLVED/DEGRADED by the marker id): ${derived.join('; ')}.`] : []),
+    ...(dropped.length > 0 ? [`Stable ids folded into an earlier marker (one marker covers both): ${dropped.join('; ')}.`] : []),
     `HIGH candidates opened: ${high} (each is a separate marker comment; they block the close until triaged). Non-blocking questions for the spec owner: ${questions.length}.`,
     ...questions.map((q) => `Question for the spec owner (does not block): ${q}`),
     'Zero counterexamples proves nothing by itself: read the coverage above.',
